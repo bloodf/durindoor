@@ -1,5 +1,6 @@
 // OAuth 2.0 discovery helpers for upstream MCP servers (RFC 9728 + 8414).
 
+import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { isRecord } from "./guards";
 import { isString } from "../../../shared/utils/typeChecks.js";
 
@@ -7,23 +8,40 @@ const META_PATHS = [
 "/.well-known/oauth-protected-resource",
 "/.well-known/oauth-authorization-server"];
 
+const MAX_REDIRECT_HOPS = 5;
+
 
 function safeParse(s) {
   if (!s) return null;
   try {return JSON.parse(s);} catch {return null;}
 }
 
-function tryFetchJson(url, timeoutMs = 8000) {
+// The upstream server picks every discovery URL, so each hop (redirects
+// included) goes through the guarded, DNS-pinned fetch.
+async function tryFetchJson(url, timeoutMs = 8000) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
-  return fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    signal: ac.signal
-  }).
-  then((r) => r.ok ? r.json().catch(() => null) : null).
-  catch(() => null).
-  finally(() => clearTimeout(timer));
+  try {
+    let current = new URL(url);
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+      const res = await guardedProbeFetch(current.toString(), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: ac.signal
+      });
+      if (!(res.status >= 300 && res.status < 400)) {
+        return res.ok ? await res.json() : null;
+      }
+      const location = res.headers.get("location");
+      if (!location) return null;
+      current = new URL(location, current);
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

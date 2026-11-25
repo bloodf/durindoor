@@ -597,6 +597,11 @@ export async function stopXaiProxy(expectedServer = null) {
 // ───────────────────────────────────────────────────────────────────────────
 
 const mcpPendingExchanges = new Map();
+const MCP_MAX_SESSIONS = 100;
+
+function isMcpSessionExpired(session) {
+  return Date.now() - session.createdAt >= OAUTH_TIMEOUT;
+}
 
 function mcpSessionKey(instanceId, state) {
   return `${instanceId}::${state}`;
@@ -604,6 +609,13 @@ function mcpSessionKey(instanceId, state) {
 
 export function registerMcpSession({ instanceId, state, codeVerifier, redirectUri, resource, clientId }) {
   if (!instanceId || !state || !codeVerifier || !redirectUri || !clientId) return false;
+  for (const [key, session] of mcpPendingExchanges) {
+    if (isMcpSessionExpired(session)) mcpPendingExchanges.delete(key);
+  }
+  // Hard ceiling for bursts inside one timeout window: drop the oldest.
+  while (mcpPendingExchanges.size >= MCP_MAX_SESSIONS) {
+    mcpPendingExchanges.delete(mcpPendingExchanges.keys().next().value);
+  }
   mcpPendingExchanges.set(mcpSessionKey(instanceId, state), {
     codeVerifier,
     clientId,
@@ -619,16 +631,28 @@ export function registerMcpSession({ instanceId, state, codeVerifier, redirectUr
 }
 
 export function getMcpSessionStatus(instanceId, state) {
-  return mcpPendingExchanges.get(mcpSessionKey(instanceId, state)) || null;
+  const key = mcpSessionKey(instanceId, state);
+  const session = mcpPendingExchanges.get(key);
+  if (!session) return null;
+  if (isMcpSessionExpired(session)) {
+    mcpPendingExchanges.delete(key);
+    return null;
+  }
+  return session;
 }
 
 export function completeMcpSession(instanceId, state, result) {
   const key = mcpSessionKey(instanceId, state);
   const session = mcpPendingExchanges.get(key);
   if (!session) return false;
-  if (result.status !== undefined) session.status = result.status;
-  if (result.error !== undefined) session.error = result.error;
-  if (result.tokens !== undefined) session.tokens = result.tokens;
+  // Leaving "pending" deletes the exchange itself (verifier, client, redirect):
+  // only a status record stays behind for the dashboard to poll.
+  mcpPendingExchanges.set(key, {
+    status: result.status ?? session.status,
+    error: result.error ?? session.error,
+    tokens: result.tokens ?? session.tokens,
+    createdAt: Date.now(),
+  });
   return true;
 }
 

@@ -2389,9 +2389,26 @@ export async function listKeyUsageSessions(apiKeyId, limit = 50) {
   return db.all(`SELECT usageSessionId AS sessionId, usageProjectId AS projectId,
       COUNT(*) AS requests, COALESCE(SUM(promptTokens), 0) AS promptTokens,
       COALESCE(SUM(completionTokens), 0) AS completionTokens,
+      COALESCE(SUM(CASE WHEN COALESCE(promptTokens, 0) < COALESCE(cachedTokens, 0) + COALESCE(cacheCreationTokens, 0)
+        THEN COALESCE(promptTokens, 0) + COALESCE(cachedTokens, 0) + COALESCE(cacheCreationTokens, 0)
+        ELSE COALESCE(promptTokens, 0) END), 0) AS normalizedInput,
+      COALESCE(SUM(cachedTokens), 0) AS cacheRead,
+      COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreation,
+      COALESCE(SUM(reasoningTokens), 0) AS reasoning,
       SUM(cost) AS cost, SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unknownCostRequests,
       MAX(timestamp) AS lastUsed
     FROM usageHistory WHERE apiKeyId = ? AND (usageSessionId IS NOT NULL OR usageProjectId IS NOT NULL)
     GROUP BY usageSessionId, usageProjectId ORDER BY MAX(timestamp) DESC, usageSessionId, usageProjectId
-    LIMIT ?`, [apiKeyId, pageLimit]);
+    LIMIT ?`, [apiKeyId, pageLimit]).map(({ normalizedInput, cacheRead, cacheCreation, reasoning, ...row }) => ({
+    ...row,
+    tokens: {
+      input: normalizedInput,
+      uncachedInput: normalizedInput - cacheRead - cacheCreation,
+      cacheRead,
+      cacheCreation,
+      output: row.completionTokens,
+      reasoning,
+      total: normalizedInput + row.completionTokens,
+    },
+  }));
 }

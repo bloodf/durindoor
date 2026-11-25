@@ -315,7 +315,9 @@ export class GrokCliExecutor extends BaseExecutor {
     const converted = convertGrokBuildCustomTools(ctx.body);
     const { body: flattenedBody, identityMap } = flattenGrokCliNamespaceTools(converted.body);
     const dispatchBody = identityMap ? flattenedBody : converted.body;
-    const nextCtx = dispatchBody !== ctx.body ? { ...ctx, body: dispatchBody } : ctx;
+    // chatCore freezes its request context, and transformRequest records the
+    // session/request/turn ids on it, so each dispatch needs a writable copy.
+    const nextCtx = { ...ctx, body: dispatchBody, requestContext: { ...ctx.requestContext } };
     if (identityMap) {
       const toolCount = Array.isArray(flattenedBody?.tools) ? flattenedBody.tools.length : 0;
       if (toolCount > GROK_CLI_MAX_TOOLS) {

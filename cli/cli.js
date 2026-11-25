@@ -663,18 +663,19 @@ function startServer(updatePromise) {
     if (headless) return;
     try {
       const { ensureTrayRuntime } = require("./hooks/trayRuntime");
-      ensureTrayRuntime({ silent: true });
-      const { initTray } = require("./src/cli/tray/tray");
-      initTray({
-        port,
-        onQuit: () => {
-          isShuttingDown = true;
-          console.log("\n👋 Shutting down from tray...");
-          exitAfterCleanup(0);
-        },
-        onOpenDashboard: () => openBrowser(url),
-        ...callbacks
-      });
+      Promise.resolve(ensureTrayRuntime({ silent: true, asynchronous: true })).then(() => {
+        const { initTray } = require("./src/cli/tray/tray");
+        initTray({
+          port,
+          onQuit: () => {
+            isShuttingDown = true;
+            console.log("\n👋 Shutting down from tray...");
+            exitAfterCleanup(0);
+          },
+          onOpenDashboard: () => openBrowser(url),
+          ...callbacks
+        });
+      }).catch((err) => callbacks.onError?.(err));
     } catch (err) {
       callbacks.onError?.(err);
     }

@@ -28,6 +28,41 @@ const SCHEMA_VALUE_KEYWORDS = new Set([
   "unevaluatedItems",
   "unevaluatedProperties",
 ]);
+const INTEGER_KEYWORDS = new Set([
+  "maxContains",
+  "maxItems",
+  "maxLength",
+  "maxProperties",
+  "minContains",
+  "minItems",
+  "minLength",
+  "minProperties",
+]);
+const NUMBER_KEYWORDS = new Set([
+  "exclusiveMaximum",
+  "exclusiveMinimum",
+  "maximum",
+  "minimum",
+  "multipleOf",
+]);
+
+// Turn a numeric string into a number of the wanted kind. Anything else, including
+// a value that would lose precision as a JS number, is returned unchanged.
+function toSchemaNumber(value, kind) {
+  if (!isString(value) || value.trim() === "") return value;
+  const number = Number(value);
+  if (kind === "integer") return Number.isSafeInteger(number) ? number : value;
+  return Number.isFinite(number) ? number : value;
+}
+
+function normalizeNumericValue(node, key, value) {
+  if (INTEGER_KEYWORDS.has(key)) return toSchemaNumber(value, "integer");
+  if (NUMBER_KEYWORDS.has(key)) return toSchemaNumber(value, "number");
+  if (key === "default" && (node.type === "integer" || node.type === "number")) {
+    return toSchemaNumber(value, node.type);
+  }
+  return value;
+}
 
 function stripSchemaMap(map) {
   if (!map || !isObject(map) || Array.isArray(map)) return map;
@@ -63,7 +98,7 @@ function stripSchemaNode(node) {
       continue;
     }
 
-    let nextValue = value;
+    let nextValue = normalizeNumericValue(node, key, value);
     if (SCHEMA_MAP_KEYWORDS.has(key)) nextValue = stripSchemaMap(value);
     else if (SCHEMA_VALUE_KEYWORDS.has(key)) nextValue = stripSchemaNode(value);
     if (nextValue === value) continue;
@@ -74,11 +109,14 @@ function stripSchemaNode(node) {
 }
 
 /**
- * Remove uniqueItems and Unicode-property regex constraints unsupported by Codex `/responses`.
+ * Make a tool schema acceptable to Codex `/responses`: remove uniqueItems and
+ * Unicode-property regex constraints, and send numeric keywords as numbers.
  *
  * Codex rejects otherwise valid JSON Schema `pattern` values containing
  * `\p{...}` or `\P{...}`. This schema-aware, copy-on-write walk strips only
- * those constraints and uniqueItems: schema-map keys remain names, annotation/data values are
+ * those constraints and uniqueItems. Codex also rejects numeric keywords (and the
+ * `default` of an integer or number schema) encoded as strings, so those are
+ * converted. Schema-map keys remain names, annotation/data values are
  * opaque, and compatible schemas retain their original reference.
  *
  * @param {unknown} schema Tool parameter schema.

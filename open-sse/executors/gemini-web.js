@@ -530,6 +530,9 @@ const isBrowserClosedError = (message) => /(?:page|context|browser) has been clo
 const isSelectorFailure = (error) =>
   error.name === "TimeoutError" || error.message.includes("waitForSelector") ||
   error.message.includes("actionability") || error.message.includes("interception");
+const throwIfAborted = (signal) => {
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
+};
 const abortStatus = (signal) => {
   if (!signal?.aborted) return null;
   return signal.reason?.name === "TimeoutError" ? 504 : 499;
@@ -632,7 +635,7 @@ export class GeminiWebExecutor extends BaseExecutor {
     let context = null;
     let abortBrowser = null;
     try {
-      if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
+      throwIfAborted(signal);
       const { chromium } = await loadPlaywright();
       browser = await acquireBrowser(stableLauncher(chromium));
       abortBrowser = () => void context?.close().catch(() => {});
@@ -641,7 +644,12 @@ export class GeminiWebExecutor extends BaseExecutor {
       const proxy = resolveGeminiWebBrowserProxy(input.proxyOptions);
       const contextOptions = { userAgent: GEMINI_USER_AGENT, serviceWorkers: "block" };
       if (proxy) contextOptions.proxy = proxy;
+      // An abort during the browser launch fired before the listener existed.
+      throwIfAborted(signal);
       context = await browser.newContext(contextOptions);
+      // The once-only listener cannot close a context that was still being created
+      // (OmniRoute #20739). Throwing here lets `finally` close it.
+      throwIfAborted(signal);
       await context.addCookies(parseCookies(cookie).map(({ name, value }) => ({
         name, value, domain: ".google.com", path: "/", secure: true,
       })));
@@ -693,7 +701,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       });
 
       const navigation = await page.goto(GEMINI_WEB_URL, { waitUntil: "domcontentloaded", timeout: 20_000 });
-      if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
+      throwIfAborted(signal);
       // A redirect to the Google sign-in page is an expired or missing session.
       if (AUTH_FAILURE_STATUSES.has(navigation?.status?.()) || SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
       await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
@@ -733,7 +741,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       });
 
       await Promise.race([responsePromise, page.waitForTimeout(resolveResponseTimeoutMs())]);
-      if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
+      throwIfAborted(signal);
 
       if (!responseText) {
         if (upstreamStatus === 401 || upstreamStatus === 403) return carry(sessionExpired(upstreamStatus));

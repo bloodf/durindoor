@@ -40,12 +40,12 @@ The scheduler is hard-disabled. `scheduler-enable` returns `schedulerEnabled: fa
 
 ## Browser recovery
 
-There is no production stored-password recovery caller. The browser helper requires both of these flags:
+The browser helper is gated future work: no production path calls it today. The rotation route refuses `enroll`, `replace`, and `enable`, so stored-password browser recovery is not available in production. If invoked with both required flags and a password challenge, the helper types the stored password into Google's password field and clicks the Next button. The helper requires both of these flags:
 
 - `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY=1`
 - `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED=1`
 
-Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The real browser path does not type a password and does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. The classifier makes that decision before DNS. Chrome request interception does not by itself stop a local TCP connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list. That check is not an operating-system egress boundary.
+Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The helper does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. The classifier makes that decision before DNS. Chrome request interception does not by itself stop a local TCP connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list. That check is not an operating-system egress boundary.
 
 Chromium is not downloaded at install or at gateway startup. A missing browser disables recovery and does not stop the gateway. The pinned packages are `puppeteer@25.18.1` (Apache-2.0), `puppeteer-extra@3.3.6` (MIT), and `puppeteer-extra-plugin-stealth@2.11.2` (MIT). puppeteer-core records Chrome-for-Testing `157.0.8103.78`. This port does not install that build.
 

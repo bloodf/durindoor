@@ -94,6 +94,7 @@ function runNpmInstall({ cwd, pkgs, extraArgs = [], timeout = 180000 }) {
     stdio: ["ignore", "pipe", "pipe"],
     timeout,
     shell: process.platform === "win32",
+    windowsHide: true,
     encoding: "utf8",
   });
   return { ok: res.status === 0, code: res.status, stderr: res.stderr || "", stdout: res.stdout || "" };

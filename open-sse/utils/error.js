@@ -106,6 +106,9 @@ const RESET_HEADERS = Object.freeze([
 const RELATIVE_MILLISECOND_FIELDS = new Set(["retry_after_ms", "retryafterms"]);
 const RELATIVE_SECOND_FIELDS = new Set(["retryafter", "retry_after"]);
 const ABSOLUTE_RESET_FIELDS = new Set(["reset_at", "resets_at", "resetat", "resetsat"]);
+const CODEBUDDY_DATA_RESET_FIELDS = [
+"resetTime", "reset_time", "resetAt", "reset_at", "resetsAt", "resets_at",
+"unlockTime", "unlock_time", "availableAt"];
 const EXPLICIT_QUOTA_TEXT = /(?:\bquota\b[^\n]{0,48}\b(?:reached|exceeded|exhausted|depleted|reset)\b|\b(?:reached|exceeded|exhausted|depleted)\b[^\n]{0,48}\bquota\b|\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b|\b(?:reached|exceeded|exhausted)\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b|\blimit\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b)/i;
 const STRUCTURED_QUOTA_EXHAUSTION_CODES = new Set([
 "billing_hard_limit_reached",
@@ -230,9 +233,11 @@ function findJsonReset(value, now, maxDelayMs, provider) {
       // OmniRoute fb5fe2a: only CodeBuddy treats its data envelope as a reset hint.
       if (depth === 0 && key === "data") {
         if (provider === "codebuddy-intl" && item && isObject(item)) {
-          const resetValue = item.resetTime ?? item.reset_time;
-          const reset = absoluteFromEpoch(resetValue, now, maxDelayMs) || absoluteFromIso(resetValue, now, maxDelayMs);
-          if (reset) return reset;
+          // OmniRoute a104888: the envelope's reset field has several spellings.
+          for (const field of CODEBUDDY_DATA_RESET_FIELDS) {
+            const reset = absoluteFromEpoch(item[field], now, maxDelayMs) || absoluteFromIso(item[field], now, maxDelayMs);
+            if (reset) return reset;
+          }
         }
         continue;
       }

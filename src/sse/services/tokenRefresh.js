@@ -23,11 +23,13 @@ import {
   getRefreshLeadMs as _getRefreshLeadMs } from
 "open-sse/services/tokenRefresh.js";
 import {
-  parseTimeMs,
+  expiryFromLifetime,
+  toIsoTime,
   refreshProviderCredentials as _refreshProviderCredentials,
   resolveCredentialProxyOptions as _resolveCredentialProxyOptions,
   shouldRefreshCredentials as _shouldRefreshCredentials } from
 "open-sse/services/oauthCredentialManager.js";
+import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
 import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
@@ -87,36 +89,12 @@ export function releaseConnection(connectionId) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-/**
- * Compute an ISO expiry timestamp from a relative expiresIn (seconds).
- * @param {number} expiresIn
- * @returns {string}
- */
-function toExpiresAt(expiresIn) {
-  return new Date(Date.now() + expiresIn * 1000).toISOString();
-}
+const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
 
-/**
- * Normalize any accepted expiry shape to the ISO string the rest of the app stores.
- * Goes through `parseTimeMs` so a numeric epoch — including the string form the
- * bulk-import routes can persist — self-heals on the next refresh instead of being
- * dropped as an Invalid Date.
- *
- * @param {unknown} expiresAt
- * @returns {string|null}
- */
-function normalizeExpiresAt(expiresAt) {
-  const ms = parseTimeMs(expiresAt);
-  return ms === null ? null : new Date(ms).toISOString();
-}
-
-/**
- * Providers that carry a real Google project ID.
- * @param {string} provider
- * @returns {boolean}
- */
-function needsProjectId(provider) {
-  return provider === "antigravity" || provider === "agy" || provider === "gemini-cli";
+/** A refresh secret that is safe to store and to send back in a header. */
+function isStorableSecret(value) {
+  return isString(value) && value.trim() !== "" &&
+  value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 /**
@@ -130,7 +108,7 @@ function needsProjectId(provider) {
  * @param {object|null} proxyOptions
  */
 function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
-  if (!needsProjectId(provider) || !connectionId || !accessToken) return;
+  if (!refreshCapabilities(provider).googleProjectId || !connectionId || !accessToken) return;
 
   // Lazy resolution: do not eagerly trigger onboardUser during background token refresh.
   // Eagerly fetching projectId across multiple accounts simultaneously triggers
@@ -162,15 +140,18 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
 
 /**
  * Persist updated credentials for a connection to localDb.
- * Only fields that are present in `newCredentials` are written.
+ * Only fields that are present in `newCredentials` are written. Malformed
+ * tokens and times are skipped so the valid fields beside them still persist.
  *
  * @param {string} connectionId
  * @param {object} newCredentials
  * @param {object} [options]
  * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
+ * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
+ *   The write is refused when the stored token is neither this one nor its replacement.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -186,16 +167,17 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
 
     const updates = {};
 
-    if (newCredentials.accessToken) updates.accessToken = newCredentials.accessToken;
-    if (newCredentials.refreshToken) updates.refreshToken = newCredentials.refreshToken;
-    if (newCredentials.idToken) updates.idToken = newCredentials.idToken;
-    if (newCredentials.lastRefreshAt) updates.lastRefreshAt = newCredentials.lastRefreshAt;
-    if (newCredentials.expiresAt) updates.expiresAt = newCredentials.expiresAt;
-    if (newCredentials.expiresIn) {
-      updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
+    for (const field of ["accessToken", "refreshToken", "idToken"]) {
+      if (isStorableSecret(newCredentials[field])) updates[field] = newCredentials[field];
+    }
+    const lastRefreshAt = toIsoTime(newCredentials.lastRefreshAt);
+    if (lastRefreshAt) updates.lastRefreshAt = lastRefreshAt;
+    const lifetimeExpiresAt = expiryFromLifetime(newCredentials.expiresIn);
+    if (lifetimeExpiresAt) {
+      updates.expiresAt = lifetimeExpiresAt;
       updates.expiresIn = newCredentials.expiresIn;
-    } else if (newCredentials.expiresAt) {
-      const expiresAt = normalizeExpiresAt(newCredentials.expiresAt);
+    } else {
+      const expiresAt = toIsoTime(newCredentials.expiresAt);
       if (expiresAt) {
         updates.expiresAt = expiresAt;
         updates.expiresIn = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
@@ -215,10 +197,20 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
-    const result = expectedRefreshContext ?
-    await updateProviderConnection(connectionId, updates, { expectedRefreshContext, returnCommitResult: true }) :
+    let guard = null;
+    if (expectedRefreshContext) {
+      guard = { expectedRefreshContext };
+    } else if (presentedRefreshToken) {
+      // Compare only the token: request credentials do not mirror the stored row.
+      guard = {
+        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken ||
+        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
+      };
+    }
+    const result = guard ?
+    await updateProviderConnection(connectionId, updates, { ...guard, returnCommitResult: true }) :
     await updateProviderConnection(connectionId, updates);
-    const applied = expectedRefreshContext ? result?.applied === true : !!result;
+    const applied = guard ? result?.applied === true : !!result;
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
       success: applied
@@ -273,6 +265,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       lastRefreshAt: creds.lastRefreshAt || null
     });
 
+    const presentedRefreshToken = creds.refreshToken;
     const newCreds = await _refreshProviderCredentials(provider, creds, log, effectiveProxyOptions);
 
     // Background force-refresh used to drop unrecoverable results silently,
@@ -314,15 +307,14 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
-        guardedCodex ? { expectedRefreshContext } : undefined);
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
       if (guardedCodex && !applied) return creds;
 
       creds = {
         ...creds,
         ...newCreds,
-        expiresAt: newCreds.expiresIn ?
-        toExpiresAt(newCreds.expiresIn) :
-        normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
+        expiresAt: expiryFromLifetime(newCreds.expiresIn) ||
+        toIsoTime(newCreds.expiresAt) || creds.expiresAt,
         providerSpecificData: newCreds.providerSpecificData ?
         { ...creds.providerSpecificData, ...newCreds.providerSpecificData } :
         creds.providerSpecificData

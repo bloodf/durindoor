@@ -253,6 +253,15 @@ See [ChatGPT Web](../providers/chatgpt-web.mdx) for the transports these tune.
 | `DURINDOOR_PUBLIC_BASE_URL` | unset (then `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, request headers, `localhost:$PORT`) | Public origin used in generated image links. |
 | `DURINDOOR_XVFB` | on in Docker | `0` stops the image entrypoint from starting Xvfb. |
 
+## Codex quota preflight
+
+By default, a request waits when the stored Codex quota reading needs a refresh.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DURINDOOR_CODEX_QUOTA_STALE_HEADROOM_PERCENT` | `0` (off) | Above `0`, a request does not wait when each window of a recent reading is at least this many percentage points above zero remaining, or above the quota routing floor when that is enabled. The quota refreshes in the background. |
+| `DURINDOOR_CODEX_QUOTA_STALE_MAX_AGE_MS` | `120000` | Oldest reading the shortcut may use. The maximum is `900000`. A window past its reset time or a failed last refresh always waits. |
+
 ## Optional routing classifier
 
 | Variable | Default | Purpose |

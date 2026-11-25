@@ -7,6 +7,11 @@ const baseAdapter = createOpenAIEmbeddingAdapter("github");
 
 export default {
   ...baseAdapter,
+  // Copilot rejects a bare string `input` with a 400 and accepts only an array.
+  buildBody: (model, params) => baseAdapter.buildBody(model, {
+    ...params,
+    input: Array.isArray(params.input) ? params.input : [params.input],
+  }),
   buildHeaders: (creds) => ({
     "Content-Type": "application/json",
     "Authorization": `Bearer ${creds.copilotToken || creds.providerSpecificData?.copilotToken || creds.accessToken}`,

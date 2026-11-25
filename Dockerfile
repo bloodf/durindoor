@@ -74,6 +74,12 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
   mkdir -p /app/data-home && chown node:node /app/data-home && \
   ln -sf /app/data-home /root/.durindoor 2>/dev/null || true
 
+# Nothing in the running server calls Corepack or Yarn, so their copies from the
+# base image are only scan surface (decolua/9router#2857). npm and npx stay: MCP
+# stdio instances run `npx` on the gateway host.
+RUN rm -rf /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+  /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
+
 # ChatGPT Web's browser transport drives a headed Chromium under Xvfb.
 # Playwright's own Chromium build does not run on musl, so use Alpine's.
 # gcompat lets tls-client-node's glibc library load for the HTTP fallback.

@@ -50012,7 +50012,7 @@
       "id": "src/shared/components/GitLabAuthModal.js#GitLabAuthModal",
       "sourcePath": "src/shared/components/GitLabAuthModal.js",
       "symbol": "GitLabAuthModal",
-      "sourceSha256": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
+      "sourceSha256": "f42b339bd3588734a7ba7b63ff41b548cc39c7fb97d5296ec3a0665dfa8de319",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -50034,7 +50034,7 @@
             "mode-selection"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
+            "src/shared/components/GitLabAuthModal.js": "f42b339bd3588734a7ba7b63ff41b548cc39c7fb97d5296ec3a0665dfa8de319",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "Initial GitLabAuthModal branch renders auth-method cards.",
@@ -50049,7 +50049,7 @@
             "configuration"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
+            "src/shared/components/GitLabAuthModal.js": "f42b339bd3588734a7ba7b63ff41b548cc39c7fb97d5296ec3a0665dfa8de319",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "OAuthConfiguration selects OAuth app and final form renders GitLab base URL, Client ID, and optional secret fields. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -50067,7 +50067,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
+            "src/shared/components/GitLabAuthModal.js": "f42b339bd3588734a7ba7b63ff41b548cc39c7fb97d5296ec3a0665dfa8de319",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "PAT endpoint returns failure; Input error branch renders server message.",
@@ -50082,7 +50082,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/GitLabAuthModal.js": "b572dde079a4809a36f303df82b675bae9920003d4d91135ae644f73ae6dad4e",
+            "src/shared/components/GitLabAuthModal.js": "f42b339bd3588734a7ba7b63ff41b548cc39c7fb97d5296ec3a0665dfa8de319",
             "src/shared/components/GitLabAuthModal.stories.jsx": "7c6466a4adc1416fdc8d839fc62bf30d6c592517567ca97a9343b77f3acf61ee"
           },
           "proposedSourceEvidence": "Empty PAT keeps rendered Connect control disabled. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",

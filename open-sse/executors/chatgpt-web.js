@@ -19,10 +19,14 @@
  *              pool disabled), in which case HTTP.
  */
 import { executeChatGptWebCleanRoom } from "../utils/chatgptWebExecutorAdapter.js";
+import { runChatGptWebBrowserTurn } from "../utils/chatgptWebBrowserSession.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { BrowserUnavailableError } from "../services/browserPool.js";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ChatGptWebHttpExecutor } from "./chatgpt-web-http.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -86,6 +90,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input);
     const transport = resolveChatGptWebTransport(input.credentials?.providerSpecificData);
     const hasMedia = hasMediaParts(input.body);
     const hasRequestTools = hasTools(input.body);
@@ -102,8 +108,9 @@ export class ChatGptWebExecutor extends BaseExecutor {
       return this.httpExecutor.execute(input);
     }
     try {
-      return await this.runBrowser(input);
+      return await this.runBrowser(input, sender);
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       if (transport === "auto" && !hasMedia && error instanceof BrowserUnavailableError) {
         input.log?.warn?.("CGPT-WEB", `Browser transport unavailable, using HTTP: ${error.message}`);
         return this.httpExecutor.execute(input);
@@ -122,14 +129,40 @@ export class ChatGptWebExecutor extends BaseExecutor {
         url: CHATGPT_WEB_URL,
         headers: {},
         transformedBody: input.body,
+        attemptStartedAt: sender.attemptStartedAt,
       };
     }
   }
 
-  runBrowser(input) {
+  async runBrowser(input, sender) {
     const proxyUrl = resolveConnectProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
     const run = this.deps.runBrowser ?? executeChatGptWebCleanRoom;
-    return run({ ...input, proxyUrl }, this.deps.browser ?? {});
+    const deps = this.deps.browser ?? {};
+    const runTurn = deps.runTurn ?? runChatGptWebBrowserTurn;
+    let sent = null;
+    // The page turn is the one physical send; browser and session setup are not.
+    // Starting it stands in for response headers, so the header deadline does not
+    // cut off a long answer.
+    const sendTurn = async (session, turn) => {
+      try {
+        sent = await sender.sendRequest(CHATGPT_WEB_URL, { signal: input.signal }, input.proxyOptions, {
+          transport: () => ({ reply: runTurn(session, turn) }),
+        });
+      } catch (error) {
+        // The turn never started, so its own page cleanup will not run.
+        if (session?.closePageOnCleanup) await session.page?.close().catch(() => {});
+        throw error;
+      }
+      return sent.reply;
+    };
+    try {
+      const response = await run({ ...input, proxyUrl }, { ...deps, runTurn: sendTurn });
+      transferProviderAttemptDispatch(sent, response);
+      return response;
+    } catch (error) {
+      await settleProviderAttemptDispatch(sent, { reason: input.signal?.aborted ? "abort" : "transport_error" });
+      throw error;
+    }
   }
 }
 

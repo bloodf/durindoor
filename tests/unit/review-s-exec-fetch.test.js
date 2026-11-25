@@ -14,10 +14,6 @@ const EXECUTORS_DIR = path.join(ROOT, "open-sse/executors");
 
 /** Deliberate direct `fetch(` call sites still awaiting the shared send-wrapper port. */
 const BARE_FETCH_ALLOWLIST = {
-  "blackbox-web.js": "Blackbox session/subscription/chat still uses direct fetch pending shared wrapper.",
-  "chipotle.js": "Amelia init still uses direct fetch pending shared wrapper.",
-  "conol-web.js": "Conol session/model/message hops still use direct fetch pending shared wrapper.",
-  "deepseek-web.js": "DeepSeek web session bootstrap still uses direct fetch pending shared wrapper.",
   "websession-utils.js": "fetchWithTimeout falls back to global fetch only when proxyOptions is null."
 };
 

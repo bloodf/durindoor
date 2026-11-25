@@ -4,7 +4,7 @@ import { translateCreateTable } from "../dialects/postgres/translate.js";
 const TABLES_TO_CREATE = ["antigravityRefreshLeases", "antigravityRecoveryCredentials"];
 
 const migration = {
-  version: 37,
+  version: 38,
   name: "antigravity-rotation",
   up(db) {
     const pg = db.driver === "pg";

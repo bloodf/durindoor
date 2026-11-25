@@ -1,5 +1,7 @@
 import { BaseExecutor } from "./base.js";
-import "../utils/proxyFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -85,16 +87,25 @@ function contentFrom(events) {
 export class DeepSeekWebExecutor extends BaseExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
+    const sender = createExecutorSender(this, input);
     const token = userToken(credentials);
     if (!token) return { response: json({ error: { message: "DeepSeek Web requires a web userToken from local storage", type: "authentication_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/chat/completion`, headers: {}, transformedBody: body };
     const prompt = promptFrom(body?.messages);
     if (!prompt) return { response: json({ error: { message: "A non-empty user message is required", type: "invalid_request_error" } }, 400), url: `${BASE}/v0/chat/completion`, headers: {}, transformedBody: body };
     const common = { ...HEADERS, Authorization: `Bearer ${token}` };
     const sessionRejected = (url, headers) => ({ response: json({ error: { message: "DeepSeek web session was rejected", type: "authentication_error", code: "HTTP_401" } }, 401), url, headers, transformedBody: body });
-    // The patched global fetch (proxyFetch.js) routes `proxyOptions` through proxyAwareFetch.
-    const send = (url, init) => fetch(url, { ...init, proxyOptions });
-    const post = (url, payload, headers = common) => send(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal });
+    // The user and session requests are setup; only the completion is quota-bearing.
+    // This executor sends through the patched global fetch, which routes `proxyOptions`.
+    const send = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false, globalFetch: true });
+    const post = (url, payload, headers) => sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal }, proxyOptions, { globalFetch: true });
+    let completion;
+    // Every result after the completion send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(completion, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const current = await send(`${BASE}/v0/users/current`, { headers: common, redirect: "manual", signal });
       if (current.status >= 300 && current.status < 400) return sessionRejected(`${BASE}/v0/users/current`, common);
@@ -121,12 +132,12 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         search_enabled: /search/.test(lower) || body?.search === true || body?.web_search === true,
         preempt: false,
       };
-      const completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });
-      if (completion.status >= 300 && completion.status < 400) return sessionRejected(`${BASE}/v0/chat/completion`, authHeaders);
+      completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });
+      if (completion.status >= 300 && completion.status < 400) return carry(sessionRejected(`${BASE}/v0/chat/completion`, authHeaders));
       if (!completion.ok) {
         const status = completion.status === 401 || completion.status === 403 ? 401 : completion.status === 429 ? 429 : completion.status;
         const message = status === 401 ? "DeepSeek web session expired or is unauthorized" : status === 429 ? "DeepSeek web quota or rate limit reached" : `DeepSeek completion returned HTTP ${completion.status}`;
-        return { response: json({ error: { message, type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload };
+        return carry({ response: json({ error: { message, type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload });
       }
       const events = await readEvents(completion);
       const result = contentFrom(events);
@@ -134,13 +145,14 @@ export class DeepSeekWebExecutor extends BaseExecutor {
       const created = Math.floor(Date.now() / 1000);
       const message = { role: "assistant", content: result.content };
       if (result.reasoning) message.reasoning_content = result.reasoning;
-      if (!stream) return { response: json({ id: cid, object: "chat.completion", created, model: modelId, choices: [{ index: 0, message, finish_reason: "stop" }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload };
+      if (!stream) return carry({ response: json({ id: cid, object: "chat.completion", created, model: modelId, choices: [{ index: 0, message, finish_reason: "stop" }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload });
       const chunks = [{ role: "assistant" }, ...(result.reasoning ? [{ reasoning_content: result.reasoning }] : []), ...(result.content ? [{ content: result.content }] : []), {}];
       const sse = chunks.map((delta, index) => `data: ${JSON.stringify({ id: cid, object: "chat.completion.chunk", created, model: modelId, choices: [{ index: 0, delta, finish_reason: index === chunks.length - 1 ? "stop" : null }] })}\n\n`).join("") + "data: [DONE]\n\n";
-      return { response: new Response(sse, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } }), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload };
+      return carry({ response: new Response(sse, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } }), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload });
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       const status = error?.name === "AbortError" ? 499 : 502;
-      return { response: json({ error: { message: error?.message || "DeepSeek Web request failed", type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: common, transformedBody: body };
+      return carry({ response: json({ error: { message: error?.message || "DeepSeek Web request failed", type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: common, transformedBody: body });
     }
   }
 }

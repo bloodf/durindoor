@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { errorResponse } from "../utils/error.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -146,21 +148,30 @@ export function createChatPlaygroundSseStream(upstream, model) {
 }
 
 export class ChatPlaygroundExecutor extends BaseExecutor {
-  constructor(fetcher = fetch) {
+  /** @param {Function|null} fetcher test seam replacing the HTTP transport */
+  constructor(fetcher = null) {
     super("chatplayground", { baseUrl: `${API}/chat` });
     this.fetcher = fetcher;
   }
 
   async execute(input) {
     const { model, body = {}, credentials = {}, stream = body.stream !== false, signal } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input);
+    // Session and catalog requests are setup; only the chat request is quota-bearing.
+    const send = (url, init, quotaBearing = false) => sender.sendRequest(url, { signal, ...init }, input.proxyOptions, {
+      quotaBearing,
+      ...(this.fetcher ? { transport: (options) => this.fetcher(url, options) } : null)
+    });
     const raw = cookieOrJwt(credentials);
-    const auth = await resolveChatPlaygroundHeaders(raw, this.fetcher);
+    const auth = await resolveChatPlaygroundHeaders(raw, send);
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     if (!auth.ok) return makeErrorResult(auth.status === 403 ? 403 : auth.status === 429 ? 429 : 401,
       "ChatPlayground session is missing or expired", body, `${API}/user`);
-    const validation = await this.fetcher(`${API}/user`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, redirect: "manual", signal });
+    const validation = await send(`${API}/user`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, redirect: "manual", signal });
     if (!validation.ok) return makeErrorResult(validation.status === 403 ? 403 : validation.status === 429 ? 429 : 401,
       "ChatPlayground session is missing or expired", body, `${API}/user`);
-    const catalogResponse = await this.fetcher(`${API}/models`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, redirect: "manual", signal });
+    const catalogResponse = await send(`${API}/models`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, redirect: "manual", signal });
     if (catalogResponse.status >= 300 && catalogResponse.status < 400) return makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/models`);
     if (!catalogResponse.ok) return makeErrorResult(catalogResponse.status, `ChatPlayground model discovery failed (${catalogResponse.status})`, body, `${API}/models`);
     let catalog;
@@ -183,20 +194,25 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
       : endpoint === "lmsys"
         ? { messages, model: modelData.modelName || row.id, botId: row.id }
         : { messages, model: modelData.provider ? `${modelData.provider.toLowerCase()}/${modelData.modelName || row.id}` : (modelData.modelName || row.id), chatId: "", isRegenerate: false, promptTemplate: null, fileUrl: null, botId: row.id, submissionId: randomUUID(), noSave: true };
-    const response = await this.fetcher(`${API}/chat/${endpoint}`, {
+    const response = await send(`${API}/chat/${endpoint}`, {
       method: "POST", redirect: "manual", signal, headers: { Accept: stream ? "text/event-stream" : "*/*", "Content-Type": "application/json", Origin: WEB, Referer: `${WEB}/`,
         ...auth.headers }, body: JSON.stringify(payload),
-    });
-    if (response.status >= 300 && response.status < 400) return makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/chat/${endpoint}`);
-    if (!response.ok) return makeErrorResult(response.status, `ChatPlayground API error (${response.status})`, body, `${API}/chat/${endpoint}`);
+    }, true);
+    // Every result after the chat send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(response, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
+    if (response.status >= 300 && response.status < 400) return carry(makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/chat/${endpoint}`));
+    if (!response.ok) return carry(makeErrorResult(response.status, `ChatPlayground API error (${response.status})`, body, `${API}/chat/${endpoint}`));
     if (stream && endpoint !== "perplexity" && response.body) {
-      return { response: new Response(createChatPlaygroundSseStream(response.body, model), { headers: { "Content-Type": "text/event-stream" } }), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload };
+      return carry({ response: new Response(createChatPlaygroundSseStream(response.body, model), { headers: { "Content-Type": "text/event-stream" } }), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
     }
     const text = (await response.text()).replace(/CHAT_ID:[\w-]+/g, "").replace(/CITATIONS:[^\n]*/g, "").trim();
-    if (stream) return { response: textToOpenAIStream(text, model), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload };
-    return { response: new Response(JSON.stringify({ id: `chatcmpl-${randomUUID().slice(0, 12)}`, object: "chat.completion", model,
+    if (stream) return carry({ response: textToOpenAIStream(text, model), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
+    return carry({ response: new Response(JSON.stringify({ id: `chatcmpl-${randomUUID().slice(0, 12)}`, object: "chat.completion", model,
       choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), { headers: { "Content-Type": "application/json" } }),
-      url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload };
+      url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
   }
 }

@@ -21,6 +21,11 @@ export function requestAbortError(reason) {
   return new DOMException("Provider request aborted", "AbortError");
 }
 
+/** A refused redirect rejects the send instead of returning the 3xx response. */
+export function isRefusedRedirect(error) {
+  return /unexpected redirect/i.test(`${error?.message} ${error?.cause?.message}`);
+}
+
 /** Release a discarded response without trusting provider-controlled cancel latency. */
 export function cancelDiscardedResponse(response) {
   try {

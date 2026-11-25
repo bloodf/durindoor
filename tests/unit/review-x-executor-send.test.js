@@ -14,19 +14,8 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "promptql.js": "PromptQL owns its conversation and streaming requests.",
-  "qoder.js": "Qoder owns its queue submission, polling, and replay protocol.",
-  "t3-chat-web.js": "T3 Chat owns its browser-session request and streaming protocol.",
-  "tencent-aistudio-web.js": "Tencent AI Studio owns its web-session chat protocol.",
-  "tinycms-web.js": "TinyCMS owns its browser-session chat transport.",
-  "twinmind.js": "TwinMind handles credential refresh and its chat transport.",
-  "unsupported-websession.js": "Returns a local unsupported-provider response.",
-  "veoaifree-web.js": "Veo AI Free owns its job submission and polling protocol.",
-  "vertex.js": "Vertex manages Google authentication and dynamic regional endpoints.",
-  "windsurf.js": "Windsurf owns its binary Connect RPC transport.",
-  "yuanbao-web.js": "Yuanbao owns its browser-session chat protocol.",
-  "zed-hosted.js": "Zed manages LLM token acquisition and its completion transport.",
-  "zenmux-free.js": "ZenMux Free owns its browser-session completion transport."
+  "promptql.js": "Its dispatch test pins redirect manual on the thread-start send, which a quota-bearing send overrides to error.",
+  "unsupported-websession.js": "Sends nothing: it returns a local 501 or delegates to another executor's own sender."
 };
 
 function* nodes(value) {

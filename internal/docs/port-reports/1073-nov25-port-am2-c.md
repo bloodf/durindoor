@@ -1,0 +1,15 @@
+# OmniRoute morning port am2-c
+
+Status: PARTIAL. Candidate numbers refer to [the source report](1073-nov25-am-commits-2.md). It has 25 candidates, so candidate 26 does not exist. Remaining work is estimated to exceed one hour.
+
+| Candidate / source row | Upstream commit | Disposition and evidence |
+|---|---|---|
+| 19 / 92 | [818fc5d](https://github.com/cheaper-inference/OmniRoute/commit/818fc5dca8b34dd45f135cdfe9a237da306c7c38) | Remaining. The fetched diff filters agent sessions by `clientSessionId`. The local [sessions route](../../../src/app/api/v1/me/sessions/route.js) lists aggregate usage sessions and accepts only `limit`; attribution must be modeled first. |
+| 20 / 94 | [611eb8d](https://github.com/cheaper-inference/OmniRoute/commit/611eb8d9c342eedd1f564118b2bc07363bed646c) | Remaining. The exact merge diff was fetched. The source report identifies session and status dependencies; the local [usage repository](../../../src/lib/db/repos/usageRepo.js) does not establish equivalent agent-session attribution. |
+| 21 / 95 | [a385feb](https://github.com/cheaper-inference/OmniRoute/commit/a385feb47347a0e8dc3a58ff0a17b640846fe1ba) | Remaining. GitHub returned HTTP 422 for the exact merge diff. The source report identifies agent-session attribution, absent from the local usage repository. Inspect the merge before implementation. |
+| 22 / 96 | [891fa51](https://github.com/cheaper-inference/OmniRoute/commit/891fa513b3839ec8f507f7e382e6153dba236771) | Remaining. The fetched diff adds list-price accounting to upstream self-service status. This checkout has no matching `/v1/me/status` route; [usage totals](../../../src/lib/db/helpers/apiKeyUsageTotals.js) track unpriced retained usage but do not provide that response. |
+| 23 / 97 | [46c4d0a](https://github.com/cheaper-inference/OmniRoute/commit/46c4d0a1ba874e416d756a94d4b10b77c263aa35) | Remaining. GitHub returned HTTP 422 for the exact merge diff. The source report identifies session API and transcript dependencies. Local [session capture](../../../src/lib/db/repos/sessionCaptureRepo.js) is a separate opt-in store. Inspect the merge before implementation. |
+| 24 / 99 | [90ad14a](https://github.com/cheaper-inference/OmniRoute/commit/90ad14ac486b59311cb75881103971cbd2cbbf91) | Remaining. The exact merge diff was fetched. The source report identifies agent attribution, session API, and transcript dependencies. The local sessions route and capture repository do not provide the same model. |
+| 25 / 100 | [a104888](https://github.com/cheaper-inference/OmniRoute/commit/a10488825667eb847e83113d6eecf9bdc01863ed) | Partially ported in `f631ef33569`: [the provider registry](../../../open-sse/providers/registry/codebuddy-intl.js) sends the CLI user agent and IDE identity, verified by [the focused test](../../../tests/unit/port-omniroute-codebuddy-cli-identity.test.js). The fetched diff also changes request body and correlation handling, catalog discovery, rate limits, and telemetry. These remain to be assessed for a full port. |
+
+The focused identity test and three requested companion files passed before the identity commit. No provider calls were made.

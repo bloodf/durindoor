@@ -2,7 +2,7 @@ import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
-import { FORMATS } from "../translator/formats.js";
+import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
@@ -1898,7 +1898,7 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (upstreamErrorForwarded) {
+        const finalizeFailedStream = () => {
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
           // Close the request-detail row as an error; without this call it kept
           // the "[Streaming in progress...]" placeholder with status "success".
@@ -1909,6 +1909,10 @@ export function createSSEStream(options = {}) {
               upstreamError: streamErrorPayload
             }, state?.usage, ttftAt, completionSummary(state?.usage));
           }
+        };
+
+        if (upstreamErrorForwarded) {
+          finalizeFailedStream();
           return;
         }
 
@@ -1951,6 +1955,27 @@ export function createSSEStream(options = {}) {
               }
             }
           }
+        }
+
+        // A Gemini-family stream that reaches EOF without a finish reason or a prompt
+        // block was cut off. The null flush below would invent a successful end and
+        // release buffered tool calls, so end it with an error (upstream #4486).
+        if (!nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason) {
+          streamErrorPayload = {
+            type: sourceFormat === FORMATS.CLAUDE ? "api_error" : "server_error",
+            code: "incomplete_upstream_stream",
+            message: "Gemini stream ended before a finish reason"
+          };
+          const output = formatTranslatedStreamError(streamErrorPayload, sourceFormat, errorSecrets);
+          reqLogger?.appendConvertedChunk?.(output);
+          controller.enqueue(sharedEncoder.encode(output));
+          // The partial output was still generated, so account for it.
+          if (!hasValidUsage(state.usage) && totalContentLength > 0) {
+            state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
+          }
+          if (hasValidUsage(state.usage)) logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
+          finalizeFailedStream();
+          return;
         }
 
         const flushed = translateResponse(targetFormat, sourceFormat, null, state);

@@ -90,7 +90,7 @@ These cards share one settings form: endpoint, API key, and model. Pi takes a li
 
 Other keys in each file are kept. An existing file that cannot be parsed, or is not an object, aborts with `refusing to overwrite it`. Localhost with no pasted key uses `sk_durindoor`. Status views redact API keys.
 
-Reset removes only DurinDoor's part: the `durindoor` provider for Pi and Crush, and the endpoint keys or `[openai]` table for Smelt, ForgeCode, and CodeWhale. For those last three, reset only runs when the file carries the DurinDoor marker (`_managedBy` or the `managed by DurinDoor` header) or points at port 20128, so a hand-written `[openai]` table is left alone. A file left empty is deleted. Configs written by 9router (`providers.9router`, `_managedBy: "9router"`, or a `managed by 9Router` header) count as configured, and apply or reset replaces them.
+Reset removes only DurinDoor's part: the `durindoor` provider for Pi and Crush, and the endpoint keys or `[openai]` table for Smelt, ForgeCode, and CodeWhale. For those last three, reset only runs when the file carries the DurinDoor marker (`_managedBy` or the `managed by DurinDoor` header) or points at port 20128, so a hand-written `[openai]` table is left alone. A file left empty is deleted. Configs written by 9router (`providers.9router`, `_managedBy: "9router"`, or a `managed by 9Router` header) count as configured, and apply or reset replaces them. When Pi has no `durindoor` provider yet, apply carries the legacy entry's model settings, extra provider options, and saved key into the new one.
 
 Oh My Pi keeps its guide card and the shipped `omp-extension`; it has no settings route.
 

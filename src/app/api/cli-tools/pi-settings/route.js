@@ -18,6 +18,7 @@
  * shared and operator limits), with capability/combo resolution as fallback.
  * The selected list stays authoritative for order and removal; unrelated
  * provider fields (`api`, `authHeader`, custom `headers`, ...) are preserved.
+ * With no `durindoor` entry yet, the legacy `9router` entry is the one merged.
  */
 
 import { NextResponse } from "next/server";
@@ -191,7 +192,9 @@ export async function POST(request) {
     const configPath = await resolveModelsJsonPath();
     const existing = (await readExistingConfig(configPath, parseObject)) ?? {};
     const providers = isPlainObject(existing.providers) ? { ...existing.providers } : {};
-    const previousProvider = providers[PROVIDER_ID] || {};
+    // A 9router install has only the legacy entry; it is replaced, so its
+    // hand-tuned models and provider options carry over.
+    const previousProvider = providers[PROVIDER_ID] || providers[LEGACY_PROVIDER_ID] || {};
     delete providers[LEGACY_PROVIDER_ID];
 
     const previousModels = new Map(

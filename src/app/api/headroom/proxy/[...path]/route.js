@@ -102,6 +102,11 @@ export function rewriteLocation(value, requestedTarget, upstreamBase) {
 export function forwardedHeaders(request) {
   const headers = new Headers(request.headers);
   stripHopByHopHeaders(headers);
+  // DurinDoor's own credentials and locality proof (CLI token, peer token, ...)
+  // must not reach headroomUrl, which may be a remote host.
+  for (const name of [...headers.keys()]) {
+    if (name.startsWith("x-9r-")) headers.delete(name);
+  }
   headers.delete("host");
   headers.delete("cookie");
   headers.delete("authorization");

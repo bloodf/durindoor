@@ -9,6 +9,8 @@ import { resetRoundrobinCursors } from "open-sse/services/modelFallback.js";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
+import { REAUTH_REQUIRED_CODE, reauthRequiredKeys } from "@/lib/auth/settingsReauth";
+import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter";
 import { isMfaEnabled, verifySecondFactor } from "@/lib/auth/mfa";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
@@ -24,7 +26,7 @@ import { isBoolean, isNumber, isObject, isRecord, isString } from "@/shared/util
 import { normalizeMediaRoutes } from "@/shared/constants/mediaRoutes.js";
 import { redactProxyUrlCredentials } from "@/shared/utils/proxyUrlRedaction.js";
 import { MAX_CUSTOM_PROMPT_CHARS } from "@/shared/constants/customPrompt.js";
-import { isOperatorRequest } from "@/dashboardGuard";
+import { hasValidCliToken, isOperatorRequest } from "@/dashboardGuard";
 import { resolveObservabilityEnabled } from "@/lib/db/repos/requestDetailsRepo";
 import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.js";
 
@@ -80,6 +82,38 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
     delete safeSettings.comboPrompts;
   }
   return { safeSettings, password };
+}
+
+/**
+ * Password step for security-weakening changes. A valid CLI token passes.
+ * Wrong passwords share the login lockout; a request with no password only
+ * asks for one.
+ *
+ * @returns {Promise<Response|null>} The refusal, or null to continue.
+ */
+async function requireSettingsReauth(request, body, password) {
+  // Only these keys can need a password, so other writes skip the read.
+  const keys = reauthRequiredKeys(body, await getSettings());
+  if (!keys.length || await hasValidCliToken(request)) return null;
+  const refuse = (error) => NextResponse.json(
+    { error, code: REAUTH_REQUIRED_CODE, fields: keys },
+    { status: 401, headers: SETTINGS_RESPONSE_HEADERS }
+  );
+  if (!password) return refuse("Enter your current dashboard password to change these security settings.");
+  const ip = getClientIp(request);
+  const lock = checkLock(ip);
+  if (lock.locked) {
+    return NextResponse.json(
+      { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter },
+      { status: 429, headers: { ...SETTINGS_RESPONSE_HEADERS, "Retry-After": String(lock.retryAfter) } }
+    );
+  }
+  if (!(await verifyDashboardPassword(password))) {
+    recordFail(ip);
+    return refuse("Invalid current password");
+  }
+  recordSuccess(ip);
+  return null;
 }
 
 export async function GET(request) {
@@ -174,6 +208,8 @@ export async function PATCH(request) {
     }
 
 
+    // Verification input only; never persisted.
+    const { currentPassword } = body;
     delete body.currentPassword;
     delete body.newPassword;
     delete body.mfaCode;
@@ -200,6 +236,9 @@ export async function PATCH(request) {
         delete body.oidcClientSecret;
       }
     }
+
+    const reauthRefusal = await requireSettingsReauth(request, body, currentPassword);
+    if (reauthRefusal) return reauthRefusal;
 
     // Validate firecrawlBaseUrl if present
     if (Object.prototype.hasOwnProperty.call(body, "firecrawlBaseUrl")) {

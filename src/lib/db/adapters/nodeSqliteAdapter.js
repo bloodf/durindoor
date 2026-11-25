@@ -43,8 +43,9 @@ export async function createNodeSqliteAdapter(filePath) {
   // Driver-reported state (Node >= 22.15; the repo requires Node 24). A missing
   // value reads as unknown, which the release helper refuses as unreadable.
   const handleOpen = () => db.isOpen;
-  function gracefulClose() {
-    try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
+  // beforeExit passes an exit code here, so only an explicit false skips the checkpoint.
+  function gracefulClose(checkpoint) {
+    if (checkpoint !== false) try {db.exec("PRAGMA wal_checkpoint(TRUNCATE)");} catch {}
     try {stmtCache.clear();} catch {}
     try {db.close();} catch {}
   }
@@ -91,9 +92,10 @@ export async function createNodeSqliteAdapter(filePath) {
       const row = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
       return assertCheckpointComplete(row, "node:sqlite");
     },
-    close() {
+    // checkpoint: false skips the explicit pre-close checkpoint, not driver behavior.
+    close({ checkpoint } = {}) {
       clearInterval(checkpointTimer);
-      gracefulClose();
+      gracefulClose(checkpoint);
     },
     // Per-handle state for releaseExclusiveLock(). node:sqlite throws
     // ERR_INVALID_STATE when isTransaction is read after close, so isOpen guards it.

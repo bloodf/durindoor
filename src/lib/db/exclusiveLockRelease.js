@@ -33,7 +33,7 @@ function stillOpen(reason, failure) {
  * Close `adapter` unless it is mid-transaction or its transaction state cannot
  * be read (including adapters that expose none, such as sql.js).
  *
- * Never throws and never sets a pragma: with a live cursor the pragma is the
+ * Never throws, and asks the adapter to skip its pre-close checkpoint. Never sets a pragma: with a live cursor the pragma is the
  * statement that throws, so setting one would never reach `close()` and would
  * report a refusal for the wrong reason.
  *
@@ -61,7 +61,8 @@ export function releaseExclusiveLock(adapter) {
 
   let failure;
   try {
-    adapter.close();
+    // An explicit checkpoint is a write the holder may be unable to finish; skip it.
+    adapter.close({ checkpoint: false });
   } catch (error) {
     failure = messageOf(error);
   }

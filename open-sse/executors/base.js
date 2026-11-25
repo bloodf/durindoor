@@ -569,6 +569,23 @@ export class BaseExecutor {
           }
         }
 
+        // AgentRouter's burst-sensitive WAF can clear after a short cooldown.
+        // Respect explicit skip rules and the per-URL transport budget.
+        if (this.provider === "agentrouter" && response.status === HTTP_STATUS.BAD_REQUEST &&
+            retryAttemptsByUrl[urlIndex] < 2 && transportBudgetLeft(urlIndex)) {
+          const wafText = errorText ?? await readOptionalProbeText(response, { signal });
+          if (/content[_-]blocked/i.test(wafText) &&
+              !matchedSkip({ statusKey: response.status, errorKind: `http_${response.status}`, text: wafText })) {
+            const attempt = ++retryAttemptsByUrl[urlIndex];
+            const baseDelay = 1500 * 2 ** (attempt - 1);
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+            cancelDiscardedResponse(response);
+            await waitForRetryDelay(baseDelay * (0.5 + Math.random() * 0.5), signal);
+            urlIndex--;
+            continue;
+          }
+        }
+
         // Antigravity 504s move to the account layer without replaying this URL.
         const antigravityGatewayTimeout = this.provider === "antigravity" && response.status === HTTP_STATUS.GATEWAY_TIMEOUT;
         if (!antigravityGatewayTimeout && await tryRetry(urlIndex, response.status, `status ${response.status}`, response, `http_${response.status}`, errorText)) {urlIndex--;continue;}

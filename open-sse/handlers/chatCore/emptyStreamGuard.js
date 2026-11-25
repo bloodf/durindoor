@@ -161,7 +161,8 @@ function classifyEvent(parsed, meaningfulSeen) {
  * @param {(reason: string, meta: { upstreamError: object|null }) => void|Promise<void>} options.onExhausted
  *   observer for "every attempt came back empty" (e.g. bench the account so
  *   client retries rotate); awaited before the error event is emitted, and
- *   handed the held upstream error object so quota reset times can be parsed
+ *   handed the held upstream error object so quota reset times can be parsed,
+ *   plus the HTTP `status` of a retry the upstream rejected
  * @returns {ReadableStream} byte stream for the SSE transform pipeline
  */
 export function createEmptyRetryStream({
@@ -211,13 +212,13 @@ export function createEmptyRetryStream({
         err.name = "AbortError";
         try {controller.error(err);} catch {/* already closed */}
       };
-      const exhaust = async (reason, { notifyProvider = true } = {}) => {
+      const exhaust = async (reason, { notifyProvider = true, status } = {}) => {
         // Bench-before-emit: the error event triggers the client's automatic
         // retry, so the observer (account bench) must complete first or the
         // retry can land on the account that just failed.
         try {
           if (notifyProvider) {
-            await Promise.resolve(onExhausted?.(reason, { upstreamError: lastHeld?.error || null }));
+            await Promise.resolve(onExhausted?.(reason, { upstreamError: lastHeld?.error || null, status }));
           }
         } catch {/* observer must not break the stream */}
         // Re-emit the real upstream error when we held one (true status/message,
@@ -396,6 +397,7 @@ export function createEmptyRetryStream({
         } catch (error) {
           if (error?.name === "AbortError" || signal?.aborted) return abortStream();
           return exhaust(error?.message || "retry request failed", {
+            status: error?.upstreamStatus,
             notifyProvider: !isQuotaDispatchUnavailable(error)
           });
         }

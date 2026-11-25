@@ -170,6 +170,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 ### Issue acceptance and audit records
 
 - [circuit-1108-audit.md](./circuit-1108-audit.md)
+- [executor-dispatch-2308.md](./executor-dispatch-2308.md)
 - [issue-1090-acceptance.md](./issue-1090-acceptance.md)
 - [issue-1111-acceptance.md](./issue-1111-acceptance.md)
 - [issue-1129-acceptance.md](./issue-1129-acceptance.md)

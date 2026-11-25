@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { BaseExecutor } from "./base.js";
-import { createExecutorSender } from "./sendRequest.js";
+import { bindsConnectionRoute, createExecutorSender } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { extractChunkText, rpc, spawnDevinAcp } from "./devin-acp-stdio.js";
@@ -69,8 +69,7 @@ export class DevinCliAgenticExecutor extends BaseExecutor {
     const prompt = promptFor(body);
     if (!prompt) return fail("Devin CLI requires text input and does not accept client tools", 400);
     if (signal?.aborted) return fail("Devin ACP turn cancelled", 499);
-    if (proxyOptions?.strictProxy || proxyOptions?.proxyPoolId || proxyOptions?.connectionProxyPoolId ||
-        proxyOptions?.connectionProxyEnabled || proxyOptions?.vercelRelayUrl) {
+    if (bindsConnectionRoute(proxyOptions)) {
       return fail("Devin ACP cannot use gateway proxy or relay settings", 400);
     }
     const home = isolatedHome();

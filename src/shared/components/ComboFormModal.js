@@ -8,6 +8,7 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import ModelSelectModal from "./ModelSelectModal";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { readModelAliases } from "@/shared/utils/modelAliases";
 import "@/shared/ui/v5/combos/combos.css";
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -115,7 +116,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
         setPrunedSteps(data.prunedSteps || []);
       }).catch(() => {});
     }
-    fetch("/api/models/alias").then((response) => response.ok ? response.json() : null).then((data) => data && setModelAliases(data.aliases || {})).catch(() => {});
+    readModelAliases({ skipErrorBody: true }).then(setModelAliases).catch(() => {});
   }, [isOpen, combo, forcePrefix]);
 
   const validateName = (value) => {

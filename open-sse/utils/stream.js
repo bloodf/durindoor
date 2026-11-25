@@ -1999,6 +1999,8 @@ export function createSSEStream(options = {}) {
         if (mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.CLAUDE) {
           throw error;
         }
+        // A refused buffer (retained-size budget) must not end as a clean stream.
+        if (error?.code === "invalid_sse_payload") throw error;
       } finally {
         upstreamTerminal.finalize();
       }

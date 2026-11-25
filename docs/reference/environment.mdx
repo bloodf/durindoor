@@ -123,6 +123,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. |
 | `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. |
+| `STREAM_MAX_RETAINED_BYTES` | `67108864` | Per-stream cap on tool arguments, reasoning text and thinking signatures held by stream translators. Past it the stream fails. `0` disables it. |
 | `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. |
 | `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. |
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. |

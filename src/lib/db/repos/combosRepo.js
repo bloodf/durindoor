@@ -275,6 +275,7 @@ export async function updateCombo(id, data) {
       `UPDATE combos SET name = ?, kind = ?, models = ?, members = ?, invariant = ?, capabilities = ?, allowedConnectionIds = ?, updatedAt = ? WHERE id = ?`,
       [merged.name, merged.kind, stringifyJson(merged.models || []), stringifyJson(merged.members), invariant ? stringifyJson(invariant) : null, merged.capabilities ? stringifyJson(merged.capabilities) : null, stringifyJson(merged.allowedConnectionIds), merged.updatedAt, id]
     );
+    if (row.name !== merged.name) renameComboGrants(db, row.name, merged.name);
     writeNoLog(db, id, merged.noLog);
     result = merged;
   });
@@ -284,6 +285,17 @@ export async function updateCombo(id, data) {
 // An empty `allowedCombos` means "all combos", so a key that loses its last grant
 // keeps this marker. Combo names cannot contain spaces or parentheses.
 const REVOKED_COMBO_GRANT = "(deleted combo)";
+
+// Keep name-based grants attached to the combo within the rename transaction.
+function renameComboGrants(db, oldName, newName) {
+  for (const key of db.all(`SELECT id, allowedCombos FROM apiKeys`)) {
+    const allowed = parseJson(key.allowedCombos, []);
+    if (!Array.isArray(allowed) || !allowed.includes(oldName)) continue;
+    db.run(`UPDATE apiKeys SET allowedCombos = ? WHERE id = ?`, [
+      stringifyJson(allowed.map((entry) => entry === oldName ? newName : entry)), key.id
+    ]);
+  }
+}
 
 // Grants hold combo names and the request gate matches them exactly. A left-over
 // name would grant any later combo that reuses it (decolua/9router#4947).

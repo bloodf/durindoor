@@ -14,7 +14,6 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "adapta-web.js": "Adapta browser-session chat transport awaits migration.",
   "chatgpt-web.js": "Selects between browser and HTTP ChatGPT transports.",
   "cloudflare-playground.js": "Cloudflare Playground owns its session and inference requests.",
   "cursor.js": "Cursor owns its binary Agent and Chat protocol transports.",

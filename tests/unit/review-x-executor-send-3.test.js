@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __setOriginalFetchForTesting } from "../../open-sse/utils/proxyFetch.js";
 import { __setTlsFetchOverrideForTesting } from "../../open-sse/services/chatgptTlsClient.js";
+import { AdaptaWebExecutor } from "../../open-sse/executors/adapta-web.js";
 import { BlackboxWebExecutor } from "../../open-sse/executors/blackbox-web.js";
 import { ChatGptWebHttpExecutor, __resetChatGptWebCachesForTesting } from "../../open-sse/executors/chatgpt-web-http.js";
 import { ChatPlaygroundExecutor } from "../../open-sse/executors/chatplayground.js";
@@ -22,6 +23,7 @@ vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})) }));
 
 const messages = [{ role: "user", content: "hi" }];
 const jwt = (claims) => `eyJ.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
+const later = () => Math.floor(Date.now() / 1000) + 3600;
 
 let sends;
 let restores;
@@ -106,6 +108,24 @@ const chatGptSse = 'data: {"message":{"id":"m","author":{"role":"assistant"},"co
 // `attempts` counts physical dispatches, including uncharged setup requests.
 // `unchargedFirst` of them still happen when the quota-bearing send is denied.
 const cases = [
+  {
+    name: "adapta-web",
+    attempts: 3,
+    unchargedFirst: 2,
+    // An aborted Adapta request has always answered 499 instead of throwing.
+    abortedStatus: 499,
+    setup() {
+      const token = jwt({ exp: later() });
+      serve((url) => {
+        if (url.endsWith("/v1/client")) return Response.json({ response: { sessions: [{ id: "s1", status: "active" }] } });
+        if (url.endsWith("/tokens")) return Response.json({ jwt: token });
+        return new Response('data: {"type":"text-delta","delta":"hi"}\n\ndata: {"type":"done"}\n\n');
+      });
+      return new AdaptaWebExecutor();
+    },
+    // A fresh cookie per call keeps the session cache out of the attempt count.
+    input: () => ({ model: "adapta-one", proxyOptions: { disableEnvProxy: true }, credentials: { apiKey: `cookie-${Math.random()}` } })
+  },
   {
     name: "blackbox-web",
     attempts: 3,

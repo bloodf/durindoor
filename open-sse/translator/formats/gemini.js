@@ -708,10 +708,17 @@ function ensureObjectType(obj) {
           ? { type }
           : { type: "string", description: value };
       }
-      if (obj.properties[name] && isObject(obj.properties[name])) ensureObjectType(obj.properties[name]);
+      if (obj.properties[name] && isObject(obj.properties[name])) ensureChildType(obj.properties[name]);
     }
   }
-  if (obj.items && isObject(obj.items)) ensureObjectType(obj.items);
+  if (obj.items && isObject(obj.items)) ensureChildType(obj.items);
+}
+
+// A nested node that only declares `items` is an array (upstream #4798). Left untyped, the
+// final predicate pass drops its items. The parameter root stays out: it must be an object.
+function ensureChildType(node) {
+  if (!node.type && !node.properties && node.items && isObject(node.items)) node.type = "array";
+  ensureObjectType(node);
 }
 
 // Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,

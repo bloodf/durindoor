@@ -2381,7 +2381,7 @@ export async function getTokenSaverStats(period = "7d", now = new Date()) {
   }
 }
 
-/** Bounded self-service report, scoped solely by the authenticated stable key ID. */
+/** Bounded key-scoped report. Stored input is not corrected when cache counters exceed it. */
 export async function listKeyUsageSessions(apiKeyId, limit = 50) {
   if (!apiKeyId) return [];
   const db = await getAdapter();
@@ -2389,9 +2389,6 @@ export async function listKeyUsageSessions(apiKeyId, limit = 50) {
   return db.all(`SELECT usageSessionId AS sessionId, usageProjectId AS projectId,
       COUNT(*) AS requests, COALESCE(SUM(promptTokens), 0) AS promptTokens,
       COALESCE(SUM(completionTokens), 0) AS completionTokens,
-      COALESCE(SUM(CASE WHEN COALESCE(promptTokens, 0) < COALESCE(cachedTokens, 0) + COALESCE(cacheCreationTokens, 0)
-        THEN COALESCE(promptTokens, 0) + COALESCE(cachedTokens, 0) + COALESCE(cacheCreationTokens, 0)
-        ELSE COALESCE(promptTokens, 0) END), 0) AS normalizedInput,
       COALESCE(SUM(cachedTokens), 0) AS cacheRead,
       COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreation,
       COALESCE(SUM(reasoningTokens), 0) AS reasoning,
@@ -2399,16 +2396,16 @@ export async function listKeyUsageSessions(apiKeyId, limit = 50) {
       MAX(timestamp) AS lastUsed
     FROM usageHistory WHERE apiKeyId = ? AND (usageSessionId IS NOT NULL OR usageProjectId IS NOT NULL)
     GROUP BY usageSessionId, usageProjectId ORDER BY MAX(timestamp) DESC, usageSessionId, usageProjectId
-    LIMIT ?`, [apiKeyId, pageLimit]).map(({ normalizedInput, cacheRead, cacheCreation, reasoning, ...row }) => ({
+    LIMIT ?`, [apiKeyId, pageLimit]).map(({ cacheRead, cacheCreation, reasoning, ...row }) => ({
     ...row,
     tokens: {
-      input: normalizedInput,
-      uncachedInput: normalizedInput - cacheRead - cacheCreation,
+      input: row.promptTokens,
+      uncachedInput: Math.max(0, row.promptTokens - cacheRead - cacheCreation),
       cacheRead,
       cacheCreation,
       output: row.completionTokens,
       reasoning,
-      total: normalizedInput + row.completionTokens,
+      total: row.promptTokens + row.completionTokens,
     },
   }));
 }

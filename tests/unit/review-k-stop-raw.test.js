@@ -43,7 +43,7 @@ describe("usage storage does not retain raw API keys", () => {
 
     expect(db.get("SELECT apiKey, apiKeyId FROM usageHistory WHERE usageEventId = ?", ["stop-raw-event"]))
       .toEqual({ apiKey: null, apiKeyId: "stop-raw-id" });
-    expect(JSON.stringify(db.all("SELECT data FROM usageDaily"))).not.toContain(secret);
+    expect(JSON.stringify(db.all("SELECT * FROM usageDailyRollups"))).not.toContain(secret);
     expect(JSON.stringify(db.all("SELECT * FROM usageLastSeen"))).not.toContain(secret);
     const totals = await (await import("@/lib/db/repos/usageRepo.js")).getApiKeyWindowUsageTotals(secret, "2026-11-23T00:00:00.000Z", "2026-11-01T00:00:00.000Z", "stop-raw-id");
     expect(totals.day).toMatchObject({ inputTokens: 4, requests: 1, cost: 0.25 });
@@ -76,7 +76,7 @@ describe("usage storage does not retain raw API keys", () => {
     expect(db.get("SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?", [hmac]).count).toBe(502);
     const repo = await import("@/lib/db/repos/usageRepo.js");
     expect((await repo.getApiKeyWindowUsageTotals(unknown, "2026-11-01T00:00:00.000Z", "2026-11-01T00:00:00.000Z")).day.requests).toBe(502);
-    expect((await import("@/lib/db/migrations/postgres/index.js")).PG_MIGRATIONS.at(-1)).toBe(migration);
+    expect((await import("@/lib/db/migrations/postgres/index.js")).PG_MIGRATIONS.find(({ version }) => version === migration.version)).toBe(migration);
     migration.up(db);
     expect(db.get("SELECT COUNT(*) AS count FROM usageHistory WHERE apiKey = ?", [hmac]).count).toBe(502);
   });

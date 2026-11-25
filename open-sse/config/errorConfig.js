@@ -210,12 +210,15 @@ map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: CODEBUDDY_REST
 map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: COOLDOWN.long }))];
 
 /**
- * Codex refusals that name one account's model entitlement (decolua/9router#4381).
+ * Codex refusals that name one account's model entitlement (decolua/9router#4381, #4373).
  * Another account or combo member may serve the model, so they must not read as
  * a permanently wrong model. Shared with the Codex executor's 200-SSE preflight.
  */
 export const CODEX_ACCOUNT_MODEL_REJECTION_TEXT = Object.freeze([
-"is not supported when using codex with a chatgpt account"]);
+"is not supported when using codex with a chatgpt account",
+// Unavailable-model guidance (decolua/9router#4373).
+"configured model is unavailable from the provider",
+"not offered on this account"]);
 
 export const ERROR_RULES = [
 // Must precede the wrong-model rules: this text also contains "model is not supported".

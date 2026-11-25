@@ -272,6 +272,8 @@ function classifyCodexSseFrame(frame) {
   const userOutput = CODEX_SSE_USER_OUTPUT_EVENTS.has(eventName) ||
   CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadType) ||
   CODEX_SSE_USER_OUTPUT_EVENTS.has(payloadEvent);
+  // An empty delta commits nothing, and response.failed may follow it (decolua/9router#4373).
+  if (userOutput && payload?.delta === "") return { userOutput: false, kind: null, matched: null, message: null };
   if (userOutput) {
     const isOutputTextDelta = eventName === "response.output_text.delta" ||
     payloadType === "response.output_text.delta" ||

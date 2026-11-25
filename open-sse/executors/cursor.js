@@ -185,6 +185,10 @@ export function resolveRequestedModel(modelId, reasoningEffort = null, catalogId
   const bodyValue = normalizeBodyEffort(reasoningEffort);
   let id = original === "auto" ? "default" : original;
 
+  // OmniRoute #20171: these ids are complete wire models with a fixed effort.
+  const deepSeekEffort = /^deepseek-v41-flash-1017-(medium|max)$/.exec(id)?.[1];
+  if (deepSeekEffort) return { modelId: id, parameters: [{ id: "reasoning_effort", value: deepSeekEffort }] };
+
   const attachBodyEffort = (model, params) => {
     if (bodyValue && !idHasEffortToken(model) && !params.some((p) => p.id === "effort" || p.id === "reasoning")) {
       params.push({ id: /gpt-/i.test(model) ? "reasoning" : "effort", value: bodyValue });
@@ -244,6 +248,34 @@ export function resolveRequestedModel(modelId, reasoningEffort = null, catalogId
   return { modelId: working, parameters };
 }
 
+/**
+ * OmniRoute #20171 (52557cff5451): some routes only keep their speed or effort
+ * when RequestedModel carries it under Cursor's own name and the legacy
+ * ModelDetails field is left out.
+ */
+function resolveAgentRunModel(model, reasoningEffort, catalogIds) {
+  const { modelId, parameters } = resolveRequestedModel(model, reasoningEffort, catalogIds);
+  const original = String(model || "").trim().split("/").pop();
+
+  // Standard Composer 2.5 states its speed tier and takes no client effort.
+  if (original === "composer-2.5" && modelId === original) {
+    return { modelId, parameters: [{ id: "fast", value: "false" }], omitModelDetails: true };
+  }
+
+  const isSonnetMedium = modelId === "claude-sonnet-5-5" &&
+    parameters.some((param) => param.id === "effort" && param.value === "medium");
+  // Base Haiku takes the client's effort; an effort pinned in the id keeps its form.
+  const isClientEffortHaiku = modelId === "claude-haiku-5-5" && !idHasEffortToken(original) &&
+    parameters.some((param) => param.id === "effort" && CURSOR_EFFORT_SUFFIXES.includes(param.value));
+  if (!isSonnetMedium && !isClientEffortHaiku) return { modelId, parameters, omitModelDetails: false };
+
+  return {
+    modelId,
+    parameters: parameters.map((param) => param.id === "effort" ? { ...param, id: "reasoning_effort" } : param),
+    omitModelDetails: true
+  };
+}
+
 /** Translate request options that AgentService cannot express on its wire. */
 export function cursorRequestDirectives(body) {
   const directives = [];
@@ -297,7 +329,7 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     ...(conversationHistory ? [agentMessage(7, conversationHistory)] : []),
   );
   const conversationAction = agentMessage(1, userAction);
-  const { modelId, parameters } = resolveRequestedModel(model, reasoningEffort, catalogIds);
+  const { modelId, parameters, omitModelDetails } = resolveAgentRunModel(model, reasoningEffort, catalogIds);
   // RequestedModel field 7 is reserved for Bedrock credentials.
   const requestedModel = concatBuffers(agentString(1, modelId), ...parameters.map((param) => encodeModelParameter(param.id, param.value)));
   const modelDetails = concatBuffers(agentString(1, modelId), agentString(3, modelId), agentString(4, modelId));
@@ -306,7 +338,7 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     // An empty ConversationStateStructure starts a fresh local agent session.
     agentMessage(1, new Uint8Array()),
     agentMessage(2, conversationAction),
-    agentMessage(3, modelDetails),
+    ...(omitModelDetails ? [] : [agentMessage(3, modelDetails)]),
     ...(mcpTools.length ? [agentMessage(4, mcpTools)] : []),
     agentString(5, conversationId || crypto.randomUUID()),
     agentMessage(9, requestedModel),

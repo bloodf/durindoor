@@ -110,6 +110,20 @@ export function parseCursorUsableModels(payload) {
 }
 
 /**
+ * OmniRoute #20171: offer the DeepSeek effort ids Cursor accepts, only when the
+ * account lists the base model. Discovered variants win over added ones.
+ */
+export function addCursorEffortAliases(models) {
+  const base = models.find((model) => model.id === "deepseek-v41-flash-1017");
+  if (!base) return models;
+  const known = new Set(models.map((model) => model.id));
+  const aliases = ["medium", "max"]
+    .map((effort) => ({ ...base, id: `${base.id}-${effort}`, name: `${base.name} (${effort})`, defaultOn: false }))
+    .filter((alias) => !known.has(alias.id));
+  return [...models, ...aliases];
+}
+
+/**
  * agent.api5.cursor.sh is HTTP/2-only; Node fetch/undici cannot speak h2.
  * Unary GetUsableModels uses an unframed protobuf body (application/proto).
  */
@@ -347,7 +361,7 @@ export async function resolveCursorModels(credentials, options = {}) {
         const fallbackProxy = proxyUrl ? { ...proxyOptions, strictProxy: true } : proxyOptions;
         models = await fetchAvailableModels(credentials, options.signal, fallbackProxy);
       }
-      return models?.length ? { models } : null;
+      return models?.length ? { models: addCursorEffortAliases(models) } : null;
     } catch (error) {
       options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${sanitizeErrorMessage(error?.message || error)}`);
       // An aborted lookup says nothing about the account, so it must not be negatively cached.

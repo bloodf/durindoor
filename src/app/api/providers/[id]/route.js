@@ -18,7 +18,7 @@ import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPi
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
-import { pickSafeProviderSpecificData, stripConnectionSecrets } from "@/lib/providerRouteHandlers.js";
+import { omitMaskedProviderSecrets, pickSafeProviderSpecificData, stripConnectionSecrets } from "@/lib/providerRouteHandlers.js";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -348,7 +348,7 @@ export async function PUT(request, { params }) {
       }
     }
 
-    const normalizedProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, providerSpecificData);
+    const normalizedProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, omitMaskedProviderSecrets(providerSpecificData));
     const normalizedExistingProviderSpecificData = normalizeOpenAIStoreSetting(existing.provider, existing.providerSpecificData);
 
     // Reject a malformed limit at the trust boundary. The enforcement point

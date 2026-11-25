@@ -50,7 +50,7 @@ describe("Responses SSE-to-JSON usage", () => {
     expect(calculateCostFromTokens(direct, pricing)).toBeCloseTo(0.010325, 12);
     expect(calculateCostFromTokens(extracted, pricing)).toBeCloseTo(0.010325, 12);
     expect(formatDoneLine({ usage: result.usage, latency: { total: 1 } })).toBe(
-      "DONE 1ms · IN 10000 (CACHE ↻9000 +40) · OUT 500",
+      "DONE 1ms · IN 10000 (CACHE ↻9000 +40) 90.0% reused · OUT 500",
     );
   });
 
@@ -90,7 +90,7 @@ describe("Responses SSE-to-JSON usage", () => {
     expect(calculateCostFromTokens(direct, pricing)).toBeCloseTo(0.0036225, 12);
     expect(calculateCostFromTokens(extracted, pricing)).toBeCloseTo(0.0036225, 12);
     expect(formatDoneLine({ usage: result.usage, latency: { total: 1 } })).toBe(
-      "DONE 1ms · IN 1920 (CACHE ↻900 +20) · OUT 120",
+      "DONE 1ms · IN 1920 (CACHE ↻900 +20) 46.9% reused · OUT 120",
     );
   });
 });

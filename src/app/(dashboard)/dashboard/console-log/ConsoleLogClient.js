@@ -119,6 +119,8 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
     entry.completion?.cacheRead ? `↻${entry.completion.cacheRead}` : "",
     entry.completion?.cacheCreate ? `+${entry.completion.cacheCreate}` : "",
   ].filter(Boolean).join(" ");
+  const reusedPercent = entry.completion?.cacheReusedPercent;
+  const reused = reusedPercent === undefined ? "" : ` ${reusedPercent.toFixed(1)}% reused`;
   const summary = entry.request
     ? [
         `POST ${entry.request.model} → ${entry.request.routedModel}`,
@@ -133,7 +135,7 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
       ? [
           `DONE ${entry.completion.totalMs}ms`,
           entry.completion.ttftMs !== null && `TTFT ${entry.completion.ttftMs}ms`,
-          `IN ${entry.completion.inputTokens}${cache ? ` (CACHE ${cache})` : ""}`,
+          `IN ${entry.completion.inputTokens}${cache ? ` (CACHE ${cache})` : ""}${reused}`,
           `OUT ${entry.completion.outputTokens}`,
           entry.completion.routedModel,
           entry.completion.credits !== undefined && `${entry.completion.credits}cr`,

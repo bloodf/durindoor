@@ -3,7 +3,7 @@ import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS, OPENAI_SERVICE_TIERS, CLAUDE_TO_OPENAI_SERVICE_TIER } from "../schema/index.js";
 import { collapseTextParts } from "../concerns/message.js";
 import { normalizeToolSchema } from "../concerns/toolSchema.js";
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -158,6 +158,13 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
   const userId = body.metadata?.user_id;
   if (isString(userId) && userId.length > 0) {
     result.user = userId;
+  }
+
+  // Keep the tier across the OpenAI pivot, or a /v1/messages client silently
+  // loses its priority/flex choice before Responses and Codex (decolua/9router#4642).
+  if (isString(body.service_tier)) {
+    const tier = CLAUDE_TO_OPENAI_SERVICE_TIER[body.service_tier] || body.service_tier;
+    if (OPENAI_SERVICE_TIERS.includes(tier)) result.service_tier = tier;
   }
 
   const nativeFields = {};

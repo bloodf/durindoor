@@ -12,9 +12,9 @@ import {
 "@/models";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 import { requireCodexWorkspace } from "@/lib/oauth/codexWorkspace.js";
-import { resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
-import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
-import { resetM365RefreshCircuit } from "open-sse/services/tokenRefresh/copilotM365.js";
+import { resolveCodexAccountId } from "../../../open-sse/shared/codexAccountId.js";
+import { isDurableCredentialProvider } from "../../../open-sse/services/accountFallback.js";
+import { resetM365RefreshCircuit } from "../../../open-sse/services/tokenRefresh/copilotM365.js";
 
 /** Merge durable OAuth routing without erasing provider-owned metadata. */
 import { isObject, isString } from "../../shared/utils/typeChecks.js";

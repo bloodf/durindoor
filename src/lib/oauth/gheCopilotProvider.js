@@ -7,10 +7,10 @@
  * the server-side flow payload (never sent back to the browser) and handed to
  * `pollToken` and `postExchange` as extraData.
  */
-import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
-import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
-import { gheCopilotTokenUrl, gheOAuthTokenUrl, normalizeGheUrl } from "open-sse/config/gheCopilot.js";
-import { gheCopilotClientId } from "open-sse/services/gheCopilotAuth.js";
+import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
+import { GITHUB_COPILOT } from "../../../open-sse/config/appConstants.js";
+import { gheCopilotTokenUrl, gheOAuthTokenUrl, normalizeGheUrl } from "../../../open-sse/config/gheCopilot.js";
+import { gheCopilotClientId } from "../../../open-sse/services/gheCopilotAuth.js";
 
 const GHE_OAUTH = PROVIDER_OAUTH["ghe-copilot"] || {};
 

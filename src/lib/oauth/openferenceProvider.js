@@ -1,7 +1,7 @@
 // Authorization-code PKCE contract adapted from OmniRoute #9869,
 // src/lib/oauth/providers/openference.ts and src/lib/oauth/constants/oauth.ts.
 import { isString } from "../../shared/utils/typeChecks.js";
-import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
+import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 
 const config = PROVIDER_OAUTH.openference;
 function clientId(meta) {

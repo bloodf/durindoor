@@ -19,14 +19,12 @@ import { sanitizeErrorMessage } from "../utils/error.js";
 import { GITHUB_COPILOT } from "../config/appConstants.js";
 import { refreshCopilotToken } from "./tokenRefresh.js";
 import { readCopilotEndpointContract } from "./copilotEndpointContract.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const MODELS_URL = "https://api.githubcopilot.com/models";
 const FETCH_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential
-
-/** @type {Map<string, { expiresAt: number, models: any[] }>} */
-const catalogCache = new Map();
 
 function cacheKey(credentials, includeMetadata = false) {
   const credentialKey = credentials?.providerSpecificData?.copilotToken ||
@@ -34,6 +32,8 @@ function cacheKey(credentials, includeMetadata = false) {
   "copilot-anonymous";
   return `${credentialKey}:${includeMetadata ? "metadata" : "basic"}`;
 }
+
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, keyFn: cacheKey });
 
 function buildHeaders(token) {
   return {
@@ -127,15 +127,25 @@ export async function resolveCopilotModels(credentials, options = {}) {
     return null;
   }
 
-  const key = cacheKey(credentials, options.includeMetadata === true);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) {
-      return { models: cached.models };
-    }
-  }
+  const key = catalogCache.keyFor(credentials, options.includeMetadata === true);
+  const catalog = await catalogCache.load(key, () => loadCopilotCatalog(credentials, token, options), {
+    force: Boolean(options.forceRefresh),
+    ageFromStart: true,
+    // Only an identical request is shared: same GitHub token, egress route and
+    // token persistence. An abortable caller stays alone.
+    flightKey: options.signal ? null : JSON.stringify([
+      key,
+      credentials.accessToken,
+      options.proxyOptions || null,
+      Boolean(options.onCredentialsRefreshed)
+    ])
+  });
 
+  return catalog ? { models: catalog.models } : null;
+}
+
+/** One uncached Copilot catalog load, including the refresh-and-retry path. */
+async function loadCopilotCatalog(credentials, token, options) {
   let raw;
   try {
     raw = await fetchCatalogRaw(token, options.signal, options.proxyOptions);
@@ -186,10 +196,7 @@ export async function resolveCopilotModels(credentials, options = {}) {
   }
 
   const models = expandCatalog(raw, options.includeMetadata === true);
-  if (!models.length) return null;
-
-  catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });
-  return { models };
+  return models.length ? { models } : null;
 }
 
 export function clearCopilotModelCache() {

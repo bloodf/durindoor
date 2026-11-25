@@ -1,8 +1,13 @@
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { createCatalogCache } from "./catalogCache.js";
 
 const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 const FETCH_TIMEOUT_MS = 5000;
+// No TTL: every lookup stays live, and only concurrent identical ones share it.
+const catalogCache = createCatalogCache({
+  keyFn: (token, isApiKey) => JSON.stringify([token, isApiKey])
+});
 
 /**
  * Build request headers for the ClinePass /models endpoint (Cline's upstream API).
@@ -30,6 +35,13 @@ export async function resolveClinepassModels(credentials) {
   const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
   if (!token) return null;
 
+  return catalogCache.load(
+    catalogCache.keyFor(token, isApiKey),
+    () => fetchClinepassCatalog(token, isApiKey)
+  );
+}
+
+async function fetchClinepassCatalog(token, isApiKey) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 

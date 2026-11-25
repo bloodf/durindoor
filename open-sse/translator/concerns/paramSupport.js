@@ -322,6 +322,8 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
 // and `gpt-5.40` match while `o3mini`, `deepseek-v3o1`, `databricks-gpt-50`, and
 // `databricks-agpt-5` do not.
 const MAX_TOKENS_UNSUPPORTED_MODEL = /(?:^|[/:-])(?:o[134]|gpt-5(?:\.\d+)?)(?:[.-]|$)/i;
+// Copilot also requires the modern spelling for GPT-6 and later (upstream decolua/9router#4621).
+const GITHUB_MAX_TOKENS_UNSUPPORTED_MODEL = /^gpt-[6-9](?:[.-]|$)/i;
 
 /**
  * Normalize the max-token field name for the target model, in place.
@@ -340,7 +342,8 @@ export function applyParamRenames(provider, model, body) {
   // This runs before stripUnsupportedParams at the executor boundary. Select
   // OpenAI's forward policy here too, or reverse renaming GPT-6 would erase an
   // explicitly supplied max_completion_tokens before the final wire rule (#1366).
-  if (provider === "openai" || MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
+  if (provider === "openai" || MAX_TOKENS_UNSUPPORTED_MODEL.test(model) ||
+    provider === "github" && GITHUB_MAX_TOKENS_UNSUPPORTED_MODEL.test(model)) {
     if (body.max_tokens !== undefined) {
       if (body.max_completion_tokens === undefined) body.max_completion_tokens = body.max_tokens;
       delete body.max_tokens;

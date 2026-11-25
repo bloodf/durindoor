@@ -44,6 +44,11 @@ describe("rewriteHeadroomHtml", () => {
     expect(out).toContain(`fetch(\`${PREFIX}/health\`)`);
   });
 
+  it("port(upstream) #5166: prefixes the stats-lifetime fetch of newer dashboards", () => {
+    const out = rewriteHeadroomHtml("fetch('/stats-lifetime');fetch('/stats-lifetime?days=7')");
+    expect(out).toBe(`fetch('${PREFIX}/stats-lifetime');fetch('${PREFIX}/stats-lifetime?days=7')`);
+  });
+
   it("returns non-string and empty bodies unchanged", () => {
     expect(rewriteHeadroomHtml(null)).toBeNull();
     expect(rewriteHeadroomHtml(undefined)).toBeUndefined();

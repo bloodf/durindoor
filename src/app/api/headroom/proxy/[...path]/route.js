@@ -35,6 +35,7 @@ const ALLOWED_PREFIXES = [
   "favicon",
   "stats",
   "stats-history",
+  "stats-lifetime",
   "health",
   "livez",
   "readyz",

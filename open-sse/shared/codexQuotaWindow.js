@@ -7,7 +7,8 @@ const WEEKLY_WINDOW_SECONDS = 7 * 24 * 60 * 60;
  * Missing and invalid durations retain the caller's primary/secondary fallback.
  */
 export function classifyCodexQuotaWindow(window, fallbackName) {
-  const rawSeconds = window?.limit_window_seconds ?? window?.limitWindowSeconds;
+  const rawSeconds = window?.limit_window_seconds ?? window?.limitWindowSeconds ??
+    window?.window_seconds ?? window?.windowSeconds;
   const windowSeconds = (isNumber(rawSeconds) || (isString(rawSeconds) && rawSeconds.trim())) &&
     Number.isFinite(Number(rawSeconds))
     ? Number(rawSeconds)

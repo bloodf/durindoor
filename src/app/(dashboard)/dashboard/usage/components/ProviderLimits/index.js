@@ -23,6 +23,7 @@ import QuotaTable from "./QuotaTable";
 import {
   groupConnectionsByProvider,
   mergeAccountQuotas,
+  providerNodeLabels,
   readMergedViewMap,
   writeMergedViewPreference } from
 "./grouping";
@@ -65,7 +66,7 @@ import {
 "./utils";
 import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
-import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { USAGE_SUPPORTED_PROVIDERS, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
@@ -530,6 +531,17 @@ export default function ProviderLimits() {
     initialFilterState.providerFilter
   );
   const [providerOptions, setProviderOptions] = useState([]);
+  const [nodeLabels, setNodeLabels] = useState({});
+  const hasCustomProvider = providerOptions.some((provider) => isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider));
+  useEffect(() => {
+    if (!hasCustomProvider) return;
+    let alive = true;
+    fetch("/api/provider-nodes").
+    then((response) => response.ok ? response.json() : null).
+    then((data) => { if (alive && data) setNodeLabels(providerNodeLabels(data.nodes)); }).
+    catch(() => {/* headings fall back to the provider id */});
+    return () => { alive = false; };
+  }, [hasCustomProvider]);
   const [accountFilter, setAccountFilter] = useState(
     initialFilterState.accountFilter
   );
@@ -1502,7 +1514,7 @@ export default function ProviderLimits() {
               { value: "all", label: "All providers", icon: <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-dd-muted">apps</span> },
               ...providerOptions.map((provider) => ({
                 value: provider,
-                label: provider,
+                label: nodeLabels[provider] || provider,
                 icon: <ProviderLogo provider={provider} size={20} />,
               })),
             ]}
@@ -1640,7 +1652,7 @@ export default function ProviderLimits() {
               <button type="button" disabled={orderPending || providerOrder.indexOf(group.provider) < 0 || providerOrder.indexOf(group.provider) === providerOrder.length - 1} onClick={() => void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) + 1])} aria-label={`Move ${group.provider} later`} className="text-dd-muted disabled:opacity-40">↓</button>
             </div>
             <CardHeader
-              title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className="truncate capitalize">{group.provider}</span></span>}
+              title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className={nodeLabels[group.provider] ? "truncate" : "truncate capitalize"}>{nodeLabels[group.provider] || group.provider}</span></span>}
               subtitle={isGrouped ? `${group.connections.length} accounts` : null}
               actions={canMerge ? <Tooltip content="Merge identical quotas across accounts"><span className="flex items-center gap-1.5 text-xs text-dd-muted">Merged<Toggle size="sm" checked={isMerged} aria-label={`Merge ${group.provider} quotas across accounts`} onChange={(nextMerged) => toggleMergedView(group.provider, nextMerged)} /></span></Tooltip> : null}
             />

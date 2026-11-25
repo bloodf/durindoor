@@ -18,6 +18,7 @@ import {
   resolveRetryEntry } from
 "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
+import { repairCodexToolHistory } from "./codexToolHistory.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { stripCodexUnsupportedPatterns } from "../utils/codexToolSchema.js";
@@ -1042,16 +1043,8 @@ export class CodexExecutor extends BaseExecutor {
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
 
-    // Codex is stateless: a tool output without a replayed call cannot be resolved.
     if (Array.isArray(body.input)) {
-      const calls = new Set();
-      for (const item of body.input) {
-        if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && isString(item.call_id)) calls.add(item.call_id);
-        for (const call of Array.isArray(item?.tool_calls) ? item.tool_calls : []) {
-          if (isString(call?.id)) calls.add(call.id);
-        }
-      }
-      body.input = body.input.filter((item) => item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || !isString(item.call_id) || calls.has(item.call_id));
+      body.input = repairCodexToolHistory(body.input);
       if (body.input.length === 0) body.input = [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
     }
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).

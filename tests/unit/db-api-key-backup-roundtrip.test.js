@@ -1,3 +1,4 @@
+import { insertUsageDailyRollup, readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 // Backup/import must preserve enforcement metadata and durable usage counters
 // without rewriting the API-key secret used by existing clients.
 // SEC-B-02 / #2208: default exportDb() scrubs apiKeys[].key; secret-preserving
@@ -103,10 +104,10 @@ describe("API-key database backup", () => {
        VALUES(?, 'openai', 'gpt-test', ?, 8, 5, 0.75, 'ok', '{}', '{}')`,
       ["2026-01-02T00:00:00.000Z", secret],
     );
-    db.run(
-      `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`,
-      ["2026-01-02", JSON.stringify({ requests: 1, promptTokens: 8, completionTokens: 5, byProvider: { openai: {} }, byModel: {}, byApiKey: { legacy: { apiKey: secret, requests: 1 } } })],
-    );
+    insertUsageDailyRollup(db, "2026-01-02", {
+      requests: 1, promptTokens: 8, completionTokens: 5,
+      byProvider: { openai: {} }, byModel: {}, byApiKey: { legacy: { apiKey: secret, requests: 1 } },
+    });
 
     await database.importDb({
       settings: {},
@@ -134,7 +135,7 @@ describe("API-key database backup", () => {
       usedTokens: 0,
     });
     expect(db.get(`SELECT apiKey FROM usageHistory LIMIT 1`).apiKey).toBeNull();
-    expect(JSON.parse(db.get(`SELECT data FROM usageDaily WHERE dateKey = '2026-01-02'`).data).byApiKey).toEqual({});
+    expect([...readUsageDailyRollups(db, "dateKey = ?", ["2026-01-02"])][0].day.byApiKey).toEqual({});
   });
 
   it("rounds fractional non-chat estimates so its own export remains importable", async () => {

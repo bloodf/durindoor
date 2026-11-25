@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -139,7 +140,7 @@ describe("#2173 usage reset for a period deletes only the selected recent window
     ]);
 
     const todayKey = NOW.toISOString().slice(0, 10);
-    const todayDaily = JSON.parse(db.get("SELECT data FROM usageDaily WHERE dateKey = ?", [todayKey]).data);
+    const todayDaily = [...readUsageDailyRollups(db, "dateKey = ?", [todayKey])][0].day;
     expect(todayDaily).toMatchObject({
       requests: 1,
       promptTokens: 20,
@@ -204,9 +205,9 @@ describe("#2173 usage reset for a period deletes only the selected recent window
     const remainingTimestamps = db.all("SELECT timestamp FROM usageHistory ORDER BY timestamp ASC").map((r) => r.timestamp);
     expect(remainingTimestamps).toEqual([t5d, t30h]);
 
-    const dailyRows = db.all("SELECT dateKey, data FROM usageDaily ORDER BY dateKey ASC");
+    const dailyRows = [...readUsageDailyRollups(db)];
     expect(dailyRows.map((r) => r.dateKey)).toEqual([t5d.slice(0, 10), t30h.slice(0, 10)]);
-    expect(JSON.parse(dailyRows[1].data)).toMatchObject({
+    expect(dailyRows[1].day).toMatchObject({
       requests: 1,
       promptTokens: 20,
       completionTokens: 5,

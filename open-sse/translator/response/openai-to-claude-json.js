@@ -4,6 +4,7 @@ import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
 import { MODEL_FALLBACK } from "../schema/defaults.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";
+import { toClaudePromptUsage } from "../concerns/usage.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 /**
@@ -62,16 +63,13 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
 
 
   const usage = responseBody.usage || {};
-  const rawId = String(responseBody.id || "").replace(/^chatcmpl-/, "");
-  const claudeUsage = {};
-  if (usage.prompt_tokens != null) {
-    claudeUsage.input_tokens = usage.prompt_tokens;
-    claudeUsage.output_tokens = (usage.completion_tokens || 0) + (
-    usage.completion_tokens_details?.reasoning_tokens || 0);
-    if (usage.prompt_tokens_details?.cached_tokens) {
-      claudeUsage.cache_read_input_tokens = usage.prompt_tokens_details.cached_tokens;
-    }
-  }
+  const rawId = String(responseBody.id || "").replace(/^(?:chatcmpl-|msg_)/, "");
+  const claudeUsage = usage.prompt_tokens != null ?
+  {
+    ...toClaudePromptUsage(usage),
+    output_tokens: (usage.completion_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0)
+  } :
+  {};
 
   return {
     id: `msg_${rawId || Date.now()}`,

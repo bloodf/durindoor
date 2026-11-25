@@ -86,7 +86,11 @@ const nextConfig = {
   // #2251: baseline clickjacking / MIME / referrer / embedding CSP on every response.
   // Omits script-src/style-src — Next inline runtime scripts would break; nonce CSP is out of scope.
   async headers() {
+    // A managed host's cache must not serve dashboard HTML from an older build (decolua/9router#3852).
+    const noStore = [{ key: "Cache-Control", value: "no-store, no-cache, must-revalidate, max-age=0" }];
     return [
+      { source: "/dashboard/:path*", headers: noStore },
+      { source: "/login", headers: noStore },
       {
         source: "/:path*",
         headers: [

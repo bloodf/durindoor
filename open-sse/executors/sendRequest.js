@@ -28,7 +28,7 @@ export function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
-function sendThroughProxy(url, options, proxyOptions, observePatchedFetch) {
+function sendThroughProxy(url, options, proxyOptions, observePatchedFetch, unrouted) {
   let proxyAwareFetch;
   try {
     proxyAwareFetch = proxyFetch.proxyAwareFetch;
@@ -42,7 +42,8 @@ function sendThroughProxy(url, options, proxyOptions, observePatchedFetch) {
   if (observePatchedFetch && !options.directFetch && live?.[DURINDOOR_FETCH_PATCH] === true) {
     return live(url, { ...options, proxyOptions });
   }
-  return proxyAwareFetch(url, options, proxyOptions);
+  // An unrouted send (a local sidecar) passes no connection route at all.
+  return unrouted ? proxyAwareFetch(url, options) : proxyAwareFetch(url, options, proxyOptions);
 }
 
 /** Stop waiting on a pending operation as soon as the signal aborts. */
@@ -100,7 +101,7 @@ export function createRequestSender({
   let deadline;
   const clearHeaderTimer = () => clearTimeout(deadline?.timer);
 
-  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null } = {}) {
+  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null, unrouted = false } = {}) {
     const signal = init.signal;
     if (signal?.aborted) throw requestAbortError(signal.reason);
     clearHeaderTimer();
@@ -121,7 +122,7 @@ export function createRequestSender({
       const options = { ...(credentialed ? { redirect: "error" } : null), ...init, signal: mergedSignal };
       const send = transport ?
         () => runProviderAttemptDispatch(() => runTransport(transport, options, controller.signal)) :
-        () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch);
+        () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch, unrouted);
       return await (quotaBearing ? runQuotaBearingProviderRequest(send) : send());
     } catch (error) {
       clearTimeout(timer);
@@ -160,12 +161,15 @@ export function createRequestSender({
   };
 }
 
-/** Apply the provider's configured header deadline to a custom executor. */
-export function createExecutorSender(executor, input) {
+/**
+ * Apply the provider's configured header deadline to a custom executor. An
+ * override that called proxyAwareFetch itself passes observePatchedFetch: false.
+ */
+export function createExecutorSender(executor, input, { observePatchedFetch = true } = {}) {
   return createRequestSender({
     attemptStartedAt: input.attemptStartedAt,
     onProviderAttempt: input.onProviderAttempt,
     headerTimeoutMs: resolveHeaderTimeout(executor.config, resolveRequestRetryPolicy(executor.provider, input.requestPolicy)),
-    observePatchedFetch: true
+    observePatchedFetch
   });
 }

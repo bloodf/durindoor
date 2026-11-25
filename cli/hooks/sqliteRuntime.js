@@ -119,11 +119,11 @@ function isSqlJsWasmValid() {
   return fs.existsSync(runtimeWasm);
 }
 
-function ensureSqliteRuntime({ silent = false, installBetterSqlite = false } = {}) {
+function ensureSqliteRuntime({ silent = false, installBetterSqlite = false, allowInstall = true } = {}) {
   ensureRuntimeDir();
 
   let sqlJsOk = isSqlJsWasmValid();
-  if (!sqlJsOk) {
+  if (!sqlJsOk && allowInstall) {
     sqlJsOk = npmInstall([`sql.js@${SQL_JS_VERSION}`], { silent });
     if (sqlJsOk) sqlJsOk = isSqlJsWasmValid();
   }

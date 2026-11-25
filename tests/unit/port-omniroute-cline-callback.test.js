@@ -80,3 +80,27 @@ describe("OmniRoute 670656c26153 Cline callbacks", () => {
     expect(JSON.parse(exchange[1].body)).toEqual({ code: "legitimate", state, flowId: "flow-1" });
   });
 });
+
+describe("OmniRoute 12932dce (#20580) Zed Hosted callbacks", () => {
+  it("exchanges a pasted native-app URL that carries no state", async () => {
+    window.happyDOM.setURL("http://localhost/providers");
+    await act(async () => {
+      root.render(React.createElement(OAuthModal, {
+        isOpen: true, provider: "zed-hosted", providerInfo: { name: "Zed" },
+        onClose: vi.fn(), onSuccess: vi.fn(), proxyPoolsReady: true,
+      }));
+    });
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    const pasted = "http://127.0.0.1:20128/?user_id=7&access_token=synthetic";
+    const input = container.querySelector('input[aria-label="Callback URL"]');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, pasted);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Connect").click();
+    });
+    const exchange = fetchMock.mock.calls.find(([url]) => url === "/api/oauth/zed-hosted/exchange");
+    expect(JSON.parse(exchange[1].body)).toEqual({ code: pasted, state, flowId: "flow-1" });
+  });
+});

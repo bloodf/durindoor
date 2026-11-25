@@ -3,7 +3,9 @@ import { ROLE } from "../translator/schema/index.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
-const AGENT_PATTERN = /you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
+const AGENT_PATTERN = /you are claude code|claude.?code.{1,80}official.{1,80}cli|anthropic.{1,80}official.{1,80}cli|anxthxropic.{1,80}official.{1,80}cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s{0,80}=\s{0,80}(?:cli|vscode|jetbrains|gui)|claude.?code.{1,80}issues|give feedback.{1,80}claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
+// Limit identity matching work on unusually long lines; retain any unscanned suffix.
+const MAX_IDENTITY_SCAN_LENGTH = 8192;
 // Client metadata that fails CodeBuddy's channel check (400 / 11128) wherever it
 // appears in a prompt. Only these fragments are replaced, never the whole line.
 const CHANNEL_MARKER_PATTERN = /x-anthropic-billing-header|Main branch \(you will usually use this for PRs\):/g;
@@ -12,13 +14,14 @@ const CHANNEL_PLACEHOLDER = "[external-client-identity]";
 function sanitizeInstructionText(text) {
   if (!text) return text;
   let replacedIdentity = false;
-  const lines = !AGENT_PATTERN.test(text) ? text : text.split("\n").map((line) => {
-    if (!AGENT_PATTERN.test(line)) return line;
+  const lines = text.split("\n").map((line) => {
+    const scanned = line.slice(0, MAX_IDENTITY_SCAN_LENGTH);
+    if (!AGENT_PATTERN.test(scanned)) return line;
     if (!replacedIdentity) {
       replacedIdentity = true;
       return NEUTRAL_PROMPT;
     }
-    return line.replace(new RegExp(AGENT_PATTERN.source, "gi"), "");
+    return scanned.replace(new RegExp(AGENT_PATTERN.source, "gi"), "") + line.slice(MAX_IDENTITY_SCAN_LENGTH);
   }).join("\n");
   return lines.replace(CHANNEL_MARKER_PATTERN, CHANNEL_PLACEHOLDER);
 }

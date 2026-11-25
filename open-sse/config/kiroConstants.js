@@ -422,6 +422,8 @@ export function stripThinkingSuffix(model) {
  */
 const ANTHROPIC_SNAPSHOT_SUFFIX = /-\d{8}$/;
 const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
+// Kiro 400s on a dot between a family name and its generation (`claude-sonnet.5`).
+const CLAUDE_FAMILY_DOT = /([a-z])\.(\d)/gi;
 
 /**
  * Fold an Anthropic model id onto the Kiro upstream alias.
@@ -446,7 +448,8 @@ const CLAUDE_VERSIONED = /^claude-(sonnet|opus|haiku)-(\d+)(?:[.-](\d+))?$/;
 export function normalizeKiroUpstreamModelId(model) {
   if (!isString(model) || model === "") return model;
 
-  const id = model.toLowerCase().replace(ANTHROPIC_SNAPSHOT_SUFFIX, "");
+  const spelled = /^claude/i.test(model) ? model.replace(CLAUDE_FAMILY_DOT, "$1-$2") : model;
+  const id = spelled.toLowerCase().replace(ANTHROPIC_SNAPSHOT_SUFFIX, "");
 
   // Explicit versioned Claude ids only. Ambiguous ids (bare "opus", "claude-3-5-sonnet")
   // pass through unchanged so Kiro rejects them visibly instead of being silently remapped.
@@ -455,7 +458,7 @@ export function normalizeKiroUpstreamModelId(model) {
   if (id === "claude-fable-5") return "claude-fable-5";
   // Case-fix for static-catalog ids (e.g. "MiniMax-M2.5") that Kiro only accepts lowercase.
   if (id === "minimax-m2.5" || id === "minimax-m2.1") return id;
-  return model;
+  return spelled;
 }
 
 /**

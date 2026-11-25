@@ -497,8 +497,11 @@ export class DefaultExecutor extends BaseExecutor {
       // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix). Use the resolved
       // runtime transport: multi-endpoint providers may select Claude even when
       // their registry default is OpenAI, and Anthropic rejects stream_options.
-      if (transportFormat === "openai" && stream === true && transformed.messages && !transformed.stream_options) {
-        transformed.stream_options = { include_usage: true };
+      // The official OpenAI endpoint also gets it when the client's stream_options
+      // say nothing about usage (#3481). An explicit client value is kept.
+      const openAiUsageUnset = this.provider === "openai" && transformed.stream_options?.include_usage === undefined;
+      if (transportFormat === "openai" && stream === true && transformed.messages && (openAiUsageUnset || !transformed.stream_options)) {
+        transformed.stream_options = { ...transformed.stream_options, include_usage: true };
       }
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);

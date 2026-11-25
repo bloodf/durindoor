@@ -8,6 +8,9 @@ import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
+import { resolveInlineThinkingFormat, trackInlineExtractorHold } from "../../utils/inlineThinking.js";
+import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
@@ -125,6 +128,83 @@ function stopTextBlock(state, results) {
     index: state.textBlockIndex
   });
   state.textBlockStarted = false;
+}
+
+function emitThinking(thinking, state, results) {
+  if (!thinking || state.claudeCompat || isInternalReasoningPlaceholder(thinking)) return;
+  stopTextBlock(state, results);
+
+  if (!state.thinkingBlockStarted) {
+    closeCompleteToolBlocks(state, results);
+    state.thinkingBlockIndex = state.nextBlockIndex++;
+    state.thinkingBlockStarted = true;
+    results.push({
+      type: "content_block_start",
+      index: state.thinkingBlockIndex,
+      content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" }
+    });
+  }
+
+  results.push({
+    type: "content_block_delta",
+    index: state.thinkingBlockIndex,
+    delta: { type: "thinking_delta", thinking }
+  });
+}
+
+function emitText(text, state, results) {
+  if (!text) return;
+  stopThinkingBlock(state, results);
+
+  if (!state.textBlockStarted) {
+    closeCompleteToolBlocks(state, results);
+    state.textBlockIndex = state.nextBlockIndex++;
+    state.textBlockStarted = true;
+    state.textBlockClosed = false;
+    results.push({
+      type: "content_block_start",
+      index: state.textBlockIndex,
+      content_block: { type: CLAUDE_BLOCK.TEXT, text: "" }
+    });
+  }
+
+  results.push({
+    type: "content_block_delta",
+    index: state.textBlockIndex,
+    delta: { type: "text_delta", text }
+  });
+}
+
+// Textual <think> tags are reasoning only for a transport/model whose registry
+// entry says so; everyone else keeps them as literal text (upstream #3048).
+function splitInlineThinking(delta, state, finished) {
+  const content = delta?.content;
+  if (resolveInlineThinkingFormat(state.provider, state.requestedModel, FORMATS.OPENAI) !== INLINE_THINKING_FORMATS.THINK_TAGS) {
+    return { reasoning: "", text: extractTextContent(content) };
+  }
+  const extractor = state.inlineClaudeExtractor ||= createThinkTagStreamExtractor();
+  let reasoning = "";
+  let text = extractTextContent(content);
+  if (isString(content)) {
+    const result = extractor.process(content);
+    trackInlineExtractorHold(state, content.length, result);
+    text = result.content;
+    reasoning = result.reasoning || "";
+  }
+  if (finished) {
+    const pending = flushInlineThinking(state);
+    text += pending.text;
+    reasoning += pending.reasoning;
+  }
+  return { reasoning, text };
+}
+
+// Release whatever the extractor still holds; an unclosed tag comes back as text.
+function flushInlineThinking(state) {
+  const pending = state.inlineClaudeExtractor?.flush();
+  if (!pending) return { reasoning: "", text: "" };
+  trackInlineExtractorHold(state, 0, pending);
+  return { reasoning: pending.reasoning || "", text: pending.content || "" };
 }
 
 // Helper: flush buffered tool args + close one tool_use block (once)
@@ -272,6 +352,9 @@ function finalizeOnFlush(state) {
   state.claudeFinishHandled = true;
 
   const results = [];
+  const pending = flushInlineThinking(state);
+  emitThinking(pending.reasoning, state, results);
+  emitText(pending.text, state, results);
   stopThinkingBlock(state, results);
   stopTextBlock(state, results);
   flushToolBlocks(state, results);
@@ -342,50 +425,12 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Handle reasoning (thinking) across vendor shapes - GLM/DeepSeek/Qwen/MiniMax/etc.
   const reasoningContent = extractReasoningText(delta);
-  if (reasoningContent && !state.claudeCompat && !isInternalReasoningPlaceholder(reasoningContent)) {
-    stopTextBlock(state, results);
-
-    if (!state.thinkingBlockStarted) {
-      closeCompleteToolBlocks(state, results);
-      state.thinkingBlockIndex = state.nextBlockIndex++;
-      state.thinkingBlockStarted = true;
-      results.push({
-        type: "content_block_start",
-        index: state.thinkingBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.THINKING, thinking: "", signature: "" }
-      });
-    }
-
-    results.push({
-      type: "content_block_delta",
-      index: state.thinkingBlockIndex,
-      delta: { type: "thinking_delta", thinking: reasoningContent }
-    });
-  }
+  emitThinking(reasoningContent, state, results);
 
   // Handle regular content
-  const textContent = extractTextContent(delta?.content);
-  if (textContent) {
-    stopThinkingBlock(state, results);
-
-    if (!state.textBlockStarted) {
-      closeCompleteToolBlocks(state, results);
-      state.textBlockIndex = state.nextBlockIndex++;
-      state.textBlockStarted = true;
-      state.textBlockClosed = false;
-      results.push({
-        type: "content_block_start",
-        index: state.textBlockIndex,
-        content_block: { type: CLAUDE_BLOCK.TEXT, text: "" }
-      });
-    }
-
-    results.push({
-      type: "content_block_delta",
-      index: state.textBlockIndex,
-      delta: { type: "text_delta", text: textContent }
-    });
-  }
+  const inline = splitInlineThinking(delta, state, Boolean(choice.finish_reason));
+  emitThinking(inline.reasoning, state, results);
+  emitText(inline.text, state, results);
 
   // Tool calls
   if (delta?.tool_calls) {

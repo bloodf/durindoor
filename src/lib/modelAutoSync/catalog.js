@@ -1,4 +1,6 @@
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
+import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js";
+import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, MODEL_CAPABILITIES, PATTERN_CAPABILITIES, PROVIDER_CAPABILITIES, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { matchPattern } from "open-sse/providers/pricing.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -20,6 +22,9 @@ export const DEFAULT_MODEL_AUTO_SYNC_INTERVAL_HOURS = 24;
 export const MAX_MODEL_AUTO_SYNC_INTERVAL_HOURS = 720;
 
 const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
+
+/** Remove request-only modifiers before matching a model against its catalog. */
+export const catalogModelId = (model) => stripRecognizedContextSuffix(parseSuffix(model).cleanModel);
 const ownRecord = (table, key) => isRecord(table) && Object.hasOwn(table, key) && isRecord(table[key]) ? table[key] : null;
 
 
@@ -394,7 +399,7 @@ export function findPrunedReferences({ providers, combos = [], modelAliases = {}
     const slash = ref.indexOf("/");
     if (slash <= 0) return false;
     const prefix = ref.slice(0, slash);
-    const modelId = ref.slice(slash + 1);
+    const modelId = catalogModelId(ref.slice(slash + 1));
     return providers.some((p) => p.aliases.includes(prefix) && !p.ids.has(modelId) && !p.customIds.has(modelId));
   };
   const out = { combos: {}, aliases: {} };

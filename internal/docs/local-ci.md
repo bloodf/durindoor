@@ -58,11 +58,16 @@ owner's recorded builder name and image name:
 ```sh
 docker buildx build --builder "$BUILDER" --platform "$PLATFORM" \
   --build-arg "APP_VERSION=$VERSION" --load --tag "$LOCAL_IMAGE" "$SOURCE"
-docker run --detach --name "$CONTAINER" --platform "$PLATFORM" \
+docker run --rm --detach --name "$CONTAINER" --platform "$PLATFORM" \
   --publish 127.0.0.1:20128:20128 "$LOCAL_IMAGE"
 curl --fail --retry 30 --retry-connrefused --retry-delay 2 \
   --max-time 5 http://127.0.0.1:20128/api/health
 ```
+
+Keep writable workspace, `node_modules`, HOME, package caches, Playwright output
+and test results on bind mounts from a fast local disk, or use `--tmpfs` for
+small scratch paths. Always run containers with `--rm` and remove the per-run
+directory afterwards.
 
 Do not add `--push`, registry login, secrets, real data volumes or publication
 labels. Install cleanup traps before starting: remove only this container,

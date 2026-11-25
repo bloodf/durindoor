@@ -14,7 +14,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 import proxy from "../../src/proxy.js";
 import { SESSION_COOKIE, beginSession, encodeSessionCookie, ensureServiceSession } from "../../src/lib/mimoLoginSession.js";
-import { getMimoAccountCookie } from "../../open-sse/shared/mimoAccount.js";
+import { getMimoAccountCookie } from "../../open-sse/utils/mimoAccount.js";
 
 const SECRET = {
   token: "FLEET_TOKEN_1088",

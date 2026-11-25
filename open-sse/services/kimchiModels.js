@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getKimchiUserAgent } from "../utils/kimchiUserAgent.js";
 import { extractLiveModelLimits } from "./modelMetadata.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const KIMCHI_API = "https://llm.kimchi.dev";
@@ -11,8 +12,6 @@ const FETCH_TIMEOUT_MS = 20_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-/** @type {Map<string, { expiresAt: number, models: object[], rawModels: object[] }>} */
-const catalogCache = new Map();
 /** @type {Map<string, object>} */
 const metadataByModelId = new Map();
 
@@ -41,6 +40,8 @@ function cacheKey(credentials, endpoint) {
   update(`kimchi:${normalizeKimchiEndpoint(endpoint)}:${seed}`).
   digest("hex");
 }
+
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, keyFn: cacheKey });
 
 function toModelKind(inputModalities) {
   return Array.isArray(inputModalities) && inputModalities.includes("image") ?
@@ -142,32 +143,31 @@ export async function resolveKimchiModels(credentials, options = {}) {
   if (!token) return null;
 
   const endpoint = credentials?.providerSpecificData?.kimchiEndpoint || options.endpoint || KIMCHI_API;
-  const key = cacheKey(credentials, endpoint);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) return cached;
-  }
+  const key = catalogCache.keyFor(credentials, endpoint);
 
-  let rawModels;
-  try {
-    rawModels = await fetchKimchiCatalogRaw(token, endpoint, options);
-  } catch (error) {
-    options.log?.warn?.("KIMCHI_MODELS", error.message);
-    return null;
-  }
+  return catalogCache.load(key, async () => {
+    let rawModels;
+    try {
+      rawModels = await fetchKimchiCatalogRaw(token, endpoint, options);
+    } catch (error) {
+      options.log?.warn?.("KIMCHI_MODELS", error.message);
+      return null;
+    }
 
-  const models = rawModels.map(normalizeKimchiModel).filter(Boolean);
-  if (models.length === 0) return null;
+    const models = rawModels.map(normalizeKimchiModel).filter(Boolean);
+    if (models.length === 0) return null;
 
-  rememberModels(models);
-  const entry = {
-    expiresAt: Date.now() + CACHE_TTL_MS,
-    models,
-    rawModels
-  };
-  catalogCache.set(key, entry);
-  return entry;
+    rememberModels(models);
+    return {
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      models,
+      rawModels
+    };
+  }, {
+    force: Boolean(options.forceRefresh),
+    // A caller that can abort never shares its request; other egress routes get their own.
+    flightKey: options.signal ? null : JSON.stringify([key, options.proxyOptions || null])
+  });
 }
 
 export function clearKimchiCatalog() {

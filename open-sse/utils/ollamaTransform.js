@@ -184,12 +184,19 @@ export function transformToOllama(response, model) {
       }}
   };
 
+  // Set while the frame reader holds `data:` lines that no blank line has closed.
+  let openFrame = false;
+  // Set when the last chunk ended in CR, so the LF of a split CRLF is not a second line.
+  let afterCr = false;
+
   const isStandaloneData = (data) => {
     if (data === "[DONE]") return true;
     if (!data.startsWith("{")) return false;
     try {
-      JSON.parse(data);
-      return true;
+      const parsed = JSON.parse(data);
+      // Inside an open frame, a complete object can be a continuation line of
+      // multi-line JSON; only a whole chunk or error object stands alone there.
+      return !openFrame || "choices" in parsed || "error" in parsed;
     } catch {
       return false;
     }
@@ -203,18 +210,25 @@ export function transformToOllama(response, model) {
     const trimmed = line.trim();
     // Standalone payloads arrive one per line on some streams. Deliver them
     // immediately and let the frame reader assemble incomplete JSON fragments.
-    if (trimmed.startsWith("{") ||
-        (trimmed.startsWith("data:") && isStandaloneData(trimmed.slice(5).trimStart()))) {
+    // As in the frame reader, an indented `data:` is not a data field.
+    const isDataLine = line.startsWith("data:");
+    if (trimmed.startsWith("{") || (isDataLine && isStandaloneData(line.slice(5).trim()))) {
       for (const frame of reader.flush()) emitFrame(frame, controller);
+      openFrame = false;
       processLine(trimmed, controller);
       return;
     }
+    if (line === "") openFrame = false;
+    else if (isDataLine) openFrame = true;
     for (const frame of reader.push(line + "\n")) emitFrame(frame, controller);
   };
   const transform = new TransformStream({
     transform(chunk, controller) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split("\n");
+      let text = decoder.decode(chunk, { stream: true });
+      if (!text) return;
+      if (afterCr && text.startsWith("\n")) text = text.slice(1);
+      afterCr = text.endsWith("\r");
+      const lines = (buffer + text).split(/\r\n|\r|\n/);
       buffer = lines.pop() || "";
       for (const line of lines) acceptLine(line, controller);
     },

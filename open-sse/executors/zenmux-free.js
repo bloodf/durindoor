@@ -2,7 +2,8 @@ import { randomUUID } from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { buildErrorBody, errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { toOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { applyThinking, captureThinking } from "../translator/concerns/thinkingUnified.js";
 import zenmuxFreeRegistry from "../providers/registry/zenmux-free.js";
@@ -293,7 +294,13 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
     super("zenmux-free", PROVIDERS["zenmux-free"]);
   }
 
-  async execute({ body, credentials, signal, stream: wantStream, proxyOptions = null, requestContext = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ body, credentials, signal, stream: wantStream, proxyOptions = null, requestContext = null }, sender, billed) {
     // Clamp OpenAI-shape token fields before resolveMaxTokens reads them.
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const rawCookie = normalizeZenmuxCookie(credentials?.apiKey);
@@ -330,14 +337,14 @@ export class ZenmuxFreeExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await proxyAwareFetch(url.toString(), {
+      upstream = billed(await sender.sendRequest(url.toString(), {
         method: "POST",
         headers,
         body: JSON.stringify(transformedBody),
         signal
-      }, proxyOptions);
+      }, proxyOptions));
     } catch (error) {
-      if (error.name === "AbortError") {
+      if (error.name === "AbortError" || isQuotaDispatchUnavailable(error)) {
         throw error;
       }
       return makeErrorResult(

@@ -10,6 +10,8 @@ import net from "net";
 import tls from "tls";
 import http2 from "http2";
 import { resolveProxyForRequest } from "./proxyFetch.js";
+import { isSocksDispatcherUrl } from "./socksDispatcher.js";
+import { assertSocksProxyUrl } from "./socksCredential.js";
 
 function waitForHttp2Session(client, timeoutMs, signal) {
   return new Promise((resolve, reject) => {
@@ -52,16 +54,6 @@ function waitForHttp2Session(client, timeoutMs, signal) {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_CONNECT_HEADER_BYTES = 64 * 1024;
-const SOCKS_PROTOCOLS = new Set(["socks:", "socks4:", "socks4a:", "socks5:", "socks5h:"]);
-
-export function isSocksProxyUrl(proxyUrl) {
-  try {
-    return SOCKS_PROTOCOLS.has(new URL(proxyUrl).protocol);
-  } catch {
-    return false;
-  }
-}
-
 export function buildHttpConnectRequest(targetHost, targetPort, proxyUrl) {
   const proxy = new URL(proxyUrl);
   let auth = "";
@@ -153,6 +145,8 @@ async function connectViaHttpProxy(proxyUrl, targetHost, targetPort, timeoutMs, 
 }
 
 async function connectViaSocks(proxyUrl, targetHost, targetPort, timeoutMs, signal) {
+  // Validate RFC 1929 credential lengths before the agent can start its socket handler.
+  assertSocksProxyUrl(proxyUrl);
   const { SocksProxyAgent } = await import("socks-proxy-agent");
   const agent = new SocksProxyAgent(proxyUrl, { timeout: timeoutMs });
   let socket;
@@ -192,7 +186,7 @@ async function connectViaSocks(proxyUrl, targetHost, targetPort, timeoutMs, sign
 }
 
 async function createProxiedTlsSocket(proxyUrl, targetHost, targetPort, timeoutMs, signal) {
-  const plain = isSocksProxyUrl(proxyUrl)
+  const plain = isSocksDispatcherUrl(proxyUrl)
     ? await connectViaSocks(proxyUrl, targetHost, targetPort, timeoutMs, signal)
     : await connectViaHttpProxy(proxyUrl, targetHost, targetPort, timeoutMs, signal);
 

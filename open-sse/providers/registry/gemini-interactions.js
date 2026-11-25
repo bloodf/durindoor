@@ -20,7 +20,7 @@ export default {
     validateUrl: GEMINI_MODELS_URL,
     format: FORMATS.OPENAI,
     // A provider error must never cause a retry with storage enabled.
-    quirks: { allowFieldStripping: false, validationChatFallback: false, rejectRedirects: true },
+    quirks: { allowFieldStripping: false, validationChatFallback: false },
     auth: { combined: true, header: "x-goog-api-key", scheme: "raw" },
   },
   models: [

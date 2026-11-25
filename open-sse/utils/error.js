@@ -1,6 +1,7 @@
 import { FORMATS, detectFormatByEndpoint } from "../translator/formats.js";
 import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
+  CLAUDE_ERROR_TYPES,
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
   MAX_RATE_LIMIT_COOLDOWN_MS } from
@@ -706,7 +707,11 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   };
   const body = clientFormat === FORMATS.CLAUDE ? {
     type: "error",
-    error: { type: clientStatus === 401 ? "authentication_error" : rendered.type, message: rendered.message }
+    error: {
+      type: clientStatus === 401 ? CLAUDE_ERROR_TYPES[clientStatus] :
+        (isString(details?.type) ? details.type : CLAUDE_ERROR_TYPES[clientStatus] ?? rendered.type),
+      message: rendered.message
+    }
   } : { ...(isObject(safeBody?.error) ? safeBody : null), error: { ...(isObject(safeBody?.error) ? details : null), ...rendered } };
   return {
     success: false, status: statusCode, error: safeMessage, resetsAtMs,

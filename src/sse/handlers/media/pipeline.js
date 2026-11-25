@@ -6,25 +6,60 @@ import { admit } from "../../services/admission.js";
 import { enforceApiKeyModelPolicy } from "../../services/apiKeyPolicy.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable } from "../../services/auth.js";
 import { getModelInfo } from "../../services/model.js";
+import { checkAndRefreshToken, updateProviderCredentials } from "../../services/tokenRefresh.js";
 import { imageModelKindError } from "../imageModelKind.js";
 import { modelKindError } from "../modelKind.js";
 
-/**
- * Admit a parsed image request before endpoint validation and route selection.
- * Each route checks its resolved model before selecting accounts. Pinning is
- * opt-in for endpoints that already honor x-connection-id.
- */
-export async function runMediaEndpoint(request, { kind, pinConnection = false, route }) {
-  const { error, ...admission } = await admit(request, { kind });
-  if (error) return error;
-
-  const connectionId = pinConnection ? request.headers.get("x-connection-id") : null;
-  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
-  return route(admission, pinOptions);
+/** 499 for a caller that has already disconnected, otherwise null. */
+export function abortedResponse(signal) {
+  return signal?.aborted ? errorResponse(499, "Request aborted") : null;
 }
 
-export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind, beforePolicy } = {}) {
-  const { provider, model } = await getModelInfo(modelStr);
+/**
+ * `true` binds the request to x-connection-id. "preferred" only prefers it.
+ * "job" is the strict binding for job polls, which echo x-9router-connection-id.
+ */
+function connectionPin(request, mode) {
+  if (!mode) return {};
+  const connectionId = (mode === "job" && request.headers.get("x-9router-connection-id")) || request.headers.get("x-connection-id");
+  if (!connectionId) return {};
+  if (mode === "preferred") return { preferredConnectionId: connectionId };
+  return { preferredConnectionId: connectionId, strictConnectionId: connectionId };
+}
+
+/**
+ * Admit a media request before endpoint validation and route selection.
+ * Each route checks its resolved model before selecting accounts. Pinning and
+ * the disconnected-caller rejection are opt-in per endpoint.
+ */
+export async function runMediaEndpoint(request, { kind, pinConnection = false, rejectAborted = false, onAdmission, route }) {
+  const admitted = await admit(request, { kind });
+  onAdmission?.(admitted);
+  const { error, ...admission } = admitted;
+  if (error) return error;
+  const aborted = rejectAborted ? abortedResponse(request.signal) : null;
+  if (aborted) return aborted;
+
+  return route(admission, connectionPin(request, pinConnection));
+}
+
+/** Refresh before dispatch; `persist` stores tokens a core rotates mid-request. */
+export async function refreshMediaCredentials(provider, credentials) {
+  const refreshed = await checkAndRefreshToken(provider, credentials);
+  const persist = async (newCreds) => {
+    await updateProviderCredentials(credentials.connectionId, {
+      accessToken: newCreds.accessToken,
+      refreshToken: newCreds.refreshToken,
+      providerSpecificData: newCreds.providerSpecificData,
+      testStatus: "active",
+    });
+  };
+  return { refreshed, persist };
+}
+
+export async function resolveMediaModel(request, modelStr, body, apiKey, { onPolicyError, checkLifecycle, kindCheck, routingKind, beforePolicy, target } = {}) {
+  // `target` is for routes that pick the provider and model themselves.
+  const { provider, model } = target || await getModelInfo(modelStr);
   if (!provider) return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format") };
 
   // Only endpoints that select a routing kind apply their OpenRouter policy here.
@@ -60,16 +95,19 @@ export async function resolveTypedMediaModel(request, modelStr, body, apiKey, ki
 /**
  * A terminal attempt returns a response. Other attempts return the provider
  * result and the dispatched credential snapshot for account health tracking.
+ * With `signal`, a disconnected caller stops the loop without cooling accounts.
  */
 export async function runMediaAccounts({
   provider, model, selectionOptions, runAttempt, buildExhaustedResponse, selectCredentials,
-  onAccountFailure, onAttemptResult, onFallback, buildFailureResponse = (result) => result.response,
+  onAccountFailure, onAttemptResult, onFallback, buildFailureResponse = (result) => result.response, signal,
 }) {
   const excluded = new Set();
   let lastError = null;
   let lastStatus = null;
 
   while (true) {
+    const abortedBeforeAttempt = abortedResponse(signal);
+    if (abortedBeforeAttempt) return abortedBeforeAttempt;
     const credentials = selectCredentials
       ? await selectCredentials(excluded, model, selectionOptions)
       : await getProviderCredentialsWithQuotaPreflight(provider, excluded, model, selectionOptions);
@@ -79,6 +117,8 @@ export async function runMediaAccounts({
 
     const { response, result, dispatch, resetAt = null, failureContext } = await runAttempt(credentials);
     if (!result) return response;
+    const abortedAttempt = abortedResponse(signal);
+    if (abortedAttempt) return abortedAttempt;
 
     const terminalAttemptResponse = await onAttemptResult?.(result, credentials);
     if (terminalAttemptResponse) return terminalAttemptResponse;

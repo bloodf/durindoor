@@ -1,3 +1,5 @@
+import { projectCursorError } from "./cursorErrorProjection.js";
+import { classifyCursorError, sanitizeCursorErrorDetail } from "./cursorErrors.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
 import {
@@ -7,6 +9,8 @@ import {
   PROVIDER_BODY_TIMEOUT_MS } from
 "../config/runtimeConfig.js";
 import {
+  appendBoundedCursorChunk,
+  cursorBodyLimitError,
   generateCursorBody,
   encodeField,
   wrapConnectRPCFrame,
@@ -25,12 +29,12 @@ import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
-import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
 import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import {
-  runProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
   transferProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -39,7 +43,7 @@ import { createRequire } from "module";
 import crypto from "crypto";
 
 // Detect cloud environment
-const { isFunction, isObject, isString, isUndefined } = require("../../src/shared/utils/typeChecks.cjs");
+const { isFunction, isObject, isString, isUndefined, isNumber } = require("../../src/shared/utils/typeChecks.cjs");
 const isCloudEnv = () => {
   const cachesBinding = "caches" in globalThis ? globalThis.caches : undefined;
   if (!isUndefined(cachesBinding) && isObject(cachesBinding)) return true;
@@ -240,7 +244,25 @@ export function resolveRequestedModel(modelId, reasoningEffort = null, catalogId
   return { modelId: working, parameters };
 }
 
-export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null, catalogIds = null) {
+/** Translate request options that AgentService cannot express on its wire. */
+export function cursorRequestDirectives(body) {
+  const directives = [];
+  const max = body.max_completion_tokens ?? body.max_tokens;
+  if (isNumber(max) && Number.isFinite(max) && max >= 1) directives.push(`Keep the answer within about ${Math.floor(max)} output tokens.`);
+  if (isString(body.stop) && body.stop) directives.push(`Do not include any text at or after this stop sequence: ${body.stop}`);
+  else if (Array.isArray(body.stop)) {
+    const sequences = body.stop.filter((item) => isString(item) && item);
+    if (sequences.length) directives.push(`Stop before any of these sequences: ${sequences.join(", ")}`);
+  }
+  const format = body.response_format;
+  if (format?.type === "json_object") directives.push("Return a single valid JSON object and no surrounding prose or code fences.");
+  if (format?.type === "json_schema") directives.push(`Return only valid JSON (no prose or code fences) matching this schema: ${JSON.stringify(format.json_schema?.schema ?? format.schema ?? format)}`);
+  if (body.tool_choice === "required") directives.push("You MUST call at least one of the available tools now; do not answer without calling a tool.");
+  else if (body.tool_choice?.type === "function" && isString(body.tool_choice.function?.name) && body.tool_choice.function.name) directives.push(`You MUST call the \`${body.tool_choice.function.name}\` tool now and not any other tool.`);
+  return directives.length ? `OUTPUT CONSTRAINTS:\n${directives.map((item) => `- ${item}`).join("\n")}` : "";
+}
+
+export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null, catalogIds = null, conversationId = null) {
   // custom_system_prompt (RunRequest field 8) makes AgentService return an
   // empty turn. Fold system text into the current user message instead.
   const system = messages
@@ -286,7 +308,10 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     agentMessage(2, conversationAction),
     agentMessage(3, modelDetails),
     ...(mcpTools.length ? [agentMessage(4, mcpTools)] : []),
+    agentString(5, conversationId || crypto.randomUUID()),
     agentMessage(9, requestedModel),
+    encodeField(12, PROTOBUF_VARINT, 0),
+    ...(conversationId ? [agentString(16, conversationId)] : []),
   );
 
   // agent.v1.AgentClientMessage.run_request.
@@ -310,7 +335,7 @@ function decodeAgentFrames(buffer, onFrame) {
     if (flags & COMPRESS_FLAG.GZIP) {
       payload = zlib.gunzipSync(payload, { maxOutputLength: MAX_PROVIDER_BODY_BYTES });
     }
-    if (!(flags & COMPRESS_FLAG.TRAILER)) onFrame(payload);
+    onFrame(payload, Boolean(flags & COMPRESS_FLAG.TRAILER));
   }
   return pending;
 }
@@ -618,25 +643,17 @@ function createErrorResponse(jsonError) {
   jsonError?.error?.message ||
   "API Error";
 
-  // Connect uses resource_exhausted for both quota and oversized requests.
   const details = jsonError?.error?.details?.[0]?.debug?.details;
-  const text = [jsonError?.error?.code, jsonError?.error?.message, details?.title, details?.detail].filter(isString).join(" ").toLowerCase();
-  const quota = /too many requests|quota|rate.limit|throttl|out of usage|increase limits|actionrequired/.test(text);
-  const tooLarge = /tool catalog too large|tool registration too large|too many tools|message too large|payload too large|request too large|request exceeds .*size|request (?:body|size) exceeds .*(?:size|limit)|maximum allowed size/.test(text);
-  const entitlement = /\S{1,100} is not included in your weekly usage\b/.test(text);
-  const notFound = entitlement || (!quota && /model not found|not_found/.test(text) && !text.includes("reset after"));
-  const isRateLimit = !entitlement && (quota || /resource[_ ]exhausted/.test(text) && !tooLarge || text.includes("model not found") && text.includes("reset after"));
-  const auth = /unauthenticated|unauthorized|permission.denied|forbidden|invalid token|expired token|authentication|access denied/.test(text);
-  const status = isRateLimit ? HTTP_STATUS.RATE_LIMITED : notFound ? HTTP_STATUS.NOT_FOUND : auth ? HTTP_STATUS.UNAUTHORIZED : HTTP_STATUS.BAD_REQUEST;
+  const classified = classifyCursorError([jsonError?.error?.code, jsonError?.error?.message, details?.title, details?.detail].filter(isString).join(" "));
 
   return new Response(JSON.stringify({
     error: {
-      message: errorMsg,
-      type: isRateLimit ? "rate_limit_error" : auth ? "authentication_error" : notFound || tooLarge ? "invalid_request_error" : "api_error",
-      code: jsonError?.error?.details?.[0]?.debug?.error || "unknown"
+      message: sanitizeCursorErrorDetail(errorMsg),
+      type: classified.type,
+      code: "unknown"
     }
   }), {
-    status,
+    status: classified.status,
     headers: { "Content-Type": "application/json" }
   });
 }
@@ -668,18 +685,6 @@ function withCursorTimeout(promise, ms, message) {
     timer = setTimeout(() => reject(new Error(message)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-function cursorBodyLimitError() {
-  return new Error("Cursor response exceeded the configured body limit");
-}
-
-export function appendBoundedCursorChunk(state, chunk, maxBytes = MAX_PROVIDER_BODY_BYTES) {
-  const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-  const nextTotal = state.total + value.byteLength;
-  if (nextTotal > maxBytes) throw cursorBodyLimitError();
-  state.total = nextTotal;
-  state.chunks.push(value);
 }
 
 function readCursorChunk(reader, combined, signal) {
@@ -789,6 +794,8 @@ function shouldRetryEmptyTurn(messageCount) {
   return messageCount >= CURSOR_TAIL_ONLY_THRESHOLD;
 }
 
+export { appendBoundedCursorChunk };
+
 export class CursorExecutor extends BaseExecutor {
   constructor() {
     super("cursor", PROVIDERS.cursor);
@@ -821,34 +828,34 @@ export class CursorExecutor extends BaseExecutor {
     return generateCursorBody(messages, model, tools, reasoningEffort, forceAgentMode);
   }
 
-  async makeFetchRequest(url, headers, body, signal, proxyOptions = null) {
+  async makeFetchRequest(url, headers, body, signal, proxyOptions = null,
+    sender = createExecutorSender(this, {}, { observePatchedFetch: false })) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    const connectController = new AbortController();
-    const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-    const onAbort = () => connectController.abort(cursorAbortError(signal.reason));
-    signal?.addEventListener?.("abort", onAbort, { once: true });
-    const timeout = setTimeout(
-      () => connectController.abort(new Error("Cursor response headers timed out")),
-      timeoutMs
-    );
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(() => credentialFetch((target, init) => proxyAwareFetch(target, init, proxyOptions), url, {
+      response = await credentialFetch((target, init) => sender.sendRequest(target, init, proxyOptions), url, {
         method: "POST",
         headers,
         body,
-        signal: connectController.signal
-      }));
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener?.("abort", onAbort);
+        signal: signal || undefined
+      });
+    } catch (error) {
+      if (signal?.aborted) throw cursorAbortError(signal.reason);
+      if (sender.timeoutReason) throw new Error("Cursor response headers timed out");
+      throw error;
     }
 
-    return {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: await readCursorResponseBody(response, signal)
-    };
+    try {
+      return {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: await readCursorResponseBody(response, signal),
+        dispatch: response
+      };
+    } catch (error) {
+      await settleProviderAttemptDispatch(response, { reason: signal?.aborted ? "abort" : "transport_error" });
+      throw error;
+    }
   }
 
   makeHttp2Request(url, headers, body, signal) {
@@ -1084,7 +1091,8 @@ export class CursorExecutor extends BaseExecutor {
     };
   }
 
-  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null }) {
+  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null,
+    sender = createExecutorSender(this, { attemptStartedAt }, { observePatchedFetch: false }) }) {
     const agentEndpoint = PROVIDER_OAUTH.cursor?.agentEndpoint;
     if (!agentEndpoint) throw new Error("Cursor AgentService endpoint is not configured");
 
@@ -1100,9 +1108,10 @@ export class CursorExecutor extends BaseExecutor {
 
     // Empty-turn recovery works on the original client history so each retry
     // re-derives its own frame from a clean base (original vs tail-only).
-    const originalMessages = body.messages || [];
+    const directives = cursorRequestDirectives(body);
+    const originalMessages = directives ? [...(body.messages || []), { role: ROLE.SYSTEM, content: directives }] : body.messages || [];
     let workingMessages = originalMessages;
-    const tools = body.tools || [];
+    const tools = body.tool_choice === "none" ? [] : body.tools || [];
     // "Auto (Server Picks)" / "default" is a picker alias, not an AgentService
     // model id — sending it verbatim yields an empty turn. Resolve it to the
     // account's default agent-capable model from the live catalog before Run.
@@ -1117,25 +1126,30 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
-
-    const openAgentSession = async (frameMessages) => {
-      const session = await this.openAgentHttp2Stream(url, headers, requestController.signal, proxyOptions);
-      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort, catalogIds));
+    // The ID is private to this request, including its tail-only retry.
+    const conversationId = crypto.randomUUID();
+    const openAgentSession = async (frameMessages, sendSignal) => {
+      const session = await this.openAgentHttp2Stream(url, headers, sendSignal, proxyOptions);
+      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort, catalogIds, conversationId));
       return session;
     };
 
     const headersTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
     let session;
-    let responseHeaders;
-    try {
-      responseHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-        session = await openAgentSession(workingMessages);
+    // Each AgentService run (first turn or tail-only retry) is one physical send.
+    const dispatchAgent = (frameMessages) => sender.sendRequest(url, { signal: requestController.signal }, proxyOptions, {
+      transport: async ({ signal: sendSignal }) => {
+        session = await openAgentSession(frameMessages, sendSignal);
         return withCursorTimeout(
           session.responseHeaders,
           headersTimeoutMs,
           "Cursor AgentService response headers timed out"
         );
-      }));
+      }
+    });
+    let responseHeaders;
+    try {
+      responseHeaders = await dispatchAgent(workingMessages);
     } catch (error) {
       session?.close();
       if (isQuotaDispatchUnavailable(error) || error?.name === "AbortError") throw error;
@@ -1144,21 +1158,36 @@ export class CursorExecutor extends BaseExecutor {
 
     const bindDispatch = (result) => {
       transferProviderAttemptDispatch(responseHeaders, result.response);
-      return result;
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
     };
     const status = Number(responseHeaders[":status"] || 0);
     if (status !== 200) {
-      // Do not echo the upstream error body to the client (matches the legacy path).
+      let projected = null;
+      try {
+        const errorBody = { total: 0, chunks: [] };
+        const deadline = Date.now() + PROVIDER_BODY_TIMEOUT_MS;
+        while (true) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0) break;
+          const chunk = await withCursorTimeout(session.read(), remainingMs, "Cursor AgentService error body timed out");
+          if (chunk.done) break;
+          appendBoundedCursorChunk(errorBody, chunk.value, 128 * 1024);
+        }
+        const bytes = Buffer.concat(errorBody.chunks, errorBody.total);
+        projected = projectCursorError(bytes);
+        if (!projected && bytes.length >= 5 && bytes.readUInt32BE(1) <= bytes.length - 5) projected = projectCursorError(bytes.subarray(5, 5 + bytes.readUInt32BE(1)));
+      } catch { /* Preserve the HTTP status if the body cannot be read. */ }
       session.close();
+      const classifiedError = projected ? classifyCursorError(projected) : null;
+      const classified = classifiedError?.kind === "upstream" ? null : classifiedError;
       return bindDispatch({
         response: new Response(JSON.stringify({
-          error: { message: `Cursor upstream returned HTTP ${status}`, type: "invalid_request_error", code: "" },
-        }), { status: status || HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
+          error: { message: classified?.message || `Cursor upstream returned HTTP ${status}`, type: classified?.type || "invalid_request_error", code: "" },
+        }), { status: classified?.status || status || HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
         url,
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -1210,10 +1239,18 @@ export class CursorExecutor extends BaseExecutor {
           const { done, value } = await session.read();
           if (done) break;
           pending = Buffer.concat([pending, Buffer.from(value)]);
-          pending = decodeAgentFrames(pending, (payload) => {
+          pending = decodeAgentFrames(pending, (payload, trailer) => {
             // A single read can carry several frames; once the turn is over the
             // rest of the batch must not reach the already-closed controller.
             if (finished) return;
+            // Connect end-stream trailers can carry a JSON error under HTTP 200.
+            const projectedError = projectCursorError(payload);
+            if (projectedError) {
+              finished = true;
+              onEvent({ type: "error", value: projectedError });
+              return;
+            }
+            if (trailer) return;
             const serverMessage = decodeMessage(payload);
 
             // agent.v1.AgentServerMessage.interaction_update
@@ -1354,14 +1391,7 @@ export class CursorExecutor extends BaseExecutor {
           workingMessages = tailOnlyCursorMessages(originalMessages);
           let retryHeaders;
           try {
-            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-              session = await openAgentSession(workingMessages);
-              return withCursorTimeout(
-                session.responseHeaders,
-                headersTimeoutMs,
-                "Cursor AgentService response headers timed out"
-              );
-            }));
+            retryHeaders = await dispatchAgent(workingMessages);
           } catch (error) {
             try { session?.close(); } catch {}
             throw error;
@@ -1401,16 +1431,16 @@ export class CursorExecutor extends BaseExecutor {
         else if (event.type === "done" && event.finishReason) finishReason = event.finishReason;
       });
       if (agentError) {
+        const classified = classifyCursorError(agentError);
         return bindDispatch({
-          response: new Response(JSON.stringify({ error: { message: agentError, type: "api_error" } }), {
-            status: HTTP_STATUS.BAD_REQUEST,
+          response: new Response(JSON.stringify({ error: { message: classified.message, type: classified.type } }), {
+            status: agentError === "Cursor AgentService returned an empty turn" ? HTTP_STATUS.BAD_REQUEST : classified.status,
             headers: { "Content-Type": "application/json" },
           }),
           url,
           headers,
           transformedBody: body,
           responseFormat: FORMATS.OPENAI,
-          attemptStartedAt,
         });
       }
       const message = { role: "assistant", content: content || null };
@@ -1429,7 +1459,6 @@ export class CursorExecutor extends BaseExecutor {
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -1465,7 +1494,8 @@ export class CursorExecutor extends BaseExecutor {
             // An SSE error frame, not a content delta: a protocol failure must not
             // be rendered to the user as the assistant's reply, and downstream
             // usage tracking must not record the turn as a success.
-            controller.enqueue(encoder.encode(sseChunk({ error: { message: event.value, type: "api_error" } })));
+            const classified = classifyCursorError(event.value);
+            controller.enqueue(encoder.encode(sseChunk({ error: { message: classified.message, type: classified.type } })));
             controller.enqueue(encoder.encode(SSE_DONE));
             controller.close();
           } else if (event.type === "done") {
@@ -1481,7 +1511,7 @@ export class CursorExecutor extends BaseExecutor {
           if (closed) return;
           try {
             if (streamedOutput && !requestController.signal.aborted) {
-              controller.enqueue(encoder.encode(sseChunk({ error: { message: error.message, type: "api_error" } })));
+              controller.enqueue(encoder.encode(sseChunk({ error: { message: sanitizeCursorErrorDetail(error.message), type: "api_error" } })));
               controller.enqueue(encoder.encode(SSE_DONE));
               controller.close();
             } else controller.error(error);
@@ -1499,33 +1529,34 @@ export class CursorExecutor extends BaseExecutor {
       headers,
       transformedBody: body,
       responseFormat: FORMATS.OPENAI,
-      attemptStartedAt,
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null } = input;
     if (signal?.aborted) throw cursorAbortError(signal.reason);
+    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
+    attemptStartedAt :
+    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    const sender = createExecutorSender(this, { ...input, attemptStartedAt: providerAttemptStartedAt }, { observePatchedFetch: false });
     // AgentService uses the selected CONNECT or SOCKS route for HTTP/2.
     if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
-      const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-      attemptStartedAt :
-      isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
       try {
-        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: agentAttemptStartedAt });
+        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: providerAttemptStartedAt, sender });
       } catch (error) {
         if (isQuotaDispatchUnavailable(error)) throw error;
         if (error?.name === "AbortError") {
-          error.providerAttemptStartedAt = agentAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
         return {
           response: new Response(JSON.stringify({
-            error: { message: error.message, type: "connection_error", code: "" },
+            error: { message: sanitizeCursorErrorDetail(error.message), type: "connection_error", code: "" },
           }), { status: HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
           url: `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`,
           headers: {},
           transformedBody: body,
-          attemptStartedAt: agentAttemptStartedAt,
+          attemptStartedAt: sender.attemptStartedAt,
         };
       }
     }
@@ -1533,16 +1564,26 @@ export class CursorExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
-    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-    attemptStartedAt :
-    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    // The upstream object holding this request's quota ticket.
+    let dispatch = null;
+    const carry = (result) => {
+      transferProviderAttemptDispatch(dispatch, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
-      const response = http2 && !shouldForceFetch ?
-      await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
-        () => this.makeHttp2Request(url, headers, transformedBody, signal)
-      )) :
-      await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      let response;
+      if (http2 && !shouldForceFetch) {
+        // The reply is the whole buffered answer, bounded by makeHttp2Request's own
+        // timer, so the send itself stands in for response headers.
+        dispatch = await sender.sendRequest(url, { signal: signal || undefined }, proxyOptions, {
+          transport: () => ({ reply: this.makeHttp2Request(url, headers, transformedBody, signal) })
+        });
+        response = await dispatch.reply;
+      } else {
+        response = await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions, sender);
+        dispatch = response.dispatch;
+      }
 
       if (response.status !== 200) {
         const errorResponse = new Response(JSON.stringify({
@@ -1555,36 +1596,36 @@ export class CursorExecutor extends BaseExecutor {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
-        return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+        return carry({ response: errorResponse, url, headers, transformedBody: body });
       }
 
       // A successful upstream response without a body cannot contain Cursor frames.
       if (!response.body) {
-        return {
+        return carry({
           response: new Response(JSON.stringify({ error: { message: "Cursor upstream returned an empty response body", type: "server_error", code: "" } }), {
             status: 502,
             headers: { "Content-Type": "application/json" },
           }),
-          url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt,
-        };
+          url, headers, transformedBody: body,
+        });
       }
 
       const transformedResponse = stream !== false ?
       this.transformProtobufToSSE(response.body, model, body) :
       this.transformProtobufToJSON(response.body, model, body);
 
-      return {
+      return carry({
         response: transformedResponse,
         url,
         headers,
         transformedBody: body,
-        attemptStartedAt: providerAttemptStartedAt,
         terminalProvenance: "validated"
-      };
+      });
     } catch (error) {
+      await settleProviderAttemptDispatch(dispatch, { reason: error?.name === "AbortError" ? "abort" : "transport_error" });
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.name === "AbortError") {
-        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        error.providerAttemptStartedAt = sender.attemptStartedAt;
         throw error;
       }
       const errorResponse = new Response(JSON.stringify({
@@ -1597,7 +1638,7 @@ export class CursorExecutor extends BaseExecutor {
         status: HTTP_STATUS.SERVER_ERROR,
         headers: { "Content-Type": "application/json" }
       });
-      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
     }
   }
 
@@ -1631,7 +1672,7 @@ export class CursorExecutor extends BaseExecutor {
         try {
           const text = payload.toString("utf-8");
           if (text.includes('"error"')) {
-            debugLog(`[CURSOR BUFFER] Error frame: ${text.slice(0, 500)}`);
+            debugLog("[CURSOR BUFFER] Connect error frame");
             return createErrorResponse(JSON.parse(text));
           }
         } catch {}

@@ -92,6 +92,15 @@ function response(content, model, stream) {
   return new Response(new ReadableStream({ start(c) { for (const part of chunks) c.enqueue(enc.encode(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, ...part }] })}\n\n`)); c.enqueue(enc.encode("data: [DONE]\n\n")); c.close(); } }), { headers: { "content-type": "text/event-stream" } });
 }
 
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason || new DOMException("Request aborted", "AbortError"));
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); signal.removeEventListener("abort", onAbort); reject(signal.reason || new DOMException("Request aborted", "AbortError")); };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export class PromptQlExecutor extends BaseExecutor {
   constructor(deps = {}) { super("promptql", { id: "promptql", baseUrl: GQL }); this.fetch = deps.fetch || ((...args) => globalThis.fetch(...args)); }
   async execute(input) {
@@ -120,7 +129,17 @@ export class PromptQlExecutor extends BaseExecutor {
         if (r.status === 429) throw Object.assign(new Error("PromptQL quota or rate limit exceeded"), { status: 429 });
         const j = await r.json(); if (!r.ok || j.errors?.length) throw Object.assign(new Error(j.errors?.map((e) => e.message).join("; ") || `PromptQL HTTP ${r.status}`), { status: r.status }); return j.data;
       };
-      if (input.action === "models") return { models: (await gql(MODEL_QUERY, {}, "FetchLlmConfigs")).llm_config || [] };
+      const persistSession = async () => {
+        if (sessionUpdate && input.onCredentialsRefreshed) {
+          try { await input.onCredentialsRefreshed(sessionUpdate); }
+          catch { input.log?.warn?.("TOKEN", "Could not save PromptQL playground credentials"); }
+        }
+      };
+      if (input.action === "models") {
+        const models = (await gql(MODEL_QUERY, {}, "FetchLlmConfigs")).llm_config || [];
+        await persistSession();
+        return { models };
+      }
       const msgs = Array.isArray(body.messages) ? body.messages : [], last = [...msgs].reverse().find((m) => m.role === "user");
       const text = Array.isArray(last?.content) ? last.content.map((part) => part.text || "").join("\n") : String(last?.content || "");
       if (!text.trim()) return error(400, "No user message found", body);
@@ -146,18 +165,22 @@ export class PromptQlExecutor extends BaseExecutor {
       }
       let cursor = "0", answer = "";
       for (let i = 0; i < 150; i++) {
-        if (input.signal?.aborted) throw new Error("Request aborted");
+        if (input.signal?.aborted) throw input.signal.reason || new DOMException("Request aborted", "AbortError");
         const data = await gql(EVENTS, { thread_id: thread, after_event_id: cursor }, "QueryThreadEvents");
         for (const ev of data.thread_events || []) { cursor = String(ev.thread_event_id); answer = eventText(ev.event_data) || answer; }
         if (answer && /final_response_sent|final_response|AgentMessage/i.test(JSON.stringify(data.thread_events || []))) break;
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await sleep(1200, input.signal);
       }
       if (!answer) throw new Error("PromptQL returned no assistant message before timeout");
-      if (sessionUpdate && input.onCredentialsRefreshed) {
-        try { await input.onCredentialsRefreshed(sessionUpdate); }
-        catch { input.log?.warn?.("TOKEN", "Could not save PromptQL playground credentials"); }
-      }
+      await persistSession();
       return { response: response(answer, input.model || body.model || "promptql-default", input.stream ?? body.stream), url: GQL, headers: { "X-PromptQL-Thread-Id": thread }, transformedBody: body };
-    } catch (e) { const status = e.status || (/expired|unauthorized|JWT/i.test(e.message) ? 401 : /quota|rate limit|429/i.test(e.message) ? 429 : 502); return error(status, e.message || "PromptQL request failed", body); }
+    } catch (e) {
+      if (input.signal?.aborted) {
+        if (e?.name === "AbortError") throw e;
+        throw new DOMException("Request aborted", "AbortError");
+      }
+      const status = e.status || (/expired|unauthorized|JWT/i.test(e.message) ? 401 : /quota|rate limit|429/i.test(e.message) ? 429 : 502);
+      return error(status, e.message || "PromptQL request failed", body);
+    }
   }
 }

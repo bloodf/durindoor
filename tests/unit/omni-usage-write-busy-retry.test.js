@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,7 +56,7 @@ it("retries rolled-back contention without duplicating history or counters", asy
   expect(await repo.saveRequestUsage(event)).toBe(true);
   expect(db.get("SELECT COUNT(*) AS n, MIN(timestamp) AS timestamp FROM usageHistory")).toMatchObject({ n: 1, timestamp: event.timestamp });
   expect(db.get("SELECT totalRequests, totalTokens FROM apiKeyUsageTotals WHERE apiKeyId = ?", ["key-1"])).toMatchObject({ totalRequests: 1, totalTokens: 5 });
-  expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).requests).toBe(1);
+  expect([...readUsageDailyRollups(db)][0].day.requests).toBe(1);
 });
 
 it("stops after bounded contention and preserves best-effort failure", async () => {

@@ -232,9 +232,19 @@ recommendation.
    [`sdk/auth/antigravity_models.go`](https://github.com/router-for-me/CLIProxyAPI/blob/6faa8d20b2673404cff70a2f2d9537ae0d0e684d/sdk/auth/antigravity_models.go)
    `configureAntigravityHTTP11Transport`. DurinDoor's equivalent probe goes
    through `proxyAwareFetch` with no protocol control, so the wire shape is not
-   pinned. Whether that matters in practice is unverified here: no live Antigravity
-   call was made. The shared transport was left intact; see
-   [`antigravity-2034.md`](./antigravity-2034.md) for the recorded delta.
+   pinned by the account-probe caller. The loopback-only TLS fixture in
+   `tests/unit/antigravity-probe-tls-contract.test.js` exercised
+   the direct fetch path using the shared pool settings and a fixture trust anchor
+   against a server that reports both ClientHello ALPN offers and the selected
+   protocol. The client offered `http/1.1`; the server selected `http/1.1` and
+   returned the fixture response. The fixture would select `h2` if it were
+   offered, so this distinguishes the offer from the negotiated result. No
+   offer-free behavior was observed on this runtime. This establishes the
+   behavior of these settings on the tested runtime. Since the
+   actual account probe still does not explicitly constrain ALPN, its observed
+   interoperability with an ALPN-free server is not established here. The
+   shared transport was left intact; see [`antigravity-2034.md`](./antigravity-2034.md)
+   for the recorded delta.
 2. **Upstream persists per-account capability hints.** Upstream stores the probed
    model ids and web-search model ids in credential metadata under
    `antigravity_capability_hints`, together with the project id, the sanitized

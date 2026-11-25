@@ -168,7 +168,6 @@ describe("#2204 — tray binary ownership filtering", () => {
 });
 
 describe("#2205 — durindoor and legacy 9router launcher recognition", () => {
-  const launcherCli = new URL("../../cli/cli.js", import.meta.url).pathname;
   it("recognizes durindoor and legacy 9router launchers while excluding updaters and lookalikes", () => {
     expect(APP_PROCESS_IDENTIFIERS).toEqual(["durindoor", "9router"]);
 
@@ -195,14 +194,18 @@ describe("#2205 — durindoor and legacy 9router launcher recognition", () => {
     }
   });
 
-  it("collects both durindoor and legacy 9router launcher processes via collectAppPids", () => {
+  it.each(["durindoor", "9router"])("collects launcher processes owned by the %s install", (name) => {
+    const installDir = path.join(makeTempDir(), name);
+    fs.mkdirSync(installDir);
+    const launcherCli = path.join(installDir, "cli.js");
+    fs.writeFileSync(launcherCli, "");
     const rows = [
-      { pid: 501, command: `node ${launcherCli} --port 20128 --tray` },
-      { pid: 502, command: `node ${launcherCli} -p 20128` },
+      { pid: 501, command: `node "${launcherCli}" --port 20128 --tray` },
+      { pid: 502, command: `node "${launcherCli}" -p 20128` },
       { pid: 503, command: "node /home/me/.durindoor/runtime/updater/updater.js" },
     ];
     const readCommand = (pid) => rows.find((r) => r.pid === pid)?.command ?? null;
-    expect(collectAppPids({ processes: rows, readCommand, exclude: new Set(), installDir: path.dirname(launcherCli), appPort: 20128 })).toEqual([501, 502]);
+    expect(collectAppPids({ processes: rows, readCommand, exclude: new Set(), installDir, appPort: 20128 })).toEqual([501, 502]);
   });
 
   it("wires installation ownership bounds in cli.js and removes dead PROCESS_IDENTIFIERS", () => {

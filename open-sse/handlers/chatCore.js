@@ -1,3 +1,4 @@
+import { estimateCompressionTokens } from "../services/compression/stats.js";
 import { githubRateLimit } from "./chatCore/githubRateLimit.js";
 import { updateProviderConnection } from "@/lib/localDb.js";
 import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
@@ -986,6 +987,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // as a response-header value. Catastrophic seam failure restores the pre-stack
   // snapshot and emits no header. Fail-open throughout.
   let compressionHeaderValue = null;
+  let compressionStats = null;
   if (tokenSaverEnabled && compressionEnabled) {
     const adaptiveBudget = normalizeContextBudgetConfig(compressionAdaptive);
     const preStackSnapshot = structuredClone(translatedBody);
@@ -994,7 +996,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         enabled: true,
         engines: compressionEngines ?? {},
         // The resolved outgoing format disambiguates minimal Claude and OpenAI bodies.
-        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, format: finalFormat },
+        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: Boolean(headroomStats), format: finalFormat },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {
@@ -1014,6 +1016,9 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       translatedBody = compressedBody;
       if (headerValue) {
         compressionHeaderValue = headerValue;
+        const tokensBefore = estimateCompressionTokens(preStackSnapshot);
+        const tokensAfter = estimateCompressionTokens(compressedBody);
+        compressionStats = { tokensBefore, tokensAfter, tokensSaved: Math.max(0, tokensBefore - tokensAfter) };
         xf.push(`COMPRESS:${headerValue}`);
       }
     } catch (err) {
@@ -1126,6 +1131,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
           phantomSavings: headroomStats ? isHeadroomPhantomSavings(headroomStats, headroomDiagnostics) : false,
           diagnostic: hrDiagnostic
         },
+        compression: compressionStats,
         pxpipe: pxpipeSummary ? {
           applied: pxpipeSummary.applied,
           tokensBeforeEst: pxpipeSummary.tokensBeforeEst,
@@ -1801,7 +1807,9 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     // have their own deliberate resetsAtMs handling above, including leaving
     // it undefined on purpose when no real reset is known.
     if (!claudeRequestScoped && statusCode === HTTP_STATUS.RATE_LIMITED && !Number.isFinite(resetsAtMs)) {
-      const { cooldownMs, terminal } = checkFallbackError(statusCode, message, 0);
+      const { cooldownMs, terminal } = checkFallbackError({
+        status: statusCode, errorText: message, provider, model: cleanModel,
+      });
       if (!terminal && Number.isFinite(cooldownMs) && cooldownMs > 0) {
         resetsAtMs = Date.now() + cooldownMs;
       }

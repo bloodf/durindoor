@@ -10,7 +10,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
-import { getMimoAccountUsage } from "../../shared/mimoAccount.js";
+import { getMimoAccountUsage } from "../../utils/mimoAccount.js";
 import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const USAGE_URL = "https://aistudio.xiaomimimo.com/open-apis/v1/user/usage";

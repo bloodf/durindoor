@@ -20,6 +20,23 @@ export const ERROR_TYPES = {
   504: { type: "server_error", code: "gateway_timeout" }
 };
 
+// Claude Messages API error types are distinct from the OpenAI-compatible
+// types above. Keep this projection separate so OpenAI clients are unchanged.
+export const CLAUDE_ERROR_TYPES = Object.freeze({
+  400: "invalid_request_error",
+  401: "authentication_error",
+  402: "permission_error",
+  403: "permission_error",
+  404: "not_found_error",
+  413: "request_too_large",
+  429: "rate_limit_error",
+  500: "api_error",
+  502: "api_error",
+  503: "overloaded_error",
+  504: "timeout_error",
+  529: "overloaded_error"
+});
+
 // Default error messages per status code (client-facing)
 export const DEFAULT_ERROR_MESSAGES = {
   400: "Bad request",

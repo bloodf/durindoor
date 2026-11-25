@@ -10,8 +10,13 @@
 
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import commandcodeProvider from "../providers/registry/commandcode.js";
+import { createCatalogCache } from "./catalogCache.js";
 
 export const COMMANDCODE_MODELS_URL = "https://api.commandcode.ai/provider/v1/models?view=client";
+
+// No TTL: every lookup stays live. The endpoint is public, but `fetchImpl` carries
+// the egress route, so only concurrent calls with the same transport share it.
+const catalogCache = createCatalogCache();
 
 /**
  * Catalog rows carry display copy plus capability flags. `hidden` entries are
@@ -41,6 +46,10 @@ export function parseCommandCodeModels(data) {
  * or answers non-2xx so callers can fall back to their static list.
  */
 export async function resolveCommandCodeModels(fetchImpl = fetch) {
+  return catalogCache.load(fetchImpl, () => fetchCommandCodeCatalog(fetchImpl));
+}
+
+async function fetchCommandCodeCatalog(fetchImpl) {
   try {
     const response = await fetchImpl(COMMANDCODE_MODELS_URL, {
       method: "GET",

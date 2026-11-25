@@ -81,9 +81,8 @@ function sortConnections(connections, sort) {
 
 // Provider ordering is cosmetic: a settings read failure must not break the
 // quota connection listing, so fall back to the default order.
-async function readQuotaProviderOrderSetting() {
+function readQuotaProviderOrderSetting(settings) {
   try {
-    const settings = await getSettings();
     return Array.isArray(settings?.quotaProviderOrder) ? settings.quotaProviderOrder : [];
   } catch (error) {
     console.log("Error reading quota provider order:", error);
@@ -121,7 +120,13 @@ export async function GET(request) {
       return true;
     });
 
-    const savedProviderOrder = await readQuotaProviderOrderSetting();
+    let settings = {};
+    try {
+      settings = await getSettings();
+    } catch (error) {
+      console.warn("Error reading provider quota settings:", error);
+    }
+    const savedProviderOrder = readQuotaProviderOrderSetting(settings);
     const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), savedProviderOrder);
     const sorted = sortConnections(accountFilteredConnections, sort);
     const sortedConnections = sort === "expiring" ? sorted : applyQuotaProviderOrder(sorted, savedProviderOrder);
@@ -143,7 +148,8 @@ export async function GET(request) {
         const decision = evaluateProviderQuotaPreflight(snapshots, { connectionId: connection.id, provider: connection.provider, connectionWide: true });
         const ranked = rankQuotaConnections([connection], new Map([[connection.id, decision]]), new Map(), { config });
         safe.quotaPaused = ranked[0]?.quotaDecision?.reasons?.includes("below_routing_floor") === true;
-      } catch {
+      } catch (error) {
+        console.warn(`Error reading quota data for connection ${connection.id}:`, error);
         safe.quotaWindows = [];
         safe.quotaPaused = false;
       }

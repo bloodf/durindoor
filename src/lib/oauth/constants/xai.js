@@ -4,7 +4,7 @@
  * Source of truth: router-for-me/CLIProxyAPI internal/auth/xai/types.go
  * Mirrors the upstream Go constants 1:1.
  */
-import { PROVIDERS } from "open-sse/providers/index.js";
+import { PROVIDERS } from "../../../../open-sse/providers/index.js";
 
 // xAI client_id for OAuth (PKCE public client) — single source: registry xai.transport
 export const XAI_CLIENT_ID = PROVIDERS["xai"]?.clientId;

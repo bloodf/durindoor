@@ -1,3 +1,4 @@
+import { convertLegacyUsageDaily } from "@/lib/db/migrations/037-usage-daily-rollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -111,7 +112,7 @@ it("keeps one account row per model across interleaved grouped rows", async () =
   expect(Object.values(stats.byAccount).map(({ rawModel, requests }) => ({ rawModel, requests }))).toEqual([{ rawModel: "first", requests: 2 }, { rawModel: "second", requests: 1 }]);
 });
 
-it("streams daily JSON larger than the PostgreSQL bridge budget without changing stats or charts", async () => {
+it("streams daily rollups larger than the PostgreSQL bridge budget without changing stats or charts", async () => {
   const byModel = {};
   for (let i = 0; i < 1000; i++) byModel[`model-${i}|provider`] = {
     rawModel: `model-${i}`, provider: "provider", requests: 1, promptTokens: 1,
@@ -124,6 +125,7 @@ it("streams daily JSON larger than the PostgreSQL bridge budget without changing
     const dateKey = new Date(Date.UTC(2026, 5, 1 + i)).toISOString().slice(0, 10);
     db.run("INSERT INTO usageDaily(dateKey,data) VALUES (?,?)", [dateKey, data]);
   }
+  db.transaction(() => convertLegacyUsageDaily(db));
   // Exercise the real repository against SQLite, imposing the same response
   // size failure as PostgreSQL's synchronous worker bridge.
   const all = db.all.bind(db);

@@ -1,11 +1,9 @@
-import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
-import { modelKindError } from "./modelKind.js";
+import { abortedResponse, refreshMediaCredentials, resolveTypedMediaModel, runMediaEndpoint } from "./media/pipeline.js";
 import { withRequestCorrelation, getRequestId } from "../utils/requestCorrelation.js";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable } from "../services/auth.js";
-import { getSettings, getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
-import { getModelInfo } from "../services/model.js";
+import { getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
 import { sanitizeSecrets } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -58,10 +56,15 @@ async function handleMusicGenerationHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "music" });
-  if (admissionError) return admissionError;
+  return runMediaEndpoint(request, {
+    kind: "music",
+    pinConnection: "preferred",
+    rejectAborted: true,
+    route: (admission, pinOptions) => routeMusicGeneration(request, body, admission, pinOptions),
+  });
+}
 
-  const preferredConnectionId = request.headers.get("x-connection-id") || null;
+async function routeMusicGeneration(request, body, { settings, apiKey, auth: apiKeyAuth }, pinOptions) {
   if (wantsDefaultRoute(body.model)) {
     const route = await resolveMediaRoute("music", { settings, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
@@ -69,22 +72,18 @@ async function handleMusicGenerationHandler(request) {
       apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
-      handleSingleModel: (b, m) => handleSingleModelMusic(b, m, request, apiKey, apiKeyAuth.apiKeyId, preferredConnectionId, apiKeyAuth.billingEpoch),
+      handleSingleModel: (b, m) => handleSingleModelMusic(b, m, request, apiKey, apiKeyAuth.apiKeyId, pinOptions, apiKeyAuth.billingEpoch),
       log,
+      signal: request.signal,
       ...defaultRouteComboOptions("music")
     });
   }
-  return handleSingleModelMusic(body, body.model, request, apiKey, apiKeyAuth.apiKeyId, preferredConnectionId, apiKeyAuth.billingEpoch);
+  return handleSingleModelMusic(body, body.model, request, apiKey, apiKeyAuth.apiKeyId, pinOptions, apiKeyAuth.billingEpoch);
 }
 
-async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId, preferredConnectionId, billingEpoch) {
-  const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-  const { provider, model } = modelInfo;
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (policyError) return policyError;
-  const kindError = await modelKindError(provider, model, await getSettings(), "music");
-  if (kindError) return kindError;
+async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId, pinOptions, billingEpoch) {
+  const { provider, model, error } = await resolveTypedMediaModel(request, modelStr, body, apiKey, "music");
+  if (error) return error;
   if (asyncProviders.has(provider) && !apiKeyId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Music jobs require a stored caller API key");
   const usageEventId = `${getRequestId(request)}:music`;
 
@@ -93,7 +92,9 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
   let lastStatus = null;
 
   while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId, apiKeyId });
+    const abortedBeforeAttempt = abortedResponse(request.signal);
+    if (abortedBeforeAttempt) return abortedBeforeAttempt;
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { preferredConnectionId: null, ...pinOptions, apiKeyId });
 
     if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
       if (credentials?.providerDisabled) {
@@ -114,9 +115,10 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       const { state, ...receipt } = accounting;
       return { ...receipt, billingEpoch, usageEventId, provider, model, connectionId: credentials.connectionId ?? null, endpoint, modality: "music" };
     };
-    const dispatch = credentialDispatchSnapshot(credentials);
+    const { refreshed } = await refreshMediaCredentials(provider, credentials);
+    const dispatch = credentialDispatchSnapshot(refreshed);
     const result = await handleMusicGenerationCore({
-      provider, model, body, credentials, signal: request.signal,
+      provider, model, body, credentials: refreshed, signal: request.signal,
       onComplete: (accounting) => recordApiKeyUsage(apiKey, { ...usage(accounting), apiKeyId }),
     });
     if (result.success) {
@@ -130,6 +132,9 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       if (!result.deferred && result.accounting?.state === "complete") return recordApiKeyUsageForResponse(apiKey, result.response, { ...usage(result.accounting), apiKeyId });
       return result.response;
     }
+
+    const abortedAttempt = abortedResponse(request.signal);
+    if (abortedAttempt) return abortedAttempt;
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
     if (shouldFallback) {
@@ -147,9 +152,16 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
  * no usage event; durable terminal evidence replays one idempotent ledger event.
  */
 async function handleMusicGetHandler(request, requestId) {
-  const { apiKey, auth, error: admissionError } = await admit(request, { kind: "music" });
-  if (admissionError) return admissionError;
-  const connectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id");
+  return runMediaEndpoint(request, {
+    kind: "music",
+    pinConnection: "job",
+    rejectAborted: true,
+    route: (admission, pinOptions) => pollMusicJob(request, requestId, admission, pinOptions),
+  });
+}
+
+async function pollMusicJob(request, requestId, { apiKey, auth }, pinOptions) {
+  const connectionId = pinOptions.preferredConnectionId;
   if (!auth.apiKeyId || !connectionId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Music polling requires durable ownership and x-9router-connection-id");
   if (!isString(requestId) || !/^[\w-]+(?:,[\w-]+)*$/.test(requestId)) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid music request id");
   const connection = await getProviderConnectionById(connectionId);
@@ -163,13 +175,14 @@ async function handleMusicGetHandler(request, requestId) {
   if (policyError) return policyError;
   if (job.terminal) return replayMusicJob(job, apiKey);
   const credentials = await getProviderCredentialsWithQuotaPreflight(job.provider, null, job.model, {
-    preferredConnectionId: connectionId, strictConnectionId: connectionId, apiKeyId: auth.apiKeyId,
+    ...pinOptions, apiKeyId: auth.apiKeyId,
   });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled || credentials.connectionId !== connectionId) return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, "Music job connection unavailable");
-  const result = await handleMusicGenerationCore({ provider: job.provider, model: job.model, requestId: job.resourceId, credentials, signal: request.signal });
+  const { refreshed } = await refreshMediaCredentials(job.provider, credentials);
+  const result = await handleMusicGenerationCore({ provider: job.provider, model: job.model, requestId: job.resourceId, credentials: refreshed, signal: request.signal });
   if (!result.success) return result.response;
   if (result.job?.resourceId !== job.resourceId) return errorResponse(HTTP_STATUS.BAD_GATEWAY, "Music provider returned different job identities");
-  return finishMusicResult(job, auth.apiKeyId, apiKey, result, credentials);
+  return finishMusicResult(job, auth.apiKeyId, apiKey, result, refreshed);
 }
 export const handleMusicGet = withRequestCorrelation(handleMusicGetHandler);
 export const handleMusicGeneration = withRequestCorrelation(handleMusicGenerationHandler);

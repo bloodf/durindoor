@@ -1,3 +1,4 @@
+import { refreshCursorToken } from "./tokenRefresh/cursor.js";
 import { createPrivateKey } from "node:crypto";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, REFRESH_LEAD_MS } from "../config/appConstants.js";
@@ -252,6 +253,7 @@ function vertexRefreshHandler(c, log, proxyOptions) {
 
 const REFRESH_HANDLERS = {
   openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
+  cursor: (c, log, p) => refreshCursorToken(c.refreshToken, log, p),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
   antigravity: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.antigravity.clientId, PROVIDERS.antigravity.clientSecret, log, p),
   agy: (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS.agy.clientId, PROVIDERS.agy.clientSecret, log, p),

@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
@@ -569,7 +568,13 @@ export class PerplexityWebExecutor extends BaseExecutor {
     super("perplexity-web", PROVIDERS["perplexity-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null }, sender, billed) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -635,9 +640,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(
-        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions)
-      );
+      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions));
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);

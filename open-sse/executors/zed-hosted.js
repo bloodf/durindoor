@@ -24,6 +24,10 @@ import { claudeToOpenAIResponse } from "../translator/response/claude-to-openai.
 import { geminiToOpenAIResponse } from "../translator/response/gemini-to-openai.js";
 import { openaiResponsesToOpenAIResponse } from "../translator/response/openai-responses.js";
 import { buildErrorBody } from "../utils/error.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
   ZED_HEADERS,
@@ -318,13 +322,33 @@ export class ZedHostedExecutor extends BaseExecutor {
     }
   }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, proxyOptions = null }, sender, billed) {
     const requestBody = body ?? {};
     if (!zedHostedOptIn(credentials)) {
       const refused = zedDispatchDisabledError();
       return failure(refused.status, refused.code, refused.message, requestBody);
     }
-    const options = { fetch: this.deps.fetch, proxyOptions, signal };
+    // Token and catalog requests are not charged; each completion send is quota-bearing.
+    // An injected fetch replaces the network send under the same transport policy.
+    let completion = null;
+    const baseFetch = async (url, init) => {
+      const quotaBearing = new URL(url).pathname.endsWith("/completions");
+      // A completion resent with a fresh LLM token discards the rejected one.
+      if (quotaBearing) await settleProviderAttemptDispatch(completion, { reason: "fallback" });
+      const response = await sender.sendRequest(url, init, proxyOptions, {
+        quotaBearing,
+        transport: this.deps.fetch ? (options) => this.deps.fetch(url, options) : null,
+      });
+      if (quotaBearing) completion = billed(response);
+      return response;
+    };
+    const options = { fetch: (url, init) => credentialFetch(baseFetch, url, init), signal };
     try {
       const provider = await this.resolveModel(model, credentials, options);
       const providerRequest = buildProviderRequest(provider, model, requestBody, stream, credentials);
@@ -359,6 +383,7 @@ export class ZedHostedExecutor extends BaseExecutor {
         transformedBody: payload,
       };
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.statusCode === 400) return failure(400, "zed_hosted_bad_request", error.message, requestBody);
       if (error?.name === "AbortError" || signal?.aborted) throw error;
       const [status, code, message] = mapAuthError(error);

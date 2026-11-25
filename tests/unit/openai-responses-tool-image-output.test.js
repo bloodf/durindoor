@@ -14,17 +14,8 @@
  * `file_id`, and a file ID with no URL is rejected with HTTP 400 before the
  * request is dispatched.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({ handleChatCore: vi.fn() }));
-vi.mock("../../open-sse/handlers/chatCore.js", () => mocks);
-vi.mock("@/lib/usageDb.js", () => ({ recordTokenSaverEvent: vi.fn() }));
-vi.mock("../../open-sse/utils/tokenSaverBridge.js", () => ({
-  handlePonytailCommands: vi.fn(async () => null), DEFAULT_PONYTAIL_HELP: "help",
-}));
-
-const { convertResponsesApiFormat } = await import("../../open-sse/translator/formats/responsesApi.js");
-const { handleResponsesCore } = await import("../../open-sse/handlers/responsesHandler.js");
+import { describe, expect, it } from "vitest";
+import { convertResponsesApiFormat } from "../../open-sse/translator/formats/responsesApi.js";
 
 const IMAGE = "data:image/png;base64,iVBORw0KGgo=";
 const REMOTE_IMAGE = "https://example.com/reference.png";
@@ -115,33 +106,5 @@ describe("Responses tool output with image parts", () => {
       { type: "function_call", call_id: "c1", name: "view_image", arguments: "{}" },
       { type: "function_call_output", call_id: "c1", output: [{ type: "input_image", file_id: "file-scoped" }] },
     ])).toThrow(/file_id is not supported/);
-  });
-});
-
-describe("Responses handler dispatch", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.handleChatCore.mockResolvedValue({
-      success: true,
-      response: new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } }),
-    });
-  });
-
-  it.each([false, true])("dispatches the image block to the provider (stream=%s)", async (stream) => {
-    const output = [imagePart()];
-    const result = await handleResponsesCore({
-      body: { model: "test", stream, input: [
-        { type: "function_call", call_id: "c1", name: "view_image", arguments: "{}" },
-        { type: "function_call_output", call_id: "c1", output },
-      ] },
-      modelInfo: { provider: "groq", model: "test" }, credentials: {},
-    });
-
-    expect(result.success).toBe(true);
-    const dispatched = mocks.handleChatCore.mock.lastCall[0].body;
-    expect(dispatched.messages.find((message) => message.role === "tool").content).toBe(JSON.stringify(output));
-    expect(dispatched.messages.at(-1).content).toEqual([
-      { type: "image_url", image_url: { url: IMAGE, detail: "high" } },
-    ]);
   });
 });

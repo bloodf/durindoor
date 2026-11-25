@@ -22,7 +22,7 @@ import { detectFormat } from "open-sse/services/provider.js";
 import * as log from "../utils/logger.js";
 import { holdReservationForResponse, releaseLifetimeTokens, reserveLifetimeTokens } from "@/lib/apiKeyTokenReservations.js";
 import { getBatchRequestKeyId } from "../services/batchKeyIdentity.js";
-import { decodeAnthropicRequest } from "../utils/inboundGzip.js";
+import { decodeAnthropicRequest, readRequestJson } from "../utils/inboundGzip.js";
 import { isApiKeyExpired } from "@/shared/utils/apiKeyExpiry";
 import { enforceApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
@@ -47,7 +47,7 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
   if (requestAborted(request)) return errorResponse(499, "Request aborted");
   let body;
   try {
-    body = await request.json();
+    body = await readRequestJson(request);
   } catch {
     log.warn("CHAT", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");

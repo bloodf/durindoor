@@ -9,7 +9,7 @@ import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
-import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, isOpenAIResponsesLifecycleTerminal, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
@@ -603,6 +603,7 @@ export function createSSEStream(options = {}) {
   let currentOpenAIResponsesEvent = null;
   let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
+  let responsesLifecycleTerminalForwarded = false;
   let openAIResponsesDoneSent = false;
   const emitPendingUsageEstimate = (controller) => {
     if (!pendingUsageEstimate) return;
@@ -1401,6 +1402,17 @@ export function createSSEStream(options = {}) {
         if (sourceFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
         if (upstreamErrorForwarded) continue;
+        // A Responses client gets one lifecycle terminal. A later one is still
+        // observed, so a contradiction counts against the attempt, but it is
+        // not forwarded (upstream 9router #2713).
+        if (responsesLifecycleTerminalForwarded && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          const lateEventName = getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed);
+          if (isOpenAIResponsesLifecycleTerminal(lateEventName, parsed)) {
+            upstreamTerminal.observe({ chunk: parsed, eventName: lateEventName });
+            currentUpstreamEvent = null;
+            continue;
+          }
+        }
         // Capture raw diagnostics first; redact the public envelope (including
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
@@ -1443,6 +1455,7 @@ export function createSSEStream(options = {}) {
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
+          responsesLifecycleTerminalForwarded ||= isOpenAIResponsesLifecycleTerminal(openAIResponsesEventName, parsed);
         }
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate

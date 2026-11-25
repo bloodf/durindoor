@@ -14,6 +14,15 @@ const OPENAI_RESPONSES_TERMINAL_EVENTS = new Set([
 "error"]
 );
 
+/**
+ * Whether the event ends the response itself. A bare `error` does not count:
+ * OpenAI follows it with `response.failed`.
+ */
+export function isOpenAIResponsesLifecycleTerminal(eventName, chunk) {
+  return isOpenAIResponsesTerminalEvent(eventName, chunk) &&
+    getOpenAIResponsesEventName(eventName, chunk) !== "error";
+}
+
 export function getOpenAIResponsesEventName(eventName, chunk) {
   if (eventName) return eventName;
   if (chunk && isString(chunk.type)) return chunk.type;

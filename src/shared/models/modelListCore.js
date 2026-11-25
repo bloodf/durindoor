@@ -1,7 +1,7 @@
 import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { KIMI_CODING_MODELS_URL } from "../../../open-sse/providers/shared.js";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
-import { AI_PROVIDERS, getProviderAlias, isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
+import { AI_PROVIDERS, getProviderAlias, isAnthropicCompatibleProvider, isOpenAICompatibleProvider, resolveProviderId } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases, getSyncedModelCatalogs } from "@/lib/localDb";
 import { catalogEntryForConnection, effectiveSyncedModels, isConnectionScopedSyncProvider, isModelAutoSyncEnabled, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
@@ -367,6 +367,30 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     }])
   );
 
+  // port(upstream): decolua/9router#4627 — a seat nobody can route to must not
+  // lower the limits a combo publishes. A seat is routable through an active
+  // connection or an enabled keyless provider; a nested combo needs one such
+  // seat. With no connections, or no routable seat, every seat still counts.
+  const isRoutableSeat = (seat, seen = new Set()) => {
+    if (!seat.includes("/")) {
+      const nested = capabilityComboByName[seat]?.models;
+      if (!nested?.length || seen.has(seat)) return true;
+      return nested.some((member) => isRoutableSeat(member, new Set([...seen, seat])));
+    }
+    const prefix = seat.slice(0, seat.indexOf("/"));
+    const providerId = aliasToProviderId[prefix] ?? resolveProviderId(prefix);
+    return activeConnectionByProvider.has(providerId) ||
+      AI_PROVIDERS[providerId]?.noAuth === true && !isFreeNoAuthDisabled(providerId);
+  };
+  const routableSeats = (seats) => {
+    if (activeConnectionByProvider.size === 0) return seats;
+    const routable = seats.filter((seat) => isRoutableSeat(seat));
+    return routable.length ? routable : seats;
+  };
+  const limitComboByName = Object.fromEntries(
+    Object.entries(capabilityComboByName).map(([name, combo]) => [name, { ...combo, models: routableSeats(combo.models) }])
+  );
+
   // Combos first (filtered by kind). Web combos expose `kind` so AI knows search vs fetch.
   for (const combo of combos) {
     if (!comboMatchesKinds(combo, kindFilter)) continue;
@@ -378,8 +402,11 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
     if (hidePaidModels && visibleMembers.length === 0) continue;
     const entry = comboToEntry(combo);
     if (entry.kind !== "webSearch" && entry.kind !== "webFetch") {
-      const comboCaps = aggregateComboCapabilities(visibleMembers.filter(isString), capabilityComboByName, aliasToProviderId, 0, customCapsById);
-      if (comboCaps) {
+      const members = visibleMembers.filter(isString);
+      const memberCaps = aggregateComboCapabilities(members, capabilityComboByName, aliasToProviderId, 0, customCapsById);
+      if (memberCaps) {
+        const { contextWindow, maxOutput } = aggregateComboCapabilities(routableSeats(members), limitComboByName, aliasToProviderId, 0, customCapsById);
+        const comboCaps = { ...memberCaps, contextWindow, maxOutput };
         const explicitCap = isObject(combo.capabilities) ? combo.capabilities : null;
         const finalCaps = explicitCap ? overlayComboCapabilities(comboCaps, explicitCap) : comboCaps;
         if (finalCaps) {

@@ -14,17 +14,6 @@ const { parse } = createRequire(new URL("../../package.json", import.meta.url))(
 const executorsDir = new URL("../../open-sse/executors/", import.meta.url);
 
 const overrideAllowlist = {
-  "huggingchat.js": "HuggingChat creates conversations and handles its event protocol.",
-  "hyperagent.js": "Hyperagent owns its session and agent message protocol.",
-  "kimi-web.js": "Kimi Web uses its Connect RPC stream.",
-  "lmarena.js": "Arena manages its browser-session inference transport.",
-  "maxai.js": "MaxAI manages its web-session chat transport.",
-  "mimo-free.js": "MiMo Free owns JWT bootstrap and its free chat transport.",
-  "muse-spark-web.js": "Muse Spark owns its web-session streaming protocol.",
-  "notion-web.js": "Notion Web owns its workspace and AI message protocol.",
-  "notrack-web.js": "Notrack owns its web-session inference transport.",
-  "oneminai.js": "1min.AI owns its feature- and model-specific requests.",
-  "perplexity-web.js": "Perplexity owns its browser-session event transport.",
   "promptql.js": "PromptQL owns its conversation and streaming requests.",
   "qoder.js": "Qoder owns its queue submission, polling, and replay protocol.",
   "t3-chat-web.js": "T3 Chat owns its browser-session request and streaming protocol.",

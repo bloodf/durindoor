@@ -44,7 +44,7 @@ describe("Gemini turn normalization", () => {
           functionResponse: {
             id: "call_1",
             name: "run",
-            response: { result: { result: "" } },
+            response: { result: "" },
           },
         }],
       },

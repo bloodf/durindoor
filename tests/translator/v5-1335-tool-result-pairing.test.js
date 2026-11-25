@@ -161,12 +161,12 @@ describe("#1335 turn-scoped tool-result pairing", () => {
       {
         id: "old",
         name: "a",
-        response: { result: { result: "old-result" } },
+        response: { result: "old-result" },
       },
       {
         id: "new",
         name: "b",
-        response: { result: { result: "new-result" } },
+        response: { result: "new-result" },
       },
     ]);
     expect(JSON.stringify(gemini.contents)).not.toContain("wrong-cross-turn");

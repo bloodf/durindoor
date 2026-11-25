@@ -277,7 +277,7 @@ describe("handleChatCore Headroom diagnostics", () => {
     const outbound = executeMock.mock.calls[0][0].body;
     const parts = outbound.request.contents.flatMap((content) => content.parts);
     expect(parts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ functionResponse: expect.objectContaining({ id: "call_1", response: { result: { result: "short result" } } }) }),
+      expect.objectContaining({ functionResponse: expect.objectContaining({ id: "call_1", response: { result: "short result" } }) }),
       expect.objectContaining({ functionCall: expect.objectContaining({ name: "search", args: { query: "symbol" } }) }),
     ]));
     expect(JSON.stringify(outbound)).not.toContain(original);

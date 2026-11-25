@@ -119,6 +119,11 @@ function createGeminiCallIdAllocator(rawIds) {
   };
 }
 
+/** Put a tool result under exactly one `result` key; an existing envelope passes through (upstream #5529). */
+function wrapFunctionResult(value) {
+  return isObject(value) && !Array.isArray(value) && value?.result !== undefined ? value : { result: value };
+}
+
 /**
  * Core OpenAI→Gemini request translator (base for all Gemini variants).
  *
@@ -342,18 +347,11 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
                   rest;
                 }
               }
-              let parsedResp = sanitizeFunctionResponseResult(tryParseJSON(resp));
-              if (parsedResp === null) {
-                parsedResp = { result: resp };
-              } else if (!isObject(parsedResp)) {
-                parsedResp = { result: parsedResp };
-              }
-
               toolParts.push({
                 functionResponse: {
                   id: fid,
                   name: sanitizeToolName(name),
-                  response: { result: parsedResp }
+                  response: wrapFunctionResult(sanitizeFunctionResponseResult(tryParseJSON(resp)) ?? resp)
                 }
               });
             }
@@ -640,7 +638,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
             const functionResponse = {
               id: responseId,
               name: resolvedName,
-              response: { result: sanitizeFunctionResponseResult(tryParseJSON(content)) || content }
+              response: wrapFunctionResult(sanitizeFunctionResponseResult(tryParseJSON(content)) || content)
             };
             if (imageParts.length > 0) functionResponse.parts = imageParts;
             parts.push({ functionResponse });

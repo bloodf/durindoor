@@ -863,6 +863,16 @@ async function directFetch(url, options) {
   return options?.dispatcher ? response : rememberDispatcher(response, dispatcher);
 }
 
+/** Node response headers as fetch Headers: case-insensitive, repeated values kept. */
+function toFetchHeaders(nodeHeaders) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(nodeHeaders || {})) {
+    if (Array.isArray(value)) value.forEach((item) => headers.append(name, String(item)));
+    else if (value != null) headers.set(name, String(value));
+  }
+  return headers;
+}
+
 /**
  * Create HTTPS request with manual socket connection (bypass DNS)
  */
@@ -929,7 +939,7 @@ export async function createBypassRequest(parsedUrl, realIP, options) {
           ok: res.statusCode >= HTTP_SUCCESS_MIN && res.statusCode < HTTP_SUCCESS_MAX,
           status: res.statusCode,
           statusText: res.statusMessage,
-          headers: new Map(Object.entries(res.headers)),
+          headers: toFetchHeaders(res.headers),
           body: Readable.toWeb(res),
           text: async () => {
             const chunks = [];

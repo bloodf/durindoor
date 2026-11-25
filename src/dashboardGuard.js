@@ -197,6 +197,19 @@ async function hasValidGatewayKey(request) {
   return !!(await validateGatewayKey(apiKey));
 }
 
+/**
+ * An SSE session opened with `?key=` posts messages with only its session id.
+ * The guard does not hold the sessions, so the message route authenticates this
+ * request: it accepts the id of a `?key=` session and nothing else. A request
+ * that presents a key is not covered and must pass the gateway key check.
+ */
+function isKeylessSseMessage(request, routePath) {
+  return routePath === "/api/mcp-gateway/message" &&
+    String(request.method).toUpperCase() === "POST" &&
+    Boolean(request.nextUrl.searchParams?.get("sessionId")) &&
+    !extractApiKey(request);
+}
+
 async function canAccessPublicLlmApi(request) {
   if (isLocalRequest(request)) return true;
   if (await hasValidCliToken(request)) return true;
@@ -605,6 +618,7 @@ export async function proxy(request) {
     if (isLocalRequest(request)) return NextResponse.next();
     if (await hasValidCliToken(request)) return NextResponse.next();
     if (await hasValidGatewayKey(request)) return NextResponse.next();
+    if (isKeylessSseMessage(request, routePath)) return NextResponse.next();
     return NextResponse.json({ error: "gateway key required" }, { status: 401 });
   }
 

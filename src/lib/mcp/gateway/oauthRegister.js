@@ -1,8 +1,40 @@
 // Dynamic client registration (RFC 7591) for upstream MCP OAuth.
 
+import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { isRecord } from "./guards";
 
 const TIMEOUT_MS = 10_000;
+const MAX_REDIRECT_HOPS = 10;
+
+// Guarded, DNS-pinned POST. Only same-origin redirects are followed (the same
+// rule as doRefresh). Errors never carry upstream-chosen URLs or bodies.
+async function postRegistration(endpoint, init) {
+  let currentUrl;
+  try {
+    currentUrl = new URL(endpoint);
+  } catch {
+    throw new Error("registration endpoint is not a valid URL");
+  }
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    let res;
+    try {
+      res = await guardedProbeFetch(currentUrl.toString(), init);
+    } catch (err) {
+      if (err instanceof OutboundUrlGuardError) {
+        throw new Error("registration endpoint blocked by the outbound URL guard");
+      }
+      throw err;
+    }
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return res;
+    const next = new URL(location, currentUrl);
+    if (next.origin !== currentUrl.origin) {
+      throw new Error("registration redirect crossed origin");
+    }
+    currentUrl = next;
+  }
+  throw new Error("registration exceeded the redirect limit");
+}
 
 /**
  * Register a public OAuth client with the upstream authorization server.
@@ -25,15 +57,14 @@ export async function registerClient(registrationEndpoint, redirectUri, opts = {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(registrationEndpoint, {
+    const res = await postRegistration(registrationEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(body),
       signal: ac.signal,
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`registration ${res.status}: ${text?.slice(0, 200)}`);
+      throw new Error(`registration failed with status ${res.status}`);
     }
     const doc = await res.json().catch(() => null);
     if (!isRecord(doc) || !doc.client_id) {

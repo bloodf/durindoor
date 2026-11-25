@@ -37,12 +37,20 @@ import {
   isPubliclyFetchableBase } from
 "@/lib/mcp/gateway/oauthCimd";
 import { selectOAuthPublicBase } from "@/lib/mcp/gateway/oauthPublicBase";
+import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const CALLBACK_TIMEOUT_MS = 300_000;
+const RESULT_RETENTION_MS = 30_000;
+const MAX_REDIRECT_HOPS = 10;
+// Route headers override the baseline headers applied before Next handles the request.
+const RESULT_HEADERS = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"
+};
 
 // Compute OAuth redirect/CIMD origin. Explicit env wins, then an active public
 // tunnel, then reverse-proxy headers and finally the request origin.
@@ -193,6 +201,50 @@ function toOauthInstance(raw) {
   };
 }
 
+// Guarded, DNS-pinned token POST. Only same-origin redirects are followed (the
+// same rule as doRefresh), so the code and verifier never reach another origin.
+async function postTokenRequest(tokenEndpoint, init) {
+  let currentUrl;
+  try {
+    currentUrl = new URL(tokenEndpoint);
+  } catch {
+    throw new Error("token endpoint is not a valid URL");
+  }
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    let res;
+    try {
+      res = await guardedProbeFetch(currentUrl.toString(), init);
+    } catch (err) {
+      if (err instanceof OutboundUrlGuardError) {
+        throw new Error("token endpoint blocked by the outbound URL guard");
+      }
+      throw err;
+    }
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return res;
+    const next = new URL(location, currentUrl);
+    if (next.origin !== currentUrl.origin) {
+      throw new Error("token redirect crossed origin");
+    }
+    currentUrl = next;
+  }
+  throw new Error("token exchange exceeded the redirect limit");
+}
+
+// registerMcpSession always sets a status; an entry without one is still pending.
+function isPendingExchange(session) {
+  return Boolean(session) && (session.status ?? "pending") === "pending";
+}
+
+// End a still-pending exchange that failed before reaching the token endpoint.
+// An exchange already claimed by another callback is left alone.
+function failPendingExchange(id, state, error) {
+  if (!state || !isPendingExchange(getMcpSessionStatus(id, state))) return;
+  completeMcpSession(id, state, { status: "error", error });
+  // Keep the status record briefly so the dashboard can poll it.
+  setTimeout(() => clearMcpSession(id, state), RESULT_RETENTION_MS);
+}
+
 export async function GET(request, context) {
   const { id, action } = await context.params;
   const url = new URL(request.url);
@@ -302,24 +354,29 @@ export async function GET(request, context) {
     const state = url.searchParams.get("state");
     const errParam = url.searchParams.get("error");
     if (errParam) {
-      return new Response(renderResultPage(false, `OAuth error: ${errParam}`), {
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+      failPendingExchange(id, state, "OAuth authorization failed.");
+      return new Response(renderResultPage(false, "OAuth authorization failed."), {
+        headers: RESULT_HEADERS
       });
     }
     if (!code || !state) {
+      failPendingExchange(id, state, "missing code or state");
       return new Response(renderResultPage(false, "missing code or state"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
     const raw = await getInstanceById(id);
-    if (!raw) return NextResponse.json({ error: "instance not found" }, { status: 404 });
+    if (!raw) {
+      failPendingExchange(id, state, "instance not found");
+      return NextResponse.json({ error: "instance not found" }, { status: 404 });
+    }
     const instance = toOauthInstance(raw);
     const session = getMcpSessionStatus(id, state);
-    if (!session) {
+    if (!isPendingExchange(session)) {
       return new Response(renderResultPage(false, "CSRF check failed (no session)"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
     const rawAs2 = instance.oauthTokens?.as;
@@ -331,12 +388,15 @@ export async function GET(request, context) {
     };
     const tokenEndpoint = meta.token_endpoint;
     if (!tokenEndpoint) {
-      completeMcpSession(id, state, { status: "error", error: "no token_endpoint stored" });
+      failPendingExchange(id, state, "no token_endpoint stored");
       return new Response(renderResultPage(false, "no token_endpoint on instance"), {
         status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     }
+    // Single use: claim before the next await so a replayed state is rejected.
+    // `session` still holds the verifier; the stored entry no longer does.
+    completeMcpSession(id, state, { status: "processing" });
     // Exchange code → tokens
     const body = new URLSearchParams({
       grant_type: "authorization_code",
@@ -347,25 +407,25 @@ export async function GET(request, context) {
     });
     if (session.resource) body.set("resource", session.resource);
     try {
-      const tokenRes = await fetch(tokenEndpoint, {
+      const tokenRes = await postTokenRequest(tokenEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: body.toString()
       });
-      const text = await tokenRes.text();
       if (!tokenRes.ok) {
-        completeMcpSession(id, state, { status: "error", error: `token ${tokenRes.status}: ${text?.slice(0, 200)}` });
+        completeMcpSession(id, state, { status: "error", error: `token exchange failed with status ${tokenRes.status}` });
         return new Response(renderResultPage(false, `token exchange failed: ${tokenRes.status}`), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" }
+          headers: RESULT_HEADERS
         });
       }
-      const doc = JSON.parse(text);
-      if (!doc.access_token) {
+      // A parse error message quotes the body, so swallow it.
+      const doc = await tokenRes.json().catch(() => null);
+      if (!doc?.access_token) {
         completeMcpSession(id, state, { status: "error", error: "no access_token in response" });
         return new Response(renderResultPage(false, "no access_token in response"), {
           status: 500,
-          headers: { "Content-Type": "text/html; charset=utf-8" }
+          headers: RESULT_HEADERS
         });
       }
       await storeTokens(id, {
@@ -384,18 +444,18 @@ export async function GET(request, context) {
       });
       completeMcpSession(id, state, { status: "complete", tokens: { hasAccess: true } });
       return new Response(renderResultPage(true, "Connected. You can close this tab."), {
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       completeMcpSession(id, state, { status: "error", error: msg });
       return new Response(renderResultPage(false, `exchange error: ${msg}`), {
         status: 500,
-        headers: { "Content-Type": "text/html; charset=utf-8" }
+        headers: RESULT_HEADERS
       });
     } finally {
-      // Keep the session around briefly so the dashboard can poll status.
-      setTimeout(() => clearMcpSession(id, state), 30_000);
+      // Keep the status record briefly so the dashboard can poll it.
+      setTimeout(() => clearMcpSession(id, state), RESULT_RETENTION_MS);
     }
   }
 
@@ -413,13 +473,17 @@ export async function GET(request, context) {
   return NextResponse.json({ error: `unknown action: ${action}` }, { status: 404 });
 }
 
+// Messages can contain upstream error text; encode it before inserting into HTML.
 function renderResultPage(success, message) {
+  const escapedMessage = message.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[character]);
   const color = success ? "#22c55e" : "#ef4444";
   const icon = success ? "&#10003;" : "&#10007;";
   const title = success ? "Authentication Successful" : "Authentication Failed";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5}.c{text-align:center;padding:2rem;background:#fff;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1)}.i{color:${color};font-size:3rem}h1{margin:1rem 0}p{color:#666}</style>
-</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${message}</p><p>You can close this tab and return to DurinDoor.</p>
+</head><body><div class="c"><div class="i">${icon}</div><h1>${title}</h1><p>${escapedMessage}</p><p>You can close this tab and return to DurinDoor.</p>
 </div></body></html>`;
 }

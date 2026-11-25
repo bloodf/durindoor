@@ -1,7 +1,8 @@
 // SSE handshake endpoint for the MCP gateway.
 //
 // Like the existing /api/mcp/[plugin]/sse, but:
-//   - the endpoint URL posted to the client is /api/mcp-gateway/message?sessionId=<sid>
+//   - the endpoint URL posted to the client is
+//     <base path>/api/mcp-gateway/message?sessionId=<sid>
 //   - sessions are isolated per gateway call, not per preset stdio plugin
 //   - the actual upstream fan-out lives in the message route
 
@@ -13,11 +14,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   const authorization = request.headers.get("Authorization");
-  const rawKey = authorization?.startsWith("Bearer ")
+  const headerKey = authorization?.startsWith("Bearer ")
     ? authorization.slice(7)
-    : request.headers.get("x-api-key") || request.headers.get("x-goog-api-key") || new URL(request.url).searchParams.get("key");
+    : request.headers.get("x-api-key") || request.headers.get("x-goog-api-key");
+  const queryKey = headerKey ? null : new URL(request.url).searchParams.get("key");
+  const rawKey = headerKey || queryKey;
   const key = rawKey ? await validateGatewayKey(rawKey) : null;
   if (!key) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const basePath = request.nextUrl?.basePath || "";
   const encoder = new TextEncoder();
   let sid = null;
   const onAbort = () => {
@@ -29,14 +33,28 @@ export async function GET(request) {
   const stream = new ReadableStream({
     start(controller) {
       const send = (chunk) => {
-        try { controller.enqueue(encoder.encode(chunk)); } catch { /* closed */ }
+        try {
+          controller.enqueue(encoder.encode(chunk));
+          return true;
+        } catch {
+          return false; // closed
+        }
       };
-      sid = registerSession(send, key.id);
+      sid = registerSession(send, key.id, {
+        queryKey,
+        // A client that stopped reading gets no ping and ages out.
+        heartbeat: () => controller.desiredSize > 0 && send(": ping\n\n"),
+        close: () => {
+          sid = null;
+          request.signal.removeEventListener("abort", onAbort);
+          try { controller.close(); } catch { /* already closed or cancelled */ }
+        },
+      });
       if (!sid) {
         controller.close();
         return;
       }
-      send(`event: endpoint\ndata: /api/mcp-gateway/message?sessionId=${sid}\n\n`);
+      send(`event: endpoint\ndata: ${basePath}/api/mcp-gateway/message?sessionId=${sid}\n\n`);
     },
     cancel() {
       // Normal completion/disconnect: unregister exactly once, then detach

@@ -11,6 +11,7 @@ const MAX_REMEMBERED = 256;
 
 const lastGood = new Map();
 const flights = new Map();
+let nextGeneration = 0;
 
 function remember(key, value) {
   lastGood.delete(key);
@@ -20,14 +21,15 @@ function remember(key, value) {
 }
 
 function startFlight(key, load) {
-  const flight = { startedAt: Date.now(), promise: null };
+  const flight = { startedAt: Date.now(), generation: ++nextGeneration, promise: null };
   flight.promise = Promise.resolve().then(load).then(
     (value) => {
-      remember(key, value);
+      // Only the latest flight may update cached data, even after it expires.
+      if (flights.get(key)?.generation === flight.generation) remember(key, value);
       return value;
     },
     (error) => {
-      lastGood.delete(key);
+      if (flights.get(key)?.generation === flight.generation) lastGood.delete(key);
       throw error;
     }
   ).finally(() => {

@@ -13,7 +13,7 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
-import { isFunction, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
@@ -59,6 +59,14 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 function isSecretProviderSpecificKey(key) {
   if (SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key)) return true;
   return !NON_SECRET_PROVIDER_SPECIFIC_FIELDS.has(key) && SECRET_LIKE_PROVIDER_SPECIFIC_KEY.test(key);
+}
+
+/** Ignore redaction placeholders on sensitive metadata updates, preserving stored values. */
+export function omitMaskedProviderSecrets(data) {
+  if (!data || !isObject(data) || Array.isArray(data)) return data;
+  return Object.fromEntries(Object.entries(data).filter(([key, value]) =>
+    !(isSecretProviderSpecificKey(key) && isString(value) && /^(?:\*{3,}|•{3,}|\[redacted\])$/i.test(value.trim()))
+   ));
 }
 
 const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [

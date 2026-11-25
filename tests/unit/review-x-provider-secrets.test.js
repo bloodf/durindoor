@@ -1,8 +1,17 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { pickSafeProviderSpecificData } from "../../src/lib/providerRouteHandlers.js";
 import { mergeProviderSpecificData } from "../../src/lib/db/helpers/mergeProviderMetadata.js";
+
+const mocks = vi.hoisted(() => ({ existing: null, update: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({
+  getProviderConnectionById: async () => mocks.existing,
+  updateProviderConnection: mocks.update,
+  getProviderConnections: vi.fn(), getProviderNodes: vi.fn(), getProviderNodeById: vi.fn(),
+  getProxyPoolById: vi.fn(), createProviderConnection: vi.fn(), deleteProviderConnection: vi.fn(),
+}));
+const { PUT } = await import("../../src/app/api/providers/[id]/route.js");
 
 const root = resolve(import.meta.dirname, "../..");
 const credentialName = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid|jwt|storageState/i;
@@ -30,6 +39,21 @@ describe("provider metadata credentials", () => {
     expect(visible).toEqual({ workspaceId: "workspace" });
     expect(mergeProviderSpecificData(stored, visible)).toEqual(stored);
     expect(pickSafeProviderSpecificData("x", { customJwt: "secret" })).toEqual({});
+  });
+
+  it("preserves omitted and masked credentials during an update while accepting replacements", async () => {
+    const stored = { jwt: "old-jwt", storageState: { cookies: ["old"] }, cookie: "old-cookie", workspaceId: "old" };
+    mocks.existing = { id: "connection", provider: "chatplayground", providerSpecificData: stored };
+    mocks.update.mockImplementation(async (_id, patch) => ({ ...mocks.existing, ...patch }));
+    const update = async (providerSpecificData) => PUT(new Request("http://localhost/api/providers/connection", {
+      method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ providerSpecificData }),
+    }), { params: Promise.resolve({ id: "connection" }) });
+    const response = await update({ jwt: "***", storageState: "[REDACTED]", cookie: "••••", workspaceId: "new" });
+    expect(response.status).toBe(200);
+    expect(mocks.update.mock.lastCall[1].providerSpecificData).toEqual({ ...stored, workspaceId: "new" });
+    expect((await response.json()).connection.providerSpecificData).toEqual({ workspaceId: "new" });
+    expect((await update({ jwt: "new-jwt", storageState: { cookies: ["new"] } })).status).toBe(200);
+    expect(mocks.update.mock.lastCall[1].providerSpecificData).toMatchObject({ jwt: "new-jwt", storageState: { cookies: ["new"] }, cookie: "old-cookie" });
   });
 
   it("hides credential-shaped providerSpecificData reads in executors and utilities", () => {

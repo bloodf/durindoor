@@ -64,16 +64,40 @@ export const GEMINI_WEB_BROWSER_IDLE_MS = 60_000;
 
 // ─── Cookies ────────────────────────────────────────────────────────────────
 
+// Domains whose cookies a browser sends to gemini.google.com.
+const GEMINI_COOKIE_DOMAINS = new Set(["google.com", "gemini.google.com"]);
+// Characters that would end a pair or the header itself.
+const UNSAFE_COOKIE_NAME = /[\s;=\x00-\x1f\x7f]/;
+const UNSAFE_COOKIE_VALUE = /[;\x00-\x1f\x7f]/;
+
+/** Pairs from a Cookie-Editor style `[{ name, value, domain }]` export (9router#5837). */
+function cookiePairsFromList(entries) {
+  const pairs = new Map();
+  for (const entry of entries) {
+    if (!isObject(entry) || !isString(entry.name) || !isString(entry.value)) continue;
+    const { name, domain } = entry;
+    const value = entry.value.trim();
+    if (!name || !value || UNSAFE_COOKIE_NAME.test(name) || UNSAFE_COOKIE_VALUE.test(value)) continue;
+    if (isString(domain) && !GEMINI_COOKIE_DOMAINS.has(domain.toLowerCase().replace(/^\./, ""))) continue;
+    pairs.set(name, value);
+  }
+  return Array.from(pairs, ([name, value]) => `${name}=${value}`);
+}
+
+/** Cookie pairs from JSON input, or null when the input is not a JSON cookie export. */
 function cookiePairsFromJson(raw) {
-  if (!raw.startsWith("{")) return [];
+  if (!raw.startsWith("{") && !raw.startsWith("[")) return null;
   try {
     const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : parsed.cookies;
+    if (Array.isArray(list)) return cookiePairsFromList(list);
     const cookies = isObject(parsed.cookies) ? parsed.cookies : parsed;
-    return Object.entries(cookies)
+    const pairs = Object.entries(cookies)
       .filter(([, value]) => isString(value) && value.trim().length > 0)
       .map(([name, value]) => `${name}=${value.trim()}`);
+    return pairs.length > 0 ? pairs : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -81,8 +105,9 @@ function cookiePairsFromJson(raw) {
 export function normalizeGeminiCookieInput(raw, cookieName = "__Secure-1PSID") {
   const trimmed = String(raw ?? "").trim();
   if (!trimmed) return "";
+  // A cookie list with nothing usable yields "" rather than a PSID made of JSON text.
   const jsonPairs = cookiePairsFromJson(trimmed);
-  if (jsonPairs.length > 0) return jsonPairs.join("; ");
+  if (jsonPairs) return jsonPairs.join("; ");
   return trimmed.includes("=") ? trimmed : `${cookieName}=${trimmed}`;
 }
 

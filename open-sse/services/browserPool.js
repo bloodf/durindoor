@@ -352,7 +352,12 @@ async function launchBrowser(options) {
   }
 }
 
-function parseCookieString(raw, domain) {
+const COOKIE_ATTRIBUTE_NAMES = new Set(["path", "domain", "expires", "max-age", "secure", "httponly", "samesite"]);
+
+// Browsers reject a __Host- cookie that carries a Domain attribute, which a
+// leading dot implies, and addCookies then fails for the whole batch.
+export function parseCookieString(raw, domain) {
+  const bareDomain = domain.replace(/^\./, "");
   return raw
     .split(";")
     .map((p) => p.trim())
@@ -362,11 +367,11 @@ function parseCookieString(raw, domain) {
       if (eq < 0) return null;
       const name = pair.slice(0, eq).trim();
       const value = pair.slice(eq + 1).trim();
-      if (!name || !value) return null;
+      if (!name || !value || COOKIE_ATTRIBUTE_NAMES.has(name.toLowerCase())) return null;
       return {
         name,
         value,
-        domain: domain.startsWith(".") ? domain : `.${domain}`,
+        domain: name.startsWith("__Host-") ? bareDomain : `.${bareDomain}`,
         path: "/",
         expires: -1,
         httpOnly: false,

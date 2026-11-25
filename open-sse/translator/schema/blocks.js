@@ -44,6 +44,8 @@ export const RESPONSES_ITEM = {
   WEB_SEARCH_CALL: "web_search_call",
   FUNCTION_CALL: "function_call",
   FUNCTION_CALL_OUTPUT: "function_call_output",
+  COMPUTER_CALL: "computer_call",
+  COMPUTER_CALL_OUTPUT: "computer_call_output",
   CUSTOM_TOOL_CALL: "custom_tool_call",
   CUSTOM_TOOL_CALL_OUTPUT: "custom_tool_call_output",
   ITEM_REFERENCE: "item_reference",

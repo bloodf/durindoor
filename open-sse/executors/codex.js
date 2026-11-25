@@ -18,6 +18,7 @@ import {
   resolveRetryEntry } from
 "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
+import { repairCodexToolHistory } from "./codexToolHistory.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { stripCodexUnsupportedPatterns } from "../utils/codexToolSchema.js";
@@ -733,13 +734,14 @@ export class CodexExecutor extends BaseExecutor {
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
       const pending = item.content.map(async (c) => {
-        if (c.type !== "image_url") return c;
+        const isNative = c.type === RESPONSES_ITEM.INPUT_IMAGE;
+        if (!isNative && c.type !== "image_url") return c;
         const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
-        const detail = c.image_url?.detail || "auto";
-        if (!url) return c;
-        if (url.startsWith("data:")) return { type: "input_image", image_url: url, detail };
-        const fetched = await fetchImageAsBase64(url, { timeoutMs: 15000 });
-        return { type: "input_image", image_url: fetched?.url || url, detail };
+        if (!url || isNative && url.startsWith("data:")) return c;
+        const fetched = url.startsWith("data:") ? null : await fetchImageAsBase64(url, { timeoutMs: 15000 });
+        const imageUrl = fetched?.url || url;
+        if (isNative) return { ...c, image_url: imageUrl };
+        return { type: "input_image", image_url: imageUrl, detail: c.image_url?.detail || "auto" };
       });
       item.content = await Promise.all(pending);
     }
@@ -765,7 +767,7 @@ export class CodexExecutor extends BaseExecutor {
       requestContext.compact ? "/compact" : null
     );
 
-    const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter((c) => c.type === "image_url").length : 0), 0) : 0;
+    const imgCount = Array.isArray(requestBody.input) ? requestBody.input.reduce((n, it) => n + (Array.isArray(it.content) ? it.content.filter((c) => c.type === "image_url" || c.type === RESPONSES_ITEM.INPUT_IMAGE).length : 0), 0) : 0;
     const inputLen = Array.isArray(requestBody.input) ? requestBody.input.length : 0;
     dbg("CODEX", `execute start | inputItems=${inputLen} | images=${imgCount}`);
     if (imgCount > 0) {
@@ -1041,16 +1043,8 @@ export class CodexExecutor extends BaseExecutor {
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
 
-    // Codex is stateless: a tool output without a replayed call cannot be resolved.
     if (Array.isArray(body.input)) {
-      const calls = new Set();
-      for (const item of body.input) {
-        if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && isString(item.call_id)) calls.add(item.call_id);
-        for (const call of Array.isArray(item?.tool_calls) ? item.tool_calls : []) {
-          if (isString(call?.id)) calls.add(call.id);
-        }
-      }
-      body.input = body.input.filter((item) => item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || !isString(item.call_id) || calls.has(item.call_id));
+      body.input = repairCodexToolHistory(body.input);
       if (body.input.length === 0) body.input = [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
     }
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).

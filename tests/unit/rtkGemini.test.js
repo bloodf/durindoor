@@ -80,7 +80,7 @@ describe("Gemini & Antigravity format RTK support", () => {
                 functionResponse: {
                   id: "call_diff",
                   name: "Bash",
-                  // Double-nested shape emitted by openaiToGeminiBase
+                  // Double-nested shape that clients may still replay in native history
                   response: { result: { result: diff } },
                 },
               },

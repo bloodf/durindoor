@@ -12,13 +12,36 @@ import {
   fetchConnectTimeoutError,
   isRelaySseResponse
 } from "../utils/relayStreamLifecycle.js";
-import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
 
 export function requestAbortError(reason) {
   if (reason instanceof Error && reason.name === "AbortError") return reason;
   return new DOMException("Provider request aborted", "AbortError");
+}
+
+const SECRET_HEADER = /authorization|cookie|token|secret|api[-_]?key|(^|[-_])key$/i;
+const SECRET_QUERY = /^(key|api[-_]?key|access[-_]?token|token)$/i;
+const CREDENTIAL_FIELDS = ["apiKey", "accessToken", "cookie"];
+
+/** "public" is the shared placeholder of no-auth providers, not a secret. */
+function isSecretValue(value) {
+  if (!isString(value)) return Boolean(value);
+  const secret = value.replace(/^\s*bearer\b/i, "").trim();
+  return secret !== "" && secret !== "public";
+}
+
+/**
+ * Whether a send carries an API key, bearer token or cookie. The stored
+ * credential counts too, for keys placed in the body or an unusual header.
+ */
+export function carriesCredential(url, headers, credentials) {
+  if (CREDENTIAL_FIELDS.some((field) => isSecretValue(credentials?.[field]))) return true;
+  const entries = headers instanceof Headers ? [...headers] : Object.entries(headers || {});
+  if (entries.some(([name, value]) => SECRET_HEADER.test(name) && isSecretValue(value))) return true;
+  const query = URL.canParse(url) ? [...new URL(url).searchParams] : [];
+  return query.some(([name, value]) => SECRET_QUERY.test(name) && isSecretValue(value));
 }
 
 /** A refused redirect rejects the send instead of returning the 3xx response. */

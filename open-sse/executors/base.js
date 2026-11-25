@@ -2,7 +2,7 @@ import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError }
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
 import { evictResponseDispatcher } from "../utils/proxyFetch.js";
-import { cancelDiscardedResponse, createRequestSender, requestAbortError, resolveHeaderTimeout } from "./sendRequest.js";
+import { cancelDiscardedResponse, carriesCredential, createRequestSender, requestAbortError, resolveHeaderTimeout } from "./sendRequest.js";
 import { dbg } from "../utils/debugLog.js";
 
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
@@ -311,8 +311,8 @@ export class BaseExecutor {
       attemptStartedAt,
       onProviderAttempt,
       headerTimeoutMs,
-      // Keep the base executor's existing redirect opt-in outside a quota context.
-      credentialed: Boolean(this.config?.quirks?.rejectRedirects),
+      // Decided per send below: only a request that carries a credential is guarded.
+      credentialed: false,
       deferHeaders: true
     });
 
@@ -463,6 +463,8 @@ export class BaseExecutor {
           chargeDispatch(urlIndex);
           return sender.sendRequest(url, {
             method: "POST", headers, body: serializedBody, signal,
+            // Credentials never follow a redirect unless the registry entry says why it must.
+            ...(!this.config?.quirks?.allowRedirects && carriesCredential(url, headers, credentials) ? { redirect: "error" } : null),
             ...(directFetch ? { directFetch } : null)
           }, proxyOptions);
         };

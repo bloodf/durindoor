@@ -41,6 +41,9 @@ describe("offline staged artifact compatibility (#1143)", () => {
     const startup = path.join(dir, "app/src/lib/startup");
     fs.mkdirSync(startup, { recursive: true });
     fs.copyFileSync(path.join(root, "src/lib/startup/listenConfig.cjs"), path.join(startup, "listenConfig.cjs"));
+    const updater = path.join(dir, "app/src/lib/updater");
+    fs.mkdirSync(updater, { recursive: true });
+    fs.copyFileSync(path.join(root, "src/lib/updater/dataDir.cjs"), path.join(updater, "dataDir.cjs"));
     const stub = path.join(dir, "node_modules", "node-machine-id");
     fs.mkdirSync(stub, { recursive: true });
     fs.writeFileSync(path.join(stub, "index.js"), "exports.machineIdSync = () => \"fixture\";");

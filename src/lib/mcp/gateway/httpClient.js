@@ -69,6 +69,11 @@ function clearSessionEntry(instance) {
   getSessionStore().delete(instance.id);
 }
 
+/** Forget an upstream HTTP session after its instance is edited or deleted. */
+export function evictHttpSession(id) {
+  getSessionStore().delete(id);
+}
+
 export class McpAuthError extends Error {
   constructor(message, { status, slug, body, freshTokens } = {}) {
     super(message);
@@ -370,14 +375,24 @@ export async function mcpRequest(instance, jsonRpc, opts = {}) {
     }
   };
 
-  return retryWithBackoff(requestWithAuthRetry, {
+  try {
+    return await retryWithBackoff(requestWithAuthRetry, {
     maxAttempts: 3,
     baseDelayMs: 100,
     onRetry: (err, attempt, delayMs) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(sanitizeErrorMessage(`[mcp-http:${instance.slug}] transient retry ${attempt + 1} after ${delayMs}ms: ${msg}`));
     }
-  });
+    });
+  } catch (err) {
+    // A session-bearing 404 means the server discarded that session. Reuse
+    // a newer concurrent initialization if one has already replaced it.
+    if (err?.status !== 404 || !opts.sessionId) throw err;
+    const entry = getSessionStore().get(instance.id);
+    if (entry?.sessionId === opts.sessionId) evictHttpSession(instance.id);
+    const init = await ensureInitialized(instance);
+    return mcpRequest(instance, jsonRpc, { ...opts, sessionId: init.sessionId, skipRetry: true });
+  }
 }
 
 /**
@@ -442,7 +457,7 @@ export async function ensureInitialized(instance, opts = {}) {
 
       return info;
     } catch (e) {
-      clearSessionEntry(instance);
+      if (getSessionStore().get(instance.id) === entry) clearSessionEntry(instance);
       throw e;
     }
   })();

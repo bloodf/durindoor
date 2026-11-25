@@ -102,7 +102,8 @@ async function POSTHandler(request) {
       let committed = false;
       if (provider === "antigravity" || provider === "agy") {
         // Stored Antigravity credentials must be dispatched and committed under the shared lease.
-        newCredentials = await refreshAntigravityConnection(connection, proxyOptions);
+        // A refresh failure leaves the original upstream 401/403 response in place.
+        newCredentials = await refreshAntigravityConnection(connection, proxyOptions).catch(() => null);
         committed = Boolean(newCredentials);
       } else {
         newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);

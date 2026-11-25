@@ -210,7 +210,7 @@ Database routes require a dashboard session or CLI token plus the dashboard pass
 | GET, POST | `/api/mcp-gateway/keys` | List gateway keys (GET); create is local-only (POST 201) | session, CLI, key, loop |
 | GET, PUT, DELETE | `/api/mcp-gateway/keys/{id}` | Read (optional ?reveal=1), update grants, or delete | session, CLI, key, loop |
 | GET | `/api/mcp-gateway/keys/{id}/reveal` | Raw gateway secret; local request only | session, CLI, key, loop; key refused on reveal |
-| POST | `/api/mcp-gateway/message` | SSE companion POST; needs sessionId | gw, CLI, loopback |
+| POST | `/api/mcp-gateway/message` | SSE companion POST; needs sessionId | gw, CLI, loopback, or a `?key=` session id |
 | GET | `/api/mcp-gateway/oauth/{id}/{action}` | authorize, callback, status, or client-metadata | mixed (see oauth leaves) |
 | GET | `/api/mcp-gateway/sse` | SSE handshake; returns the message URL | gw, CLI, loopback |
 
@@ -413,6 +413,7 @@ An API key sees host and port. `user:password@` becomes `***`. Unparsable string
 | --- | --- | --- |
 | 401 | `{ error: "Unauthorized" }` | Gate: missing or wrong credential, including control with a foreign Origin |
 | 401 | `{ error: "gateway key required" }` | Gateway protocol surface without a gateway key (and not loopback/CLI) |
+| 401 | `{ error: "unauthorized" }` | SSE message POST without a key for a session not opened with `?key=` |
 | 403 | `{ error: "Local only: CLI token required" }` | Local-only path from a remote peer without CLI |
 | 403 | `{ error: "Key creation is only available from local requests." }` | Remote `POST /api/mcp-gateway/keys` |
 | 403 | `{ error: "Key reveal is only available from local requests." }` | Remote gateway-key reveal |

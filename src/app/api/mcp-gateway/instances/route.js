@@ -1,6 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { NextResponse } from "next/server";
+import { isOperatorRequest } from "@/dashboardGuard";
 import { getInstances, createInstance } from "@/lib/localDb";
 import { deriveOauthStatus } from "@/lib/mcp/gateway/oauthStatus";
 import { mergeOauthClientConfig } from "@/lib/mcp/gateway/oauthClientConfig";
@@ -99,6 +100,11 @@ export async function POST(request) {
     const body = await request.json();
     const errs = validatePayload(body);
     if (errs.length) return NextResponse.json({ error: errs.join("; ") }, { status: 400 });
+    const transport = body.transport || (body.kind === "http" || body.kind === "sse" ? body.kind : "stdio");
+    if ((transport === "stdio" || !["http", "sse"].includes(body.kind)) &&
+      !(await isOperatorRequest(request))) {
+      return NextResponse.json({ error: "Operator access required" }, { status: 403 });
+    }
 
     // SSRF guard: instance.url becomes the outbound target for
     // mcpRequest() and oauthRefresh. Validate BEFORE we persist anything

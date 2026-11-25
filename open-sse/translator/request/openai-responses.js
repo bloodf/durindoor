@@ -90,6 +90,35 @@ function stripOrphanedToolOutputs(input) {
 }
 
 /**
+ * A `previous_response_id` continuation sends only tool results: their calls
+ * live in the stored upstream response, which a translated upstream never sees.
+ * Put one placeholder call per unmatched id before each run of outputs, so the
+ * results survive the orphan strip as one valid tool-call turn
+ * (decolua/9router#4711). The upstream checks the pairing, not the name.
+ */
+function restoreContinuationToolCalls(input) {
+  if (!Array.isArray(input)) return input;
+  const knownCallIds = collectKnownCallIds(input);
+  const restored = [];
+  let runStart = null;
+  for (const item of input) {
+    if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+      runStart = null;
+      restored.push(item);
+      continue;
+    }
+    runStart ??= restored.length;
+    if (isString(item.call_id) && item.call_id && !knownCallIds.has(item.call_id)) {
+      knownCallIds.add(item.call_id);
+      restored.splice(runStart, 0, { type: RESPONSES_ITEM.FUNCTION_CALL, call_id: item.call_id, name: "unknown_tool", arguments: "{}" });
+      runStart += 1;
+    }
+    restored.push(item);
+  }
+  return restored;
+}
+
+/**
  * Tool call item type -> the output item type that answers it. Both surfaces
  * the Responses protocol rejects when a call has no output.
  */
@@ -463,7 +492,12 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
       return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content };
     });
   }
-  const inputItems = stripOrphanedToolOutputs(repairedItems);
+  // Only during real translation: direct callers (Headroom) convert back to
+  // Responses, where a placeholder call would duplicate the stored one.
+  // Claude targets already kept these results as user content above.
+  const translatesContinuation = isString(body.previous_response_id) && body.previous_response_id !== "" &&
+    translationContext !== null && translationContext.targetFormat !== FORMATS.CLAUDE;
+  const inputItems = stripOrphanedToolOutputs(translatesContinuation ? restoreContinuationToolCalls(repairedItems) : repairedItems);
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above

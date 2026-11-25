@@ -247,6 +247,9 @@ export function getModelUpstreamId(aliasOrId, modelId, tier = null) {
   const { baseId, found } = exact.found ? exact : findUpstreamModel(aliasOrId, stripRecognizedContextSuffix(modelId), tier);
   if (found?.upstreamModelId) return parseSuffix(found.upstreamModelId).cleanModel;
   if (found?.id) return found.id;
+  // Every ClinePass wire id is `cline-pass/*`; the live catalog exposes short ids
+  // that the static list may not carry yet (decolua/9router#4674).
+  if (aliasOrId === "clinepass" && isString(baseId) && !baseId.includes("/")) return `cline-pass/${baseId}`;
   if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {
     return baseId.slice(0, -CODEX_REVIEW_SUFFIX.length);
   }

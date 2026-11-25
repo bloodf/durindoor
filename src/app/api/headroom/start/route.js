@@ -45,7 +45,7 @@ export async function POST() {
       return NextResponse.json(toDiagnosticResponse(diagnostic), { status: isUserFixable(diagnostic.code) ? 400 : 500 });
     }
     const port = parsePortFromUrl(url) || 8787;
-    const result = await startHeadroomProxy({ port });
+    const result = await startHeadroomProxy({ url, port });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     if (error instanceof Error && error.code === "EARLY_EXIT" && !(error instanceof SetupError)) {

@@ -253,7 +253,7 @@ function startTrayWorker({ staleOwnership = false, cleanupOk = true } = {}) {
   const showInterfaceMenu = vi.fn(() => { throw new Error("trayMode must not start TUI menu"); });
   const log = { log: vi.fn(), error: vi.fn() };
 
-  vm.runInNewContext(cliSource.slice(cliSource.indexOf("const MAX_RESTARTS =")) + ";startServer(null)", {
+  vm.runInNewContext(cliSource.slice(cliSource.indexOf("const MAX_RESTARTS ="), cliSource.indexOf("function main(")) + ";startServer(null)", {
     headless: false,
     trayMode: true,
     showLog: false,

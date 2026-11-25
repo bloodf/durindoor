@@ -12,13 +12,13 @@ const cliSource = fs.readFileSync(new URL("../../cli/cli.js", import.meta.url), 
 
 function launcher(env, args = []) {
   const start = cliSource.indexOf("// Parse arguments");
-  const end = cliSource.indexOf("// Auto-relaunch after update:", start);
+  const end = cliSource.indexOf("// Launcher options", start);
   // Run the CLI's own import line so the test sees which default host it binds.
   const binding = cliSource.match(/^const \{[^}]*\} = require\(listenConfigPath\);$/m)[0];
-  const context = { args, process: { env, exit: () => { throw new Error("launcher rejected port"); } }, console: { error() {} },
+  const context = { args, process: { env, stdin: { isTTY: true }, exit: () => { throw new Error("launcher rejected port"); } }, console: { error() {} },
     listenConfigPath: "listenConfig",
     require: () => ({ ...shared, resolveListenConfig: (options) => shared.resolveListenConfig({ ...options, env }) }) };
-  return vm.runInNewContext(`${binding}\n${cliSource.slice(start, end)}\n({ port, host, DEFAULT_HOST })`, context);
+  return vm.runInNewContext(`${binding}\n${cliSource.slice(start, end)}\nconst { port, host } = parseArgsOrExit(args);\n({ port, host, DEFAULT_HOST })`, context);
 }
 
 function withProcessEnv(env, run) {

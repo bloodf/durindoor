@@ -356,6 +356,28 @@ function responsesContentToOpenAI(c) {
 /**
  * Convert OpenAI Responses API request to OpenAI Chat Completions format
  */
+/**
+ * Chat Completions has no custom-tool type, so a Responses custom (freeform) tool becomes a
+ * function whose single parameter is the raw `input` string. The response translator
+ * re-emits it as a custom_tool_call by name (OmniRoute #7905).
+ */
+function lowerCustomTool(tool, name, description) {
+  const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
+  return {
+    type: OPENAI_BLOCK.FUNCTION,
+    function: withBooleanStrict({
+      name,
+      description: [String(description || ""), formatHint].filter(Boolean).join("\n\n"),
+      parameters: sanitizeToolSchemaParameters({
+        type: "object",
+        properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
+        required: ["input"],
+        additionalProperties: false
+      }, name)
+    }, tool)
+  };
+}
+
 /** `{ name, namespace }` -> the expanded `{namespace}.{name}` declaration name. */
 function qualifyNamespacedName({ name, namespace }) {
   if (!isString(name) || !isString(namespace) || !namespace || name.startsWith(`${namespace}.`)) return name;
@@ -748,34 +770,23 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
         const namespace = isString(tool.name) ? tool.name : "";
         return tool.tools.
         filter((subtool) => isString(subtool?.name) && subtool.name.trim() !== "").
-        map((subtool) => ({
-          type: OPENAI_BLOCK.FUNCTION,
-          function: withBooleanStrict({
-            name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
-            description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
-          }, subtool)
-        }));
+        map((subtool) => {
+          const name = namespace ? `${namespace}.${subtool.name}` : subtool.name;
+          const description = String(subtool.description || tool.description || "");
+          if (subtool.type === "custom") return lowerCustomTool(subtool, name, description);
+          return {
+            type: OPENAI_BLOCK.FUNCTION,
+            function: withBooleanStrict({
+              name,
+              description,
+              parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, name))
+            }, subtool)
+          };
+        });
       }
       // Responses API custom (freeform) tool: { type: "custom", name, description }.
-      // Chat Completions has no custom-tool type, so normalize it to a function
-      // tool whose single parameter is the raw `input` string. The response
-      // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
-        const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
-        return {
-          type: OPENAI_BLOCK.FUNCTION,
-          function: withBooleanStrict({
-            name: tool.name,
-            description: [String(tool.description || ""), formatHint].filter(Boolean).join("\n\n"),
-            parameters: sanitizeToolSchemaParameters({
-              type: "object",
-              properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
-              required: ["input"],
-              additionalProperties: false
-            }, tool.name)
-          }, tool)
-        };
+        return lowerCustomTool(tool, tool.name, tool.description);
       }
       // Responses API function tool: { type: "function", name, description, parameters }
       // Only convert when a non-empty name is present; skip hosted tools without one.

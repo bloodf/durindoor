@@ -29,6 +29,8 @@ export default function LoginPage() {
   const [hasPassword, setHasPassword] = useState(null);
   const [usingDefaultPassword, setUsingDefaultPassword] = useState(false);
   const [authMode, setAuthMode] = useState("password");
+  const [passwordAvailable, setPasswordAvailable] = useState(true);
+  const [oidcAvailable, setOidcAvailable] = useState(false);
   const [oidcConfigured, setOidcConfigured] = useState(false);
   const [oidcLoginLabel, setOidcLoginLabel] = useState("Sign in with OIDC");
   const [mustChange, setMustChange] = useState(false);
@@ -68,8 +70,10 @@ export default function LoginPage() {
           return;
         }
         setHasPassword(!!data.hasPassword);
-        setUsingDefaultPassword(data.usingDefaultPassword === true && (data.authMode === "password" || data.authMode === "both"));
+        setUsingDefaultPassword(data.usingDefaultPassword === true && data.passwordAvailable === true);
         setAuthMode(data.authMode || "password");
+        setPasswordAvailable(data.passwordAvailable === true);
+        setOidcAvailable(data.oidcAvailable === true);
         setOidcConfigured(data.oidcConfigured === true);
         setOidcLoginLabel(data.oidcLoginLabel || "Sign in with OIDC");
       } catch (err) {
@@ -155,9 +159,6 @@ export default function LoginPage() {
   };
 
   const handleOidcLogin = () => { window.location.href = (process.env.NEXT_PUBLIC_BASE_PATH || "") + "/api/auth/oidc/start"; };
-
-  const oidcAvailable = oidcConfigured && ["oidc", "both"].includes(authMode);
-  const passwordAvailable = authMode !== "oidc" || !oidcConfigured;
 
   if (hasPassword === null) {
     return (

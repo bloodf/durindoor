@@ -69,7 +69,7 @@ export function LoginView({
           <p className="mt-3 text-[13px] text-dd-muted">
             {mfaRequired
               ? "Enter the code from your authenticator app"
-              : authMode === "oidc" && oidcConfigured
+              : oidcAvailable && !passwordAvailable
               ? "Sign in with your OIDC provider to access the dashboard"
               : "Enter your password to access the dashboard"}
           </p>
@@ -132,10 +132,10 @@ export function LoginView({
               {oidcAvailable && passwordAvailable ? <div className="h-px w-full bg-dd-border-subtle" role="separator" /> : null}
               {passwordAvailable ? (
                 <form aria-label={v5 ? "Sign in" : undefined} onSubmit={handleLogin} className="flex flex-col gap-4">
-                  {(authMode === "oidc" || authMode === "both") && !oidcConfigured ? (
+                  {!oidcConfigured && ["sso", "oidc", "both"].includes(authMode) ? (
                     <p className="text-center text-xs text-dd-warning">OIDC login is enabled, but the issuer/client fields are not configured yet. Password login is still available for recovery.</p>
                   ) : null}
-                  {authMode === "both" && oidcConfigured ? (
+                  {oidcAvailable && passwordAvailable ? (
                     <p className="text-center text-xs text-dd-muted">Password and OIDC login are both enabled.</p>
                   ) : null}
                   <Input

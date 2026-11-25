@@ -12,7 +12,7 @@ import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { isSafetyStopPayload } from "./safetyStopFrame.js";
-import { createNoticeGate } from "./unavailableNotice.js";
+import { createNoticeGate, isUnavailableNotice } from "./unavailableNotice.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
@@ -173,8 +173,8 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  * - "timeout": nothing yet within timeoutMs; body continues the live stream
  * - "unavailable_notice": only with detectUnavailableNotice; the visible text is
  *   a model/client-unavailable notice (`notice` holds it, hasContent is false).
- *   Text that could still become one is held until it diverges or the stream
- *   stops, and then counts as content.
+ *   Possible notices are held until they diverge or the stream ends; a timeout
+ *   or limit replays them as content.
  *
  * With releaseOnProgress, "progress" means a lifecycle event arrived and no
  * verdict followed within PEEK_PROGRESS_GRACE_MS (long silent thinking or tool
@@ -208,7 +208,8 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
   const gate = detectUnavailableNotice ? createNoticeGate() : null;
   let notice = null;
   const result = (verdict, replay = {}) => {
-    // Held text is real output when the stream stops before it becomes a notice.
+    if (replay.done && verdict === "empty" && gate?.holding && isUnavailableNotice(gate.text)) notice = gate.text;
+    // Held text is real output unless the complete stream is a notice.
     let outcome = verdict;
     if (notice) outcome = "unavailable_notice";else
     if (gate?.holding && ["empty", "error", "timeout"].includes(verdict)) outcome = "content";
@@ -233,7 +234,6 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       const frame = gate ? parseDataLine(line) : null;
       if (!frame) return true;
       const decision = gate.push(frame);
-      if (decision === "notice") notice = gate.text;
       return decision !== "hold";
     }
     const parsed = parseDataLine(line);

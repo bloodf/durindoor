@@ -105,7 +105,8 @@ FORMATS.COMMANDCODE]
 
 // SSE dialects without `choices[].delta`: only the buffered converter reads them.
 const BUFFERED_ONLY_SSE_FORMATS = new Set([
-FORMATS.OPENAI_RESPONSES]
+FORMATS.OPENAI_RESPONSES,
+FORMATS.CLAUDE]
 );
 
 const NATIVE_TOP_LEVEL_STREAM_FORMATS = new Set([

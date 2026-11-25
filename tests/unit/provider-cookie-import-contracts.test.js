@@ -19,7 +19,7 @@ const profiles = [
   ["gemini-web", "https://gemini.google.com", ["__Secure-1PSID", "__Secure-1PSIDTS"], true],
   ["doubao-web", "https://www.dola.com", ["sessionid", "s_v_web_id"], true],
   ["zai-web", "https://chat.z.ai", ["token"], true],
-  ["chatplayground", "https://app.chatplayground.ai", ["__client", "__session"], true],
+  ["chatplayground", "https://web.chatplayground.ai", ["__client", "__session"], true],
   ["lmarena", "https://arena.ai", ["arena-auth-prod-v1"], true, ["arena-auth-prod-v1."]],
   ["maxai", "https://www.maxai.co", ["access_token", "device_id", "user_id"], true],
   ["promptql", "https://prompt.ql.app", ["__Host-next-auth.csrf-token", "next-auth.session-token"], true],

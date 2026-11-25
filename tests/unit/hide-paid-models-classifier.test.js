@@ -61,10 +61,10 @@ describe("isPaidModel (hidePaidModels classifier)", () => {
   });
 
   it("exempts explicit free registry entry even when family is pattern-priced (api-airforce (Free))", () => {
-    // claude-3.7-sonnet matches the `claude-*` glob (paid), but api-airforce
-    // lists it as "Claude 3.7 Sonnet (Free)" — per-model free marker wins.
-    expect(isPaidModel("af/anthropic/claude-3.7-sonnet")).toBe(false);
-    expect(isPaidModel("api-airforce/anthropic/claude-3.7-sonnet")).toBe(false);
+    // gemini-2.5-flash is pattern-priced (paid), but api-airforce lists it as
+    // "Gemini 2.5 Flash (Free)" — per-model free marker wins.
+    expect(isPaidModel("af/google/gemini-2.5-flash")).toBe(false);
+    expect(isPaidModel("api-airforce/google/gemini-2.5-flash")).toBe(false);
   });
 
   it("exempts no-auth free provider (auggie) for priced family", () => {
@@ -100,19 +100,19 @@ describe("isPaidModel (hidePaidModels classifier)", () => {
 
 describe("filterPaidModels", () => {
   it("passes through unchanged when disabled", () => {
-    const all = ["anthropic/claude-sonnet-5", "af/anthropic/claude-3.7-sonnet"];
+    const all = ["anthropic/claude-sonnet-5", "af/google/gemini-2.5-flash"];
     expect(filterPaidModels(all, false)).toBe(all);
   });
 
   it("drops paid, keeps free + catalog-listed when enabled", () => {
     const all = [
       "anthropic/claude-sonnet-5",            // paid (no free roster)
-      "af/anthropic/claude-3.7-sonnet",       // free marker
+      "af/google/gemini-2.5-flash",       // free marker
       "aug/claude-sonnet-4.6",                // no-auth free provider
       "mystery/never-seen-before",            // unknown provider → paid (hidden)
     ];
     expect(filterPaidModels(all, true)).toEqual([
-      "af/anthropic/claude-3.7-sonnet",
+      "af/google/gemini-2.5-flash",
       "aug/claude-sonnet-4.6",
     ]);
   });
@@ -120,10 +120,10 @@ describe("filterPaidModels", () => {
   it("classifies object entries by id", () => {
     const all = [
       { id: "anthropic/claude-sonnet-5" },
-      { id: "af/anthropic/claude-3.7-sonnet" },
+      { id: "af/google/gemini-2.5-flash" },
     ];
     expect(filterPaidModels(all, true).map((m) => m.id)).toEqual([
-      "af/anthropic/claude-3.7-sonnet",
+      "af/google/gemini-2.5-flash",
     ]);
   });
 });

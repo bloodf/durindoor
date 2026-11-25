@@ -9,7 +9,7 @@ export default {
     textIcon: "AF",
     website: "https://api.airforce",
     notice: {
-      text: "55 free tier models including Grok-3, Claude 3.7, Qwen3, Kimi-K2, Gemini 2.5 Flash, DeepSeek-V3",
+      text: "55 free tier models including Grok-3, Qwen3, Kimi-K2, Gemini 2.5 Flash, DeepSeek-V3",
       apiKeyUrl: "https://panel.api.airforce",
     },
   },
@@ -30,8 +30,8 @@ export default {
   },
   models: [
     { id: "x-ai/grok-3", name: "Grok-3 (Free)", contextLength: 131072, maxOutputTokens: 65536 },
-    { id: "x-ai/grok-2-1212", name: "Grok-2 1212 (Free)", contextLength: 131072, maxOutputTokens: 65536 },
-    { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Free)", contextLength: 200000, maxOutputTokens: 8192 },
+    { id: "x-ai/grok-2-1212", name: "Grok-2 1212", contextLength: 131072, maxOutputTokens: 65536 },
+    { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet", contextLength: 200000, maxOutputTokens: 8192 },
     { id: "qwen/qwen3-32b", name: "Qwen3 32B (Free)", contextLength: 128000, maxOutputTokens: 8192 },
     { id: "moonshot/kimi-k2.6", name: "Kimi K2.6 (Free)", contextLength: 262144, maxOutputTokens: 65536 },
     { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash (Free)", contextLength: 1048576, maxOutputTokens: 65536 },

@@ -8,7 +8,7 @@
 //       true when any of:
 //         - model.id ends with `:free` (OpenRouter convention),
 //         - model.pricing has prompt===0 AND completion===0 (zero-price),
-//         - model.id is listed in FREE_MODEL_BUDGETS for `provider` (or its canonical id).
+//         - model.id is listed in a non-discontinued FREE_MODEL_BUDGETS row for `provider`.
 //
 // `isFreeModel` accepts a `pricing` shape in the OmniRoute prompt/completion form;
 // our call sites also pass our `providers/pricing.js` rows (`input`/`output` form),
@@ -21,11 +21,14 @@
 import { FREE_MODEL_BUDGETS } from "./freeModelCatalog.data.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
-export const PROVIDERS_WITH_FREE_MODELS = new Set(FREE_MODEL_BUDGETS.map((m) => m.provider));
+// A `discontinued` row records an ended offer and grants no free access (OmniRoute #21096).
+const FREE_BUDGETS = FREE_MODEL_BUDGETS.filter((m) => m.freeType !== "discontinued");
+
+export const PROVIDERS_WITH_FREE_MODELS = new Set(FREE_BUDGETS.map((m) => m.provider));
 
 const FREE_MODEL_IDS_BY_PROVIDER = (() => {
   const map = new Map();
-  for (const m of FREE_MODEL_BUDGETS) {
+  for (const m of FREE_BUDGETS) {
     let set = map.get(m.provider);
     if (!set) {
       set = new Set();

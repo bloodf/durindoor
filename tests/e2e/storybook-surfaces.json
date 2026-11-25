@@ -29541,7 +29541,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+      "sourceSha256": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29560,7 +29560,7 @@
             "connection=connected"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Connected mounts live ConnectionsCard with Production connection; no play yet opens private AddApiKeyModal.",
@@ -29617,7 +29617,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionRow",
-      "sourceSha256": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+      "sourceSha256": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29637,7 +29637,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Parent fixture must render its supplied connection row.",
@@ -29698,7 +29698,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionsCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionsCard",
-      "sourceSha256": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+      "sourceSha256": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29718,7 +29718,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Direct source binding.",
@@ -29779,7 +29779,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#CooldownTimer",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "CooldownTimer",
-      "sourceSha256": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+      "sourceSha256": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29799,7 +29799,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "f1727f7af11f6eac27e4d242fe5b0523ed333252d0d606ffefadbb6f8540f05e",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "2c774c74a7dd0420d0a8e22a740605f9f53bccde41efb3e2fae719b4cf1f20af",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Dedicated parent cooldown fixture.",

@@ -34,6 +34,9 @@ export function sortConnectionsByAvailability(connections) {
   });
 }
 
+/** Last queued order write per provider. */
+const orderWrites = new Map();
+
 /**
  * Persist a sorted order atomically via `PUT /api/providers/reorder` — ONE DB
  * transaction updates every priority. Per-connection PUTs were the upstream
@@ -41,16 +44,32 @@ export function sortConnectionsByAvailability(connections) {
  * priority tie whose `updatedAt` tie-breaker resurrects the old order), and a
  * partial sequence leaves a corrupted order on failure.
  *
+ * Writes for one provider are sent one at a time in call order, so rapid moves
+ * cannot land out of order (decolua/9router#4280). A failed write also rejects
+ * the moves already queued behind it: they were built on an order the server
+ * never accepted, and their callers reload like the first one.
+ *
  * @param {string} providerId
  * @param {object[]} sorted connections in desired final order
  * @returns {Promise<void>}
  * @throws {Error} when the server rejects the order (non-2xx)
  */
-export async function persistConnectionOrder(providerId, sorted) {
+export function persistConnectionOrder(providerId, sorted) {
+  const orderedIds = sorted.map((c) => c.id);
+  const write = (orderWrites.get(providerId) ?? Promise.resolve()).then(() => sendOrder(providerId, orderedIds));
+  orderWrites.set(providerId, write);
+  const release = () => {
+    if (orderWrites.get(providerId) === write) orderWrites.delete(providerId);
+  };
+  write.then(release, release);
+  return write;
+}
+
+async function sendOrder(providerId, orderedIds) {
   const res = await fetch("/api/providers/reorder", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ providerId, orderedIds: sorted.map((c) => c.id) }),
+    body: JSON.stringify({ providerId, orderedIds }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || `Reorder failed (HTTP ${res.status})`);

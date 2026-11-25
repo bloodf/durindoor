@@ -9,7 +9,7 @@ export default {
     textIcon: "SF",
     website: "https://stepfun.com",
     notice: {
-      text: "This connects to StepFun China. Users outside mainland China can instead register at the global StepFun Open Platform.",
+      text: "Pay-per-use pricing only; no free API models (checked 2026-11-23). This connects to StepFun China. Users outside mainland China can instead register at the global StepFun Open Platform.",
       signupUrl: "https://platform.stepfun.ai",
     },
   },

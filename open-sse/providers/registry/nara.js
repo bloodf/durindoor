@@ -8,7 +8,7 @@ export default {
     textIcon: "NR",
     website: "https://router.bynara.id",
     notice: {
-      text: "Free key issued after linking a Telegram account; the free plan is one 7M tokens/day bucket per account.",
+      text: "The free plan lists no models; every model needs credit. Link a Telegram account before /v1 answers (checked 2026-11-23).",
     },
   },
   category: "apikey",

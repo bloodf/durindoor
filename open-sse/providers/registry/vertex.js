@@ -13,7 +13,7 @@ export default {
     textIcon: "VX",
     website: "https://cloud.google.com/vertex-ai",
     notice: {
-      text: "New Google Cloud accounts get $300 free credits. Requires GCP project + Service Account with Vertex AI API enabled.",
+      text: "New Google Cloud accounts get $300 free credits. A credit card or other payment method is required (checked 2026-11-23). Requires GCP project + Service Account with Vertex AI API enabled.",
       apiKeyUrl: "https://console.cloud.google.com/iam-admin/serviceaccounts",
     },
   },

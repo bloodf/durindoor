@@ -7,7 +7,7 @@ export default {
     color: "#1E3A8A",
     textIcon: "NV",
     notice: {
-      text: "Free plan is one shared pool of 150K tokens/day at 20 RPM, drained by a per-model token multiplier.",
+      text: "No free quota could be confirmed on the official pages (checked 2026-11-23). Each model drains quota by its token multiplier.",
     },
   },
   category: "apikey",

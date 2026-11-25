@@ -9,7 +9,7 @@ export default {
     textIcon: "BM",
     website: "https://www.bluesminds.com",
     notice: {
-      text: "OpenAI-compatible endpoint with free daily credits. VIP models consume pi credits.",
+      text: "OpenAI-compatible endpoint; usage needs credit bought from the provider (checked 2026-11-23).",
       apiKeyUrl: "https://www.bluesminds.com",
     },
   },

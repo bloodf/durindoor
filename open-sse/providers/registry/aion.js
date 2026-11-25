@@ -8,7 +8,7 @@ export default {
     textIcon: "AI",
     website: "https://aionlabs.ai",
     notice: {
-      text: "Free key from aionlabs.ai, 20k tokens/day on the free tier.",
+      text: "Free tier of about 20k tokens/day; activating it requires verifying a payment card, which is never charged (checked 2026-11-23).",
     },
   },
   category: "apikey",

@@ -53851,7 +53851,7 @@
       "id": "src/shared/components/NoAuthProxyCard.js#NoAuthProxyCard",
       "sourcePath": "src/shared/components/NoAuthProxyCard.js",
       "symbol": "NoAuthProxyCard",
-      "sourceSha256": "c1f7cc111c252e0df3206dfde792c1b05ddc14a1437aa9a87a3cc8eb758dbe85",
+      "sourceSha256": "9f4b4b84f6b102fde07db95a1ad5b301bcdb3f7c361c164938b36ecbef357d07",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53874,7 +53874,7 @@
             "multiple pools"
           ],
           "sourceHashes": {
-            "src/shared/components/NoAuthProxyCard.js": "c1f7cc111c252e0df3206dfde792c1b05ddc14a1437aa9a87a3cc8eb758dbe85",
+            "src/shared/components/NoAuthProxyCard.js": "9f4b4b84f6b102fde07db95a1ad5b301bcdb3f7c361c164938b36ecbef357d07",
             "src/shared/components/NoAuthProxyCard.stories.jsx": "474bbca58852cebb85e6e18f66f9202e4cfe529b847e18b44480233bed749730"
           },
           "proposedSourceEvidence": "TwoOrMorePoolsReady asserts No authentication required, Ready to use, and Rotation Strategy.",
@@ -53888,7 +53888,7 @@
             "strategy/pool persistence"
           ],
           "sourceHashes": {
-            "src/shared/components/NoAuthProxyCard.js": "c1f7cc111c252e0df3206dfde792c1b05ddc14a1437aa9a87a3cc8eb758dbe85",
+            "src/shared/components/NoAuthProxyCard.js": "9f4b4b84f6b102fde07db95a1ad5b301bcdb3f7c361c164938b36ecbef357d07",
             "src/shared/components/NoAuthProxyCard.stories.jsx": "474bbca58852cebb85e6e18f66f9202e4cfe529b847e18b44480233bed749730"
           },
           "proposedSourceEvidence": "SavesStrategyAndPoolsPersist starts Round-robin, changes strategy and pool, then asserts persisted Pool B settings.",
@@ -53902,7 +53902,7 @@
             "rotation unavailable"
           ],
           "sourceHashes": {
-            "src/shared/components/NoAuthProxyCard.js": "c1f7cc111c252e0df3206dfde792c1b05ddc14a1437aa9a87a3cc8eb758dbe85",
+            "src/shared/components/NoAuthProxyCard.js": "9f4b4b84f6b102fde07db95a1ad5b301bcdb3f7c361c164938b36ecbef357d07",
             "src/shared/components/NoAuthProxyCard.stories.jsx": "474bbca58852cebb85e6e18f66f9202e4cfe529b847e18b44480233bed749730"
           },
           "proposedSourceEvidence": "Single-pool fixture asserts rotation requirement message.",
@@ -53916,7 +53916,7 @@
             "strategy persistence"
           ],
           "sourceHashes": {
-            "src/shared/components/NoAuthProxyCard.js": "c1f7cc111c252e0df3206dfde792c1b05ddc14a1437aa9a87a3cc8eb758dbe85",
+            "src/shared/components/NoAuthProxyCard.js": "9f4b4b84f6b102fde07db95a1ad5b301bcdb3f7c361c164938b36ecbef357d07",
             "src/shared/components/NoAuthProxyCard.stories.jsx": "474bbca58852cebb85e6e18f66f9202e4cfe529b847e18b44480233bed749730"
           },
           "proposedSourceEvidence": "RotationStrategyChangePersists starts None (single pool), selects Round-robin, and asserts persisted setting.",

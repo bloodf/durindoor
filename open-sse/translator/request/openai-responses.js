@@ -843,16 +843,15 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
 
   // Cleanup Responses API specific fields
   // Translate Responses structured output to the Chat Completions shape.
-  if (result.text?.format) {
-    const format = result.text.format;
-    if (format.type === "json_schema") {
-      const { type, ...schema } = format;
-      result.response_format = { type, json_schema: schema };
-    } else if (format.type === "json_object") {
-      result.response_format = { type: "json_object" };
-    }
-    delete result.text;
+  // `text` itself is Responses-only and never belongs on a Chat body.
+  const format = result.text?.format;
+  if (format?.type === "json_schema") {
+    const { type, ...schema } = format;
+    result.response_format = { type, json_schema: schema };
+  } else if (format?.type === "json_object") {
+    result.response_format = { type: "json_object" };
   }
+  delete result.text;
 
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {

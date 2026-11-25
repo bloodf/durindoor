@@ -58,7 +58,7 @@ A key can carry several independent restrictions. Empty means unrestricted for t
 
 `providerConnectionIds` lists the provider-connection rows the key may route through. Zero rows means every account. Details: [API key provider-account scoping](../../../../docs/operations/api-key-scoping.mdx).
 
-`allowedCombos` is a list of combo names. A non-empty list rejects any other combo with HTTP 403. `policy.allowedModels` is an exact-match allowlist of model strings; empty or missing means all models.
+`allowedCombos` is a list of combo names. A non-empty list rejects any other combo with HTTP 403. Deleting a combo removes its name from every key. A key that loses its last name keeps the entry `(deleted combo)`, which matches no combo, so the key does not become unrestricted. Creating a combo with the old name does not restore the grant; select it on the key again. `policy.allowedModels` is an exact-match allowlist of model strings; empty or missing means all models.
 
 `auto/<family>` ids (`auto/glm`, `auto/gemini`, ...) are virtual: they are synthesised in the catalog, not stored as combo rows, so `allowedCombos` and `policy.allowedModels` cannot scope them out. `policy.allowAutoCombos: false` denies every `auto/*` id for that key with HTTP 403; omitted or `true` keeps the existing behavior (allowed).
 

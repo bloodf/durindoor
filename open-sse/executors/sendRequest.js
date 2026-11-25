@@ -45,6 +45,36 @@ function sendThroughProxy(url, options, proxyOptions, observePatchedFetch) {
   return proxyAwareFetch(url, options, proxyOptions);
 }
 
+/** Stop waiting on a pending operation as soon as the signal aborts. */
+export function abortable(pending, signal) {
+  if (!signal) return pending;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(requestAbortError(signal.reason));
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(pending).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+/**
+ * Run a send that is not a fetch (WebSocket frame, subprocess, app-server RPC).
+ * The transport receives the merged signal, and the sender stops waiting when it
+ * aborts even if the transport ignores it. An abort or header deadline wins
+ * over whatever error the transport raised while shutting down. There is no
+ * URL to proxy or redirect to guard here: a transport owns its own egress.
+ */
+async function runTransport(transport, options, timeoutSignal) {
+  const { signal } = options;
+  const abortCause = () => timeoutSignal.aborted && signal.reason === timeoutSignal.reason ?
+    timeoutSignal.reason : requestAbortError(signal.reason);
+  if (signal.aborted) throw abortCause();
+  try {
+    return await abortable(transport(options), signal);
+  } catch (error) {
+    throw signal.aborted ? abortCause() : error;
+  }
+}
+
 export function resolveHeaderTimeout(config, requestPolicy) {
   return requestPolicy.headerTimeoutMs || config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
 }
@@ -70,7 +100,7 @@ export function createRequestSender({
   let deadline;
   const clearHeaderTimer = () => clearTimeout(deadline?.timer);
 
-  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true } = {}) {
+  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null } = {}) {
     const signal = init.signal;
     if (signal?.aborted) throw requestAbortError(signal.reason);
     clearHeaderTimer();
@@ -89,7 +119,9 @@ export function createRequestSender({
       }
       dispatched = true;
       const options = { ...(credentialed ? { redirect: "error" } : null), ...init, signal: mergedSignal };
-      const send = () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch);
+      const send = transport ?
+        () => runProviderAttemptDispatch(() => runTransport(transport, options, controller.signal)) :
+        () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch);
       return await (quotaBearing ? runQuotaBearingProviderRequest(send) : send());
     } catch (error) {
       clearTimeout(timer);

@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { isString, isNumber, isRecord } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor, waitForRetryDelay } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import { errorJson, jsonResponse } from "./websession-utils.js";
-import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
 const API = "https://api.replicate.com";
+// `Prefer: wait=60` lets Replicate hold the response headers for a full minute.
+const HEADER_TIMEOUT_MS = Math.max(FETCH_CONNECT_TIMEOUT_MS, 90_000);
 const STREAM_ORIGINS = ["https://streaming.api.replicate.com", "https://stream.replicate.com"];
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 
@@ -131,20 +134,23 @@ async function readEvents(response, emit, signal) {
 }
 
 export class ReplicateExecutor extends BaseExecutor {
-  constructor() { super("replicate", { id: "replicate", baseUrl: `${API}/v1` }); }
+  constructor() { super("replicate", { id: "replicate", baseUrl: `${API}/v1`, timeoutMs: HEADER_TIMEOUT_MS }); }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, proxyOptions } = input;
+    const sender = createExecutorSender(this, input);
     const validModel = isString(model) && /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(model);
     const url = validModel ? `${API}/v1/models/${model}/predictions` : `${API}/v1/models`;
     const headers = { Authorization: `Bearer ${credentials?.apiKey || credentials?.accessToken || ""}`, "Content-Type": "application/json" };
     if (!stream) headers.Prefer = "wait=60";
-    const input = promptInput(body);
-    const transformedBody = { input };
+    const prompt = promptInput(body);
+    const transformedBody = { input: prompt };
     if (stream) transformedBody.stream = true;
-    const result = (response, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance });
+    const result = (response, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance, attemptStartedAt: sender.attemptStartedAt });
     if (!validModel) return result(errorJson(400, "Replicate model must be an official owner/name", "invalid_request"));
-    if (!input) return result(errorJson(400, "Replicate supports text messages without tools", "invalid_request"));
-    const send = (target, options) => proxyAwareFetch(target, { ...options, redirect: "manual" }, proxyOptions);
+    if (!prompt) return result(errorJson(400, "Replicate supports text messages without tools", "invalid_request"));
+    const send = (target, options, quotaBearing = false) =>
+      sender.sendRequest(target, { ...options, redirect: "manual" }, proxyOptions, { quotaBearing });
     // The creation POST is the single billable dispatch of a Replicate
     // prediction, so it is the only send that consumes a quota reservation.
     // Polling and stream retrieval read that same prediction and stay
@@ -154,8 +160,7 @@ export class ReplicateExecutor extends BaseExecutor {
     // evidence: the reservation is refused before the transport call, so no
     // request reaches Replicate. The error keeps its type, so chatCore
     // reports local quota unavailability instead of an upstream failure.
-    const created = await runQuotaBearingProviderRequest(() =>
-      send(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }));
+    const created = await send(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, true);
     // The physical creation response owns the dispatch ticket. Every response
     // returned below replaces it, so the ticket has to follow the
     // replacement; otherwise the reservation is orphaned and never settled

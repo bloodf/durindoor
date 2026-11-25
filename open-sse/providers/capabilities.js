@@ -1397,6 +1397,13 @@ const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, 
  *   reasoning, vision or token limits its id would match: an image id such as
  *   `gpt-6.1-sol-image` starts with its chat sibling's id.
  */
+// Free seats use both spellings across provider catalogs and the capability table.
+function freeSeatAlternate(id) {
+  if (id.endsWith(":free")) return `${id.slice(0, -5)}-free`;
+  if (id.endsWith("-free")) return `${id.slice(0, -5)}:free`;
+  return id;
+}
+
 export function getCapabilitiesForModel(provider, model, kind = undefined) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
@@ -1434,13 +1441,15 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
     return finalize({ ...DEFAULT_CAPABILITIES, ...capabilitiesFromServiceKind("image") });
   }
   if (kindCaps && registryModel?.kind !== "imageToText" && registryModel?.type !== "imageToText") {
-    const declaredCaps = PROVIDER_CAPABILITIES[registry.id]?.[capabilityBaseModel] || MODEL_CAPABILITIES[capabilityBaseModel] || {};
+    const declaredCaps = PROVIDER_CAPABILITIES[registry.id]?.[capabilityBaseModel] || PROVIDER_CAPABILITIES[registry.id]?.[freeSeatAlternate(capabilityBaseModel)] || MODEL_CAPABILITIES[capabilityBaseModel] || MODEL_CAPABILITIES[freeSeatAlternate(capabilityBaseModel)] || {};
     return finalize({ ...DEFAULT_CAPABILITIES, ...kindCaps, ...declaredCaps });
   }
   if (provider) {
     const providerCaps = PROVIDER_CAPABILITIES[provider] || PROVIDER_CAPABILITIES[registry?.id];
     if (providerCaps?.[normalizedModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[normalizedModel] });
     if (providerCaps?.[capabilityBaseModel]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[capabilityBaseModel] });
+    if (providerCaps?.[freeSeatAlternate(normalizedModel)]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[freeSeatAlternate(normalizedModel)] });
+    if (providerCaps?.[freeSeatAlternate(capabilityBaseModel)]) return finalize({ ...DEFAULT_CAPABILITIES, ...providerCaps[freeSeatAlternate(capabilityBaseModel)] });
     if (isKiroFamilyProvider(provider)) {
       const normalized = normalizeModelId(normalizedModel);
       const normalizedBase = normalizeModelId(baseModel);
@@ -1464,7 +1473,7 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
     }
   }
 
-  const exactId = MODEL_CAPABILITIES[capabilityBaseModel] ? capabilityBaseModel : normalizedModel;
+  const exactId = [capabilityBaseModel, normalizedModel, freeSeatAlternate(capabilityBaseModel), freeSeatAlternate(normalizedModel)].find((id) => MODEL_CAPABILITIES[id]);
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };

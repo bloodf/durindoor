@@ -91,11 +91,15 @@ export function frameCarriesContent(line) {
 const LIFECYCLE_EVENT_TYPES = new Set(["message_start", "content_block_start", "response.created", "response.in_progress"]);
 const SILENT_DELTA_TYPES = new Set(["thinking_delta", "signature_delta", "input_json_delta"]);
 
+/** True for a delta that shows the upstream is thinking or planning a tool call. */
+function isSilentDelta(parsed) {
+  return parsed?.type === "content_block_delta" && SILENT_DELTA_TYPES.has(parsed.delta?.type);
+}
+
 /** True for an event that shows the upstream started a turn, even with no output yet. */
 function isLifecycleProgress(parsed) {
-  if (LIFECYCLE_EVENT_TYPES.has(parsed?.type)) return true;
-  if (parsed?.type === "content_block_delta") return SILENT_DELTA_TYPES.has(parsed.delta?.type);
-  return nonEmptyString(parsed?.choices?.[0]?.delta?.role);
+  return isSilentDelta(parsed) || LIFECYCLE_EVENT_TYPES.has(parsed?.type) ||
+    nonEmptyString(parsed?.choices?.[0]?.delta?.role);
 }
 
 function parseDataLine(line) {
@@ -179,7 +183,10 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  *
  * With releaseOnProgress, "progress" means a lifecycle event arrived and no
  * verdict followed within PEEK_PROGRESS_GRACE_MS (long silent thinking or tool
- * planning). It counts as content; body continues the live stream.
+ * planning). It counts as content; body continues the live stream. With
+ * detectUnavailableNotice too, bare lifecycle frames never release, because a
+ * late notice or error must still fail over: only a silent thinking, signature
+ * or input_json delta starts the grace window.
  *
  * streamError is the first in-stream error envelope seen before content.
  *
@@ -207,6 +214,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
     timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
   });
   const gate = detectUnavailableNotice ? createNoticeGate() : null;
+  const startsGrace = detectUnavailableNotice ? isSilentDelta : isLifecycleProgress;
   let notice = null;
   const result = (verdict, replay = {}) => {
     if (replay.done && verdict === "empty" && gate?.holding && isUnavailableNotice(gate.text)) notice = gate.text;
@@ -243,7 +251,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       return true;
     }
     if (!streamError) streamError = extractStreamErrorPayload(parsed);
-    if (releaseOnProgress && !sawProgress) sawProgress = isLifecycleProgress(parsed);
+    if (releaseOnProgress && !sawProgress) sawProgress = startsGrace(parsed);
     return false;
   };
 

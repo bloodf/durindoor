@@ -104,12 +104,13 @@ function sha16(text) {
 // Normalize a session id candidate (trim, length cap). Ids end up in upstream
 // headers, which reject code points above U+00FF, so such an id is hashed: one
 // conversation keeps one stable, header-safe value (OmniRoute #21148). UTF-16
-// input keeps lone surrogates distinct.
+// input keeps lone surrogates distinct. The `sid_` prefix is reserved: a literal
+// id carrying it is hashed too, so it cannot name another id's session.
 function normalizeSessionId(value) {
   if (!isString(value)) return null;
   const v = value.trim();
   if (!v || v.length > 256 || /[\u0000-\u001f\u007f]/.test(v)) return null;
-  if (!/[^\u0000-\u00ff]/.test(v)) return v;
+  if (!v.startsWith("sid_") && !/[^\u0000-\u00ff]/.test(v)) return v;
   return `sid_${crypto.createHash("sha256").update(v, "utf16le").digest("hex").slice(0, 32)}`;
 }
 

@@ -6,7 +6,7 @@
 // We use the maintained `systray2` fork. The original `systray@1.0.5` package
 // bundles a 2017 x86_64 Go binary whose Mach-O headers are rejected by modern
 // dyld (macOS 14+), so the tray silently fails to register on Apple Silicon.
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { getRuntimeDir, getRuntimeNodeModules, runNpmInstall, summarizeNpmError } = require("./sqliteRuntime");
@@ -94,7 +94,7 @@ function npmInstall(pkgs, { silent = false } = {}) {
 
 // Public: ensure systray2 is installed on macOS/Linux only.
 // Windows skips entirely (uses PowerShell tray).
-function ensureTrayRuntime({ silent = false, allowInstall = true } = {}) {
+function ensureTrayRuntime({ silent = false, allowInstall = true, asynchronous = false } = {}) {
   if (process.platform === "win32") {
     return { systray: false, skipped: true };
   }
@@ -108,10 +108,43 @@ function ensureTrayRuntime({ silent = false, allowInstall = true } = {}) {
     return { systray: true };
   }
   if (!allowInstall) return { systray: false };
+  if (asynchronous) return installTrayAsync();
   cleanupLegacySystray({ silent });
   const ok = npmInstall([`${SYSTRAY_PKG}@${SYSTRAY_VERSION}`], { silent });
   if (ok) chmodSystrayBin({ silent });
   return { systray: ok && Boolean(findSystray()) };
+}
+
+// A failed version is recorded so an unavailable registry does not delay every start.
+function installTrayAsync() {
+  const cwd = ensureRuntimeDir();
+  const marker = path.join(cwd, "tray-install-failed.json");
+  try {
+    if (JSON.parse(fs.readFileSync(marker, "utf8")).version === SYSTRAY_VERSION) return Promise.resolve({ systray: false });
+  } catch {}
+  cleanupLegacySystray({ silent: true });
+  console.log("[durindoor] Installing system tray in the background...");
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (ok) => {
+      if (finished) return;
+      finished = true;
+      if (!ok) {
+        try { fs.writeFileSync(marker, JSON.stringify({ version: SYSTRAY_VERSION })); } catch {}
+      } else {
+        try { fs.unlinkSync(marker); } catch {}
+        chmodSystrayBin({ silent: true });
+      }
+      resolve({ systray: ok && Boolean(findSystray()) });
+    };
+    try {
+      const child = spawn(process.platform === "win32" ? "npm.cmd" : "npm",
+        ["install", `${SYSTRAY_PKG}@${SYSTRAY_VERSION}`, "--global=false", "--no-audit", "--no-fund", "--prefer-online", "--save-exact"],
+        { cwd, stdio: "ignore", shell: process.platform === "win32", timeout: 120000 });
+      child.once("error", () => finish(false));
+      child.once("close", (code) => finish(code === 0));
+    } catch { finish(false); }
+  });
 }
 
 module.exports = { ensureTrayRuntime };

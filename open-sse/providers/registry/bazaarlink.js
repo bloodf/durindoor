@@ -9,7 +9,7 @@ export default {
     textIcon: "BZ",
     website: "https://bazaarlink.ai",
     notice: {
-      text: "Free tier: 4M tokens/day per account with auto:free routing - zero-cost inference, no credit card required.",
+      text: "Free tier without credit: 60 weighted units/day and 10 RPM, shared across free models through auto:free (checked 2026-11-23).",
       apiKeyUrl: "https://bazaarlink.ai",
     },
   },

@@ -7,7 +7,7 @@ export default {
     color: "#2563EB",
     textIcon: "DX",
     notice: {
-      text: "Free account quota; the catalog comes from the authenticated /v1/models endpoint.",
+      text: "The signup bonus exists, but no model accepts it (checked 2026-11-23). The catalog comes from the authenticated /v1/models endpoint.",
     },
   },
   category: "apikey",

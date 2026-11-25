@@ -15,7 +15,7 @@ export default {
     textIcon: "AQ",
     website: "https://aws.amazon.com/q/developer/",
     notice: {
-      text: "Uses the same AWS Builder ID or IAM Identity Center login as Kiro, but keeps Amazon Q connections separate.",
+      text: "Uses the same AWS Builder ID or IAM Identity Center login as Kiro, but keeps Amazon Q connections separate. No new Free Tier sign-ups since 2026-05-15 (checked 2026-11-23).",
     },
   },
   category: "oauth",

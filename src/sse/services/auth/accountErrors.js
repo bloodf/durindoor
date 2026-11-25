@@ -13,6 +13,7 @@ import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { clearProviderRateLimitEvidence, recordProviderRateLimitEvidence } from "@/shared/services/providerRateLimitEvidence";
@@ -468,6 +469,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
     if (isolatedSearch) lockUpdate[`modelError_${fallbackModel}`] = Number(status) || 503;
+    if (!isolatedSearch && context?.webFetch !== true && fallbackModel) {
+      Object.assign(lockUpdate, modelUpstreamUpdate(fallbackModel, {
+        status, message: reason, lockUntil: lockUpdate[`modelLock_${fallbackModel}`]
+      }));
+    }
     // Same reauth guard as recordProviderConnectionFallbackState: re-read inside
     // the write transaction so a concurrent durable reauth is never demoted when
     // the atomic path threw and this compatibility writer runs (#1324/#1311).

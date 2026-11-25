@@ -51,6 +51,12 @@ describe("OmniRoute #21066 (8f599effad97) HTTP 200 model-unavailable notice fail
     expect(await response.text()).toBe(expected);
   });
 
+  it.each([false, true])("keeps a long answer that quotes a notice after the prefix (stream: %s)", async (stream) => {
+    const text = `${"Background. ".repeat(60)}${DEPRECATED}`;
+    const { calls } = await run(stream ? openaiStream(text) : json(text), { stream });
+    expect(calls).toBe(1);
+  });
+
   it("surfaces 410 when every member returns the notice", async () => {
     const { response } = await run(json(DEPRECATED), { second: json(OUTDATED) });
     expect(response.status).toBe(410);

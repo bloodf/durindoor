@@ -18,8 +18,14 @@ const MODIFIER_TOKEN = /^[a-z0-9._:/-]+$/;
 const TAILS = ["is no longer available. please switch to", "is no longer available.please switch to"];
 const PREFIX_CHAR_CAP = 512;
 
+/**
+ * Only the first 512 characters are read, for streamed and JSON answers alike:
+ * a notice is short, and a long answer quoting one later on is a real answer.
+ */
 export function isUnavailableNotice(text) {
-  return isString(text) && (CLIENT_NOTICE.test(text) || MODEL_NOTICE.test(text));
+  if (!isString(text)) return false;
+  const head = text.slice(0, PREFIX_CHAR_CAP);
+  return CLIENT_NOTICE.test(head) || MODEL_NOTICE.test(head);
 }
 
 function couldBeModelNotice(text) {
@@ -82,7 +88,7 @@ export function createNoticeGate() {
     push(frame) {
       const delta = textOnlyDelta(frame);
       if (delta === null) return "content";
-      text += delta;
+      text += delta.slice(0, PREFIX_CHAR_CAP - text.length);
       if (isUnavailableNotice(text)) return "notice";
       return couldBecomeNotice(text) ? "hold" : "content";
     },

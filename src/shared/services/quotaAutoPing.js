@@ -1,4 +1,4 @@
-// Quota auto-ping scheduler: warms 5h windows by sending tiny opt-in requests right after reset.
+// Quota auto-ping scheduler: tiny opt-in requests warm 5h windows after a reset or when idle.
 import "open-sse/index.js";
 
 import {
@@ -95,6 +95,26 @@ function hasBlockingLongWindow(snapshots, connectionId, provider, model, now) {
     resourceKeys: buildQuotaResourceKeys({ provider, modelCandidates: [model] }),
     now
   }).skip;
+}
+
+// Starting an idle window spends quota, so unlike a reset ping it needs a fresh
+// weekly row and no exhausted weekly window of any scope (decolua/9router#2850).
+function hasWeeklyHeadroom(snapshots, connectionId, now) {
+  const weekly = (snapshots || []).filter((snapshot) =>
+  snapshot?.identity?.connectionId === connectionId &&
+  snapshot.identity.dimensionKey?.startsWith("requests:weekly") &&
+  isFreshSnapshot(snapshot, now));
+  return weekly.length > 0 && weekly.every((snapshot) => !["exhausted", "cooldown"].includes(snapshot.state));
+}
+
+// The proxy resolver falls back to another route when a selected pool is gone.
+// An idle start waits for the pool instead. OAuth routing modes are enforced by
+// the resolver itself: direct and legacy ignore the pool id, strict-pool errors.
+function isSelectedProxyAvailable(connection, proxyConfig) {
+  if (proxyConfig?.source === "error") return false;
+  if (connection.providerSpecificData?.oauthProxy?.mode) return true;
+  const poolId = String(connection.providerSpecificData?.proxyPoolId ?? "").trim();
+  return !poolId || poolId === "__none__" || Boolean(proxyConfig?.proxyPool);
 }
 
 function prunePingFailures(state, now = Date.now()) {
@@ -386,7 +406,12 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   }
   const resetKey = triggerResetAt ? normalizeResetKey(triggerResetAt) : null;
   if (wasPingedRecently(conn, providerConfig.minPingIntervalMs, now)) return;
-  if (!slotPending) {
+  // A fresh session row with no reset time means no window is running yet.
+  const startIdle = providerConfig.pingInactiveSession === true && !slotPending && !triggerResetAt &&
+    hasWeeklyHeadroom(snapshots, conn.id, now);
+  if (startIdle) {
+    if (wasPingedRecently(conn, providerConfig.inactiveMinPingIntervalMs, now)) return;
+  } else if (!slotPending) {
     if (!triggerResetAt) return;
     // Claude waits for reset. Codex pings only when resetAt slides, which means the 5h window is inactive.
     if (!shouldPingForReset(providerConfig, priorResetAt, triggerResetAt, now)) return;
@@ -443,10 +468,13 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (!isPingModeEnabled(latestSettings, providerConfig, conn.id, pendingSlot) ||
   latestConnection?.authType !== "oauth" ||
   pendingSlot && latestConnection.lastPingedSlotKey === pendingSlot.key) return;
-  const proxyOptions = buildProxyOptions(
-    await deps.resolveConnectionProxyConfig(latestConnection.providerSpecificData)
-  );
+  const proxyConfig = await deps.resolveConnectionProxyConfig(latestConnection.providerSpecificData);
+  const proxyOptions = buildProxyOptions(proxyConfig);
   signal.throwIfAborted();
+  // Re-checked on the re-read connection: the claim below compares against it.
+  if (startIdle && (
+  !isSelectedProxyAvailable(latestConnection, proxyConfig) ||
+  wasPingedRecently(latestConnection, providerConfig.inactiveMinPingIntervalMs))) return;
 
   let finalSnapshots;
   try {
@@ -475,6 +503,8 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   return;
   if (slotPending) {
     // Slot pings ignore resetAt; quota freshness/exhaustion above still applies.
+  } else if (startIdle) {
+    if (finalResetAt || !hasWeeklyHeadroom(finalSnapshots, conn.id, finalNow)) return;
   } else if (providerConfig.pingWhenResetAtSlides) {
     if (
     !finalResetAt ||
@@ -514,11 +544,15 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
     finalNow
   )) return;
 
-  // Claim the slot/reset marker atomically before the paid request so a second
-  // process (or overlapping tick) cannot send the same ping.
-  const claim = slotPending ?
-  { expected: { lastPingedSlotKey: latestConnection.lastPingedSlotKey }, next: { lastPingedSlotKey: dueSlot.key } } :
-  { expected: { lastPingedResetKey: latestConnection.lastPingedResetKey }, next: { lastPingedResetKey: resetKey } };
+  // Claim the slot/reset marker (the ping time for an idle start) atomically
+  // before the paid request so a second process or overlapping tick cannot send
+  // the same ping.
+  const claimField = slotPending && "lastPingedSlotKey" || startIdle && "lastPingAt" || "lastPingedResetKey";
+  const claimValue = slotPending && dueSlot.key || startIdle && new Date().toISOString() || resetKey;
+  const claim = {
+    expected: { [claimField]: latestConnection[claimField] },
+    next: { [claimField]: claimValue }
+  };
   if (!await deps.claimConnectionPing(conn.id, claim.expected, claim.next)) return;
   signal.throwIfAborted();
 
@@ -546,10 +580,13 @@ async function pingConnectionCore(conn, provider, providerConfig, handler, deps,
   if (!slotPending) pendingResets.delete(key);
   signal.throwIfAborted();
   const pingedAt = new Date().toISOString();
+  let marker = { lastPingedResetAt: triggerResetAt, lastPingedResetKey: resetKey };
+  // A slot ping must not consume the reset marker: Claude's trigger is the
+  // upcoming reset, so marking it would suppress that reactive ping later.
+  if (slotPending) marker = { lastPingedSlotKey: dueSlot.key };else
+  if (startIdle) marker = {};
   await deps.updateProviderConnection(conn.id, {
-    // A slot ping must not consume the reset marker: Claude's trigger is the
-    // upcoming reset, so marking it would suppress that reactive ping later.
-    ...(slotPending ? { lastPingedSlotKey: dueSlot.key } : { lastPingedResetAt: triggerResetAt, lastPingedResetKey: resetKey }),
+    ...marker,
     lastPingAt: pingedAt,
     updatedAt: pingedAt
   });

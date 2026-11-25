@@ -170,7 +170,8 @@ function getCodexRateLimitBody(snapshot) {
 }
 
 /**
- * Normalizes one Codex quota window, preserving its finite duration in seconds.
+ * Normalizes one Codex quota window. The caller adds the duration from
+ * classifyCodexQuotaWindow.
  */
 function formatCodexWindow(window) {
   const used = Math.max(0, Math.min(100, toFiniteNumber(window?.used_percent ?? window?.percent_used, 0)));
@@ -181,7 +182,6 @@ function formatCodexWindow(window) {
     total: 100,
     remaining: Math.max(0, 100 - used),
     resetAt: absolute || (seconds > 0 && Number.isFinite(Date.now() + seconds * 1000) && Math.abs(Date.now() + seconds * 1000) <= 8640000000000000 ? new Date(Date.now() + seconds * 1000).toISOString() : null),
-    windowSeconds: toFiniteNumber(window?.limit_window_seconds, null),
     unlimited: false
   };
 }

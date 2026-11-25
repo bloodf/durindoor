@@ -202,7 +202,7 @@ export default function GitLabAuthModal({
               label="Personal access token"
               value={pat}
               onChange={(e) => setPat(e.target.value)}
-              placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
+              placeholder="glpat-****************"
               type="password"
               autoComplete="off"
               error={error || undefined}

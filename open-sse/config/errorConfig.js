@@ -1,5 +1,8 @@
 // OpenAI-compatible error types mapping (client-facing)
 import { isString } from "../../src/shared/utils/typeChecks.js";
+
+export const CONTEXT_LENGTH_EXCEEDED_CODE = "context_length_exceeded";
+
 export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },
@@ -12,7 +15,7 @@ export const ERROR_TYPES = {
   406: { type: "invalid_request_error", code: "model_not_supported" },
   410: { type: "invalid_request_error", code: "model_shutdown" },
   /** #3386: context overflow is a terminal client error. */
-  413: { type: "invalid_request_error", code: "context_length_exceeded" },
+  413: { type: "invalid_request_error", code: CONTEXT_LENGTH_EXCEEDED_CODE },
   429: { type: "rate_limit_error", code: "rate_limit_exceeded" },
   500: { type: "server_error", code: "internal_server_error" },
   502: { type: "server_error", code: "bad_gateway" },

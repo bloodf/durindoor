@@ -996,3 +996,35 @@ export function sanitizeErrorMessageWithSecrets(message, secrets = []) {
   }
   return sanitizeErrorMessage(out);
 }
+
+// Names fetch raises for AbortSignal.timeout() and other aborts.
+const UPSTREAM_TIMEOUT_NAMES = new Set(["TimeoutError", "AbortError"]);
+const UPSTREAM_TIMEOUT_CODES = new Set([
+  "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
+// The peer could not be reached at all (DNS, TCP, TLS).
+const UPSTREAM_UNREACHABLE_CODES = new Set([
+  "ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "EPIPE",
+  "UND_ERR_SOCKET", "CERT_HAS_EXPIRED", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "DEPTH_ZERO_SELF_SIGNED_CERT"]);
+
+/**
+ * Classify a thrown fetch failure against an upstream provider, so a dead or
+ * slow upstream answers 502/504 instead of a blanket 500 (decolua/9router#4843).
+ * @param {unknown} error - the value thrown by fetch
+ * @returns {{status: number, code: string, message: string}}
+ */
+export function classifyUpstreamError(error) {
+  const name = error?.name || "";
+  // DOMException carries a numeric legacy `code`; only string codes identify a socket failure.
+  const code = [error?.code, error?.cause?.code].find((value) => isString(value)) || "";
+  if (UPSTREAM_TIMEOUT_NAMES.has(name) || UPSTREAM_TIMEOUT_CODES.has(code)) {
+    return { status: 504, code: "UPSTREAM_TIMEOUT", message: `Upstream provider timed out (${code || name})` };
+  }
+  if (UPSTREAM_UNREACHABLE_CODES.has(code)) {
+    return { status: 502, code: "UPSTREAM_UNREACHABLE", message: `Upstream provider unreachable (${code})` };
+  }
+  return {
+    status: 500,
+    code: "UPSTREAM_FETCH_FAILED",
+    message: sanitizeErrorMessage(error?.message || "Failed to reach upstream provider")
+  };
+}

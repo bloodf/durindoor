@@ -306,7 +306,8 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
       const { name, namespace } = resolveToolName(fn.name || toolCall.name || "");
       const callId = toolCall.id || `call_${name || "tool"}_${idx}`;
       const argumentsText = isString(fn.arguments) ? fn.arguments : JSON.stringify(fn.arguments || {});
-      const custom = customToolNameSet.has(name);
+      // A namespace subtool is declared under its dotted name; a bare custom tool never claims it.
+      const custom = customToolNameSet.has(namespace ? `${namespace}.${name}` : name);
       let input = argumentsText;
       if (custom) {
         try {
@@ -327,7 +328,7 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
         name,
         arguments: argumentsText
       };
-      if (namespace && !custom) item.namespace = namespace;
+      if (namespace) item.namespace = namespace;
       if (!custom && isCodexMultiAgentPlaintextTool({ name, namespace })) item.encrypted_function_args = [];
       output.push(item);
       idx++;

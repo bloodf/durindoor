@@ -53,6 +53,7 @@ describe("structured console rows from the gateway formatters", () => {
       outputTokens: 340,
       cacheRead: 800,
       cacheCreate: 100,
+      cacheReusedPercent: 38.1,
       routedModel: "kiro/claude-sonnet-4-5",
       credits: 0.1235,
       sessionId: "abcd1234",

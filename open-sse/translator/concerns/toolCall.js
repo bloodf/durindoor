@@ -385,7 +385,8 @@ export function ensureToolCallIds(body, targetFormat) {
         const block = msg.content[k];
         // Requests may contain a malformed non-object content block; skip it.
         if (!block || !isObject(block)) continue;
-        if (block.type === "tool_use" && block.id && !TOOL_ID_PATTERN.test(block.id)) {
+        // A tool_use without any id would orphan its tool_result (upstream #4511).
+        if (block.type === "tool_use" && (!block.id || !TOOL_ID_PATTERN.test(block.id))) {
           const sanitized = sanitizeToolId(block.id);
           block.id = sanitized || generateToolCallId(i, k, block.name);
         }

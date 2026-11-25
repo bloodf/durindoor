@@ -1792,7 +1792,8 @@ export async function handleComboChat({
           }
           if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
           releaseFailedAffinity(modelStr, i);
-          lastError = upstreamError;
+          // A 200 has no error status of its own; 503 keeps status and message paired (decolua/9router#4823).
+          recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, upstreamError);
           log.warn("COMBO", `Model ${modelStr} returned 200 with an error, trying next`);
           continue;
         }
@@ -1884,7 +1885,7 @@ export async function handleComboChat({
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }
-        log.info("COMBO", `Model ${modelStr} succeeded`);
+        log.info("COMBO", `Model ${modelStr} succeeded · ATTEMPT ${i + 1}/${rotatedModels.length}`);
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
       }
 

@@ -637,11 +637,23 @@ function mergeTokenCounts(base, donor) {
   return merged;
 }
 
+const INPUT_COUNT_FIELDS = ["prompt_tokens", "input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"];
+
+// A report with no positive input count (output-only receipt, zeroed placeholder)
+// says nothing about the input: drop its zero counts and its input-less total so
+// they cannot wipe the estimate (decolua/9router#4665).
+function withoutMissingInput(usage) {
+  if (INPUT_COUNT_FIELDS.some((field) => usage[field] > 0)) return usage;
+  return Object.fromEntries(Object.entries(usage).filter(([k, v]) =>
+    k !== "total_tokens" && !(v === 0 && TOKEN_COUNT_FIELDS.includes(k))));
+}
+
 // A real report replaces the token counts of the estimate it follows. The
 // estimate's other fields (credits, unit) survive; its inflated total does not.
 function replaceEstimatedTokens(prev, next) {
+  const report = withoutMissingInput(next);
   const merged = { ...prev };
-  for (const [k, v] of Object.entries(next)) {
+  for (const [k, v] of Object.entries(report)) {
     if (k === "estimated") continue; // the marker is sticky, handled below
     if (isNumber(v) && Number.isFinite(v)) {
       merged[k] = v;
@@ -653,7 +665,7 @@ function replaceEstimatedTokens(prev, next) {
   }
   // The real report may omit total_tokens; recompute from the real counts
   // instead of keeping the estimate's inflated total.
-  if (next.total_tokens === undefined) {
+  if (report.total_tokens === undefined) {
     const prompt = merged.prompt_tokens ?? merged.input_tokens;
     const completion = merged.completion_tokens ?? merged.output_tokens;
     if (Number.isFinite(prompt) && Number.isFinite(completion)) merged.total_tokens = prompt + completion;

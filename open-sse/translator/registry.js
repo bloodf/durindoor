@@ -22,6 +22,8 @@ export function initState(sourceFormat, requestBody) {
   const toolTypes = {};
   const toolNamespaces = {};
   const flatToolNamespaces = new Map();
+  // Dotted names of namespace subtools declared as custom (upstream #4810).
+  const namespacedCustomTools = new Set();
   const plainToolNames = new Set();
   // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
   const chatCustomToolNames = new Set();
@@ -46,6 +48,7 @@ export function initState(sourceFormat, requestBody) {
             // namespace restoration must rely on the provider-translated dotted
             // tool name to disambiguate.
             toolNamespaces[`${name}.${subtool.name}`] = name;
+            if (subtool.type === "custom") namespacedCustomTools.add(`${name}.${subtool.name}`);
             const namespaces = flatToolNamespaces.get(subtool.name) || new Set();
             namespaces.add(name);
             flatToolNamespaces.set(subtool.name, namespaces);
@@ -84,7 +87,8 @@ export function initState(sourceFormat, requestBody) {
     contentBlockIndex: -1,
     toolTypes,
     chatCustomToolNames,
-    toolNamespaces
+    toolNamespaces,
+    namespacedCustomTools
   };
 
   // Add openai-responses specific fields

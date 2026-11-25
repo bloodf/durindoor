@@ -118,6 +118,12 @@ export function buildDeclaredToolTypes(tools) {
     const nested = isString(tool.function?.name) ? tool.function.name : tool.custom?.name;
     const name = normalizeToolNameKey(isString(nested) ? nested : tool.name);
     if (name && type) declared.set(name, type);
+    if (type !== "namespace" || !Array.isArray(tool.tools)) continue;
+    // Namespaced custom subtools keep their identity under the dotted wire name (upstream #4810).
+    for (const subtool of tool.tools) {
+      if (subtool?.type !== "custom" || !isString(subtool.name) || !subtool.name.trim()) continue;
+      declared.set(normalizeToolNameKey(name ? `${name}.${subtool.name}` : subtool.name), "custom");
+    }
   }
   return declared;
 }

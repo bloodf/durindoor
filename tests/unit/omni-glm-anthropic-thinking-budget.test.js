@@ -106,9 +106,9 @@ describe("GLM Anthropic endpoint thinking budget", () => {
     // Reconciliation is scoped to the GLM Anthropic providers.
     const other = { model: "glm-4.6", max_tokens: 4096, thinking: { type: "enabled" } };
     expect(reconcileClaudeThinkingBudget(structuredClone(other), "anthropic").thinking).toEqual({ type: "enabled" });
-    // The explicit budget is carried only for the GLM Anthropic providers.
+    // Every Claude-wire zai route carries the budget (decolua/9router#4877).
     const seed = () => ({ thinking: { type: "enabled", budget_tokens: 2048 } });
-    expect(applyThinking("claude", "glm-4.6", seed(), "glm-cn").thinking).toEqual({ type: "enabled" });
+    expect(applyThinking("claude", "glm-4.6", seed(), "glm-cn").thinking).toEqual({ type: "enabled", budget_tokens: 2048 });
     expect(applyThinking("claude", "glm-4.6", seed(), "glm").thinking).toEqual({ type: "enabled", budget_tokens: 2048 });
   });
 

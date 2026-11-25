@@ -590,6 +590,13 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
           const budget = toBudget(cfg, caps.thinkingRange);
           if (Number.isFinite(budget) && budget > 0) body.thinking = { type: "enabled", budget_tokens: budget };
         }
+        // Other Claude-wire routes serving GLM need the same field (decolua/9router#4877).
+        // GLM_ANTHROPIC_PROVIDERS get a max_tokens-aware one from reconcileClaudeThinkingBudget.
+        if (targetFormat === FORMATS.CLAUDE && body.thinking && !GLM_ANTHROPIC_PROVIDERS.has(provider)) {
+          const budget = toBudget(eff, caps.thinkingRange);
+          body.thinking.budget_tokens = budget > 0 ?
+          Math.max(effortToBudget("low"), budget) : effortToBudget("medium");
+        }
         // Z.ai reads scalar high|max; Ark-compatible wires read reasoning.effort.
         const level = toLevel(eff);
         const objectEffort = ["minimal", "low", "medium", "high"].includes(level) ?

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/lib/localDb";
-import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { classifyUpstreamError } from "open-sse/utils/error.js";
 import { hasValidCliToken, hasValidToken, isLocalRequest } from "@/dashboardGuard";
 import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
 import { getRequestModelDiscoveryOptions } from "@/sse/services/modelAccess";
@@ -42,13 +42,15 @@ export async function GET(request, { params }) {
       // can tell an auth rejection from a transient upstream failure.
       return NextResponse.json({
         error: result.error,
+        ...(result.code ? { code: result.code } : null),
         ...(result.classification ? { classification: result.classification } : null)
       }, { status: result.status || 500 });
     }
     return NextResponse.json(result);
   } catch (error) {
-    const safeMessage = sanitizeErrorMessage(error?.message || "Internal server error");
-    console.error("Error fetching provider models:", safeMessage);
-    return NextResponse.json({ error: safeMessage }, { status: 500 });
+    // A dead or slow upstream is not an internal error.
+    const failure = classifyUpstreamError(error);
+    console.error("Error fetching provider models:", failure.message);
+    return NextResponse.json({ error: failure.message, code: failure.code }, { status: failure.status });
   }
 }

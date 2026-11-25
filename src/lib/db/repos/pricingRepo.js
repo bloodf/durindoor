@@ -84,14 +84,22 @@ export async function resolvePricingForModel(provider, model) {
   const userPricing = await getUserPricing();
   let overrideModel = model;
   let customPricing = provider ? userPricing[provider]?.[model] : null;
+  // An override on the exact annotated id wins; otherwise "model(xhigh)" takes
+  // the override saved on its base id (decolua/9router#4635).
+  const { stripThinkingSuffix } = await import("open-sse/translator/concerns/thinkingSuffix.js");
+  const baseModel = stripThinkingSuffix(model, provider);
+  if (!customPricing && baseModel !== model) {
+    customPricing = userPricing[provider]?.[baseModel];
+    if (customPricing) overrideModel = baseModel;
+  }
   // Kiro GPT-5.6 synthetic variants (#2596): a user override saved on the bare
   // tier (e.g. kiro["gpt-5.6-sol"]) must also cover its `-thinking`/`-agentic`
   // variants. Scoped to kiro/kr so other providers' `*-thinking` keys are exact.
   const kiroVariants = await import("open-sse/providers/models/kiroVariants.js");
   if (!customPricing && kiroVariants.isKiroFamilyProvider(provider)) {
     const { stripKiroSyntheticSuffixes } = kiroVariants;
-    const canonical = stripKiroSyntheticSuffixes(model);
-    if (canonical !== model) {
+    const canonical = stripKiroSyntheticSuffixes(baseModel);
+    if (canonical !== baseModel) {
       customPricing = userPricing[provider]?.[canonical];
       if (customPricing) overrideModel = canonical;
     }
@@ -99,8 +107,8 @@ export async function resolvePricingForModel(provider, model) {
   const { canonicalModelId, getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
   const defaultPricing = resolveConst(provider, model);
   if (!customPricing) {
-    const canonical = canonicalModelId(provider, model);
-    if (canonical !== model) {
+    const canonical = canonicalModelId(provider, baseModel);
+    if (canonical !== baseModel) {
       customPricing = userPricing[provider]?.[canonical];
       if (customPricing) overrideModel = canonical;
     }

@@ -506,7 +506,7 @@ function emitToolCall(state, emit, tc) {
         type: "custom_tool_call",
         input: "",
         call_id: refCallId,
-        name: resolveResponsesToolName(state, refName).name,
+        ...resolveResponsesToolName(state, refName),
         status: "in_progress"
       } :
       {
@@ -589,8 +589,9 @@ function isCustomToolByState(state, tcIdx, funcName) {
   // Classify by the resolved name so an injected prefix (`functions.apply_patch`)
   // frames the same way the buffered projector does.
   const resolved = resolveResponsesToolName(state, state.funcNames[tcIdx] || funcName || "");
-  // A namespace subtool is always a function call, even one named apply_patch.
-  if (resolved.namespace) return false;
+  // A namespace subtool is a function call (even one named apply_patch) unless
+  // the request declared that subtool as custom (upstream #4810).
+  if (resolved.namespace) return Boolean(state.namespacedCustomTools?.has(`${resolved.namespace}.${resolved.name}`));
   const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
@@ -658,7 +659,7 @@ function closeToolCall(state, emit, idx) {
           type: "custom_tool_call",
           input: rawInput,
           call_id: callId,
-          name: resolveResponsesToolName(state, state.funcNames[idx] || "").name,
+          ...resolveResponsesToolName(state, state.funcNames[idx] || ""),
           status: "completed"
         }
       });

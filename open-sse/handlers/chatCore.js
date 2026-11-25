@@ -103,6 +103,12 @@ FORMATS.OLLAMA,
 FORMATS.COMMANDCODE]
 );
 
+// SSE dialects without `choices[].delta`: only the buffered converter reads them.
+const BUFFERED_ONLY_SSE_FORMATS = new Set([
+FORMATS.OPENAI_RESPONSES,
+FORMATS.CLAUDE]
+);
+
 const NATIVE_TOP_LEVEL_STREAM_FORMATS = new Set([
 FORMATS.OPENAI_RESPONSES,
 FORMATS.CLAUDE]
@@ -2000,8 +2006,12 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     return withCompressionHeader(masked, compressionHeaderValue);
   };
 
-  // Provider forced streaming but client wants JSON
-  if (!clientRequestedStreaming && providerRequiresStreaming) {
+  // Provider forced streaming, or answered with SSE the non-stream handler
+  // cannot parse, but the client wants JSON. Compact requests keep their own
+  // path: their result is not a completed Responses stream.
+  const unrequestedSSE = !isCompactRequest && BUFFERED_ONLY_SSE_FORMATS.has(providerResponseFormat) &&
+    (providerResponse.headers.get("content-type") || "").includes("text/event-stream");
+  if (!clientRequestedStreaming && (providerRequiresStreaming || unrequestedSSE)) {
     try {
       const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, toolNameMap, trackDone, appendLog, signal: providerSignal, credentials });
       if (result) return await finalizeResponse(await finalizeBufferedResult(result));

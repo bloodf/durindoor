@@ -108,7 +108,7 @@ export function buildRequestDetail(base, overrides = {}) {
  * @param {string} [params.provider] - Resolved provider id.
  * @param {string} [params.model] - Resolved model id.
  * @param {string} [params.sessionId] - Resolved provider conversation id; known scope removed and printable prefix logged.
- * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)] · OUT <n>` plus optional telemetry.
+ * @returns {string} `DONE <total>ms[ · TTFT <ms>] · IN <n>[(CACHE …)[ <pct>% reused]] · OUT <n>` plus optional telemetry.
  */
 export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
   const u = usage || {};
@@ -122,6 +122,10 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
     if (cacheRead) parts.push(`↻${cacheRead}`);
     if (cacheCreate) parts.push(`+${cacheCreate}`);
     inStr += ` (CACHE ${parts.join(" ")})`;
+    // Claude reports input exclusive of cache, so the share needs the canonical
+    // cache-inclusive total. A count above that total has no meaningful share.
+    const promptTotal = cacheRead ? canonicalizeUsage(u)?.prompt_tokens || inTok : 0;
+    if (promptTotal > 0 && cacheRead <= promptTotal) inStr += ` ${(cacheRead / promptTotal * 100).toFixed(1)}% reused`;
   }
   const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
   // Same marker as logUsage(): a count we guessed must not read like a measured one.

@@ -7,7 +7,7 @@ import {
   MAX_RATE_LIMIT_COOLDOWN_MS,
   GEMINI_DAILY_QUOTA_PARK_MS } from
 "../config/errorConfig.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 import { NAIVE_RESET_TIMEZONES } from "../config/naiveResetTimezones.js";
 
@@ -865,7 +865,7 @@ export function formatProviderError(error, provider, model, statusCode) {
  * @returns {string}
  */
 export function describeProviderError(error) {
-  const clamp = (value, limit = 100) => sanitizeErrorMessage(value).replace(/\s+/g, " ").trim().slice(0, limit).trimEnd() || "Provider error";
+  const clamp = (value, limit = ACCOUNT_ERROR_MESSAGE_MAX_CHARS) => sanitizeErrorMessage(value).replace(/\s+/g, " ").trim().slice(0, limit).trimEnd() || "Provider error";
   if (isString(error)) return clamp(error);
   if (!error || !isObject(error)) return "Provider error";
 
@@ -883,7 +883,7 @@ export function describeProviderError(error) {
     const message = clamp(rawMessage);
     if (!code || message.includes(code)) return message;
     const suffix = ` (${code})`;
-    return `${clamp(rawMessage, 100 - suffix.length)}${suffix}`;
+    return `${clamp(rawMessage, ACCOUNT_ERROR_MESSAGE_MAX_CHARS - suffix.length)}${suffix}`;
   }
   return code ? `Provider error (${code})` : "Provider error";
 }

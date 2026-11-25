@@ -9,6 +9,7 @@ import {
   unavailableResponse,
   writeStreamError,
 } from "../../open-sse/utils/error.js";
+import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS } from "../../open-sse/config/runtimeConfig.js";
 
 import { getClientStatusFromError } from "../../open-sse/utils/error.js";
 
@@ -221,22 +222,23 @@ describe("describeProviderError", () => {
     failure.request = { headers: { authorization: "Bearer request-secret" } };
 
     expect(describeProviderError(failure)).toBe("fetch failed (ECONNREFUSED)");
-    expect(describeProviderError({ message: "x".repeat(200) })).toHaveLength(100);
+    expect(describeProviderError({ message: "x".repeat(ACCOUNT_ERROR_MESSAGE_MAX_CHARS + 100) }))
+      .toHaveLength(ACCOUNT_ERROR_MESSAGE_MAX_CHARS);
     expect(describeProviderError(failure)).not.toContain("request-secret");
     expect(describeProviderError(failure)).not.toContain("authorization");
   });
 
-  it("keeps persisted output valid at the 100-character boundary", () => {
-    const trailingSpaceAtLimit = `${"x".repeat(99)} ${"y".repeat(20)}`;
-    const described = describeProviderError({ message: trailingSpaceAtLimit });
-    expect(described).toBe("x".repeat(99));
+  it("keeps persisted output valid at the length boundary", () => {
+    const beforeLimit = "x".repeat(ACCOUNT_ERROR_MESSAGE_MAX_CHARS - 1);
+    const described = describeProviderError({ message: `${beforeLimit} ${"y".repeat(20)}` });
+    expect(described).toBe(beforeLimit);
     expect(described).not.toMatch(/\s$/);
 
     const withCode = describeProviderError({
-      message: "transport ".repeat(20),
+      message: "transport ".repeat(ACCOUNT_ERROR_MESSAGE_MAX_CHARS / 5),
       code: "ECONNREFUSED",
     });
-    expect(withCode.length).toBeLessThanOrEqual(100);
+    expect(withCode.length).toBeLessThanOrEqual(ACCOUNT_ERROR_MESSAGE_MAX_CHARS);
     expect(withCode).toMatch(/ \(ECONNREFUSED\)$/);
   });
 });

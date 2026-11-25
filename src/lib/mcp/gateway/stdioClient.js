@@ -295,9 +295,9 @@ class StdioEntry {
         this.initialized = false;
         this.initPromise = null;
         this.initInfo = null;
-        // Drop a child that never completed initialize so it cannot leak.
+        // Drop only this failed child; a replacement may already own the id.
         this.close();
-        getStore().delete(this.instance.id);
+        if (getStore().get(this.instance.id) === this) getStore().delete(this.instance.id);
         throw e;
       }
     })();
@@ -357,7 +357,7 @@ export async function listTools(instance) {
     }
     return resp.result?.tools || [];
   } catch (e) {
-    if (!entry.isAlive()) {
+    if (!entry.isAlive() && getStore().get(instance.id) === entry) {
       getStore().delete(instance.id);
     }
     throw e;
@@ -378,7 +378,7 @@ export async function callTool(instance, name, args) {
     }
     return resp.result;
   } catch (e) {
-    if (!entry.isAlive()) {
+    if (!entry.isAlive() && getStore().get(instance.id) === entry) {
       getStore().delete(instance.id);
     }
     throw e;

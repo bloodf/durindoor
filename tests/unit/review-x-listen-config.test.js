@@ -13,9 +13,28 @@ const cliSource = fs.readFileSync(new URL("../../cli/cli.js", import.meta.url), 
 function launcher(env, args = []) {
   const start = cliSource.indexOf("// Parse arguments");
   const end = cliSource.indexOf("// Auto-relaunch after update:", start);
-  const context = { args, process: { env, exit: () => { throw new Error("launcher rejected port"); } }, console,
-    DEFAULT_HOST: shared.DEFAULT_SERVER_HOST, resolveListenConfig: (options) => shared.resolveListenConfig({ ...options, env }) };
-  return vm.runInNewContext(`${cliSource.slice(start, end)}\n({ port, host })`, context);
+  // Run the CLI's own import line so the test sees which default host it binds.
+  const binding = cliSource.match(/^const \{[^}]*\} = require\(listenConfigPath\);$/m)[0];
+  const context = { args, process: { env, exit: () => { throw new Error("launcher rejected port"); } }, console: { error() {} },
+    listenConfigPath: "listenConfig",
+    require: () => ({ ...shared, resolveListenConfig: (options) => shared.resolveListenConfig({ ...options, env }) }) };
+  return vm.runInNewContext(`${binding}\n${cliSource.slice(start, end)}\n({ port, host, DEFAULT_HOST })`, context);
+}
+
+function withProcessEnv(env, run) {
+  const old = { PORT: process.env.PORT, HOSTNAME: process.env.HOSTNAME };
+  try {
+    for (const key of Object.keys(old)) {
+      if (env[key] === undefined) delete process.env[key];
+      else process.env[key] = env[key];
+    }
+    return run();
+  } finally {
+    for (const key of Object.keys(old)) {
+      if (old[key] === undefined) delete process.env[key];
+      else process.env[key] = old[key];
+    }
+  }
 }
 
 function owner(env) {
@@ -37,38 +56,43 @@ function owner(env) {
 }
 
 describe("shared listen configuration", () => {
-  it("uses the same environment for the launcher, gateway and guard", () => {
+  it("uses the same environment for the gateway, owner and guard", () => {
     const env = { PORT: "23456", HOSTNAME: "192.0.2.1" };
     const expected = { port: 23456, host: "192.0.2.1" };
     expect(shared.resolveListenConfig({ env, argv: [] })).toEqual(expected);
     expect(gateway.resolveListenConfig({ env, argv: [] })).toEqual(expected);
-    expect(launcher(env)).toEqual(expected);
     expect(owner({ ...env })).toEqual(expected);
-    const old = { PORT: process.env.PORT, HOSTNAME: process.env.HOSTNAME };
-    try {
-      Object.assign(process.env, env);
-      expect(resolveServerHost()).toBe(expected.host);
-    } finally {
-      for (const key of Object.keys(old)) {
-        if (old[key] === undefined) delete process.env[key];
-        else process.env[key] = old[key];
-      }
-    }
+    expect(withProcessEnv(env, resolveServerHost)).toBe(expected.host);
   });
 
-  it("rejects an out-of-range environment port in each resolver", () => {
-    const env = { PORT: "65536" };
-    expect(() => shared.resolveListenConfig({ env, argv: [] })).toThrow();
-    expect(() => gateway.resolveListenConfig({ env, argv: [] })).toThrow();
-    expect(() => launcher(env)).toThrow();
-    expect(() => owner({ ...env })).toThrow();
-    const old = process.env.PORT;
-    try {
-      process.env.PORT = env.PORT;
-      expect(() => resolveServerHost()).toThrow();
-    } finally {
-      if (old === undefined) delete process.env.PORT;
-      else process.env.PORT = old;
-    }
+  it("defaults the server entries to 127.0.0.1", () => {
+    const expected = { port: 20128, host: "127.0.0.1" };
+    expect(shared.DEFAULT_SERVER_HOST).toBe(expected.host);
+    expect(shared.resolveListenConfig({ env: {}, argv: [] })).toEqual(expected);
+    expect(gateway.resolveListenConfig({ env: {}, argv: [] })).toEqual(expected);
+    expect(owner({})).toEqual(expected);
+    expect(withProcessEnv({}, resolveServerHost)).toBe(expected.host);
+  });
+
+  it("defaults the CLI to 0.0.0.0, ignoring HOSTNAME but reading PORT", () => {
+    expect(shared.DEFAULT_CLI_HOST).toBe("0.0.0.0");
+    const expected = { port: 20128, host: "0.0.0.0", DEFAULT_HOST: "0.0.0.0" };
+    expect(launcher({})).toEqual(expected);
+    expect(launcher({ PORT: "23456", HOSTNAME: "192.0.2.1" })).toEqual({ ...expected, port: 23456 });
+    expect(launcher({}, ["--host"])).toEqual(expected);
+    expect(launcher({}, ["--host", "127.0.0.1"])).toEqual({ ...expected, host: "127.0.0.1" });
+  });
+
+  it.each(["0", "65536", "not-a-port"])("rejects the environment port %s in each entry", (port) => {
+    const env = { PORT: port };
+    expect(() => shared.resolveListenConfig({ env, argv: [] })).toThrow("Invalid server port");
+    expect(() => gateway.resolveListenConfig({ env, argv: [] })).toThrow("Invalid server port");
+    expect(() => launcher(env)).toThrow("launcher rejected port");
+    expect(() => owner({ ...env })).toThrow("Invalid server port");
+    expect(() => withProcessEnv(env, resolveServerHost)).toThrow("Invalid server port");
+  });
+
+  it.each(["0", "65536", "not-a-port"])("rejects the CLI flag --port %s", (port) => {
+    expect(() => launcher({}, ["--port", port])).toThrow("launcher rejected port");
   });
 });

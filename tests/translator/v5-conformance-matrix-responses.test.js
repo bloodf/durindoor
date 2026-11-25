@@ -233,7 +233,7 @@ describe("#1089 Responses client conformance", () => {
     expect(toGemini.contents[1].parts[0].functionResponse).toMatchObject({
       id: "c1",
       name: "lookup",
-      response: { result: { result: "done" } },
+      response: { result: "done" },
     });
   });
 
@@ -298,7 +298,7 @@ describe("#1089 Responses client conformance", () => {
         functionResponse: {
           id: "c1",
           name: "fetch",
-          response: { result: { result: "first\nsecond" } },
+          response: { result: "first\nsecond" },
         },
       }],
     });

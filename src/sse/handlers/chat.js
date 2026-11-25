@@ -29,6 +29,7 @@ import { validateChatRequestBody } from "open-sse/translator/validate.js";
 import { initTranslators } from "open-sse/translator/index.js";
 import { requestAborted } from "./chat/shared.js";
 import { dispatchChat } from "./chat/combo.js";
+import { toResponsesContextFailure } from "./chat/contextOverflow.js";
 export { resolveComboModelTimeoutMs, rankComboModelsByLocks, rankComboModelsByQuota, resolveComboCapabilitiesMap } from "./chat/combo.js";
 export { __resetAntigravity429StrikesForTests, warmRequestModelLimits, isImageOnlyModel, isNonChatModel, holdForEarlyEof } from "./chat/singleModel.js";
 
@@ -255,7 +256,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
 
   // Vision Bridge capability resolution and reroute have moved to
   // handleSingleModelChat so they run AFTER API-key policy enforcement for
-  return dispatchChat({ body, modelStr, settings, request, apiKeyAuth, apiKey, clientRawRequest, planRequest, authenticatedKeyRecord, billingEpoch, finishChat });
+  const response = await dispatchChat({ body, modelStr, settings, request, apiKeyAuth, apiKey, clientRawRequest, planRequest, authenticatedKeyRecord, billingEpoch, finishChat });
+  // Applied after account and combo selection, which need the HTTP failure.
+  return toResponsesContextFailure(response, { stream: body.stream, sourceFormat });
 }
 
 async function handleChatWithTokenReservation(request, ...rest) {

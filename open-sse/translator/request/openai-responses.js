@@ -1185,7 +1185,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     if (converted !== undefined) result.tool_choice = converted;
   }
   if (body.reasoning !== undefined) result.reasoning = body.reasoning;
-  if (body.reasoning_effort !== undefined) {
+  // A null effort asks for nothing: leave the caller's `reasoning` untouched.
+  if (body.reasoning_effort != null) {
     const reasoning = result.reasoning && isObject(result.reasoning) && !Array.isArray(result.reasoning) ? result.reasoning : {};
     result.reasoning = { summary: "auto", ...reasoning, effort: body.reasoning_effort };
   }

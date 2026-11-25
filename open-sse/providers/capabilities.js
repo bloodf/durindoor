@@ -336,6 +336,8 @@ const CLOUDFLARE_CAPS = {
   "@cf/meta/llama-guard-3-8b": { contextWindow: 131072, maxOutput: undefined },
   "@cf/meta/llama-3.1-8b-instruct-fp8": { contextWindow: 32000, maxOutput: undefined },
   "@cf/meta/llama-3.2-11b-vision-instruct": { vision: true, contextWindow: 128000, maxOutput: undefined },
+  // Accepts image_url parts; the generic *mistral* pattern has no vision flag (9router#5730).
+  "@cf/mistralai/mistral-small-3.1-24b-instruct": { vision: true, contextWindow: 128000, maxOutput: undefined },
   "@cf/meta/llama-4-scout-17b-16e-instruct": { vision: true, contextWindow: 131000, maxOutput: undefined },
   "@cf/meta-llama/llama-2-7b-chat-hf-lora": { contextWindow: 8192, maxOutput: undefined },
   "@cf/mistral/mistral-7b-instruct-v0.2-lora": { contextWindow: 15000, maxOutput: undefined },

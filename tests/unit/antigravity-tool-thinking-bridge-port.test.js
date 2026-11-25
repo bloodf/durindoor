@@ -19,8 +19,8 @@ describe("Antigravity tool and thinking bridge updates", () => {
       ]
     }, true, null, "antigravity");
     const responseParts = translated.request.contents.flatMap((c) => c.parts || []).filter((p) => p.functionResponse);
-    expect(responseParts[0].functionResponse.response).toEqual({ result: { result: "plain result" } });
-    expect(responseParts[1].functionResponse.response).toEqual({ result: { result: "[Tool error]\nfailed" } });
+    expect(responseParts[0].functionResponse.response).toEqual({ result: "plain result" });
+    expect(responseParts[1].functionResponse.response).toEqual({ result: "[Tool error]\nfailed" });
   });
 
   it("maps adaptive, disabled, zero budget, auto and none to Antigravity tiers", () => {

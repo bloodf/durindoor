@@ -613,7 +613,7 @@ describe("registered tool-error text destination semantics", () => {
       };
       const success = convert(undefined);
       for (const flag of [false, "true", 1]) expect(convert(flag)).toEqual(success);
-      expect(convert(true)).toEqual({ result: { result: `[Tool error]\n${JSON.stringify(content)}` } });
+      expect(convert(true)).toEqual({ result: `[Tool error]\n${JSON.stringify(content)}` });
     });
   });
 

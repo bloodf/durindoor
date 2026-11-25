@@ -17,6 +17,7 @@ import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
 import { settleProviderAttemptDispatch, getCurrentProviderAttemptTimestamp, runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
+import { CONTEXT_LENGTH_EXCEEDED_CODE } from "../config/errorConfig.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
 import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
@@ -25,6 +26,8 @@ import { CopilotLearnedRoutes } from "../services/copilotLearnedRoutes.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { containsMediaKind } from "../utils/mediaParts.js";
+
+const CONTEXT_OVERFLOW_MESSAGE_PREFIX = "Your input exceeds the context window of this model.";
 
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
@@ -190,6 +193,25 @@ export class GithubExecutor extends BaseExecutor {
     let end = messages.length;
     while (end > 1 && messages[end - 1]?.role === "assistant") end--;
     return end === messages.length ? messages : messages.slice(0, end);
+  }
+
+  // A context overflow must keep its code so clients can compact and retry.
+  // Copilot reports it as a generic invalid_request_body; the Claude token
+  // preflight below already uses the canonical code.
+  parseError(response, bodyText) {
+    let error = null;
+    try {
+      error = JSON.parse(bodyText)?.error;
+    } catch { /* unstructured bodies keep the default parser */ }
+    const overflow = response.status === HTTP_STATUS.BAD_REQUEST && isString(error?.message) && (
+      error.code === CONTEXT_LENGTH_EXCEEDED_CODE ||
+      error.code === "invalid_request_body" && error.message.startsWith(CONTEXT_OVERFLOW_MESSAGE_PREFIX));
+    if (!overflow) return super.parseError(response, bodyText);
+    return {
+      status: response.status,
+      message: error.message,
+      errorBody: { error: { message: error.message, type: "invalid_request_error", code: CONTEXT_LENGTH_EXCEEDED_CODE } }
+    };
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {

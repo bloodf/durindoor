@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ connections: [], jobs: new Map(), caller: "caller-a", receipts: [] }));
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: async () => true }));
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: async () => state.connections,
-  getProviderNodes: async () => [], getProviderNodeById: async () => null, getProxyPoolById: async () => null,
-  createProviderConnection: async (data) => { const c = { id: `account-${state.connections.length + 1}`, ...data }; state.connections.push(c); return c; },
-}));
+
 vi.mock("@/lib/localDb", () => ({
   getSettings: async () => ({}),
   getProviderConnectionById: async (id) => state.connections.find((c) => c.id === id),
   getApiKeyProviderConnectionIds: async () => [],
-}));
+  getProviderConnections: async () => state.connections,
+  getProviderNodes: async () => [],
+  getProviderNodeById: async () => null,
+  getProxyPoolById: async () => null,
+  createProviderConnection: async (data) => { const c = { id: `account-${state.connections.length + 1}`, ...data }; state.connections.push(c); return c; }}));
 vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: async () => ({ apiKey: state.caller, auth: { ok: true, apiKeyId: state.caller } }),
   getProviderCredentialsWithQuotaPreflight: async (_provider, _excluded, _model, opts) => {

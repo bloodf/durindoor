@@ -2,8 +2,10 @@ import "../translator/registerAll.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "fixture", updateKimchiUserAgent: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(async () => {}) }));
-vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
+
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() ,
+  getProviderConnectionById: vi.fn(),
+  updateProviderConnection: vi.fn(async () => {})}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", async (original) => ({ ...(await original()), proxyAwareFetch: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({

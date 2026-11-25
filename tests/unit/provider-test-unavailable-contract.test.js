@@ -1,8 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn(), list: vi.fn() }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: db.get, updateProviderConnection: db.update }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnections: db.list }));
+
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: db.list ,
+  getProviderConnectionById: db.get,
+  updateProviderConnection: db.update}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false })) }));
 import { POST } from "../../src/app/api/providers/[id]/test/route.js";
 import { POST as batch } from "../../src/app/api/providers/test-batch/route.js";

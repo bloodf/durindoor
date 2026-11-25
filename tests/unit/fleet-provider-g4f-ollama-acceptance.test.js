@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => vi.fn());
 const stored = vi.hoisted(() => ({ get: vi.fn(), update: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: stored.get, updateProviderConnection: stored.update }));
+
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
 // Registry import otherwise starts an unrelated release lookup at module load.
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "kimchi/offline-fixture" }));
@@ -17,9 +17,9 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false })),
 }));
 vi.mock("@/lib/localDb", () => ({
-  getProviderConnectionById: vi.fn(),
+  getProviderConnectionById: stored.get,
   getProviderNodeById: vi.fn(),
-}));
+  updateProviderConnection: stored.update}));
 
 import { testSingleConnection } from "../../src/app/api/providers/[id]/test/testUtils.js";
 import { POST as validate } from "../../src/app/api/providers/validate/route.js";

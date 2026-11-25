@@ -28,15 +28,7 @@ const mocks = vi.hoisted(() => ({
   refreshProviderQuota: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getCombos: mocks.getCombos,
-  getComboById: mocks.getComboById,
-  getApiKeys: mocks.getApiKeys,
-  getAllApiKeyUsageTotals: mocks.getAllApiKeyUsageTotals,
-  listProviderQuotaSnapshots: mocks.listProviderQuotaSnapshots,
-  getSettings: mocks.getSettings,
-  updateSettings: mocks.updateSettings,
-}));
+
 
 vi.mock("@/lib/combos/comboManagement", () => ({
   createComboManaged: mocks.createComboManaged,
@@ -53,7 +45,13 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
   getProviderNodeById: mocks.getProviderNodeById,
-}));
+  getCombos: mocks.getCombos,
+  getComboById: mocks.getComboById,
+  getApiKeys: mocks.getApiKeys,
+  getAllApiKeyUsageTotals: mocks.getAllApiKeyUsageTotals,
+  listProviderQuotaSnapshots: mocks.listProviderQuotaSnapshots,
+  getSettings: mocks.getSettings,
+  updateSettings: mocks.updateSettings}));
 
 vi.mock("@/lib/usageDb", () => ({
   getUsageStats: mocks.getUsageStats,

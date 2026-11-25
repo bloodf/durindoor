@@ -11,17 +11,15 @@ import { getModelsByProviderId } from "../../src/shared/constants/models.js";
 const dashboardDb = vi.hoisted(() => ({
   settings: {}, catalogs: {}, shared: null, custom: [], aliases: {}, disabled: {},
 }));
+
 vi.mock("@/lib/localDb", () => ({
+  getModelAliases: async () => dashboardDb.aliases,
+  setModelAlias: vi.fn(),
   getSettings: async () => dashboardDb.settings,
   getSyncedModelCatalogs: async () => dashboardDb.catalogs,
   getSyncedModelCatalog: async (provider) => dashboardDb.catalogs[provider] ?? null,
   getCustomModels: async () => dashboardDb.custom,
-  getCachedSharedModelMetadata: async () => dashboardDb.shared,
-}));
-vi.mock("@/lib/localDb", () => ({
-  getModelAliases: async () => dashboardDb.aliases,
-  setModelAlias: vi.fn(),
-}));
+  getCachedSharedModelMetadata: async () => dashboardDb.shared}));
 vi.mock("@/lib/disabledModelsDb", () => ({
   getDisabledModels: async () => dashboardDb.disabled,
 }));

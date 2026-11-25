@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { GET as getProviderModels } from "../../src/app/api/providers/[id]/models/route.js";
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: vi.fn(),
-  getCombos: vi.fn(),
-  getCustomModels: vi.fn(),
-  getModelAliases: vi.fn(),
-}));
+
 vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn() }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({ getSettings: vi.fn().mockResolvedValue({}) }));
@@ -16,7 +11,11 @@ vi.mock("@/lib/network/connectionProxy", () => ({
 }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("@/sse/services/tokenRefresh", () => ({ updateProviderCredentials: vi.fn() }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
+  getProviderConnections: vi.fn(),
+  getCombos: vi.fn(),
+  getCustomModels: vi.fn(),
+  getModelAliases: vi.fn()}));
 
 import * as localDb from "@/lib/localDb";
 import * as disabledModelsDb from "@/lib/disabledModelsDb";

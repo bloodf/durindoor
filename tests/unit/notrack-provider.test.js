@@ -20,8 +20,9 @@ vi.mock("../../open-sse/utils/requestLogger.js", () => ({
     logError: vi.fn(),
   })),
 }));
-vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})) }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() }));
+
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
+  getSettings: vi.fn(async () => ({}))}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({

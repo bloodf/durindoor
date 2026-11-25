@@ -11,15 +11,13 @@ const mocks = vi.hoisted(() => ({
   testProxyUrl: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnectionById: mocks.getProviderConnectionById,
-  updateProviderConnection: mocks.updateProviderConnection,
-}));
+
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(() => Promise.resolve(new Response("", { status: 400 }))),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn(), getProviderConnectionById: vi.fn(), getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn(), getProviderConnectionById: mocks.getProviderConnectionById, getProviderNodeById: vi.fn() ,
+  updateProviderConnection: mocks.updateProviderConnection}));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: vi.fn().mockResolvedValue("machine-id-test") }));
 

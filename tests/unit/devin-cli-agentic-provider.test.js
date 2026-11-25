@@ -14,15 +14,12 @@ vi.mock("@/dashboardGuard", async (original) => ({
   ...await original(),
   isOperatorRequest: vi.fn(),
 }));
-vi.mock("@/lib/localDb", async (original) => ({
-  ...await original(),
-  createProviderConnection: vi.fn(async (data) => ({ ...data, id: "offline" })),
-}));
+
 vi.mock("@/lib/localDb", async (original) => ({
   ...await original(),
   getProviderConnections: vi.fn(async () => []),
   getSettings: vi.fn(async () => ({})),
-}));
+  createProviderConnection: vi.fn(async (data) => ({ ...data, id: "offline" }))}));
 vi.mock("@/lib/usageDb.js", () => ({
   recordTokenSaverEvent: vi.fn(async () => {}),
   trackPendingRequest: vi.fn(),

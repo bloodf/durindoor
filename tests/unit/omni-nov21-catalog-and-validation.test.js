@@ -5,22 +5,19 @@ const operator = vi.hoisted(() => ({ value: true }));
 vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: vi.fn(async () => operator.value),
 }));
+
 vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: vi.fn(async () => []),
+  getProviderConnections: vi.fn(),
+  getCombos: vi.fn(),
+  getCustomModels: vi.fn(),
+  getModelAliases: vi.fn(),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
   getProxyPoolById: vi.fn(),
   getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "c1", ...data })),
   updateProviderConnection: vi.fn(),
-  deleteProviderConnection: vi.fn(),
-}));
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: vi.fn(),
-  getCombos: vi.fn(),
-  getCustomModels: vi.fn(),
-  getModelAliases: vi.fn(),
-}));
+  deleteProviderConnection: vi.fn()}));
 vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: vi.fn() }));
 vi.mock("@/lib/db/repos/settingsRepo", () => ({

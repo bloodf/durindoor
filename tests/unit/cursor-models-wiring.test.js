@@ -10,12 +10,7 @@ const mocks = vi.hoisted(() => ({
   resolveCursorModels: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnections: mocks.getProviderConnections,
-  getCombos: mocks.getCombos,
-  getCustomModels: mocks.getCustomModels,
-  getModelAliases: mocks.getModelAliases,
-}));
+
 vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: mocks.getDisabledModels }));
 vi.mock("@/lib/network/connectionProxy", () => ({
@@ -25,7 +20,11 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   refreshGoogleToken: vi.fn(),
   updateProviderCredentials: vi.fn(),
 }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
+  getProviderConnections: mocks.getProviderConnections,
+  getCombos: mocks.getCombos,
+  getCustomModels: mocks.getCustomModels,
+  getModelAliases: mocks.getModelAliases}));
 vi.mock("open-sse/services/cursorModels.js", () => ({ resolveCursorModels: mocks.resolveCursorModels }));
 vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
 vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));

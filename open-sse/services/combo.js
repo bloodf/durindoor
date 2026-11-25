@@ -1792,7 +1792,8 @@ export async function handleComboChat({
           }
           if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
           releaseFailedAffinity(modelStr, i);
-          lastError = upstreamError;
+          // A 200 has no error status of its own; 503 keeps status and message paired (decolua/9router#4823).
+          recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, upstreamError);
           log.warn("COMBO", `Model ${modelStr} returned 200 with an error, trying next`);
           continue;
         }

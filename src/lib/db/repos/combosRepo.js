@@ -281,12 +281,38 @@ export async function updateCombo(id, data) {
   return result;
 }
 
+// An empty `allowedCombos` means "all combos", so a key that loses its last grant
+// keeps this marker. Combo names cannot contain spaces or parentheses.
+const REVOKED_COMBO_GRANT = "(deleted combo)";
+
+// Grants hold combo names and the request gate matches them exactly. A left-over
+// name would grant any later combo that reuses it (decolua/9router#4947).
+function revokeComboGrants(db, name) {
+  for (const key of db.all(`SELECT id, allowedCombos FROM apiKeys`)) {
+    const allowed = parseJson(key.allowedCombos, []);
+    if (!Array.isArray(allowed) || !allowed.includes(name)) continue;
+    const remaining = allowed.filter((entry) => entry !== name);
+    db.run(`UPDATE apiKeys SET allowedCombos = ? WHERE id = ?`, [
+      stringifyJson(remaining.length ? remaining : [REVOKED_COMBO_GRANT]),
+      key.id
+    ]);
+  }
+}
+
 export async function deleteCombo(id) {
   const db = await getAdapter();
-  const res = db.run(`DELETE FROM combos WHERE id = ?`, [id]);
-  db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [PRUNED_STEPS_SCOPE, id]);
-  db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [NO_LOG_SCOPE, id]);
-  return (res?.changes ?? 0) > 0;
+  let deleted = false;
+  db.transaction(() => {
+    lockComboGraph(db);
+    const combo = db.get(`SELECT name FROM combos WHERE id = ?`, [id]);
+    if (!combo) return;
+    deleted = (db.run(`DELETE FROM combos WHERE id = ?`, [id])?.changes ?? 0) > 0;
+    if (!deleted) return;
+    db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [PRUNED_STEPS_SCOPE, id]);
+    db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [NO_LOG_SCOPE, id]);
+    revokeComboGrants(db, combo.name);
+  });
+  return deleted;
 }
 
 function persistSteps(db, row, models, members, now) {

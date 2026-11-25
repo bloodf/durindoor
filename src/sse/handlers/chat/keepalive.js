@@ -50,6 +50,11 @@ export async function handleMessages(request) {
  * omit the Accept header, keeping slow provider setup alive until data arrives.
  */
 export async function handleResponses(request) {
+  // Codex clients compress Responses bodies; decode before reading `stream`.
+  const decoded = await decodeAnthropicRequest(request, { abortedStatus: 499 });
+  if (decoded.response) return decoded.response;
+  request = decoded.request;
+
   const body = await request.clone().json().catch(() => null);
 
   // Codex CLI and other Responses API consumers may drop the connection if no

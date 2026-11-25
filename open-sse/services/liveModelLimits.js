@@ -5,6 +5,7 @@ import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractApiCapabilities, extractLiveModelLimits } from "./modelMetadata.js";
 import { createCatalogCache } from "./catalogCache.js";
+import { cloudflareInferenceId } from "./cloudflareModels.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -221,14 +222,14 @@ export function resolveLiveCloudflareModels(connection, options = {}) {
     ...options,
     token,
     endpoint: `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId.trim())}/ai/models/search?per_page=100`,
-    cacheVariant: "cloudflare-search-v1",
+    cacheVariant: "cloudflare-search-v2",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`
     },
     selectModels: (body) => body?.result,
     normalizeModel: (entry) => {
-      const id = modelId(entry);
+      const id = cloudflareInferenceId(entry);
       if (!id) return null;
       const property = Array.isArray(entry?.properties) ?
       entry.properties.find((item) => item?.property_id === "context_window") :

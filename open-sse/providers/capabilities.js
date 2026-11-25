@@ -1120,6 +1120,8 @@ export const PATTERN_CAPABILITIES = [
 // ── Others ───────────────────────────────────────────────────────
 { pattern: "*hunyuan*", caps: { reasoning: true, thinkingFormat: "hunyuan", contextWindow: 262144, maxOutput: 262144 } },
 { pattern: "hy3*", caps: { reasoning: true, thinkingFormat: "hunyuan", contextWindow: 262144, maxOutput: 262144 } },
+// Step 5 ships a 1M window (decolua/9router#4942); keep it above the older family pin.
+{ pattern: "*step-5*", caps: { reasoning: true, thinkingFormat: "step", contextWindow: 1000000 } },
 { pattern: "*step-*", caps: { reasoning: true, thinkingFormat: "step", contextWindow: 128000 } },
 { pattern: "*nemotron*", caps: { reasoning: true, contextWindow: 128000 } },
 { pattern: "*ling-*", caps: { reasoning: true, contextWindow: 128000 } }];

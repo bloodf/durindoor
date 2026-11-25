@@ -387,7 +387,9 @@ function convertConstToEnum(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
   if (!isPropertiesMap && obj.const !== undefined && !obj.enum) {
-    obj.enum = [obj.const];
+    // Gemini rejects an empty enum value, so an empty or null const adds no enum.
+    if (obj.const !== null && obj.const !== "") obj.enum = [obj.const];
+    else if (!obj.type) obj.type = "string";
     delete obj.const;
   }
 
@@ -442,11 +444,30 @@ export function liftGeminiNonStringEnums(schema, isPropertiesMap = false) {
   return schema;
 }
 
+// Gemini answers 400 "cannot be empty" for an empty enum list or enum value.
+// Drop empty and null values, and the whole keyword when nothing usable is left.
+function dropEmptyEnumValues(obj) {
+  if (obj.enum === undefined) return;
+  const values = Array.isArray(obj.enum) ?
+  obj.enum.filter((v) => v !== null && v !== undefined && v !== "") :
+  [];
+  if (values.length > 0) {
+    obj.enum = values;
+    return;
+  }
+  delete obj.enum;
+  if (!obj.type && !["properties", "items", "anyOf", "oneOf", "allOf"].some((key) => obj[key])) {
+    obj.type = "string";
+  }
+}
+
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
 function convertEnumValuesToStrings(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
-  if (!isPropertiesMap && obj.enum && Array.isArray(obj.enum) && !liftNonStringEnum(obj)) {
+  if (!isPropertiesMap) dropEmptyEnumValues(obj);
+
+  if (!isPropertiesMap && obj.enum && !liftNonStringEnum(obj)) {
     obj.enum = obj.enum.map((v) => String(v));
     // Gemini API requires type:"string" when enum is present — without it returns 400
     if (!obj.type) {
@@ -886,7 +907,10 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   function cleanupRequired(obj) {
     if (!obj || !isObject(obj)) return;
 
-    if (obj.required && Array.isArray(obj.required) && obj.properties) {
+    // A draft-3 style boolean (or other non-list) `required` is invalid here.
+    if (obj.required !== undefined && !Array.isArray(obj.required)) delete obj.required;
+
+    if (obj.required && obj.properties) {
       const validRequired = obj.required.filter((field) =>
       Object.prototype.hasOwnProperty.call(obj.properties, field)
       );

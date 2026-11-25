@@ -1008,11 +1008,15 @@ export class CodexExecutor extends BaseExecutor {
     if (normalized) body.input = normalizeResponsesImageReplay(normalized);
 
     // Hosted search history requires a declaration and the standard transport.
+    // An explicit empty tool list (compaction) must stay unable to call anything
+    // once those declarations are added back (decolua/9router#4932).
+    const toolsCleared = !isCompact && Array.isArray(body.tools) && body.tools.length === 0;
     if (Array.isArray(body.input) && body.input.some((item) => item?.type === "web_search_call")) {
       const prefixTools = body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []);
       body.input = body.input.filter((item) => item?.type !== "additional_tools");
       body.tools = [...(Array.isArray(body.tools) ? body.tools : []), ...prefixTools];
       if (!body.tools.some((tool) => tool?.type === "web_search")) body.tools.push({ type: "web_search" });
+      if (toolsCleared) body.tool_choice = "none";
     }
 
     // A translated Chat system prompt belongs in the cacheable input prefix.

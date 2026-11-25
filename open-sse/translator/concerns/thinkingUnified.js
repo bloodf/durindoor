@@ -464,7 +464,9 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         if (none && canDisable) {body.reasoning_effort = "none";break;}
         const level = toLevel(eff);
         // Config-driven: preserve supported effort; nearest sibling otherwise.
-        if (level) body.reasoning_effort = resolveOpenAiEffort(level, provider, model, caps);
+        // A Step model behind a compatible gateway keeps an explicit level (decolua/9router#5064).
+        const keepExplicit = caps.thinkingFormat === "step" && eff.mode === "level";
+        if (level) body.reasoning_effort = keepExplicit ? level : resolveOpenAiEffort(level, provider, model, caps);
         if (caps.thinkingType === "adaptive") body.thinking = { type: "adaptive" };
         break;
       }
@@ -670,7 +672,9 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
     case "step":{
         if (none && canDisable) break;
         const level = toLevel(eff);
-        if (level) body.reasoning_effort = level === "xhigh" || level === "max" ? "high" : level;
+        // Only a budget conversion is capped; explicit intent is preserved (decolua/9router#5064).
+        const capped = eff.mode !== "level" && (level === "xhigh" || level === "max");
+        if (level) body.reasoning_effort = capped ? "high" : level;
         break;
       }
     case "kiro":

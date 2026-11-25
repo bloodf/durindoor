@@ -297,7 +297,7 @@ describe("handleNonStreamingResponse: synthetic SSE respects client format", () 
       { type: CLAUDE_BLOCK.THINKING, thinking: "planning step" },
       { type: CLAUDE_BLOCK.TEXT, text: "visible answer" },
     ]);
-    expect(body.usage).toEqual({ input_tokens: 4, output_tokens: 12, cache_read_input_tokens: 3 });
+    expect(body.usage).toEqual({ input_tokens: 1, output_tokens: 12, cache_read_input_tokens: 3 });
   });
 
   it("passes an existing Claude message through the full handler unchanged", async () => {

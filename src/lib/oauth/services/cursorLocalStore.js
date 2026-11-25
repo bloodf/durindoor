@@ -26,6 +26,13 @@ export const CURSOR_MACHINE_ID_KEYS = [
 
 export const CURSOR_CACHED_EMAIL_KEYS = ["cursorAuth/cachedEmail"];
 
+// A renamed key is accepted only when its name still ends in the field asked for,
+// so the fuzzy pass cannot import a refresh token or an unrelated stored value.
+const ACCESS_TOKEN_FIELD = { like: "%token", name: /(?:access[-_]?token|[./]token)$/i };
+const MACHINE_ID_FIELD = { like: "%machine%id", name: /machine[-_]?id$/i };
+const CACHED_EMAIL_FIELD = { like: "%email", name: /email$/i };
+const FUZZY_ROW_LIMIT = 25;
+
 function normalizeStoredValue(value) {
   if (!isString(value)) return value;
   try {
@@ -70,9 +77,9 @@ export function getCursorDbCandidatePaths(platform = process.platform) {
  * whose value is non-null. Exact-match pass queries `key IN (?, ?, ...)`;
  * fuzzy fallback does `key LIKE 'prefix/%'` and `key LIKE 'prefix.%'`
  * with `prefix` being the first segment split on `/` or `.` (Cursor's
- * schema uses both separators).
+ * schema uses both separators), limited to key names matching `field`.
  */
-function queryFirst(db, keys) {
+function queryFirst(db, keys, field) {
   if (!keys || keys.length === 0) return null;
 
   // Exact-match pass.
@@ -99,10 +106,10 @@ function queryFirst(db, keys) {
     try {
       for (const sep of ["/", "."]) {
         const rows = db.
-        prepare("SELECT value, key FROM itemTable WHERE key LIKE ?").
-        all(prefix + sep + "%");
+        prepare(`SELECT value, key FROM itemTable WHERE key LIKE ? AND key LIKE ? ORDER BY key LIMIT ${FUZZY_ROW_LIMIT}`).
+        all(prefix + sep + "%", field.like);
         const hit = rows.find(
-          (r) => r && r.value && matchesPrefix(r.key, prefix, sep)
+          (r) => r && r.value && matchesPrefix(r.key, prefix, sep) && field.name.test(r.key)
         );
         if (hit) return normalizeStoredValue(hit.value);
       }
@@ -113,16 +120,21 @@ function queryFirst(db, keys) {
   return null;
 }
 
+/** Read Cursor auth fields from an open state.vscdb handle. */
+export function readCursorAuthFromDb(db) {
+  return {
+    accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS, ACCESS_TOKEN_FIELD),
+    machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS, MACHINE_ID_FIELD),
+    cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS, CACHED_EMAIL_FIELD)
+  };
+}
+
 /** Read Cursor auth fields from a known state.vscdb path (sync). */
 export function readCursorLocalAuthSync(dbPath) {
   try {
     const db = new Database(dbPath, { readonly: true, fileMustExist: true });
     try {
-      return {
-        accessToken: queryFirst(db, CURSOR_ACCESS_TOKEN_KEYS),
-        machineId: queryFirst(db, CURSOR_MACHINE_ID_KEYS),
-        cachedEmail: queryFirst(db, CURSOR_CACHED_EMAIL_KEYS)
-      };
+      return readCursorAuthFromDb(db);
     } finally {
       db.close();
     }

@@ -1,4 +1,4 @@
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from "node:zlib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ provider: vi.fn(), count: vi.fn() }));
@@ -37,7 +37,13 @@ describe.each([["messages", messages, mocks.provider], ["count tokens", countTok
       expect(provider.mock.calls[0][1].get("content-length")).toBeNull();
     }
   });
-  it.each(["br", "gzip, identity", "zstd"])("rejects %s", async (encoding) => {
+  it.each([["br", brotliCompressSync], ["zstd", zstdCompressSync], ["deflate", deflateSync]])("accepts %s JSON", async (encoding, compress) => {
+    expect((await post(request(compress(json), encoding))).status).toBe(200);
+    expect(provider).toHaveBeenCalledOnce();
+    expect(provider.mock.calls[0][0]).toEqual(body);
+    expect(provider.mock.calls[0][1].get("content-encoding")).toBeNull();
+  });
+  it.each(["compress", "gzip, identity", "gzip, zstd"])("rejects %s", async (encoding) => {
     expect((await post(request(gzipSync(json), encoding))).status).toBe(415);
     expect(provider).not.toHaveBeenCalled();
   });

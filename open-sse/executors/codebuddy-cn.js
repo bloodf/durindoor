@@ -1,24 +1,5 @@
 import { DefaultExecutor } from "./default.js";
-import { normalizeCodeBuddyRequest, normalizeCodeBuddyResponse } from "./codebuddy-protocol.js";
-import { ROLE } from "../translator/schema/index.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
-
-const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
-const AGENT_PATTERN = /you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
-
-function sanitizeText(text) {
-  if (!text || !AGENT_PATTERN.test(text)) return text;
-  const lines = text.split("\n");
-  let replacedIdentity = false;
-  return lines.map((line) => {
-    if (!AGENT_PATTERN.test(line)) return line;
-    if (!replacedIdentity) {
-      replacedIdentity = true;
-      return NEUTRAL_PROMPT;
-    }
-    return line.replace(new RegExp(AGENT_PATTERN.source, "gi"), "");
-  }).join("\n");
-}
+import { normalizeCodeBuddyRequest, normalizeCodeBuddyResponse, sanitizeCodeBuddyMessages } from "./codebuddy-protocol.js";
 
 /**
  * CodeBuddyExecutor — talks to https://copilot.tencent.com/v2/chat/completions.
@@ -39,27 +20,7 @@ export class CodeBuddyExecutor extends DefaultExecutor {
     transformed.stream = true;
 
     if (Array.isArray(transformed.messages)) {
-      transformed.messages = transformed.messages.map((message) => {
-        if (!message || ![ROLE.SYSTEM, ROLE.DEVELOPER].includes(message.role)) return message;
-        if (isString(message.content)) {
-          const content = sanitizeText(message.content);
-          if (content !== message.content) console.warn("[codebuddy-cn] system prompt identity lines sanitized");
-          return content === message.content ? message : { ...message, content };
-        }
-        if (Array.isArray(message.content)) {
-          let changed = false;
-          const content = message.content.map((block) => {
-            if (!block || !isString(block.text)) return block;
-            const text = sanitizeText(block.text);
-            if (text === block.text) return block;
-            changed = true;
-            return { ...block, text };
-          });
-          if (changed) console.warn("[codebuddy-cn] system prompt identity lines sanitized");
-          return changed ? { ...message, content } : message;
-        }
-        return message;
-      });
+      transformed.messages = sanitizeCodeBuddyMessages(this.provider, transformed.messages);
     }
 
     return normalizeCodeBuddyRequest(transformed);

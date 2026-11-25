@@ -20,6 +20,13 @@ const { DASHBOARD_PREFIX, HEAD, forwardedHeaders, rewriteHeadroomHtml, rewriteLo
 
 const PREFIX = DASHBOARD_PREFIX;
 
+describe("port(upstream) #5166: Headroom dashboard stats-lifetime", () => {
+  it("prefixes the fetch used by newer dashboards", () => {
+    const out = rewriteHeadroomHtml("fetch('/stats-lifetime');fetch('/stats-lifetime?days=7')");
+    expect(out).toBe(`fetch('${PREFIX}/stats-lifetime');fetch('${PREFIX}/stats-lifetime?days=7')`);
+  });
+});
+
 describe("rewriteHeadroomHtml", () => {
   it("rewrites allow-listed src/href/action and fetch literals", () => {
     const html = [

@@ -51,6 +51,7 @@ On **Providers**, choose **Gemini Web** and add a connection. Any of these can b
 - a copied cURL command for such a request
 - a HAR file saved from DevTools, read locally in the browser
 - a bare `__Secure-1PSID` value, or browser-export JSON such as `{"cookies":{"__Secure-1PSID":"...","__Secure-1PSIDTS":"..."}}`
+- a Cookie-Editor style export: an array of `{"name","value","domain"}` objects, bare or under `cookies`. Entries for other domains than `google.com` and `gemini.google.com` are ignored
 
 To copy the header by hand: sign in at gemini.google.com, open DevTools, Network, reload, select a request to `gemini.google.com`, and copy the `Cookie` request header value. The Application tab shows the same cookies but can be stale.
 

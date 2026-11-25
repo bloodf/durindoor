@@ -33,7 +33,7 @@ import {
   stripClientReasoningDelta } from
 "./minimaxThinkingStream.js";
 
-import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
+import { SSE_COMMENT_KEEPALIVE, SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
@@ -1345,6 +1345,14 @@ export function createSSEStream(options = {}) {
 
         // Translate mode
         if (!trimmed) continue;
+
+        // parseSSELine drops comments, so a long upstream wait would send the client
+        // nothing and a reverse proxy would time out (decolua/9router#4376). The
+        // upstream comment text is not relayed.
+        if (trimmed.startsWith(":")) {
+          controller.enqueue(sharedEncoder.encode(SSE_COMMENT_KEEPALIVE));
+          continue;
+        }
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) {

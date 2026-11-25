@@ -159,6 +159,9 @@ try {
     }
 
     fs.copyFileSync(path.join(process.cwd(), "custom-server.js"), path.join(standaloneDir, "custom-server.js"));
+    // The wrapper and launcher share this resolver outside Next's server trace.
+    fs.mkdirSync(path.join(standaloneDir, "src/lib/startup"), { recursive: true });
+    fs.copyFileSync(path.join(process.cwd(), "src/lib/startup/listenConfig.cjs"), path.join(standaloneDir, "src/lib/startup/listenConfig.cjs"));
     fs.copyFileSync(path.join(process.cwd(), "realtime-upgrade.cjs"), path.join(standaloneDir, "realtime-upgrade.cjs"));
     // custom-server.js requires ./head-response-guard.cjs (OmniRoute #6908):
     // a root-level sidecar outside Next's NFT trace, so it must be copied by

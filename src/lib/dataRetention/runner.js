@@ -1,4 +1,4 @@
-import { getAdapter } from "@/lib/db/driver.js";
+import { getRetentionLastRun, saveRetentionLastRun } from "@/lib/db/repos/reportQueriesRepo.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo.js";
 import { pruneUsageOlderThan } from "@/lib/db/repos/usageRepo.js";
 import { pruneRequestDetailsOlderThan } from "@/lib/db/repos/requestDetailsRepo.js";
@@ -8,7 +8,6 @@ import { pruneProviderQuotaSnapshots } from "@/lib/db/repos/quotaSnapshotsRepo.j
 export const DATA_RETENTION_PRESET_DAYS = Object.freeze([7, 15, 30, 60, 90]);
 export const DATA_RETENTION_MIN_DAYS = 1;
 export const DATA_RETENTION_MAX_DAYS = 3650;
-const LAST_RUN_META_KEY = "dataRetentionLastRun";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Integer day count within the supported window, or null. */
@@ -21,20 +20,10 @@ export function normalizeRetentionDays(value) {
 
 export async function getDataRetentionLastRun() {
   try {
-    const db = await getAdapter();
-    const row = db.get("SELECT value FROM _meta WHERE key = ?", [LAST_RUN_META_KEY]);
-    return row?.value ? JSON.parse(row.value) : null;
+    return await getRetentionLastRun();
   } catch {
     return null;
   }
-}
-
-async function saveLastRun(result) {
-  const db = await getAdapter();
-  db.run(
-    "INSERT INTO _meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    [LAST_RUN_META_KEY, JSON.stringify(result)],
-  );
 }
 
 /**
@@ -77,7 +66,7 @@ export async function runDataRetention({ days, now = Date.now(), trigger = "manu
     errors: Object.keys(errors).length ? errors : undefined,
   };
   try {
-    await saveLastRun(result);
+    await saveRetentionLastRun(result);
   } catch (error) {
     console.error("[data-retention] failed to persist last run:", error?.message || error);
   }

@@ -350,6 +350,7 @@ const comboWeightedRotationState = new Map();
  */
 const comboConversationAffinity = new Map();
 export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
+const affinityScopeCounts = new Map();
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -759,11 +760,29 @@ function affinityKeyFor(rotationKey, conversationKey, apiKeyId) {
   return apiKeyId ? `${rotationKey}:${conversationKey}:key:${JSON.stringify(apiKeyId)}` : `${rotationKey}:${conversationKey}`;
 }
 
+// Keep per-caller counts so ordinary insertions do not scan the affinity map.
+function deleteConversationAffinity(key) {
+  const entry = comboConversationAffinity.get(key);
+  if (!entry) return;
+  const scope = entry.scope || null;
+  const count = affinityScopeCounts.get(scope) || 0;
+  if (count <= 1) affinityScopeCounts.delete(scope);
+  else affinityScopeCounts.set(scope, count - 1);
+  comboConversationAffinity.delete(key);
+}
+
+function setConversationAffinity(key, entry) {
+  deleteConversationAffinity(key);
+  const scope = entry.scope || null;
+  affinityScopeCounts.set(scope, (affinityScopeCounts.get(scope) || 0) + 1);
+  comboConversationAffinity.set(key, entry);
+}
+
 function pruneConversationAffinity(scope, now = Date.now()) {
   let count = 0;
   for (const [key, value] of comboConversationAffinity) {
     if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
-      comboConversationAffinity.delete(key);
+      deleteConversationAffinity(key);
     } else if ((value.scope || null) === scope) {
       count++;
     }
@@ -771,7 +790,7 @@ function pruneConversationAffinity(scope, now = Date.now()) {
   for (const [key, value] of comboConversationAffinity) {
     if (count < MAX_CONVERSATION_AFFINITY_ENTRIES) break;
     if ((value.scope || null) === scope) {
-      comboConversationAffinity.delete(key);
+      deleteConversationAffinity(key);
       count--;
     }
   }
@@ -1250,13 +1269,14 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
     const affinity = comboConversationAffinity.get(affinityKey);
     if (affinity && now - affinity.lastUsed <= CONVERSATION_AFFINITY_TTL_MS) {
       const pinnedIndex = affinity.index % models.length;
-      comboConversationAffinity.delete(affinityKey);
-      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
+      setConversationAffinity(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
       return rotateModelsFromIndex(models, pinnedIndex);
     }
 
-    pruneConversationAffinity(apiKeyId, now);
-    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
+    if (!affinity && (affinityScopeCounts.get(apiKeyId || null) || 0) >= MAX_CONVERSATION_AFFINITY_ENTRIES) {
+      pruneConversationAffinity(apiKeyId || null, now);
+    }
+    setConversationAffinity(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
   }
 
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -1275,12 +1295,13 @@ export function resetComboRotation(comboName) {
     comboRotationState.delete(comboName);
     const prefix = `${comboName}:`;
     for (const key of comboConversationAffinity.keys()) {
-      if (key.startsWith(prefix)) comboConversationAffinity.delete(key);
+      if (key.startsWith(prefix)) deleteConversationAffinity(key);
     }
   } else {
     comboWeightedRotationState.clear();
     comboRotationState.clear();
     comboConversationAffinity.clear();
+    affinityScopeCounts.clear();
   }
 }
 
@@ -1670,7 +1691,7 @@ export async function handleComboChat({
     if (idx !== 0) return;
     const pinned = comboConversationAffinity.get(rrAffinityKey);
     if (pinned && activeModels[pinned.index % activeModels.length] === failedModelStr) {
-      comboConversationAffinity.delete(rrAffinityKey);
+      deleteConversationAffinity(rrAffinityKey);
     }
     affinityReleased = true;
   };

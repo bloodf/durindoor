@@ -1,6 +1,8 @@
 "use strict";
 
 const DEFAULT_SERVER_HOST = "127.0.0.1";
+// The `durindoor` CLI is network-reachable unless --host says otherwise.
+const DEFAULT_CLI_HOST = "0.0.0.0";
 const DEFAULT_SERVER_PORT = 20128;
 
 /** Resolve and validate the dashboard listen address for every entry point. */
@@ -12,4 +14,4 @@ function resolveListenConfig({ argv = process.argv, env = process.env, dev = fal
   return { port: resolvedPort, host: host || env.HOSTNAME || DEFAULT_SERVER_HOST };
 }
 
-module.exports = { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, resolveListenConfig };
+module.exports = { DEFAULT_CLI_HOST, DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, resolveListenConfig };

@@ -58,7 +58,7 @@ function createSpinner(text) {
 // The installed launcher keeps the shared startup module in its app bundle.
 const listenConfigPath = fs.existsSync(path.join(__dirname, "app/src/lib/startup/listenConfig.cjs"))
   ? "./app/src/lib/startup/listenConfig.cjs" : "../src/lib/startup/listenConfig.cjs";
-const { DEFAULT_SERVER_HOST: DEFAULT_HOST, DEFAULT_SERVER_PORT: DEFAULT_PORT, resolveListenConfig } = require(listenConfigPath);
+const { DEFAULT_CLI_HOST: DEFAULT_HOST, DEFAULT_SERVER_PORT: DEFAULT_PORT, resolveListenConfig } = require(listenConfigPath);
 const pkg = require("./package.json");
 const args = process.argv.slice(2);
 
@@ -158,7 +158,7 @@ const MAX_PORT_ATTEMPTS = 10;
 
 // Parse arguments
 let port;
-let host;
+let host = DEFAULT_HOST;
 let noBrowser = false;
 let skipUpdate = false;
 let showLog = false;

@@ -34,6 +34,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // ---------------------------------------------------------------------------
 import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { resolveTlsClientProxyUrl } from "./tlsClientProxy.js";
+import { carriesCredential } from "../executors/sendRequest.js";
 import { buildNativeTlsClientOptions } from "./tlsClientDownloadDir.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -829,13 +830,18 @@ export function createTlsClientModule(config) {
     };
   }
 
-  /** Opt in to keeping credentialed redirects on the request origin. */
+  /**
+   * A send with a credential keeps redirects on the request origin. Callers can
+   * force the guard on, or opt out, with sameOriginRedirects.
+   */
   async function tlsFetch(url, options = {}) {
-    if (!options.sameOriginRedirects) return tlsFetchOnce(url, options);
+    if (!(options.sameOriginRedirects ?? carriesCredential(String(url), options.headers))) {
+      return tlsFetchOnce(url, options);
+    }
     let current = String(url);
     // Redirect following stays disabled at the TLS layer, including for streams.
     // A response with no streamed bytes exposes its status before any next hop.
-    let request = { ...options, redirect: "manual" };
+    let request = { ...options, sameOriginRedirects: true, redirect: "manual" };
     for (let count = 0; count <= 20; count++) {
       const result = await tlsFetchOnce(current, request);
       if (result.status < 300 || result.status >= 400) return result;

@@ -121,8 +121,10 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | --- | --- | --- |
 | `GITHUB_CREDIT_USAGE_CACHE_TTL_MS` | `30000` | Reuse a GitHub Copilot credit reading for this duration before checking the local credit cutoff again. |
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. |
+| `DURINDOOR_NONSTREAM_KEEPALIVE_MS` | `0` (off) | Non-streaming `/v1/messages` responses slower than this start sending JSON whitespace. `OMNIROUTE_NONSTREAM_KEEPALIVE_MS` is read when it is unset. See the trade-off below. |
 | `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. |
+| `STREAM_MAX_RETAINED_BYTES` | `67108864` | Per-stream cap on tool arguments, reasoning text and thinking signatures held by stream translators. Past it the stream fails. `0` disables it. |
 | `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. |
 | `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. |
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. |
@@ -132,6 +134,10 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `MAX_PROVIDER_BODY_BYTES` | `8388608` | Max provider body bytes. |
 | `MAX_RESPONSES_OUTPUT_ITEMS` | `1024` | Cap on Responses output items. |
 | `CODEX_SSE_PEEK_TIMEOUT_MS` | `30000` (capped at 5 min) | Bound for the Codex SSE peek. |
+
+### Non-streaming keepalive trade-off
+
+`DURINDOOR_NONSTREAM_KEEPALIVE_MS` is off by default. Turn it on only when a proxy in front of DurinDoor closes idle connections before a slow non-streaming request finishes. Once the threshold passes, DurinDoor has already sent HTTP 200. A later upstream error such as a 429 or 503 then arrives as a 200 response with an error body, and upstream headers such as `retry-after` and `request-id` are lost. Clients that retry on status codes or honor `retry-after` stop doing so for those requests. OmniRoute enables this at 60 seconds by default; DurinDoor keeps real status codes unless you set the variable.
 | `GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS` | `45000` | Gemini native TTS header timeout. |
 | `CONCURRENCY_GATE_TIMEOUT_MS` | `120000` | Wait for a provider concurrency slot. |
 | `TRAE_STREAM_TIMEOUT_MS` | `300000` | Trae stream timeout. |
@@ -216,6 +222,15 @@ The intercept helper is optional and local. Several of these are set by the mana
 | `MITM_INSTANCE_NONCE` | set by the manager | Launch-gate nonce. |
 | `MITM_LAUNCH_GATE_FILE` | set by the manager | Launch-gate file path. |
 | `MITM_MANAGER_PID` | set by the manager | Parent pid for the launch gate. |
+
+## Antigravity rotation
+
+See [Antigravity rotation](../operations/antigravity-rotation.mdx). Leave both unset. Setting them does not prove a Chromium sandbox or container egress, and it does not download Chrome.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY` | unset | `1` is required before browser recovery can load Puppeteer. Any other value keeps recovery off. |
+| `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED` | unset | `1` is required together with the flag above. The refresh path still does not launch a browser after `invalid_grant`. |
 
 ## ChatGPT Web
 

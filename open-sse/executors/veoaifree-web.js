@@ -1,5 +1,5 @@
 import { BaseExecutor } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { errorJson, jsonResponse, sanitizeErrorMessage } from "./websession-utils.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -31,11 +31,12 @@ function withTimeout(signal) {
   };
 }
 
-async function fetchWithTimeout(url, init = {}, { signal, proxyOptions } = {}) {
+async function fetchWithTimeout(send, url, init = {}, signal) {
   throwIfAborted(signal);
   const timeout = withTimeout(signal);
   try {
-    return await proxyAwareFetch(url, { ...init, signal: timeout.signal }, proxyOptions);
+    // The site takes no credential, so redirects stay allowed on uncharged requests.
+    return await send(url, { redirect: "follow", ...init, signal: timeout.signal });
   } finally {
     timeout.cleanup();
   }
@@ -56,21 +57,21 @@ function waitForPoll(signal) {
   });
 }
 
-async function fetchNonce(signal, proxyOptions = null) {
-  const res = await fetchWithTimeout(BASE_URL, { headers: { "User-Agent": USER_AGENT } }, { signal, proxyOptions });
+async function fetchNonce(send, signal) {
+  const res = await fetchWithTimeout(send, BASE_URL, { headers: { "User-Agent": USER_AGENT } }, signal);
   const html = await res.text();
   const match = html.match(/nonce":"([a-f0-9]+)"/);
   if (!match) throw new Error("Failed to extract CSRF nonce from veoaifree.com");
   return match[1];
 }
 
-async function postAjax(nonce, params, signal, proxyOptions = null) {
+async function postAjax(send, nonce, params, signal) {
   const body = new URLSearchParams({ action: "veo_video_generator", nonce, ...params });
-  const res = await fetchWithTimeout(AJAX_URL, {
+  const res = await fetchWithTimeout(send, AJAX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/` },
     body: body.toString()
-  }, { signal, proxyOptions });
+  }, signal);
   return res.text();
 }
 
@@ -86,13 +87,13 @@ export function detectIntent(model = "", prompt = "") {
   return "video";
 }
 
-async function handleVideo(nonce, prompt, aspectRatio, signal, proxyOptions = null) {
-  const genResult = await postAjax(nonce, { prompt, totalVariations: "1", aspectRatio, actionType: "full-video-generate" }, signal, proxyOptions);
+async function handleVideo({ setup, generate }, nonce, prompt, aspectRatio, signal) {
+  const genResult = await postAjax(generate, nonce, { prompt, totalVariations: "1", aspectRatio, actionType: "full-video-generate" }, signal);
   const sceneData = genResult.trim();
   if (!sceneData || sceneData === "0" || sceneData.toLowerCase().includes("error")) return errorJson(502, "Video generation failed");
   for (let i = 0; i < MAX_POLLS; i++) {
     await waitForPoll(signal);
-    const pollResult = await postAjax(nonce, { sceneData, actionType: "final-video-results" }, signal, proxyOptions).catch(() => "");
+    const pollResult = await postAjax(setup, nonce, { sceneData, actionType: "final-video-results" }, signal).catch(() => "");
     const urls = pollResult.trim().split(/[,\n]/).map((u) => u.trim()).filter((u) => u.startsWith("http"));
     if (urls.length > 0) {
       return jsonResponse({ object: "video.generation", data: urls.map((url) => ({ url, type: "video" })), status: "completed" });
@@ -101,20 +102,20 @@ async function handleVideo(nonce, prompt, aspectRatio, signal, proxyOptions = nu
   return errorJson(504, "Video generation timed out after 10 minutes");
 }
 
-async function handleImage(nonce, prompt, aspectRatio, signal, proxyOptions = null) {
-  const result = await postAjax(nonce, { promptIMG: prompt, totalVariationsIMG: "1", aspectRatioIMG: aspectRatio, actionType: "banan-image-generator" }, signal, proxyOptions);
+async function handleImage({ generate }, nonce, prompt, aspectRatio, signal) {
+  const result = await postAjax(generate, nonce, { promptIMG: prompt, totalVariationsIMG: "1", aspectRatioIMG: aspectRatio, actionType: "banan-image-generator" }, signal);
   const trimmed = result.trim();
   if (!trimmed || trimmed === "0" || trimmed.toLowerCase().includes("error")) return errorJson(502, "Image generation failed");
   const data = trimmed.split(",").map((s) => s.trim()).filter(Boolean).map((part) => part.startsWith("http") ? { url: part, type: "image" } : { b64_json: part, type: "image" });
   return jsonResponse({ object: "image.generation", data, status: "completed" });
 }
 
-async function handleTTS(prompt, voice, lang, signal, proxyOptions = null) {
-  const res = await fetchWithTimeout(TTS_URL, {
+async function handleTTS({ generate }, prompt, voice, lang, signal) {
+  const res = await fetchWithTimeout(generate, TTS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/free-ai-text-to-speech/` },
     body: JSON.stringify({ text: prompt.slice(0, 10000), voice: voice || "en-US-AvaNeural", lang: lang || "en-US", pitch: "0", speed: "1.0" })
-  }, { signal, proxyOptions });
+  }, signal);
   if (!res.ok) return errorJson(502, `TTS failed (${res.status})`);
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("audio") || contentType.includes("octet-stream") || contentType.includes("wav")) {
@@ -129,8 +130,8 @@ async function handleTTS(prompt, voice, lang, signal, proxyOptions = null) {
   return errorJson(502, "TTS unexpected response format");
 }
 
-async function handleEnhance(nonce, prompt, signal, proxyOptions = null) {
-  const result = await postAjax(nonce, { prompt, actionType: "main-prompt-generation" }, signal, proxyOptions);
+async function handleEnhance({ generate }, nonce, prompt, signal) {
+  const result = await postAjax(generate, nonce, { prompt, actionType: "main-prompt-generation" }, signal);
   const enhanced = result.trim();
   if (!enhanced || enhanced === "0") return errorJson(502, "Prompt enhancement failed");
   return jsonResponse({ object: "prompt.enhancement", enhanced, status: "completed" });
@@ -155,6 +156,12 @@ export class VeoAIFreeWebExecutor extends BaseExecutor {
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const body = input.body || {};
     const model = input.model || body.model || "veo-3.1";
     const prompt = promptFromBody(body);
@@ -162,25 +169,31 @@ export class VeoAIFreeWebExecutor extends BaseExecutor {
     const proxyOptions = input.proxyOptions || null;
     if (!prompt.trim()) return { response: errorJson(400, "No prompt provided"), url: AJAX_URL, headers: {}, transformedBody: null };
 
+    // The nonce and result polling are not charged; the generation send is quota-bearing.
+    const sends = {
+      setup: (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false }),
+      generate: async (url, init) => billed(await sender.sendRequest(url, init, proxyOptions))
+    };
+
     const intent = detectIntent(model, prompt);
     if (intent === "tts") {
-      const response = await handleTTS(prompt, systemText.match(/voice:\s*(\S+)/)?.[1], systemText.match(/lang:\s*(\S+)/)?.[1], input.signal, proxyOptions);
+      const response = await handleTTS(sends, prompt, systemText.match(/voice:\s*(\S+)/)?.[1], systemText.match(/lang:\s*(\S+)/)?.[1], input.signal);
       return { response, url: TTS_URL, headers: {}, transformedBody: { intent, model } };
     }
 
     let nonce;
     try {
-      nonce = await fetchNonce(input.signal, proxyOptions);
+      nonce = await fetchNonce(sends.setup, input.signal);
     } catch (err) {
       return { response: errorJson(502, sanitizeErrorMessage(err?.message || "Failed to get nonce")), url: BASE_URL, headers: {}, transformedBody: null };
     }
 
     const aspectRatio = systemText.match(/aspect[_-]?ratio:\s*(\S+)/i)?.[1] || body.aspect_ratio || body.aspectRatio || "VIDEO_ASPECT_RATIO_LANDSCAPE";
     const response = intent === "image" ?
-    await handleImage(nonce, prompt, String(aspectRatio).replace("VIDEO_", "IMAGE_"), input.signal, proxyOptions) :
+    await handleImage(sends, nonce, prompt, String(aspectRatio).replace("VIDEO_", "IMAGE_"), input.signal) :
     intent === "enhance" ?
-    await handleEnhance(nonce, prompt, input.signal, proxyOptions) :
-    await handleVideo(nonce, prompt, aspectRatio, input.signal, proxyOptions);
+    await handleEnhance(sends, nonce, prompt, input.signal) :
+    await handleVideo(sends, nonce, prompt, aspectRatio, input.signal);
     return { response, url: AJAX_URL, headers: {}, transformedBody: { intent, model } };
   }
 }

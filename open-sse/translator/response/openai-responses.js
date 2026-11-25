@@ -14,7 +14,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
-import { resolveInlineThinkingFormat } from "../../handlers/chatCore/inlineThinking.js";
+import { resolveInlineThinkingFormat } from "../../utils/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
 import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
@@ -31,6 +31,7 @@ import {
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained } from "../../utils/streamRetainedBudget.js";
 function recordFinalOutputItem(state, eventType, data) {
   if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
   const outputIndex = Number(data.output_index);
@@ -259,6 +260,7 @@ function startReasoning(state, emit, idx) {
 
 function emitReasoningDelta(state, emit, text) {
   if (!text) return;
+  chargeRetained(state, text.length);
   state.reasoningBuf += text;
   emit("response.reasoning_summary_text.delta", {
     type: "response.reasoning_summary_text.delta",
@@ -518,6 +520,7 @@ function emitToolCall(state, emit, tc) {
 
   if (tc.function?.arguments) {
     const delta = tc.function.arguments;
+    chargeRetained(state, delta.length);
     state.funcArgsBuf[tcIdx] += delta;
 
     if (!isCustomTool) {
@@ -881,6 +884,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
     const kind = state.respCustomToolKinds?.get(idx);
     if (kind === "wrapped") {
       // Raw input becomes JSON only when complete; buffer until the item is done.
+      chargeRetained(state, argsDelta.length);
       (state.respCustomToolInput ??= new Map()).set(idx, (state.respCustomToolInput.get(idx) || "") + argsDelta);
       return null;
     }

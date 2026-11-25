@@ -7,11 +7,11 @@ const mocks = vi.hoisted(() => ({
   testProxyUrl: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
-}));
+  getProviderNodeById: vi.fn()}));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));

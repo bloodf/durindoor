@@ -3,6 +3,7 @@ import { FORMATS } from "../formats.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { GEMINI_ROLE, OPENAI_FINISH, GEMINI_FINISH } from "../schema/index.js";
+import { chargeRetained } from "../../utils/streamRetainedBudget.js";
 
 // Convert OpenAI SSE chunk to Antigravity SSE format
 // Real Antigravity format:
@@ -98,6 +99,7 @@ export function openaiToAntigravityResponse(chunk, state) {
       }
       const accum = state._toolCallAccum[idx];
       if (tc.id) accum.id = tc.id;
+      chargeRetained(state, (tc.function?.name?.length || 0) + (tc.function?.arguments?.length || 0));
       if (tc.function?.name && !(bindUnbound && accum.name === tc.function.name)) accum.name += tc.function.name;
       if (tc.function?.arguments) accum.arguments += tc.function.arguments;
       state._activeToolIndex = idx;
@@ -123,6 +125,8 @@ export function openaiToAntigravityResponse(chunk, state) {
         }
       });
     }
+    // The calls are out; a repeated finish chunk must not emit them again.
+    state._toolCallAccum = {};
   }
 
   // Skip empty non-finish chunks

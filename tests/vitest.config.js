@@ -1,11 +1,15 @@
 import { defineConfig } from "vitest/config";
-import { transformWithOxc } from "vite";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import { createRequire } from "module";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const require = createRequire(resolve(__dirname, "package.json"));
+// Vite is a peer dependency nested under Vitest in the tests package. Resolving
+// from Vitest keeps the config working when the shared root Vite link is stale.
+const vitePackage = require.resolve("vite", { paths: [dirname(require.resolve("vitest/package.json"))] });
+const { transformWithOxc } = await import(vitePackage);
 
 // The Cloudflare Workers cloud handler lives in a separate deployment (cloud/),
 // which is not part of this repo checkout. Skip its test when absent so the
@@ -65,11 +69,11 @@ export default defineConfig({
     // Do not remove this cap without re-proving determinism at the
     // unbounded default; see history for the reproduction.
     maxWorkers: 4,
-    // Full-suite runs contend on shared SQLite fixtures; observed worst-case
-    // per-test wall time under contention is ~9.4s, which flakes against the
-    // Vitest 5s default. Set an explicit ceiling with headroom so slow-but-real
-    // hangs still fail while contention-bound tests pass deterministically.
-    testTimeout: 15_000,
+    // On the shared CI host, three four-worker trials with 20 extra unit files
+    // reached 7.7s per test and 12.4s per hook in the 1131 attribution/capture
+    // tests. Allow headroom for contention from other projects on the host.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // Suppress noisy console output from handlers under test
     silent: false,
   },

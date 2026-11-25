@@ -16,14 +16,12 @@ vi.mock("next/server", () => ({
   NextResponse: { json: (body, init) => ({ status: init?.status || 200, body, json: async () => body }) },
 }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn(async () => {}) }));
-vi.mock("@/models", () => ({
-  createProviderConnection: mocks.createProviderConnection,
-  getProxyPoolById: vi.fn(),
-}));
+
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
-}));
+  createProviderConnection: mocks.createProviderConnection,
+  getProxyPoolById: vi.fn()}));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false, connectionProxyUrl: "", vercelRelayUrl: "" })),
 }));

@@ -5,6 +5,10 @@
 // Cargo/rustc error continuation: " --> file:line", "  |", "N | code", "  = note: ..."
 const RE_CARGO_ERR_CONT = /^\s*(-->|\||\d+\s*\||=)/;
 const DEPRECATION_KEEP = 3;
+// Lines that state whether the run passed (VET_OK, TEST_EXIT=0, "exit code 0",
+// SUCCESS, pipeline markers, test totals). This filter keeps only what it
+// recognizes, so these must be recognized. Per-test "... ok"/"PASS file" lines stay droppable.
+const RE_OUTCOME = /^(?:\[(?:rtk|dedup|ccr|COMPRESSED):|(?:[Pp]rocess )?[Ee]xit(?:ed with)? (?:code|status)\b|[A-Z][A-Z0-9_]*_(?:OK|EXIT|FAILED|PASSED)\b|(?:SUCCESS|FAILURE|FAILED|PASSED)\b|(?:Tests|Test Files|Test Suites):?\s+\d+)/;
 
 export function buildOutput(input) {
   const lines = input.split("\n");
@@ -93,6 +97,8 @@ export function buildOutput(input) {
       summary = summary ? `${summary}\n${line}` : line;
       continue;
     }
+
+    if (RE_OUTCOME.test(trimmed)) summary = summary ? `${summary}\n${line}` : line;
   }
 
   let out = "";

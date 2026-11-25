@@ -5,6 +5,7 @@ import { isChatProvider } from "open-sse/providers/chatCapability.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 import { providerRefreshContext } from "@/shared/utils/providerCredentialContext.js";
+import { refreshAntigravityConnection } from "@/shared/services/providerCredentials.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -97,10 +98,31 @@ async function POSTHandler(request) {
 
     // Auto-refresh token on 401/403 and retry (same as chatCore.js)
     if (response.status === 401 || response.status === 403) {
-      const newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);
-      if ((newCredentials?.accessToken || newCredentials?.copilotToken) &&
-          await persistRefreshedCredentials(connection, newCredentials)) {
-        Object.assign(credentials, newCredentials);
+      let newCredentials;
+      let committed = false;
+      if (provider === "antigravity" || provider === "agy") {
+        // Stored Antigravity credentials must be dispatched and committed under the shared lease.
+        // A refresh failure leaves the original upstream 401/403 response in place.
+        newCredentials = await refreshAntigravityConnection(connection, proxyOptions).catch(() => null);
+        committed = Boolean(newCredentials);
+      } else {
+        newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);
+        committed = (newCredentials?.accessToken || newCredentials?.copilotToken) &&
+          await persistRefreshedCredentials(connection, newCredentials);
+      }
+      if (committed && (newCredentials?.accessToken || newCredentials?.copilotToken)) {
+        if (provider === "antigravity" || provider === "agy") {
+          Object.assign(credentials, {
+            accessToken: newCredentials.accessToken,
+            refreshToken: newCredentials.refreshToken,
+            idToken: newCredentials.idToken,
+            lastRefreshAt: newCredentials.lastRefreshAt,
+            projectId: newCredentials.projectId,
+            providerSpecificData: { ...(newCredentials.providerSpecificData || {}), ...proxyOptions }
+          });
+        } else {
+          Object.assign(credentials, newCredentials);
+        }
         ({ response } = await executor.execute({ model, body, stream, credentials, proxyOptions }));
       }
     }

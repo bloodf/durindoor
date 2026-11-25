@@ -3,6 +3,8 @@ import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 import { resolveFallbackModelScope } from "./fallbackScope.js";
+import { isAnthropicAccountCreditExhausted, isAnthropicCreditProvider } from "./anthropicAccountCredit.js";
+import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -11,7 +13,7 @@ import { resolveFallbackModelScope } from "./fallbackScope.js";
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
-import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString, isObject, isRecord } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
@@ -141,7 +143,11 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * Config-driven: terminal status rules win before text rules, then remaining
  * ERROR_RULES match top-to-bottom. Known account/quota text rules take
  * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
- * @param {number} status - HTTP status code
+ * Pass the attempted model in the options object so text rules can ignore
+ * echoed model IDs (#2471). The positional form remains supported.
+ * Set `checkAccountLockScope: false` when the caller only decides whether to
+ * try another model and does not persist account locks.
+ * @param {number|{status: number, errorText: unknown, backoffLevel?: number, provider?: string|null, headers?: Headers|object|null, structuredError?: unknown, model?: string|null, checkAccountLockScope?: boolean}} status - HTTP status code or classifier options
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {string} provider - Optional provider ID for provider-specific rules
@@ -159,6 +165,16 @@ export function getQuotaCooldown(backoffLevel = 0) {
  *   must not advertise a client-facing Retry-After for it.
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null) {
+  const options = isRecord(status) ? status : {
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  };
+  return classifyFallbackError(options);
+}
+
+function classifyFallbackError({
+  status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null,
+  checkAccountLockScope = true,
+}) {
   const normalizedText = errorText ?
   isString(errorText) ? errorText : JSON.stringify(errorText) :
   "";
@@ -206,6 +222,12 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
   if (isDashScopeDeadAccount(provider, status, errorText, structuredError)) {
     return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
+  }
+
+  // OmniRoute #21076: an exhausted Anthropic balance blocks every model on the key.
+  if (Number(status) === 400 && isAnthropicCreditProvider(provider) &&
+      isAnthropicAccountCreditExhausted(errorText, structuredError)) {
+    return { ...checkFallbackErrorByRules(status, "credit balance is too low", backoffLevel), scope: "connection" };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not
@@ -289,8 +311,32 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       // A provider rule may mark its own state terminal (billing/credit
       // exhausted, identity verification pending): the account still cools
       // down, but no client-facing Retry-After may be advertised for it.
-      ...(providerRule.terminal ? { terminal: true } : null)
+      ...(providerRule.terminal ? { terminal: true } : null),
+      // The denial names the requested model only (Kilo paid-model auth). The
+      // caller must not widen it to an account lock when the id is unbounded.
+      ...(providerRule.modelOnly ? { modelOnly: true } : null)
     };
+  }
+
+  // OmniRoute #21080: Cline's free-tier daily cap names the exact wait ("Try again
+  // in 19h 39m") for the model that ran out. Honor it instead of the 2 s backoff,
+  // scoped to that model so the other free models on the connection keep routing.
+  // Malformed or absent durations fall through to the generic 429 handling below.
+  if (status === 429) {
+    const clineHintMs = parseClineTryAgainInMs(ruleMatchText, provider, MAX_RATE_LIMIT_COOLDOWN_MS);
+    if (clineHintMs !== null) {
+      return { shouldFallback: true, cooldownMs: clineHintMs, newBackoffLevel: 0, scope: "model", retryHintSource: "body" };
+    }
+  }
+
+  // OmniRoute ce3d869: CodeBuddy International states its unlock time in UTC
+  // prose even when the message does not identify an exhausted quota.
+  if (status === 429 && provider === "codebuddy-intl") {
+    const now = Date.now();
+    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, provider, now });
+    if (["quota_text", "structured_body"].includes(evidence?.source) && Number.isFinite(evidence.resetAtMs)) {
+      return { shouldFallback: true, cooldownMs: evidence.resetAtMs - now, newBackoffLevel: 0, scope: "connection", rateLimitEvidence: evidence };
+    }
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
@@ -332,6 +378,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   // request-scoped. Terminal billing matches (real credit exhaustion) keep
   // their account-wide lock even on passthrough catalogs.
   if (
+    checkAccountLockScope &&
     generic.shouldFallback &&
     !generic.terminal &&
     Number(status) === 400 &&
@@ -784,12 +831,13 @@ export function buildClearModelLocksUpdate(connection) {
 }
 
 /**
- * Filter available accounts (not in cooldown)
+ * Filter terminal account statuses, quota lockouts and active cooldowns.
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
   return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
+    if (isString(acc.status) && TERMINAL_ACCOUNT_STATES.has(acc.status.trim().toLowerCase())) return false;
     if (isQuotaLockoutActive(acc, now)) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();
@@ -824,22 +872,18 @@ export function resetAccountState(account) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
+ * @param {string|null} model - Model attempted by the request
  * @returns {object} Updated account with error state. `providerErrorScope`
  *   is set when a provider rule returned a `scope` (e.g. AgentRouter quota
  *   `connection`) so the lock layer can pick account-wide persistence.
  */
-export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
+export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null, model = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError(
-    status,
-    errorText,
-    backoffLevel,
-    provider,
-    headers,
-    structuredError
-  );
+  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError({
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  });
 
   return {
     ...account,

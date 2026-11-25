@@ -1,7 +1,6 @@
 export default {
   id: "huggingface",
   priority: 70,
-  hasFree: true,
   alias: "huggingface",
   aliases: [
     "hf",
@@ -15,7 +14,7 @@ export default {
     website: "https://huggingface.co",
     notice: {
       apiKeyUrl: "https://huggingface.co/settings/tokens",
-      text: "Runs through the Inference Providers router. Image and speech models are billed by the provider selected per model.",
+      text: "Runs through the Inference Providers router. Image and speech models are billed by the provider selected per model. Free accounts must buy credits or upgrade to PRO to use Inference Providers (checked 2026-11-23).",
     },
   },
   category: "apikey",

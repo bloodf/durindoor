@@ -14,11 +14,6 @@ const { getProbeHost, getDisplayHost } = require("./src/cli/host");
 const { canBindLauncherPort } = require("./src/cli/utils/launcherProcess");
 const { collectAppPids, killAppPids, portOccupantToKill } = require("./src/lib/processScan");
 
-// Resolve once before any worker changes cwd. Every CLI helper and the Next
-// worker inherit the same absolute path, so database, PID, CA, and auth-token
-// state cannot split across process working directories.
-process.env.DATA_DIR = getAppDataDir();
-
 // Native spinner - no external dependency
 function createSpinner(text) {
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -55,33 +50,35 @@ function createSpinner(text) {
   };
 }
 
+// The installed launcher keeps the shared startup module in its app bundle.
+const listenConfigPath = fs.existsSync(path.join(__dirname, "app/src/lib/startup/listenConfig.cjs"))
+  ? "./app/src/lib/startup/listenConfig.cjs" : "../src/lib/startup/listenConfig.cjs";
+const { DEFAULT_CLI_HOST: DEFAULT_HOST, DEFAULT_SERVER_PORT: DEFAULT_PORT, resolveListenConfig } = require(listenConfigPath);
 const pkg = require("./package.json");
-const args = process.argv.slice(2);
 
 // Configuration constants
 const APP_NAME = pkg.name; // Use from package.json
 const INSTALL_CMD_LATEST = `npm i -g ${APP_NAME}@latest --prefer-online`;
 
-const DEFAULT_PORT = 20128;
-const DEFAULT_HOST = "0.0.0.0";
-
-for (let i = 0; i < args.length; i++) {
-  if (["--port", "-p", "--host", "-H"].includes(args[i])) {
-    const flag = args[i];
-    const value = args[i + 1];
-    if (!value || value.startsWith("--")) {
-      console.error(`Error: ${flag} requires a value.`);
-      process.exit(2);
+function validateArgs(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (["--port", "-p", "--host", "-H"].includes(args[i])) {
+      const flag = args[i];
+      const value = args[i + 1];
+      if (!value || value.startsWith("--")) {
+        console.error(`Error: ${flag} requires a value.`);
+        process.exit(2);
+      }
+      if ((flag === "--port" || flag === "-p") && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)) {
+        console.error(`Error: ${flag} must be an integer from 1 to 65535.`);
+        process.exit(2);
+      }
+      i++;
     }
-    if ((flag === "--port" || flag === "-p") && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)) {
-      console.error(`Error: ${flag} must be an integer from 1 to 65535.`);
-      process.exit(2);
-    }
-    i++;
   }
 }
 
-function hasFlag(flag, shortFlag) {
+function hasFlag(args, flag, shortFlag) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === flag || arg === shortFlag) return true;
@@ -90,50 +87,11 @@ function hasFlag(flag, shortFlag) {
   return false;
 }
 
-// Administration never enters launcher startup, updates, or runtime repair.
-if (args[0] === "admin") {
-  require("./src/cli/admin").runAdmin(args.slice(1)).then((code) => {
-    process.exitCode = code;
-  }).catch(() => {
-    console.error(JSON.stringify({ error: "Administration request failed" }));
-    process.exitCode = 1;
-  });
-  return;
-}
-
-if (hasFlag("--help", "-h")) {
-  console.log(`
-Usage: ${APP_NAME} [options]
-       ${APP_NAME} admin combos get <id> [--port <port>]
-
-Options:
-  -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
-  -H, --host <host>   Host to bind (default: ${DEFAULT_HOST})
-  -n, --no-browser    Don't open browser automatically
-  -l, --log           Show server logs (default: hidden)
-  -t, --tray          Run in system tray mode (background)
-  --headless          Run without browser, tray or menu (overrides --tray)
-  --skip-update       Skip auto-update check
-  -h, --help          Show this help message
-  -v, --version       Show version
-`);
-  process.exit(0);
-}
-
-if (hasFlag("--version", "-v")) {
-  console.log(pkg.version);
-  process.exit(0);
-}
-
-const { ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime");
-const { buildNodeArgs } = require("./hooks/nodeFlags");
-const { killByPidFile } = require("./hooks/killByPidFile");
-
-
-// Verify SQLite runtime deps. Missing sql.js may be repaired because it is the
-// required fallback; optional better-sqlite3 installation is postinstall-only so
-// ordinary startup never blocks on npm/node-gyp.
-try { ensureSqliteRuntime({ silent: true }); } catch {}
+// Loaded by main() after the fast paths; the staged artifact has no hooks for --help.
+let ensureSqliteRuntime;
+let buildEnvWithRuntime;
+let buildNodeArgs;
+let killByPidFile;
 
 const DISPLAY_NAME = "DurinDoor";
 // First non-internal IPv4 — the address remote peers actually reach when bound to 0.0.0.0.
@@ -155,47 +113,66 @@ function getLanIp() {
 const MAX_PORT_ATTEMPTS = 10;
 
 // Parse arguments
-let port = DEFAULT_PORT;
-let host = DEFAULT_HOST;
-let noBrowser = false;
-let skipUpdate = false;
-let showLog = false;
-let trayMode = false;
-let headless = false;
+function parseArgs(args, { env = process.env, isTTY = process.stdin.isTTY } = {}) {
+  let port;
+  let host = DEFAULT_HOST;
+  let noBrowser = false;
+  let skipUpdate = false;
+  let showLog = false;
+  let trayMode = false;
+  let headless = false;
 
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--port" || args[i] === "-p") {
-    port = Number(args[i + 1]);
-    i++;
-  } else if (args[i] === "--host" || args[i] === "-H") {
-    host = args[i + 1] || DEFAULT_HOST;
-    i++;
-  } else if (args[i] === "--no-browser" || args[i] === "-n") {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--port" || args[i] === "-p") {
+      port = Number(args[i + 1]);
+      i++;
+    } else if (args[i] === "--host" || args[i] === "-H") {
+      host = args[i + 1] || DEFAULT_HOST;
+      i++;
+    } else if (args[i] === "--no-browser" || args[i] === "-n") {
+      noBrowser = true;
+    } else if (args[i] === "--log" || args[i] === "-l") {
+      showLog = true;
+    } else if (args[i] === "--skip-update") {
+      skipUpdate = true;
+    } else if (args[i] === "--headless") {
+      headless = true;
+    } else if (args[i] === "--tray" || args[i] === "-t") {
+      trayMode = true;
+    }
+  }
+
+  ({ port, host } = resolveListenConfig({ argv: [], env, port, host }));
+
+  // Auto-relaunch after update: detached process has no TTY → fallback to tray
+  if (!headless && skipUpdate && !trayMode && !isTTY) trayMode = true;
+
+  // Explicit headless mode wins regardless of flag order or inherited tray state.
+  if (headless) {
+    trayMode = false;
     noBrowser = true;
-  } else if (args[i] === "--log" || args[i] === "-l") {
-    showLog = true;
-  } else if (args[i] === "--skip-update") {
-    skipUpdate = true;
-  } else if (args[i] === "--headless") {
-    headless = true;
-  } else if (args[i] === "--tray" || args[i] === "-t") {
-    trayMode = true;
-    process.env.TRAY_MODE = "1";
+  }
+
+  return { port, host, noBrowser, skipUpdate, showLog, trayMode, headless };
+}
+
+function parseArgsOrExit(args) {
+  try {
+    return parseArgs(args);
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    process.exit(2);
   }
 }
 
-// Auto-relaunch after update: detached process has no TTY → fallback to tray
-if (!headless && skipUpdate && !trayMode && !process.stdin.isTTY) {
-  trayMode = true;
-  process.env.TRAY_MODE = "1";
-}
-
-// Explicit headless mode wins regardless of flag order or inherited tray state.
-if (headless) {
-  trayMode = false;
-  noBrowser = true;
-  delete process.env.TRAY_MODE;
-}
+// Launcher options, assigned once by main().
+let port;
+let host;
+let noBrowser;
+let skipUpdate;
+let showLog;
+let trayMode;
+let headless;
 
 // Always use Node.js runtime with absolute path
 const RUNTIME = process.execPath;
@@ -422,14 +399,8 @@ function openBrowser(url) {
 // bypass real-peer, anti-spoofing, and privileged-control proof checks.
 const standaloneDir = path.join(__dirname, "app");
 const customServerPath = path.join(standaloneDir, "custom-server.js");
-if (!fs.existsSync(customServerPath)) {
-  console.error("Error: owner-aware custom-server.js is missing. Reinstall DurinDoor.");
-  process.exit(1);
-}
 const serverPath = customServerPath;
-const { INTENTIONAL_HANDOFF_EXIT_CODE } = require(
-  path.join(standaloneDir, "src", "shared", "constants", "processExitCodes.js"),
-);
+let INTENTIONAL_HANDOFF_EXIT_CODE;
 const { isIntentionalWorkerHandoff } = require("./src/cli/workerExit");
 
 function hasStaleMitmOwnership() {
@@ -512,27 +483,6 @@ async function recoverStaleMitmOwnershipBeforeStartup() {
     throw new Error(`${error.message}; recovery worker was retained for a safe cleanup retry`);
   }
 }
-
-if (!fs.existsSync(serverPath)) {
-  console.error("Error: Standalone build not found.");
-  console.error("Please run 'npm run build:cli' first.");
-  process.exit(1);
-}
-
-// Kick off the update check in parallel with cleanup/port-release (not on the
-// critical path for server start). MITM/stale-redirect recovery stays sequential
-// BEFORE killAllAppProcesses: safety-critical system redirect cleanup.
-const updatePromise = checkForUpdate();
-(async () => {
-  await recoverStaleMitmOwnershipBeforeStartup();
-  const portWasAvailable = await canBindLauncherPort(port, host);
-  await killAllAppProcesses(port, !portWasAvailable);
-  if (!portWasAvailable) await killProcessOnPort(port);
-  startServer(updatePromise);
-})().catch((error) => {
-  console.error(`Startup cleanup failed: ${error.message}`);
-  process.exitCode = 1;
-});
 
 // Show interface selection menu
 async function showInterfaceMenu(latestVersion) {
@@ -960,3 +910,93 @@ function startServer(updatePromise) {
 
   attachServerEvents();
 }
+
+function main(argv = process.argv.slice(2)) {
+  // Resolve once before any worker changes cwd. Every CLI helper and the Next
+  // worker inherit the same absolute path, so database, PID, CA, and auth-token
+  // state cannot split across process working directories.
+  process.env.DATA_DIR = getAppDataDir();
+
+  validateArgs(argv);
+
+  // Administration never enters launcher startup, updates, or runtime repair.
+  if (argv[0] === "admin") {
+    require("./src/cli/admin").runAdmin(argv.slice(1)).then((code) => {
+      process.exitCode = code;
+    }).catch(() => {
+      console.error(JSON.stringify({ error: "Administration request failed" }));
+      process.exitCode = 1;
+    });
+    return;
+  }
+
+  if (hasFlag(argv, "--help", "-h")) {
+    console.log(`
+Usage: ${APP_NAME} [options]
+       ${APP_NAME} admin combos get <id> [--port <port>]
+
+Options:
+  -p, --port <port>   Port to run the server (default: ${DEFAULT_PORT})
+  -H, --host <host>   Host to bind (default: ${DEFAULT_HOST})
+  -n, --no-browser    Don't open browser automatically
+  -l, --log           Show server logs (default: hidden)
+  -t, --tray          Run in system tray mode (background)
+  --headless          Run without browser, tray or menu (overrides --tray)
+  --skip-update       Skip auto-update check
+  -h, --help          Show this help message
+  -v, --version       Show version
+`);
+    process.exit(0);
+  }
+
+  if (hasFlag(argv, "--version", "-v")) {
+    console.log(pkg.version);
+    process.exit(0);
+  }
+
+  ({ ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime"));
+  ({ buildNodeArgs } = require("./hooks/nodeFlags"));
+  ({ killByPidFile } = require("./hooks/killByPidFile"));
+
+  // Verify SQLite runtime deps. Missing sql.js may be repaired because it is the
+  // required fallback; optional better-sqlite3 installation is postinstall-only so
+  // ordinary startup never blocks on npm/node-gyp.
+  try { ensureSqliteRuntime({ silent: true }); } catch {}
+
+  ({ port, host, noBrowser, skipUpdate, showLog, trayMode, headless } = parseArgsOrExit(argv));
+  if (trayMode) process.env.TRAY_MODE = "1";
+  if (headless) delete process.env.TRAY_MODE;
+
+  if (!fs.existsSync(customServerPath)) {
+    console.error("Error: owner-aware custom-server.js is missing. Reinstall DurinDoor.");
+    process.exit(1);
+  }
+  ({ INTENTIONAL_HANDOFF_EXIT_CODE } = require(
+    path.join(standaloneDir, "src", "shared", "constants", "processExitCodes.js"),
+  ));
+
+  if (!fs.existsSync(serverPath)) {
+    console.error("Error: Standalone build not found.");
+    console.error("Please run 'npm run build:cli' first.");
+    process.exit(1);
+  }
+
+  // Kick off the update check in parallel with cleanup/port-release (not on the
+  // critical path for server start). MITM/stale-redirect recovery stays sequential
+  // BEFORE killAllAppProcesses: safety-critical system redirect cleanup.
+  const updatePromise = checkForUpdate();
+  (async () => {
+    await recoverStaleMitmOwnershipBeforeStartup();
+    const portWasAvailable = await canBindLauncherPort(port, host);
+    await killAllAppProcesses(port, !portWasAvailable);
+    if (!portWasAvailable) await killProcessOnPort(port);
+    startServer(updatePromise);
+  })().catch((error) => {
+    console.error(`Startup cleanup failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main, parseArgs, hasFlag, compareVersions };
+
+if (require.main === module) main();

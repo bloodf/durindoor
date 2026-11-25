@@ -13,20 +13,33 @@ function startup(args, isTTY = false, env = {}) {
   const tray = vi.fn();
   const sqlite = vi.fn();
   const context = {
+    __dirname: path.resolve("../cli"),
     process: { argv: ["node", "cli.js", ...args], env, stdin: { isTTY }, exit: (code) => { throw { exit: code }; } },
-    console: { log: vi.fn() },
+    console: { log: vi.fn(), error: vi.fn() },
+    module: {},
     require: (name) => {
+      if (name.endsWith("src/lib/startup/listenConfig.cjs")) return require("../../src/lib/startup/listenConfig.cjs");
       if (name === "./package.json") return { name: "durindoor", version: "4.11.0" };
       if (name === "./hooks/sqliteRuntime") return { ensureSqliteRuntime: sqlite };
       if (name === "./hooks/trayRuntime") return { ensureTrayRuntime: tray };
       if (name === "./src/cli/appDataDir") return { getAppDataDir: () => "/private/data" };
       if (name.startsWith("./")) return {};
+      // No app bundle: main() stops at the server check, after parsing and runtime preparation.
+      if (name === "fs") return { ...fs, existsSync: (file) => !file.endsWith("custom-server.js") && fs.existsSync(file) };
       return require(name);
     },
   };
   try {
-    const prefix = source.slice(0, source.indexOf("// Always use Node.js runtime")).replace(/^#![^\n]*\n/, "");
-    const mode = vm.runInNewContext(`(function () { ${prefix}; return { headless, trayMode, noBrowser, skipUpdate }; })()`, context);
+    const body = source.replace(/^#![^\n]*\n/, "");
+    const cli = vm.runInNewContext(`(function () { ${body}; return { main, mode: () => ({ headless, trayMode, noBrowser, skipUpdate }) }; })()`, context);
+    expect(sqlite).not.toHaveBeenCalled();
+    try {
+      cli.main(args);
+    } catch (error) {
+      if (error.exit !== 1) throw error;
+    }
+    expect(context.console.error).toHaveBeenCalledWith(expect.stringContaining("custom-server.js is missing"));
+    const mode = cli.mode();
     expect(tray).not.toHaveBeenCalled();
     // Execute the actual tray initializer with its real lazy hook invocation.
     const initializer = source.slice(source.indexOf("  const initTrayIcon = "), source.indexOf("  // Headless keeps"));
@@ -124,7 +137,7 @@ function startHeadlessWorker({ staleOwnership = false, cleanupOk = true } = {}) 
   const identity = vi.fn(() => identityResult);
   const ui = vi.fn(() => { throw new Error("Headless must not initialize UI"); });
   const log = { log: vi.fn(), error: vi.fn() };
-  vm.runInNewContext(source.slice(source.indexOf("const MAX_RESTARTS =")) + ";startServer(null)", {
+  vm.runInNewContext(source.slice(source.indexOf("const MAX_RESTARTS ="), source.indexOf("function main(")) + ";startServer(null)", {
     headless: true, trayMode: false, showLog: false,
     host: "127.0.0.1", DEFAULT_HOST: "0.0.0.0", port: 20128,
     getDisplayHost: () => "127.0.0.1", console: log, process, spawn,

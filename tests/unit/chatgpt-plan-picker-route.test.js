@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ local: true, origin: true, owner: true, verifiedKey: null, dispatch: vi.fn() }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn(async (id) => ({ id, provider: "chatgpt-plan" })) }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn(async (id) => ({ id, provider: "chatgpt-plan" })) }));
 vi.mock("@/dashboardGuard", () => ({ isLocalRequest: () => m.local, hasValidCliToken: async () => false, hasValidToken: async () => m.owner }));
 vi.mock("@/lib/auth/requestOrigin", () => ({ hasExactRequestOrigin: () => m.origin }));
 vi.mock("@/sse/services/modelAccess", () => ({ getRequestModelDiscoveryOptions: async () => ({ verifiedKey: m.verifiedKey }) }));

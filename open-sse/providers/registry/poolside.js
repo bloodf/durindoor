@@ -13,6 +13,7 @@ export default {
     textIcon: "PS",
     website: "https://poolside.ai",
     notice: {
+      text: "Preview ended: direct Poolside Platform inference was announced to shut down on 2026-10-31, so there is no free API access (checked 2026-11-23).",
       apiKeyUrl: "https://platform.poolside.ai/api-keys",
     },
   },

@@ -203,7 +203,7 @@ Local findings:
   the chat core derives client streaming intent from `body.stream === true`
   ([open-sse/handlers/chatCore.js:535](../../../open-sse/handlers/chatCore.js));
   and the Responses handler reads `convertedBody.stream === true`
-  ([open-sse/handlers/responsesHandler.js:65](../../../open-sse/handlers/responsesHandler.js)).
+  (`open-sse/handlers/responsesHandler.js:65` (removed as dead code, issue #2255)).
 - A whole-tree search of `open-sse/` and `src/` for `non_stream`, `disable_stream` and `disable_streaming` returned
   zero hits (probe assertion, passing). There is no alias support and no alias-stripping step.
 - The resulting behavior difference is narrow and one-directional: a client that sends `{"streaming": true}` and
@@ -284,7 +284,7 @@ Local findings, part (a) — recurring mid-stream heartbeat:
 
 - The local Responses handler has exactly one transform on the body and no heartbeat:
   `const transformedBody = response.body.pipeThrough(transformStream);`
-  ([open-sse/handlers/responsesHandler.js:132](../../../open-sse/handlers/responsesHandler.js)).
+  (`open-sse/handlers/responsesHandler.js:132` (removed as dead code, issue #2255)).
   Probe result: the file contains exactly one `.pipeThrough(` call and no `keepalive` or `heartbeat` token at all.
 - The local fork's keepalive is **pre-first-byte only**. `withEarlyStreamKeepalive` holds the response open and
   emits `: keepalive\n\n`

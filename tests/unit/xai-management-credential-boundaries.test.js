@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => true), canManageAccessConfig: vi.fn(async () => true) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(), getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []), getProviderNodeById: vi.fn(), getProxyPoolById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "xai-fixture", ...data })),
   updateProviderConnection: vi.fn(async (id, data) => ({ id, provider: "xai", authType: "apikey", ...data })),
   deleteProviderConnection: vi.fn(),
 }));
-const models = await import("@/models");
+const models = await import("@/lib/localDb");
 const { GET: list, POST: create } = await import("@/app/api/providers/route.js");
 const { GET: detail, PUT: update } = await import("@/app/api/providers/[id]/route.js");
 const { sanitizeProviderConnectionForClient } = await import("@/lib/providers/sanitizeProviderConnectionForClient.js");

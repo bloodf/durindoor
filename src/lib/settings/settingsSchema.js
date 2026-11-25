@@ -72,6 +72,8 @@ const DEFAULT_SETTINGS = {
   requireLogin: true,
   tunnelDashboardAccess: true,
   authMode: "password",
+  // SSO protocol read by the OIDC gate (decolua/9router#5851); only "oidc" enables it.
+  ssoType: "oidc",
   oidcIssuerUrl: "",
   oidcClientId: "",
   oidcClientSecret: "",
@@ -243,7 +245,7 @@ const DEFAULT_SETTINGS = {
 
 
 const secretKeys = ["password", "passwordSessionEpoch", "mitmSudoEncrypted", "postgresUrl", "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
-const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
+const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "ssoType", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
 const redactKeys = ["password", "passwordSessionEpoch", "oidcClientSecret", "mitmSudoEncrypted", "postgresUrl", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
 const scopedKeys = ["claudeAutoPing", "codexAutoPing"];
 
@@ -295,6 +297,8 @@ const constraints = {
   databaseEngine: { enum: ["sqlite", "postgres"] },
   databasePgVersion: { enum: [16, 17, 18], integer: true },
   proxyTimelineRetentionDays: { enum: [1, 3, 7] },
+  // Only OIDC is implemented (9router #5851); see resolveSsoType in src/lib/auth/oidc.js.
+  ssoType: { enum: ["oidc"] },
   stickyRoundRobinLimit: { minimum: 1, integer: true },
   pxpipeMinChars: { minimum: 1, integer: true },
   pxpipeTimeoutMs: { minimum: 1000, maximum: 120000, integer: true },

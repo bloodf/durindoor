@@ -60,6 +60,11 @@ describe("model catalog consistency", () => {
     ).toEqual([]);
   });
 
+  it("retains the forward-priced Gemini embedding ID", async () => {
+    const { REVIEWED_ORPHANS } = await import("../../open-sse/config/catalogAllowlist.js");
+    expect(REVIEWED_ORPHANS.get("pricing:gemini-embedding-2")).toBe("#5846 forward-priced embedding id");
+  });
+
   it("reviews exactly the intended #599 Qwen 3.8 and Muse pricing orphans", async () => {
     const { REVIEWED_ORPHANS } = await import("../../open-sse/config/catalogAllowlist.js");
     const expected = [

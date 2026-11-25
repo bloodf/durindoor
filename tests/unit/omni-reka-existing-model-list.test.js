@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const routedFetch = vi.hoisted(() => vi.fn());
 const resolveConnectionProxyConfig = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
 }));
 
@@ -27,7 +27,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: routedFetch,
 }));
 
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { GET } from "../../src/app/api/providers/[id]/models/route.js";
 import { canDiscoverModels } from "@/lib/providerRouteHandlers.js";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";

@@ -158,6 +158,14 @@ export function buildNextAuthSessionCookie(rawValue) {
   return [...session, ...others].join("; ");
 }
 
+/** Build Perplexity's current account-cookie header or its legacy NextAuth header. */
+export function buildPerplexitySessionCookie(rawValue) {
+  const header = stripCookieInputPrefix(rawValue);
+  const currentName = /^__Secure-pplx\.session\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (header.split(";").some((part) => currentName.test(part.split("=", 1)[0].trim()))) return header;
+  return buildNextAuthSessionCookie(rawValue);
+}
+
 /**
  * Merge rotated session-token cookies from a Set-Cookie response into the
  * stored cookie blob. Every other stored cookie (cf_clearance, __cf_bm, ...)

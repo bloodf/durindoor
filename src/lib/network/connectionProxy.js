@@ -1,4 +1,4 @@
-import { getProxyPoolById } from "@/models";
+import { getProxyPoolById } from "@/lib/localDb";
 import { isObject } from "../../shared/utils/typeChecks.js";
 
 const OAUTH_PROXY_MODES = new Set(["legacy", "direct", "strict-pool"]);
@@ -79,13 +79,37 @@ const rotateState = new Map(); // providerId → { index }
  * Pick one proxy pool ID from a list based on strategy.
  * round-robin: cycle sequentially (in-memory, resets on restart)
  * random:      uniform random pick
+ * session:     rendezvous hash by session and pool ID; round-robin without a session
  * none/single: return first entry
  */
-export function pickProxyPoolId(poolIds, strategy, providerId) {
+export function pickProxyPoolId(poolIds, strategy, providerId, sessionId) {
   if (!poolIds || poolIds.length === 0) return null;
   if (poolIds.length === 1) return poolIds[0];
 
-  if (strategy === "round-robin") {
+  if (strategy === "session" && sessionId) {
+    let best = poolIds[0];
+    let bestScore = -1;
+    for (const id of poolIds) {
+      const text = `${sessionId}\0${id}`;
+      let h1 = 0xdeadbeef;
+      let h2 = 0x41c6ce57;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      const score = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+      if (score > bestScore) {
+        best = id;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  if (strategy === "round-robin" || strategy === "session") {
     const state = rotateState.get(providerId) || { index: -1 };
     state.index = (state.index + 1) % poolIds.length;
     rotateState.set(providerId, state);

@@ -4,7 +4,6 @@ export default {
   id: "ollama",
   priority: 30,
   hidden: true,
-  hasFree: true,
   alias: "ollama",
   aliases: ["ollama-search"],
   display: {
@@ -14,7 +13,7 @@ export default {
     textIcon: "OL",
     website: "https://ollama.com",
     notice: {
-      text: "Free tier: light usage, 1 cloud model at a time (limits reset every 5h & 7d). Pro $20/mo · Max $100/mo.",
+      text: "No free plan: cloud models are pay per token or covered by paid plans (checked 2026-11-23).",
       apiKeyUrl: "https://ollama.com/settings/keys",
     },
   },

@@ -1,14 +1,14 @@
 # #1073: Responses long call-ID clamp (OmniRoute #20224)
 
-Disposition: **port the `responses-call-id-clamp` member of #20224**. The other six members of that train are out of scope here; the Nov 24 post-cutoff commit intake (row for merge `713bf17cc7fd`, carried on the integration branch) and the [prior #20963 disposition](1073-nov21-open-ledger-c.md) leave them unreviewed.
+Disposition: **ported**. The `responses-call-id-clamp` member of OmniRoute #20224 is included in this branch (Refs #2487). The other six members of that train remain unreviewed; see the [Nov 24 census row](1073-nov24-commits-4.md) and the [prior #20963 disposition](1073-nov21-open-ledger-c.md).
 
 ## Upstream evidence
 
-[OmniRoute #20224](https://github.com/cheaper-inference/OmniRoute/pull/20224), head `73f02b9d74324a6e2c7ebc03388e592d58233536`, base `release/v3.8.55`, merged 2026-11-23 as `713bf17cc7fd87fb2b0eff4b93d0e882963ab409` (via #20963). The relevant hunk is `open-sse/translator/request/openai-responses/helpers.ts`: `clampCallId` returned `id.slice(0, 64)` for an id over 64 characters; it now keeps 55 characters, `_`, and the first 8 hex of the SHA-256 of the whole id. Its test is `tests/unit/responses-call-id-clamp.test.ts`.
+OmniRoute #20224, head `73f02b9d74324a6e2c7ebc03388e592d58233536`, base `release/v3.8.55`, merged 2026-11-23 as `713bf17cc7fd87fb2b0eff4b93d0e882963ab409` (via #20963). The relevant hunk is `open-sse/translator/request/openai-responses/helpers.ts`: `clampCallId` returned `id.slice(0, 64)` for an id over 64 characters; it now keeps 55 characters, `_`, and the first 8 hex of the SHA-256 of the whole id. Its test is `tests/unit/responses-call-id-clamp.test.ts`.
 
 ## Collision check in DurinDoor
 
-Checked at integration head `64b2472d39c758fe6171eaba65258174224096dd` and again at `main` `4e116902a90b1ae8971db548ac9d328c04528195`; the clamp is identical in both. `clampResponsesCallId` in `open-sse/translator/formats/responsesApi.js` returned `id.substring(0, 64)`. Two ids that share their first 64 characters (for example MCP-style `functions.<server>__<tool>:0` and `:1` ids) therefore map to one `call_id`.
+Base `64b2472d39c758fe6171eaba65258174224096dd`. `clampResponsesCallId` in `open-sse/translator/formats/responsesApi.js` returned `id.substring(0, 64)`. Two ids that share their first 64 characters (for example MCP-style `functions.<server>__<tool>:0` and `:1` ids) therefore map to one `call_id`.
 
 Reproduced before the fix: the new regression test failed 2 of 3 cases. Direct clamp of two such ids returned equal values; a Chat → Responses translation of one assistant turn with two parallel tool calls and two tool results produced a single distinct `call_id` across both `function_call` items and both outputs.
 
@@ -36,4 +36,4 @@ The full four-batch `test:ci` was not run in this lane; CI on the PR is the full
 
 ## Status
 
-DurinDoor PR: [#2487](https://github.com/bloodf/durindoor/pull/2487) (draft). Not a completed port until that PR merges.
+Ported on this branch. Refs #2487. The earlier integration branch removed the duplicate code and test; this change restores them on the current branch.

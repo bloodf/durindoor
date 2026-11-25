@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getProviderConnections: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProxyPool: mocks.createProxyPool,
   getProxyPoolById: mocks.getProxyPoolById,
   getProxyPools: mocks.getProxyPools,

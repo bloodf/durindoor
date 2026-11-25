@@ -5,6 +5,15 @@ import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 import { originAbsentOrSame } from "@/lib/auth/requestOrigin";
+import {
+  classifyRoute,
+  decodePathname,
+  gatewayOauthLeaf,
+  hasRouteTrait,
+  isInRouteClass,
+  isPublicLlmApi,
+  matchesPrefix,
+} from "@/lib/auth/routePolicy";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter.js";
 
@@ -14,6 +23,8 @@ import {
   verifyControlProof,
 } from "@/mitm/controlProof";
 import { isFunction } from "@/shared/utils/typeChecks.js";
+
+export { matchesPrefix };
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
@@ -30,128 +41,6 @@ export async function hasValidCliToken(request) {
   return timingSafeCompare(token, await getCliToken());
 }
 
-// Public API paths — no auth required (LLM API has its own key auth inside handler).
-const PUBLIC_API_PATHS = [
-  "/api/init",
-  "/api/locale",
-  "/api/auth/login",
-  "/api/auth/logout",
-  "/api/auth/status",
-  "/api/settings/require-login",
-];
-
-// Public API paths matched by exact pathname only — no `/child` fallthrough.
-// A prefix match here would let an attacker reach an unrelated route by
-// nesting it under a trusted public prefix.
-const PUBLIC_API_EXACT_PATHS = [
-  // Orchestrator probes (Kubernetes liveness/readiness). All answer only
-  // {"ok":true}; exact match so nothing can be nested under them (for example,
-  // /api/health/providers stays behind the management gate).
-  "/api/deployment-mode",
-  "/api/health",
-  // Version probe (GET only). Exact match: its children (`/update`,
-  // `/shutdown`) are operator actions and must get the Origin gate.
-  "/api/version",
-  "/api/livez",
-  "/api/readyz",
-  "/api/auth/oidc/start",
-  "/api/auth/oidc/callback",
-  // One-time password-change proof recipient. Only valid proofs can drive
-  // a write here; the route does not fall through to a session check.
-  "/api/auth/change-password",
-  // Login step 2 (decolua/9router#4144). Public by necessity -- the caller
-  // holds no session yet, only the short-lived mfa_pending cookie, which the
-  // route verifies itself. Exact path only, so /api/auth/mfa/{setup,enable,
-  // disable} stay behind the normal session check below.
-  "/api/auth/mfa/verify",
-  // Browser-extension cookie import. The caller holds no dashboard session or
-  // API key, only a one-use pairing secret the route itself consumes
-  // (src/lib/providers/cookieImport/README.md). Exact path only: the operator
-  // route that issues pairings (`/pairing`) stays behind the management gate.
-  "/api/providers/cookie-import",
-];
-
-// Public top-level prefixes (LLM API endpoints with their own API key auth).
-// Include root aliases because middleware classifies paths before Next.js rewrites.
-const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex", "/responses"];
-
-// Always require JWT token regardless of requireLogin setting
-const ALWAYS_PROTECTED = [
-  "/api/shutdown",
-  "/api/settings/database",
-  "/api/version/shutdown",
-  "/api/version/update",
-  "/api/oauth/cursor/auto-import",
-  "/api/oauth/commandcode/auto-import",
-  "/api/oauth/kiro/auto-import",
-  "/api/oauth/xiaomi-mimo/auto-import",
-];
-
-// Management APIs — require JWT/CLI; loopback may use the open-dashboard
-// requireLogin=false policy. Remote unauthenticated access is always denied.
-const MANAGEMENT_API_PATHS = [
-  "/api/settings",
-  "/api/keys",
-  "/api/providers",
-  "/api/provider-nodes",
-  "/api/proxy-pools",
-  "/api/combos",
-  "/api/connection-groups",
-  "/api/models",
-  "/api/usage",
-  "/api/monitoring",
-  "/api/timeline",
-  "/api/oauth",
-  "/api/cloud",
-  "/api/media-providers",
-  "/api/pricing",
-  "/api/tags",
-  "/api/cli-tools",
-  "/api/mcp",
-  // Gateway CRUD plus the operator-driven OAuth actions. The protocol surfaces
-  // (`/api/mcp-gateway`, `/sse`, `/message`) keep gateway-key auth, and the
-  // CIMD and callback leaves are answered earlier in proxy(): the callback is
-  // an upstream browser redirect that carries no DurinDoor credential.
-  "/api/mcp-gateway/keys",
-  "/api/mcp-gateway/instances",
-  "/api/mcp-gateway/oauth",
-  "/api/translator",
-  "/api/tunnel",
-];
-
-/**
- * Exact management leaves expose operational state or exercise stored secrets.
- * OIDC start/callback and /api/health remain public; testing issuer credentials
- * and inspecting provider health do not.
- */
-const MANAGEMENT_API_EXACT_PATHS = [
-  "/api/headroom/status",
-  "/api/headroom/stats",
-  "/api/auth/oidc/test",
-  "/api/health/providers",
-];
-
-// Routes that spawn child processes or read host secrets — restrict to localhost.
-const LOCAL_ONLY_PATHS = [
-  "/api/cli-tools/cowork-settings",
-  "/api/cli-tools/antigravity-mitm",
-  "/api/mcp/",
-  "/api/tunnel/tailscale-install",
-  "/api/tunnel/tailscale-enable",
-  "/api/tunnel/tailscale-disable",
-  "/api/tunnel/tailscale-check",
-  "/api/tunnel/enable",
-  "/api/tunnel/disable",
-  "/api/oauth/cursor/auto-import",
-  "/api/oauth/commandcode/auto-import",
-  "/api/oauth/kiro/auto-import",
-  "/api/oauth/xiaomi-mimo/auto-import",
-  "/api/auth/reset-password",
-  "/api/headroom/start",
-  "/api/headroom/stop",
-  "/api/headroom/proxy",
-  "/api/headroom/extras",
-];
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isLoopbackHostname(h) {
@@ -239,10 +128,6 @@ export function isLocalRequest(request) {
   return !isHosted() && isLoopbackPeer(request);
 }
 
-function isPublicLlmApi(pathname) {
-  return pathname === "/backend-api/codex/alpha/search" || PUBLIC_PREFIXES.some((p) => matchesPrefix(pathname, p));
-}
-
 function extractApiKey(request) {
   return extractApiKeyCandidates(request)[0] || null;
 }
@@ -297,24 +182,32 @@ function isSafeMethod(request) {
   return ["GET", "HEAD", "OPTIONS"].includes(String(request.method || "GET").toUpperCase());
 }
 
-// OAuth actions start, poll, and stop credential flows even over GET.
-const OAUTH_ACTION_PREFIXES = ["/api/oauth/", "/api/mcp-gateway/oauth/"];
-
 /**
  * True when a management request changes state: any unsafe method, or an
  * OAuth action. Malformed encoding counts as a change, failing closed.
  */
 function isManagementChange(request) {
   if (!isSafeMethod(request)) return true;
-  const decodedPathname = decodePathname(request.nextUrl.pathname);
-  if (decodedPathname === null) return true;
-  return OAUTH_ACTION_PREFIXES.some((p) => matchesPrefix(decodedPathname, p));
+  return hasRouteTrait(request.nextUrl.pathname, "oauth-action");
 }
 
 async function hasValidGatewayKey(request) {
   const apiKey = extractApiKey(request);
   if (!apiKey) return false;
   return !!(await validateGatewayKey(apiKey));
+}
+
+/**
+ * An SSE session opened with `?key=` posts messages with only its session id.
+ * The guard does not hold the sessions, so the message route authenticates this
+ * request: it accepts the id of a `?key=` session and nothing else. A request
+ * that presents a key is not covered and must pass the gateway key check.
+ */
+function isKeylessSseMessage(request, routePath) {
+  return routePath === "/api/mcp-gateway/message" &&
+    String(request.method).toUpperCase() === "POST" &&
+    Boolean(request.nextUrl.searchParams?.get("sessionId")) &&
+    !extractApiKey(request);
 }
 
 async function canAccessPublicLlmApi(request) {
@@ -329,17 +222,13 @@ async function canAccessPublicLlmApi(request) {
   // traffic, which still require an API key.
   const method = String(request.method || "GET").toUpperCase();
   const pathname = request.nextUrl.pathname;
-  const isModelListRead =
-    (method === "GET" || method === "HEAD") &&
-    (pathname === "/api/models" ||
-      pathname === "/api/v1/models" ||
-      matchesPrefix(pathname, "/api/v1/models"));
+  const isModelListRead = (method === "GET" || method === "HEAD") && hasRouteTrait(pathname, "model-list");
   if (isModelListRead && (await hasValidToken(request))) return true;
   return false;
 }
 
 /**
- * Access gate for LOCAL_ONLY_PATHS (spawn-capable / host-secret routes).
+ * Access gate for `local-only` routes (spawn-capable / host-secret).
  *
  * Machine-bound CLI token always qualifies (including remote operator use).
  * Otherwise the peer must be loopback, mutations need an exact Origin, and
@@ -353,7 +242,7 @@ export async function canAccessLocalOnlyRoute(request, routePath = decodePathnam
   if (routePath === null || isHosted()) return false;
   if (await hasValidCliToken(request)) return true;
   // Tunnel controls accept an authenticated dashboard session on its own origin.
-  if (["/api/tunnel/enable", "/api/tunnel/disable"].includes(request.nextUrl.pathname) &&
+  if (hasRouteTrait(request.nextUrl.pathname, "session-tunnel-control") &&
       originPresentAndSame(request) && await hasValidToken(request)) return true;
   if (!isLocalRequest(request)) return false;
 
@@ -386,7 +275,7 @@ export async function canAccessLocalOnlyRoute(request, routePath = decodePathnam
 /**
  * True when the request carries a valid dashboard session JWT (`auth_token` cookie).
  * Exported so sensitive routes (e.g. database export/import) can require JWT+password
- * as a second factor beyond the ALWAYS_PROTECTED middleware gate.
+ * as a second factor beyond the `always-protected` middleware gate.
  */
 export async function hasValidToken(request) {
   const token = request.cookies.get("auth_token")?.value;
@@ -409,73 +298,6 @@ async function isAuthenticated(request) {
   // loopback Host/Origin proof as the other local access gates.
   if (settings && settings.requireLogin === false && hasLoopbackHostAndOrigin(request)) return true;
   return false;
-}
-
-/**
- * Decode a pathname once, the way Next resolves it to a route.
- *
- * Every classifier in {@link proxy} MUST match on this value. Matching a raw
- * pathname while any sibling classifier matches a decoded one is fail-open: an
- * encoded character inside a strict suffix (`/api/keys/k1/%72eveal`,
- * `/api/oauth/cursor/%61uto-import`) would miss the strict list yet still hit
- * the broader management prefix, which now accepts an application API key.
- *
- * Returns null on malformed encoding so the caller can fail closed.
- *
- * @param {string} pathname
- * @returns {string|null}
- */
-function decodePathname(pathname) {
-  try {
-    return decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-}
-
-export function matchesPrefix(path, prefix) {
-  if (prefix.endsWith("/")) return path.startsWith(prefix);
-  const normalized = prefix;
-  return path === normalized || path.startsWith(`${normalized}/`);
-}
-
-/**
- * Match exact management leaves as Next resolves them. Decode once so encoded
- * route spellings cannot bypass auth; malformed encoding fails closed.
- *
- * Both the exact list and the prefix list are matched on the decoded path: an
- * encoded separator (for example `/api/mcp%2Dgateway/oauth/i1/authorize`)
- * resolves to a management route in Next, so matching the raw path would drop
- * it onto the weaker generic gate.
- */
-function isManagementApi(pathname) {
-  const decodedPathname = decodePathname(pathname);
-  if (decodedPathname === null) return true;
-  if (MANAGEMENT_API_EXACT_PATHS.includes(decodedPathname)) return true;
-  return MANAGEMENT_API_PATHS.some((p) => matchesPrefix(decodedPathname, p));
-}
-
-/**
- * Resolve the action of an exact `/api/mcp-gateway/oauth/<id>/<action>` path.
- *
- * Returns null for anything else, so a deeper or malformed path (for example
- * `/api/mcp-gateway/oauth/a/b/callback`, which a suffix test would accept)
- * falls through to the management gate instead of an auth exemption. Decode
- * once so encoded spellings cannot bypass auth; malformed encoding fails
- * closed by returning null.
- *
- * @param {string} pathname
- * @returns {string|null}
- */
-function gatewayOauthLeaf(pathname) {
-  const decodedPathname = decodePathname(pathname);
-  if (decodedPathname === null) return null;
-  const segments = decodedPathname.split("/");
-  // ["", "api", "mcp-gateway", "oauth", <id>, <action>]
-  if (segments.length !== 6) return null;
-  if (segments[1] !== "api" || segments[2] !== "mcp-gateway" || segments[3] !== "oauth") return null;
-  if (!segments[4] || !segments[5]) return null;
-  return segments[5];
 }
 
 /**
@@ -601,14 +423,6 @@ async function canUseApiKeyForManagement(request) {
   return false;
 }
 
-function isMcpControlPath(pathname) {
-  return matchesPrefix(pathname, "/api/mcp/control");
-}
-
-function isPxpipePath(pathname) {
-  return matchesPrefix(pathname, "/api/pxpipe");
-}
-
 async function canAccessPxpipeRoute(request) {
   if (await hasValidCliToken(request)) return true;
   if (isLocalRequest(request) && hasLoopbackHostAndOrigin(request)) return await isAuthenticated(request);
@@ -631,29 +445,11 @@ function hasNonLoopbackRequestOrigin(request) {
 }
 
 function isPublicApi(pathname, method = "GET") {
-  if (isPublicLlmApi(pathname)) return true;
-  if (PUBLIC_API_EXACT_PATHS.includes(pathname)) {
-    // /api/version is a public probe on GET only; POST/PUT/etc. must not
-    // inherit the allow-list (children already miss the exact match).
-    if (pathname === "/api/version") {
-      return String(method || "GET").toUpperCase() === "GET";
-    }
-    return true;
-  }
-  return PUBLIC_API_PATHS.some((p) => matchesPrefix(pathname, p));
+  return isInRouteClass(pathname, "public", method);
 }
 
-function classifyRoutePolicy(pathname, method = "GET") {
-  if (isMcpControlPath(pathname)) return "mcp-control";
-  if (isPxpipePath(pathname)) return "pxpipe";
-  if (isPublicApi(pathname, method)) return "public";
-  if (ALWAYS_PROTECTED.some((prefix) => matchesPrefix(pathname, prefix))) return "always-protected";
-  if (LOCAL_ONLY_PATHS.some((prefix) => matchesPrefix(pathname, prefix))) return "local-only";
-  if (["/api/mcp-gateway", "/api/mcp-gateway/sse", "/api/mcp-gateway/message"].includes(pathname)) return "gateway-key";
-  if (gatewayOauthLeaf(pathname) === "client-metadata") return "public";
-  if (gatewayOauthLeaf(pathname) === "callback") return "session";
-  if (isManagementApi(pathname)) return "management";
-  return "session";
+function isManagementApi(pathname) {
+  return isInRouteClass(pathname, "management");
 }
 
 export const __test__ = {
@@ -661,7 +457,7 @@ export const __test__ = {
   hasExactRequestOrigin,
   originPresentAndSame,
   matchesPrefix,
-  classifyRoutePolicy,
+  classifyRoutePolicy: classifyRoute,
   isPublicLlmApi,
   extractApiKey,
   extractApiKeyCandidates,
@@ -684,6 +480,10 @@ export async function proxy(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // First-match class. Gates that overlap (management, local-only,
+  // always-protected) ask for class membership instead.
+  const routeClass = classifyRoute(routePath, request.method);
+
   // A same-site sibling login host can carry dashboard cookies. Origin, not
   // SameSite, is the boundary for management writes and credential-bearing
   // reads. Explicit programmatic credentials retain their existing policy;
@@ -695,7 +495,7 @@ export async function proxy(request) {
   // authorize on the operator's cookie.
   if (routePath.startsWith("/api/") && !isPublicApi(routePath, request.method) &&
       hasForeignRequestOrigin(request) && !(await hasValidCliToken(request))) {
-    const keyAuthorizesRoute = isManagementApi(routePath) || isMcpControlPath(routePath);
+    const keyAuthorizesRoute = isManagementApi(routePath) || routeClass === "mcp-control";
     const hasKey = await hasValidApiKey(request);
     const hasDashboardCookie = Boolean(request.cookies?.get?.("auth_token")?.value);
     if (!hasKey || (hasDashboardCookie && !keyAuthorizesRoute)) {
@@ -707,7 +507,7 @@ export async function proxy(request) {
   // carry the local CLI token, a configured API key, or a valid dashboard JWT,
   // regardless of the requireLogin setting. This prevents an unauthenticated
   // remote caller from toggling providers when login is disabled.
-  if (isMcpControlPath(routePath)) {
+  if (routeClass === "mcp-control") {
     if (await hasValidCliToken(request) || await hasValidApiKey(request) || await hasValidToken(request)) {
       return NextResponse.next();
     }
@@ -729,21 +529,21 @@ export async function proxy(request) {
   }
 
 
-  if (isPxpipePath(routePath)) {
+  if (routeClass === "pxpipe") {
     if (await canAccessPxpipeRoute(request)) return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   // Local-only gate for spawn-capable / host-secret routes.
-  // /api/mcp/control is exempt: it is an authenticated management MCP endpoint
-  // and must use the same dashboard JWT / CLI auth as the other dashboard APIs.
-  if (!isMcpControlPath(routePath) && LOCAL_ONLY_PATHS.some((p) => matchesPrefix(routePath, p))) {
+  // /api/mcp/control never reaches it: it is an authenticated management MCP
+  // endpoint, answered by its own branch above.
+  if (isInRouteClass(routePath, "local-only")) {
     if (!(await canAccessLocalOnlyRoute(request, routePath))) {
       return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
     }
   }
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
-  if (ALWAYS_PROTECTED.some((p) => matchesPrefix(routePath, p))) {
+  if (routeClass === "always-protected") {
     if (await hasValidCliToken(request) || await hasValidToken(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -768,8 +568,7 @@ export async function proxy(request) {
 
   if (isPublicLlmApi(routePath)) {
     const method = String(request.method || "GET").toUpperCase();
-    const isModelListRead = (method === "GET" || method === "HEAD") &&
-      (routePath === "/api/models" || matchesPrefix(routePath, "/api/v1/models"));
+    const isModelListRead = (method === "GET" || method === "HEAD") && hasRouteTrait(routePath, "model-list");
     const hasLegacyKeyCandidate = extractApiKeyCandidates(request)
       .some((apiKey) => /^sk-[0-9a-f]{8}$/i.test(apiKey));
     if (!isLocalRequest(request) && hasLegacyKeyCandidate && !(await hasValidCliToken(request)) &&
@@ -815,14 +614,11 @@ export async function proxy(request) {
   // (`/api/mcp-gateway`, `/sse`, `/message`) accept a gateway API key.
   // CRUD subpaths (`/instances/*`, `/keys/*`) fall through to the standard
   // JWT/CLI auth below.
-  const isGatewayProtocolSurface =
-    routePath === "/api/mcp-gateway" ||
-    routePath === "/api/mcp-gateway/sse" ||
-    routePath === "/api/mcp-gateway/message";
-  if (isGatewayProtocolSurface) {
+  if (routeClass === "gateway-key") {
     if (isLocalRequest(request)) return NextResponse.next();
     if (await hasValidCliToken(request)) return NextResponse.next();
     if (await hasValidGatewayKey(request)) return NextResponse.next();
+    if (isKeylessSseMessage(request, routePath)) return NextResponse.next();
     return NextResponse.json({ error: "gateway key required" }, { status: 401 });
   }
 

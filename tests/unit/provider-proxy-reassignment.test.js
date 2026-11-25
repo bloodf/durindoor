@@ -58,7 +58,7 @@ describe("provider proxy reassignment", () => {
       createProviderConnection,
       createProxyPool,
       getProviderConnectionById,
-    } = await import("@/models/index.js");
+    } = await import("@/lib/localDb");
     const { resolveConnectionProxyConfig } = await import("@/lib/network/connectionProxy.js");
     const { PUT } = await import("@/app/api/providers/[id]/route.js");
 

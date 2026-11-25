@@ -1,4 +1,5 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { isAntigravityProvider, openAntigravityLease } from "@/lib/antigravity/refreshProtocol";
 import { getExecutor } from "open-sse/executors/index.js";
 import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
@@ -375,11 +376,52 @@ proxyOptions = null,
     // (openai/codex#9648). The per-connection inflight dedup above cannot see
     // cross-connection collisions. Non-rotating providers pass through with no
     // locking.
-    const refreshResult = await serializeRefresh(
+    let antigravityLease = null;
+    const useAntigravityLease = isAntigravityProvider(connection.provider)
+      && updateProviderConnectionImpl === updateProviderConnection;
+    const rawRefresh = await serializeRefresh(
       connection.provider,
-      () => executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions),
+      async () => {
+        if (!useAntigravityLease) {
+          return executor.refreshCredentials(credentials, createRefreshLogger(log), proxyOptions);
+        }
+        antigravityLease = await openAntigravityLease(connection, { force });
+        if (!antigravityLease.ok) return { antigravityLeaseBlocked: antigravityLease.category };
+        if (!isFunction(executor.refreshCredentialsDetailed) || !antigravityLease.markDispatched()) {
+          antigravityLease.uncertain();
+          antigravityLease = null;
+          return { antigravityLeaseBlocked: "pre_dispatch_failure" };
+        }
+        try {
+          return { antigravityDetailed: await executor.refreshCredentialsDetailed(credentials, createRefreshLogger(log), proxyOptions) };
+        } catch {
+          antigravityLease.uncertain();
+          antigravityLease = null;
+          return { antigravityLeaseBlocked: "uncertain_dispatch" };
+        }
+      },
       { onLaneAcquired: signalLaneAcquired }
     );
+    if (rawRefresh?.antigravityLeaseBlocked) return { connection, refreshed: false };
+    let refreshResult = rawRefresh;
+    if (rawRefresh?.antigravityDetailed) {
+      const detailed = rawRefresh.antigravityDetailed;
+      if (detailed?.category === "invalid_grant") {
+        antigravityLease.reauth();
+        antigravityLease = null;
+        refreshResult = { error: "invalid_grant" };
+      } else if (detailed?.category === "rate_limit") {
+        antigravityLease.backoff(detailed.retryAfterMs);
+        antigravityLease = null;
+        return { connection, refreshed: false };
+      } else if (!detailed?.ok) {
+        antigravityLease.uncertain();
+        antigravityLease = null;
+        return { connection, refreshed: false };
+      } else {
+        refreshResult = detailed.tokens;
+      }
+    }
     if (isUnrecoverableRefreshError(refreshResult)) {
       return reconcileConcurrentRotation(
         connection,
@@ -475,6 +517,28 @@ proxyOptions = null,
       throw reauthorizationError();
     }
 
+    if (antigravityLease) {
+      const applied = antigravityLease.commit(
+        updateData,
+        expectedRefreshContext,
+        updateData.refreshToken || connection.refreshToken
+      );
+      antigravityLease = null;
+      if (!applied) {
+        if (connection.accessToken) return { connection, refreshed: false };
+        throw reauthorizationError();
+      }
+      const latest = await getProviderConnectionByIdImpl(connection.id);
+      const leasedFallback = {
+        ...connection,
+        ...updateData,
+        providerSpecificData: updateData.providerSpecificData ?
+        { ...(connection.providerSpecificData || {}), ...updateData.providerSpecificData } :
+        connection.providerSpecificData
+      };
+      return { connection: latest || leasedFallback, refreshed: true };
+    }
+
     const commit = await updateProviderConnectionImpl(connection.id, updateData, {
       expectedRefreshContext,
       returnCommitResult: true
@@ -505,4 +569,25 @@ proxyOptions = null,
     if (credentialRefreshInflight.get(key) === operation) credentialRefreshInflight.delete(key);
   });
   return callerWait(operation, signal, shouldCommit, callerTimeoutMs, laneAcquired);
+}
+
+/**
+ * Reactive (401/403) refresh for a stored Antigravity connection. The network
+ * refresh is dispatched and committed under the connection-bound lease
+ * (#2313). Resolves the stored connection only when this refresh committed
+ * and the row still holds its result, so a caller never retries with tokens a
+ * concurrent writer already replaced; resolves null otherwise.
+ *
+ * @param {object} connection Stored connection whose credentials were rejected.
+ * @param {object|null} [proxyOptions]
+ * @returns {Promise<object|null>}
+ */
+export async function refreshAntigravityConnection(connection, proxyOptions = null) {
+  if (!connection?.id || !isAntigravityProvider(connection.provider)) return null;
+  const result = await refreshAndUpdateCredentials(connection, true, proxyOptions);
+  if (!result?.refreshed) return null;
+  // A joined in-flight operation may have started with an older snapshot.
+  const current = await getProviderConnectionById(connection.id);
+  if (!current || current.isActive === false || current.provider !== connection.provider) return null;
+  return providerRefreshContextMatches(current, providerRefreshContext(result.connection)) ? current : null;
 }

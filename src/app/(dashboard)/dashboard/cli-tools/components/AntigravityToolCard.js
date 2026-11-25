@@ -11,6 +11,7 @@ import Input from "@/shared/ui/components/Input";
 import Image from "next/image";
 import ApiKeySelect from "./ApiKeySelect";
 import DocsLink from "@/shared/components/DocsLink";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 export default function AntigravityToolCard({
   tool,
@@ -67,15 +68,7 @@ export default function AntigravityToolCard({
     }
   };
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
+  const fetchModelAliases = () => loadModelAliases(setModelAliases);
 
   const fetchStatus = async () => {
     try {

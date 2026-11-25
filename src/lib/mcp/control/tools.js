@@ -3,7 +3,7 @@ import {
   getProviderConnectionById,
   updateProviderConnection,
   getProviderNodeById } from
-"@/models";
+"@/lib/localDb";
 import {
   getCombos,
   getComboById,

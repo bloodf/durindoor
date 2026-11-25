@@ -4,7 +4,7 @@ import paidRegistry from "../../open-sse/providers/registry/zenmux.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => true) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []), getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []), getProxyPoolById: vi.fn(), getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "fake-id", ...data })),
@@ -13,7 +13,7 @@ vi.mock("@/models", () => ({
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 
 const { POST } = await import("@/app/api/providers/route.js");
-const models = await import("@/models");
+const models = await import("@/lib/localDb");
 const { proxyAwareFetch } = await import("../../open-sse/utils/proxyFetch.js");
 const originalFetch = global.fetch;
 afterEach(() => { global.fetch = originalFetch; vi.clearAllMocks(); });

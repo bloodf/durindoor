@@ -18,6 +18,7 @@ import {
   resolveRetryEntry } from
 "../config/runtimeConfig.js";
 import { dbg } from "../utils/debugLog.js";
+import { readBoundedResponseText } from "../utils/error.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { stripCodexUnsupportedPatterns } from "../utils/codexToolSchema.js";
 import {
@@ -578,10 +579,11 @@ function createReplayBody(reader, chunks, terminalError = null) {
 // `encrypted_content` blob it can no longer verify (cache/account boundary),
 // returning 400 invalid_encrypted_content. Detect that exact failure so the
 // executor can retry ONCE with the bad encrypted reasoning stripped (#2667).
-async function isInvalidEncryptedContentResponse(response) {
+export async function isInvalidEncryptedContentResponse(response) {
   if (response?.status !== HTTP_STATUS.BAD_REQUEST || !isFunction(response.clone)) return false;
   try {
-    const payload = JSON.parse(await response.clone().text());
+    // Bounded: an over-cap or stalled error body reads as "" and is not this refusal.
+    const payload = JSON.parse(await readBoundedResponseText(response.clone()));
     const error = payload?.error || payload;
     if (error?.code === "invalid_encrypted_content") return true;
     const message = isString(error?.message) ? error.message.toLowerCase() : "";

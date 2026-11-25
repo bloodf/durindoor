@@ -15,7 +15,7 @@ export default {
   },
   category: "webCookie",
   authType: "cookie",
-  authHint: "Paste your __Secure-next-auth.session-token cookie value from perplexity.ai",
+  authHint: "Paste the current __Secure-pplx.session.<UUID> and pplx.session-id cookies, or a legacy __Secure-next-auth.session-token, from perplexity.ai",
   webLogin: {
     startUrl: "https://www.perplexity.ai/",
     origin: "https://www.perplexity.ai",

@@ -1,15 +1,17 @@
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import {
   errorJson,
   estimateTokens,
   extractCookieValue,
   extractTextFromContent,
-  fetchWithTimeout,
   jsonResponse,
   mergeUpstreamExtraHeaders,
   readTextStream,
   sanitizeErrorMessage,
-  stripCookieInputPrefix } from
+  stripCookieInputPrefix,
+  WEBSESSION_FETCH_TIMEOUT_MS } from
 "./websession-utils.js";
 import yuanbaoWebRegistry from "../providers/registry/yuanbao-web.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -151,7 +153,7 @@ async function collectYuanbaoResponse(upstream, signal) {
 
 export class YuanbaoWebExecutor extends BaseExecutor {
   constructor() {
-    super("yuanbao-web", { id: "yuanbao-web", baseUrl: CHAT_URL });
+    super("yuanbao-web", { id: "yuanbao-web", baseUrl: CHAT_URL, timeoutMs: WEBSESSION_FETCH_TIMEOUT_MS });
   }
 
   // Generic translation must not expose this session credential.
@@ -159,6 +161,12 @@ export class YuanbaoWebExecutor extends BaseExecutor {
   buildUrl() { throw new Error("Yuanbao requires its specialized executor"); }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders, proxyOptions = null } = input;
     const messages = body?.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -183,7 +191,8 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     const baseHeaders = { Cookie: cookie, "User-Agent": USER_AGENT, Origin: YUANBAO_BASE, Referer: `${YUANBAO_BASE}/chat/${DEFAULT_AGENT_ID}`, "X-Agentid": DEFAULT_AGENT_ID };
     let conversationId;
     try {
-      const createRes = await fetchWithTimeout(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal, redirect: "error" }, { proxyOptions });
+      // Creating the conversation is not charged; only the message send is quota-bearing.
+      const createRes = await sender.sendRequest(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal, redirect: "error" }, proxyOptions, { quotaBearing: false });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         let message = createRes.status === 401 || createRes.status === 403 ? "Yuanbao auth failed; hy_user/hy_token may be expired." : createRes.status === 429 ? "Yuanbao rate limited. Wait and retry." : `Yuanbao conversation creation failed (HTTP ${createRes.status})`;
@@ -221,8 +230,9 @@ export class YuanbaoWebExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal, redirect: "error" }, { proxyOptions });
+      upstreamResponse = billed(await sender.sendRequest(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal, redirect: "error" }, proxyOptions));
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("YUANBAO-WEB", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `Yuanbao connection failed: ${err?.message || err}`), url: messageUrl, headers: chatHeaders, transformedBody: chatBody };
     }

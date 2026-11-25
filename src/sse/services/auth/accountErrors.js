@@ -13,6 +13,7 @@ import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { describeProviderError } from "open-sse/utils/error.js";
 import { isQoderQuotaExhaustedBody } from "open-sse/executors/qoder.js";
 import { connectionHasCredential, credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { clearProviderRateLimitEvidence, recordProviderRateLimitEvidence } from "@/shared/services/providerRateLimitEvidence";
@@ -319,17 +320,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   context?.rateLimitEvidence && isObject(context.rateLimitEvidence) ?
   context.rateLimitEvidence :
   null;
-  const fallbackResult = checkFallbackError(
+  const fallbackResult = checkFallbackError({
     status,
     errorText,
     backoffLevel,
     provider,
-    context?.headers ?? null,
-    context?.errorBody ?? null
-  );
-  // A request-scoped OpenRouter 404 must not inherit a reset hint and lock a
-  // healthy model for later requests.
-  if (Number(status) === 404 && fallbackResult.requestScoped) {
+    headers: context?.headers,
+    structuredError: context?.errorBody,
+    model,
+  });
+  // A request-scoped OpenRouter error must stay off the account even
+  // when the upstream response supplies a reset hint.
+  if (fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
@@ -422,6 +424,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     webSearch: context?.webSearch === true,
     videoPoll: context?.videoPoll === true
   });
+  // A model-only denial (Kilo PAID_MODEL_AUTH_REQUIRED) with no bounded model
+  // scope would collapse to the account-wide lock and bench the free models on
+  // the same connection. Rotate to the next candidate without writing any lock.
+  if (fallbackResult.modelOnly && !fallbackModel) {
+    log.warn("AUTH", `${connectionId.slice(0, 8)} model-only denial for an unbounded model id; skipping the lock [${status}]`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
   let atomicApplied = false;
   try {
     const db = await import("@/lib/localDb");
@@ -460,6 +469,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!atomicApplied) {
     const lockUpdate = buildModelLockUpdate(fallbackModel, legacyCooldownMs);
     if (isolatedSearch) lockUpdate[`modelError_${fallbackModel}`] = Number(status) || 503;
+    if (!isolatedSearch && context?.webFetch !== true && fallbackModel) {
+      Object.assign(lockUpdate, modelUpstreamUpdate(fallbackModel, {
+        status, message: reason, lockUntil: lockUpdate[`modelLock_${fallbackModel}`]
+      }));
+    }
     // Same reauth guard as recordProviderConnectionFallbackState: re-read inside
     // the write transaction so a concurrent durable reauth is never demoted when
     // the atomic path threw and this compatibility writer runs (#1324/#1311).

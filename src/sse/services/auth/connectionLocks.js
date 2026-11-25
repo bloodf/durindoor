@@ -1,6 +1,7 @@
 import { formatRetryAfter, getActiveModelLockUntil, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { resolveProviderId } from "@/shared/constants/providers.js";
+import { activeModelUpstreamError } from "@/shared/utils/modelLockUpstream.js";
 export function requestedLockScopes(rawModel, boundedModel) {
   return [...new Set([boundedModel, rawModel].filter((value) => value !== undefined))];
 }
@@ -53,9 +54,15 @@ export function summarizeBlockedConnections(connections, decisions, rawModel, bo
   const legacyLocked = blocked.filter((connection) =>
     requestedModelLockActive(connection, rawModel, boundedModel, now)
   );
-  const lockStatus = (connection) => searchScope && !getActiveModelLockUntil(connection, null, now) ?
+  // OmniRoute #20980: a model-only lock answers with its own upstream error. An
+  // active account-wide lock keeps the connection-wide status.
+  const modelError = (connection) => getActiveModelLockUntil(connection, null, now) ?
+  null :
+  activeModelUpstreamError(connection, requestedLockScopes(rawModel, boundedModel), now);
+  const lockStatus = (connection) => modelError(connection)?.status ?? (
+  searchScope && !getActiveModelLockUntil(connection, null, now) ?
   Number(connection[`modelError_${searchScope}`]) || 429 :
-  Number(connection.errorCode);
+  Number(connection.errorCode));
   // Authentication failures must not be hidden by an earlier priority account's
   // rate-limit lock. Legacy 429 deadlines are combined with quota decisions
   // below so a no-reset exhaustion cannot expose the local breaker as provider
@@ -65,13 +72,13 @@ export function summarizeBlockedConnections(connections, decisions, rawModel, bo
   if (legacy) {
     const code = lockStatus(legacy);
     const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : 503;
-    const message = status === 429 ?
+    const message = modelError(legacy)?.message || (status === 429 ?
     "Rate limited" :
     status === 401 ?
     "Authentication failed" :
     status === 403 ?
     "Access forbidden" :
-    "Provider unavailable";
+    "Provider unavailable");
     const retryAfter = status === 429 ?
     requestedModelLockUntil(legacy, rawModel, boundedModel, now) :
     null;

@@ -15,19 +15,30 @@ const DEFAULT_CONFIG = {
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
 const CLI_TOKEN_SALT = "9r-cli-auth";
-const DATA_DIR = getAppDataDir();
-const MACHINE_ID_FILE = path.join(DATA_DIR, "machine-id");
-const AUTH_DIR = path.join(DATA_DIR, "auth");
-const CLI_SECRET_FILE = path.join(AUTH_DIR, "cli-secret");
 
 let config = { ...DEFAULT_CONFIG };
 let cachedCliToken = null;
 let cachedCliSecret = null;
+let cachedAuthFiles = null;
+
+// Resolved on first use: getAppDataDir() creates the directory, and requiring the CLI must not.
+function authFiles() {
+  if (!cachedAuthFiles) {
+    const dataDir = getAppDataDir();
+    const authDir = path.join(dataDir, "auth");
+    cachedAuthFiles = {
+      machineId: path.join(dataDir, "machine-id"),
+      authDir,
+      cliSecret: path.join(authDir, "cli-secret"),
+    };
+  }
+  return cachedAuthFiles;
+}
 
 // Read raw machineId from shared file (written by server) → guarantees token match
 function loadRawMachineId() {
   try {
-    const raw = fs.readFileSync(MACHINE_ID_FILE, "utf8").trim();
+    const raw = fs.readFileSync(authFiles().machineId, "utf8").trim();
     if (raw) return raw;
   } catch {}
   try { return machineIdSync(); } catch { return ""; }
@@ -37,13 +48,13 @@ function loadRawMachineId() {
 function loadCliSecret() {
   if (cachedCliSecret) return cachedCliSecret;
   try {
-    cachedCliSecret = fs.readFileSync(CLI_SECRET_FILE, "utf8").trim();
+    cachedCliSecret = fs.readFileSync(authFiles().cliSecret, "utf8").trim();
     if (cachedCliSecret) return cachedCliSecret;
   } catch {}
   cachedCliSecret = crypto.randomBytes(32).toString("hex");
   try {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-    fs.writeFileSync(CLI_SECRET_FILE, cachedCliSecret, { mode: 0o600 });
+    fs.mkdirSync(authFiles().authDir, { recursive: true });
+    fs.writeFileSync(authFiles().cliSecret, cachedCliSecret, { mode: 0o600 });
   } catch {}
   return cachedCliSecret;
 }

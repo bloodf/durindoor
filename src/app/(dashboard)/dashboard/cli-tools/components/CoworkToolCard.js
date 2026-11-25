@@ -11,6 +11,7 @@ import Input from "@/shared/ui/components/Input";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
+import { readModelAliases } from "@/shared/utils/modelAliases";
 
 const ENDPOINT = "/api/cli-tools/cowork-settings";
 
@@ -66,12 +67,7 @@ export default function CoworkToolCard({
 
   useEffect(() => {
     if (!isExpanded) return;
-    fetch("/api/models/alias")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data) setModelAliases(data.aliases || {});
-      })
-      .catch(() => {});
+    readModelAliases({ skipErrorBody: true }).then(setModelAliases).catch(() => {});
   }, [isExpanded]);
 
   useEffect(() => {

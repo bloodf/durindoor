@@ -1,12 +1,12 @@
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { FETCH_TIMEOUT_MS } from "../config/mediaConfig.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
+import { refreshMediaCredentials } from "./mediaRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getExecutor } from "../executors/index.js";
 import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
-import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
@@ -68,11 +68,15 @@ export async function handleImageGenerationCore({
   streamToClient = false,
   binaryOutput = false,
   onCredentialsRefreshed,
+  refreshCredentials,
   onRequestSuccess,
   onStreamComplete,
   signal
 }) {
   const { provider, model } = modelInfo;
+  const refreshAfterAuthFailure = (executor) => refreshMediaCredentials({
+    provider, executor, credentials, refreshCredentials, log, proxyOptions
+  });
   const proxyOptions = resolveCredentialProxyOptions(credentials);
   // Client disconnects are not provider failures: callers must not cool down the account.
   const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
@@ -117,15 +121,19 @@ export async function handleImageGenerationCore({
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {
       log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..." (executor)`);
-      const responseBody = await adapter.executeViaExecutor(
-        model,
-        body,
-        credentials,
-        log,
-        proxyOptions,
-        signal,
-        onCredentialsRefreshed
-      );
+      const execute = () => adapter.executeViaExecutor(model, body, credentials, log, proxyOptions, signal, onCredentialsRefreshed);
+      let responseBody;
+      try {
+        responseBody = await execute();
+      } catch (error) {
+        // Only an injected (leased) refresher may recover executor adapters.
+        if (isAbort(error) || !isFunction(refreshCredentials) || ![401, 403].includes(Number(error?.status))) throw error;
+        const refreshed = await refreshAfterAuthFailure(getExecutor(provider));
+        if (!refreshed) throw error;
+        log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
+        Object.assign(credentials, refreshed);
+        responseBody = await execute();
+      }
       if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");
       const normalized = adapter.normalize(responseBody, body.prompt);
@@ -213,16 +221,13 @@ export async function handleImageGenerationCore({
   providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
   providerResponse.status === HTTP_STATUS.FORBIDDEN))
   {
-    const newCredentials = await refreshWithRetry(
-      () => executor.refreshCredentials(credentials, log, proxyOptions),
-      3,
-      log
-    );
+    const newCredentials = await refreshAfterAuthFailure(executor);
 
     if (newCredentials?.accessToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
       Object.assign(credentials, newCredentials);
-      if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
+      // An injected refresher has already committed what it returns.
+      if (!isFunction(refreshCredentials) && onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
         requestBody = await adapter.buildBody(model, body, adapterOptions);

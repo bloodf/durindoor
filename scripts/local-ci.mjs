@@ -14,8 +14,10 @@ import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/run-ci.mjs";
 import { isString, isFunction } from "../src/shared/utils/typeChecks.js";
-import { partitionInventory, mergeBatchReports } from "../tests/__baseline__/full-batches.mjs";
+import { partitionInventory, mergeBatchReports, fullBatchArgs, mandatoryTestInventory, missingFromDiscovery } from "../tests/__baseline__/full-batches.mjs";
 import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
+import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "../tests/utils/chromiumLaunch.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -95,6 +97,15 @@ export function artifactCommands(src, packDirectory, version) {
   ];
 }
 
+export function fullTestDependencyCommands(src) {
+  const install = ["install", "--frozen-lockfile"];
+  return [
+    ["pnpm-install-root", "pnpm", install],
+    ["pnpm-install-cli", "pnpm", install, { cwd: path.join(src, "cli") }],
+    ["pnpm-install-tests", "pnpm", install, { cwd: path.join(src, "tests") }],
+  ];
+}
+
 export function scopedTestArgs(tests, selected) {
   return [path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected, "--maxWorkers=2",
     "--reporter=json", `--outputFile=${path.join(tests, ".scoped-results.json")}`];
@@ -102,9 +113,7 @@ export function scopedTestArgs(tests, selected) {
 
 /** Real test completion output keeps the silence watchdog informed without weakening it. */
 export function fullTestArgs(tests, selected, reportFile) {
-  return [path.join(tests, "node_modules/vitest/vitest.mjs"), "run", ...selected,
-    "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=verbose", "--reporter=json",
-    `--outputFile.json=${reportFile}`];
+  return fullBatchArgs(tests, selected, reportFile);
 }
 
 export function validateTestReport(file, startedAt, exitCode, signal, tests, selected = []) {
@@ -505,11 +514,24 @@ const appBuilt = await job("lint-and-build", [
 if (!websiteRun) {
   skip("website-build", "website-build", `conditional job skipped: ${websiteReason}`, "skipped");
 } else {
-  await job("website-build", [
+  // Reuse the browser chosen for local evidence; child HOME stays private.
+  const configuredBrowser = process.env.WEBSITE_CHROMIUM_EXECUTABLE || process.env.V5_CHROMIUM_EXECUTABLE;
+  const browser = configuredBrowser || chromiumLaunchOptions(chromium, dirs.src).executablePath || chromium.executablePath();
+  const browserAvailable = configuredBrowser || existsSync(browser);
+  const websiteSteps = [
     ["pnpm-install-root", "pnpm", pnpmInstall],
     ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
     ["website-build", "pnpm", ["run", "build"], { cwd: web }],
-  ]);
+  ];
+  if (browserAvailable) {
+    websiteSteps.push(["website-browser-suites", "pnpm", ["run", "test:browser"],
+      { cwd: web, env: { WEBSITE_CHROMIUM_EXECUTABLE: browser } }]);
+  }
+  await job("website-build", websiteSteps);
+  if (!browserAvailable) {
+    console.log("browser suites skipped: no browser");
+    skip("website-browser-suites", "website-build", "browser suites skipped: no browser");
+  }
 }
 
 const packDirectory = path.join(out, "pack");
@@ -529,9 +551,8 @@ if (rootVersion !== cliVersion) {
 
 // vitest + no-regression gate (independent of lint-and-build / website-build outcome)
 await job("vitest", [
-  ["pnpm-install-root", "pnpm", pnpmInstall],
+  ...fullTestDependencyCommands(dirs.src),
   ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
-  ["pnpm-install-tests", "pnpm", pnpmInstall, { cwd: tests }],
 ]);
 // Discover with the same configuration as execution; never substitute tracked-file globs.
 const testEnv = { HOME: dirs.testHome, DATA_DIR: dirs.testData, BASELINE_BASE_REF: BASE };
@@ -543,12 +564,11 @@ const discovery = await run("vitest-inventory", "vitest", "node", [
 if (ok(discovery)) {
   try {
     const batches = partitionInventory(JSON.parse(readFileSync(discoveryFile, "utf8")), tests);
-    const discovered = new Set(batches.flat());
-    const mandatory = headInventoryResult.text.split("\n").filter(p => p.startsWith("tests/") && p.endsWith(".test.js")
-      && !p.endsWith(".live.test.js") && !p.includes("/node_modules/") && !p.includes("/.omc/")
-      && !p.includes("/.claude/") && !p.includes("/omp-extension/") && !p.includes("/dist/")
-      && !(p.endsWith("/embeddings.cloud.test.js") && !existsSync(path.join(dirs.src, "cloud")))).map(p => p.slice(6));
-    if (JSON.stringify([...discovered].sort()) !== JSON.stringify(mandatory.sort())) throw new Error("configured discovery differs from tracked test inventory");
+    const mandatory = mandatoryTestInventory(headInventoryResult.text.split("\n"),
+      { hasCloud: existsSync(path.join(dirs.src, "cloud")) });
+    if (missingFromDiscovery(batches, mandatory).length || batches.flat().length !== mandatory.length) {
+      throw new Error("configured discovery differs from tracked test inventory");
+    }
     evidence.fullTestInventory = batches.flat().sort();
     evidence.fullTestBatches = batches;
     save();

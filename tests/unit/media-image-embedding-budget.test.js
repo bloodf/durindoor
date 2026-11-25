@@ -129,6 +129,11 @@ function disposeEnvironment(owner) {
 }
 
 let coldLoad;
+// The cold load transforms the whole handler and DB graph once, including the
+// 400-entry provider registry that connectionsRepo reaches through
+// fallbackScope -> providerModels. Measured 5.2-5.6 s alone on a 20-CPU host at
+// load ~14, and above the 10 s default hook timeout under the 4-worker suite.
+const COLD_LOAD_TIMEOUT_MS = 20_000;
 beforeAll(() => {
   const owner = privateEnvironment("image-embedding-cold-");
   const previousAdapter = global._dbAdapter;
@@ -152,7 +157,7 @@ beforeAll(() => {
     }
   })();
   return coldLoad;
-});
+}, COLD_LOAD_TIMEOUT_MS);
 afterAll(async () => { try { await coldLoad; } catch { /* The runner retains the cold-load failure. */ } });
 
 beforeEach((context) => fixtureLifecycle.begin(context, async (entry, signal) => {

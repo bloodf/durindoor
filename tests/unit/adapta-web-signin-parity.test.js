@@ -4,7 +4,7 @@ import { runWithProviderAttemptContext, settleProviderAttemptDispatch } from "op
 import { QuotaDispatchUnavailableError } from "open-sse/services/quota/dispatch.js";
 import { __clearProxyDispatchersForTesting, __setOriginalFetchForTesting, __setProxyDispatcherForTesting } from "open-sse/utils/proxyFetch.js";
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []), getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []), getProxyPoolById: vi.fn(), getProviderNodeById: vi.fn(),
   createProviderConnection: vi.fn(async (data) => ({ id: "connection-1", ...data })),
@@ -100,7 +100,7 @@ describe("expiry and errors", () => {
 
 it("saves an operator-supplied session through the provider entry point without returning it", async () => {
   const { POST } = await import("../../src/app/api/providers/route.js");
-  const models = await import("@/models");
+  const models = await import("@/lib/localDb");
   const response = await POST(new Request("http://localhost/api/providers", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider: "adapta-web", name: "Adapta", apiKey: "__client=fake-cookie" }),
@@ -157,7 +157,8 @@ describe("Adapta connection egress", () => {
     ["relay", { ...strict(), vercelRelayUrl: relayUrl }, "relay", false],
   ])("routes all calls via %s with separate credentials and one chat quota ticket", async (_name, proxyOptions, route, stream) => {
     const { calls } = closedTransport();
-    const signal = new AbortController().signal;
+    const controller = new AbortController();
+    const { signal } = controller;
     const settle = vi.fn();
     const beginQuotaDispatch = vi.fn(async () => {
       expect(calls.map((call) => call.path)).toEqual(paths.slice(0, 2));
@@ -181,7 +182,7 @@ describe("Adapta connection egress", () => {
     ]);
     for (const call of calls) {
       expect(call.route).toBe(route);
-      expect(call.signal).toBe(signal);
+      expect(call.signal.aborted).toBe(false);
       expect(call.redirect).toBe("error");
     }
     for (const call of calls.slice(0, 2)) {
@@ -194,6 +195,9 @@ describe("Adapta connection egress", () => {
     expect(beginQuotaDispatch).toHaveBeenCalledTimes(1);
     await settleProviderAttemptDispatch(response.body, { success: true });
     expect(settle).toHaveBeenCalledWith({ success: true, reason: "success" });
+    // The sender merges a header deadline into the signal; the caller's abort still reaches every send.
+    controller.abort();
+    for (const call of calls) expect(call.signal.aborted).toBe(true);
   });
 
   it("fails closed with an unavailable or failed strict proxy after a direct cache hit", async () => {

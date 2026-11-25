@@ -9,12 +9,12 @@ import {
   createProviderConnection,
   getProviderConnectionById,
   updateProviderConnection } from
-"@/models";
+"@/lib/localDb";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 import { requireCodexWorkspace } from "@/lib/oauth/codexWorkspace.js";
-import { resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
-import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
-import { resetM365RefreshCircuit } from "open-sse/services/tokenRefresh/copilotM365.js";
+import { resolveCodexAccountId } from "../../../open-sse/shared/codexAccountId.js";
+import { isDurableCredentialProvider } from "../../../open-sse/services/accountFallback.js";
+import { resetM365RefreshCircuit } from "../../../open-sse/services/tokenRefresh/copilotM365.js";
 
 /** Merge durable OAuth routing without erasing provider-owned metadata. */
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -99,6 +99,7 @@ flowClaim = null)
     };
     const codexAccountId = provider === "codex" ? resolveCodexAccountId(existing.providerSpecificData, existing.idToken) : null;
     const commit = await updateProviderConnection(connectionId, updateData, {
+      ...(provider === "antigravity" || provider === "agy" ? { advanceAntigravityGeneration: true } : null),
       ...(flowClaim ? { shouldCommit: () => isOAuthFlowClaimActive(flowClaim) } : null),
       ...(provider === "codex" ? { shouldCommitConnection: (current) =>
         current.provider === provider && current.authType === "oauth" &&

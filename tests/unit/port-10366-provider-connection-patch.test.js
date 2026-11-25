@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the heavy model layer so importing the route doesn't touch real DB.
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
   getProxyPoolById: vi.fn(),
   updateProviderConnection: vi.fn(),

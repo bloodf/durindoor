@@ -2,7 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
-import { getProviderConnectionById, getProviderNodeById } from "@/models";
+import { getProviderConnectionById, getProviderNodeById } from "@/lib/localDb";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
@@ -15,7 +15,7 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
-import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
+import { buildPerplexitySessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from "open-sse/services/tokenRefresh.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
@@ -894,12 +894,12 @@ export async function POST(request) {
             const res = await fetchValidationProbe("https://www.perplexity.ai/api/auth/session", {
               headers: {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-                Cookie: buildNextAuthSessionCookie(apiKey)
+                Cookie: buildPerplexitySessionCookie(apiKey)
               }
             });
             const data = res.ok ? await res.json().catch(() => null) : null;
             isValid = !!data?.user;
-            if (!isValid) error = "Invalid session cookie — re-paste __Secure-next-auth.session-token from perplexity.ai";
+            if (!isValid) error = "Invalid session cookie — re-paste your current Perplexity session cookies or legacy __Secure-next-auth.session-token from perplexity.ai";
             break;
           }
 

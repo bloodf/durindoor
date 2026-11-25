@@ -64,6 +64,25 @@ export function groupConnectionsByProvider(connections = []) {
   return groups;
 }
 
+/** Whether a provider id is a generated custom-node id. */
+export const isCustomNodeId = (provider) => /^(openai|anthropic)-compatible-/.test(provider);
+
+/**
+ * Headings for custom provider nodes: their generated id is not a readable name,
+ * so use the node's name, then prefix. A node with neither is left out and keeps its id.
+ *
+ * @param {Array<Object>} [nodes=[]] - Rows from `/api/provider-nodes`
+ * @returns {Object<string, string>} `{ [nodeId]: label }`
+ */
+export function providerNodeLabels(nodes = []) {
+  const labels = {};
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const label = [node?.name, node?.prefix].map((value) => isString(value) ? value.trim() : "").find(Boolean);
+    if (isString(node?.id) && label) labels[node.id] = label;
+  }
+  return labels;
+}
+
 /**
  * Stable key identifying "the same quota" across accounts of one provider.
  * Prefers `modelKey` (Antigravity) and falls back to the display name, same

@@ -386,7 +386,7 @@ export default function OAuthModal({
         xaiServerSide: flow.provider === "xai" && serverSide
       });
       const isLocalhost = browserIsLoopback;
-      const manualCallback = ["claude", "devin-desktop", "zed-hosted"].includes(flow.provider);
+      const manualCallback = ["claude", "cline", "devin-desktop", "zed-hosted"].includes(flow.provider);
       const canUsePopup = !manualCallback && (fixedProxyActive ||
       !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost);
       if (canUsePopup) {
@@ -447,6 +447,7 @@ export default function OAuthModal({
     const handleMessage = (event) => {
       const lifecycle = lifecycleRef.current;
       const flow = lifecycle.current();
+      if (flow?.provider === "cline") return;
       let callbackEvent = event;
       if (
       flow &&
@@ -470,7 +471,7 @@ export default function OAuthModal({
     const handleFreshCallback = (data) => {
       const lifecycle = lifecycleRef.current;
       const flow = lifecycle.current();
-      if (!lifecycle.acceptsCallback(flow, data, { requireFresh: true })) return;
+      if (flow?.provider === "cline" || !lifecycle.acceptsCallback(flow, data, { requireFresh: true })) return;
       processCallback(flow, data, { requireFresh: true });
     };
     const handleStorage = (event) => {

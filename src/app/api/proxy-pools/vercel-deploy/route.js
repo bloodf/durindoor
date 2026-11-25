@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProxyPool } from "@/models";
+import { createProxyPool } from "@/lib/localDb";
 import {
   buildRelayFunctionCode,
   generateRelaySecret,

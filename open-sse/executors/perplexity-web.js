@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
-import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
+import { buildPerplexitySessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -569,7 +568,13 @@ export class PerplexityWebExecutor extends BaseExecutor {
     super("perplexity-web", PROVIDERS["perplexity-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null }, sender, billed) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -596,7 +601,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     // Scope continuation IDs to the actual outbound credential without retaining the secret.
     const auth = credentials?.accessToken ? `bearer:${credentials.accessToken}` :
-      credentials?.apiKey ? `cookie:${buildNextAuthSessionCookie(credentials.apiKey)}` : null;
+      credentials?.apiKey ? `cookie:${buildPerplexitySessionCookie(credentials.apiKey)}` : null;
     const credentialScope = auth ? createHash("sha256").update(auth).digest("hex") : null;
     const parsed = parseOpenAIMessages(messages);
     const followUpUuid = sessionLookup(parsed.history, credentialScope);
@@ -625,7 +630,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
     } else if (credentials.apiKey) {
-      headers["Cookie"] = buildNextAuthSessionCookie(credentials.apiKey);
+      headers["Cookie"] = buildPerplexitySessionCookie(credentials.apiKey);
     }
 
     log?.info?.("PPLX-WEB", `Query to ${model} (pref=${modelPref}, mode=${pplxMode}), len=${query.length}`);
@@ -635,9 +640,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(
-        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions)
-      );
+      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions));
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
@@ -650,7 +653,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (!response.ok) {
       const status = response.status;
       let errMsg = `Perplexity returned HTTP ${status}`;
-      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token.";else
+      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token (legacy), or your current Perplexity session cookies.";else
       if (status === 429) errMsg = "Perplexity rate limited. Wait a moment and retry.";
       log?.warn?.("PPLX-WEB", errMsg);
       const errResp = new Response(JSON.stringify({

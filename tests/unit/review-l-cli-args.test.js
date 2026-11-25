@@ -7,11 +7,11 @@ const source = fs.readFileSync(new URL("../../cli/cli.js", import.meta.url), "ut
 function run(args) {
   const error = vi.fn();
   const context = { args, process: { exit: (code) => { throw { code }; } }, console: { error } };
-  const start = source.indexOf("for (let i = 0; i < args.length; i++) {");
+  const start = source.indexOf("function validateArgs(args) {");
   const end = source.indexOf("\nfunction hasFlag", start);
   const validation = source.slice(start, end);
   try {
-    vm.runInNewContext(validation, context);
+    vm.runInNewContext(`${validation}\nvalidateArgs(args)`, context);
     return { error, code: 0 };
   } catch (result) {
     if (result?.code !== undefined) return { error, code: result.code };

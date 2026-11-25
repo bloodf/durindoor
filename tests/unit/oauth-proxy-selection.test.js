@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getProxyPoolById: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProxyPoolById: mocks.getProxyPoolById,
 }));
 

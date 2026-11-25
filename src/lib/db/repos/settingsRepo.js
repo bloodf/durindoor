@@ -158,11 +158,13 @@ export async function getSettings() {
 export async function updateSettings(updates) {
   const db = await getAdapter();
   let next;
+  let revokesSessions = false;
   db.transaction(() => {
     const row = db.get(`SELECT data FROM settings WHERE id = 1`);
     const current = migrateObservabilityKeys(row ? parseJson(row.data, {}) : {});
     const resolved = isFunction(updates) ? updates(current) : updates;
     const { enableObservability2: _legacyObservability, ...sanitizedUpdates } = resolved;
+    revokesSessions = Object.hasOwn(sanitizedUpdates, "passwordSessionEpoch");
     next = migrateObservabilityKeys({
       ...current,
       ...mergeSettingsPatch(current, sanitizedUpdates),
@@ -172,6 +174,10 @@ export async function updateSettings(updates) {
       [stringifyJson(next)]
     );
   });
+  // The sql.js fallback debounces disk writes. A session revocation must be on disk
+  // before logout reports success (9router#5191). Native adapters already commit, and
+  // their flush() is a WAL checkpoint that can fail while a reader is busy.
+  if (revokesSessions && db.driver === "sql.js") db.flush();
   return mergeWithDefaults(next);
 }
 export class PasswordEpochMismatchError extends Error {

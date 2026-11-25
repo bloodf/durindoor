@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const probe = vi.hoisted(() => vi.fn());
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => true) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
@@ -23,7 +23,7 @@ vi.mock("open-sse/utils/outboundUrlGuard.js", async (importOriginal) => ({
 
 const { POST: validateProvider } = await import("@/app/api/providers/validate/route.js");
 const { POST: createProvider } = await import("@/app/api/providers/route.js");
-const models = await import("@/models");
+const models = await import("@/lib/localDb");
 
 const jsonRequest = (url, body) =>
   new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

@@ -20,6 +20,8 @@ import {
   parseZedCallbackPayload,
   resolveZedOrganizationId,
 } from "../../../open-sse/shared/zedHostedAuth.js";
+import { proxyAwareFetch } from "../../../open-sse/utils/proxyFetch.js";
+import { credentialFetch } from "../../../open-sse/utils/credentialFetch.js";
 
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])$/i;
 
@@ -56,7 +58,8 @@ export const zedHosted = {
     let userInfo = null;
     let organizationId = "";
     try {
-      userInfo = await fetchZedAuthenticatedUser(credentials, { config, proxyOptions, fetch: meta?.fetch });
+      const baseFetch = meta?.fetch || ((url, init) => proxyAwareFetch(url, init, proxyOptions));
+      userInfo = await fetchZedAuthenticatedUser(credentials, { config, fetch: (url, init) => credentialFetch(baseFetch, url, init) });
       organizationId = resolveZedOrganizationId(credentials, userInfo);
     } catch {
       // Non-fatal: the account still works without a resolved profile. The LLM token

@@ -601,8 +601,10 @@ export class AntigravityExecutor extends BaseExecutor {
     // provider boundary. Conversation content and shared Gemini translators stay untouched.
     if (requestWithoutTools.systemInstruction?.parts) {
       const competitiveMarker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+      const blanked = new Set();
       for (const part of requestWithoutTools.systemInstruction.parts) {
         if (!isString(part.text)) continue;
+        const hadText = part.text.trim() !== "";
         part.text = rewriteOpenCodeBranding(part.text);
         part.text = part.text.replace(ANTIGRAVITY_BILLING_HEADER_RE, "");
         part.text = part.text.replace(ANTIGRAVITY_HERMES_IDENTITY_REWRITE.from, ANTIGRAVITY_HERMES_IDENTITY_REWRITE.to);
@@ -612,6 +614,14 @@ export class AntigravityExecutor extends BaseExecutor {
         for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES.slice(1)) {
           part.text = part.text.replace(from, to);
         }
+        if (hadText && part.text.trim() === "") blanked.add(part);
+      }
+      // A part the rewrites emptied (a billing-header line on its own) is not sent (9router#5847).
+      if (blanked.size) {
+        requestWithoutTools.systemInstruction = {
+          ...requestWithoutTools.systemInstruction,
+          parts: requestWithoutTools.systemInstruction.parts.filter((part) => !blanked.has(part))
+        };
       }
     }
     // The real client always opens the system prompt with the Antigravity identity (upstream
@@ -745,8 +755,8 @@ export class AntigravityExecutor extends BaseExecutor {
     return transformedBody;
   }
 
-  async refreshCredentials(credentials, log, proxyOptions = null) {
-    if (!credentials.refreshToken) return null;
+  async refreshCredentialsDetailed(credentials, log, proxyOptions = null) {
+    if (!credentials.refreshToken) return { ok: false, category: "pre_dispatch_failure" };
 
     const signal = AbortSignal.timeout(30_000);
     try {
@@ -769,22 +779,41 @@ export class AntigravityExecutor extends BaseExecutor {
         timeoutMs: 30_000, throwOnTimeout: true
       }));
       if (!response.ok) {
-        return tokens?.error === "invalid_grant" ? { error: "invalid_grant" } : null;
+        if (tokens?.error === "invalid_grant") return { ok: false, category: "invalid_grant" };
+        if (response.status === 429) {
+          const retryAfter = response.headers?.get?.("retry-after");
+          const seconds = Number(retryAfter);
+          return {
+            ok: false,
+            category: "rate_limit",
+            retryAfterMs: Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null,
+          };
+        }
+        return { ok: false, category: "uncertain", status: response.status };
       }
 
-      if (!isString(tokens?.access_token) || !tokens.access_token.trim()) return null;
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim()) return { ok: false, category: "uncertain" };
       log?.info?.("TOKEN", "Antigravity refreshed");
 
       return {
-        accessToken: tokens.access_token.trim(),
-        refreshToken: isString(tokens.refresh_token) && tokens.refresh_token.trim() || credentials.refreshToken,
-        expiresIn: tokens.expires_in,
-        projectId: credentials.projectId
+        ok: true,
+        tokens: {
+          accessToken: tokens.access_token.trim(),
+          refreshToken: isString(tokens.refresh_token) && tokens.refresh_token.trim() || credentials.refreshToken,
+          expiresIn: tokens.expires_in,
+          projectId: credentials.projectId
+        }
       };
     } catch (error) {
       log?.error?.("TOKEN", `Antigravity refresh request failed (${error.name})`);
-      return null;
+      return { ok: false, category: "uncertain" };
     }
+  }
+
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    const detailed = await this.refreshCredentialsDetailed(credentials, log, proxyOptions);
+    if (!detailed?.ok) return detailed?.category === "invalid_grant" ? { error: "invalid_grant" } : null;
+    return detailed.tokens;
   }
 
   generateProjectId() {

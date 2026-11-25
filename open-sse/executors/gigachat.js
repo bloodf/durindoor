@@ -53,6 +53,7 @@ export class GigaChatExecutor extends DefaultExecutor {
         RqUID: crypto.randomUUID(),
       },
       body: new URLSearchParams({ scope: this.config.tokenScope || "GIGACHAT_API_PERS" }),
+      redirect: "error",
     }, proxyOptions);
 
     if (!response.ok) {

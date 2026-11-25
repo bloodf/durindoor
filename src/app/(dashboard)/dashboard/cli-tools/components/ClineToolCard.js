@@ -11,6 +11,7 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import DocsLink from "@/shared/components/DocsLink";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, apiKeys, activeProviders, cloudEnabled, initialStatus, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl }) {
   const [status, setStatus] = useState(initialStatus || null);
@@ -41,15 +42,7 @@ export default function ClineToolCard({ tool, isExpanded, onToggle, baseUrl, api
     if (status?.settings?.openAiModelId) setSelectedModel(status.settings.openAiModelId);
   }, [status]);
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
+  const fetchModelAliases = () => loadModelAliases(setModelAliases);
 
   const getConfigStatus = () => {
     if (!status?.installed) return null;

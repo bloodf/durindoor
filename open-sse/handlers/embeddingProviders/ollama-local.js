@@ -1,10 +1,15 @@
 // Ollama Local embeddings adapter — normalizes Ollama /api/embed to OpenAI shape.
+import { bearerAuth } from "./_base.js";
 import { resolveOllamaLocalHost } from "../../config/providers.js";
 import { isNumber } from "../../../src/shared/utils/typeChecks.js";
 
 export default {
   buildUrl: (_model, creds) => `${resolveOllamaLocalHost(creds)}/api/embed`,
-  buildHeaders: () => ({ "Content-Type": "application/json" }),
+  buildHeaders: (credentials) => {
+    const headers = { "Content-Type": "application/json" };
+    if (credentials?.apiKey || credentials?.accessToken) Object.assign(headers, bearerAuth(credentials));
+    return headers;
+  },
   buildBody: (model, { input, dimensions }) => {
     const body = { model, input };
     if (isNumber(dimensions) && Number.isFinite(dimensions) && dimensions > 0) {

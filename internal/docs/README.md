@@ -80,6 +80,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [muse-spark-web-2034.md](./muse-spark-web-2034.md)
 - [notion-web-2034.md](./notion-web-2034.md)
 - [notrack-web-2034.md](./notrack-web-2034.md)
+- [oauth-native-esm.md](./oauth-native-esm.md)
 - [openference-oauth.md](./openference-oauth.md)
 - [orcarouter-signin-parity-2034.md](./orcarouter-signin-parity-2034.md)
 - [perplexity-web-2034.md](./perplexity-web-2034.md)
@@ -116,6 +117,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 ### Provider contracts and implementation notes
 
 - [antigravity-2034.md](./antigravity-2034.md)
+- [antigravity-translator-refresh.md](./antigravity-translator-refresh.md)
 - [chatgpt-plan-connection-2034.md](./chatgpt-plan-connection-2034.md)
 - [chatgpt-plan-transport.md](./chatgpt-plan-transport.md)
 - [chatplayground-2034.md](./chatplayground-2034.md)
@@ -134,6 +136,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [hyperagent-2034.md](./hyperagent-2034.md)
 - [iflow-2034.md](./iflow-2034.md)
 - [kilocode-2034.md](./kilocode-2034.md)
+- [kiro-response-fallback-investigation.md](./kiro-response-fallback-investigation.md)
+- [kiro-tool-result-pairing.md](./kiro-tool-result-pairing.md)
 - [lmarena-2034.md](./lmarena-2034.md)
 - [media-model-kind-audit.md](./media-model-kind-audit.md)
 - [megabrain-gateway.md](./megabrain-gateway.md)
@@ -165,7 +169,9 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 
 ### Issue acceptance and audit records
 
+- [2305-dashboard-cleanup.md](./2305-dashboard-cleanup.md)
 - [circuit-1108-audit.md](./circuit-1108-audit.md)
+- [executor-dispatch-2308.md](./executor-dispatch-2308.md)
 - [issue-1090-acceptance.md](./issue-1090-acceptance.md)
 - [issue-1111-acceptance.md](./issue-1111-acceptance.md)
 - [issue-1129-acceptance.md](./issue-1129-acceptance.md)
@@ -186,8 +192,12 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [ai-tooling-plan.md](./ai-tooling-plan.md)
 - [ai-tooling.md](./ai-tooling.md)
 - [connecting-accounts-2034.md](./connecting-accounts-2034.md)
+- [db-api-key-backup-roundtrip-investigation.md](./db-api-key-backup-roundtrip-investigation.md)
+- [sqlite-exclusive-lock-release.md](./sqlite-exclusive-lock-release.md)
 - [deploy-gates.md](./deploy-gates.md)
 - [deployment-mode.md](./deployment-mode.md)
+- [image-cache-20828-investigation.md](./image-cache-20828-investigation.md)
+- [integration-cdfb0c5-follow-up.md](./integration-cdfb0c5-follow-up.md)
 - [documentation-plan.md](./documentation-plan.md)
 - [local-ci.md](./local-ci.md)
 - [local-development.mdx](./local-development.mdx)

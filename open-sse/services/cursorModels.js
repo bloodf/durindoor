@@ -7,12 +7,17 @@
  */
 
 import crypto from "crypto";
+import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { PROVIDER_OAUTH } from "../providers/index.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
-import { decodeMessage } from "../utils/cursorProtobuf.js";
-import { isNumber } from "../../src/shared/utils/typeChecks.js";
+import { appendBoundedCursorChunk, decodeMessage } from "../utils/cursorProtobuf.js";
+import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
 import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
+import { createCatalogCache } from "./catalogCache.js";
 
+import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
+
+const MAX_CATALOG_BYTES = 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const NEGATIVE_CACHE_TTL_MS = 60 * 1000;
@@ -34,25 +39,36 @@ const AVAILABLE_MODEL_IS_CHAT_ONLY_FIELD = 4;
 const AVAILABLE_MODEL_SUPPORTS_AGENT_FIELD = 5;
 const AVAILABLE_MODEL_IS_HIDDEN_FIELD = 35;
 
-/** @type {Map<string, { expiresAt: number, models: { id: string, name: string }[] }>} */
-const catalogCache = new Map();
-const negativeCache = new Map();
-
 function getCursorModelsUrl() {
   const config = PROVIDER_OAUTH.cursor;
   if (!config?.agentEndpoint || !config?.modelsEndpoint) return null;
   return `${config.agentEndpoint.replace(/\/$/, "")}${config.modelsEndpoint}`;
 }
 
+function getAvailableModelsUrl() {
+  const config = PROVIDER_OAUTH.cursor;
+  if (!config?.apiEndpoint) return null;
+  return `${config.apiEndpoint.replace(/\/$/, "")}/aiserver.v1.AiService/AvailableModels`;
+}
+
 function cacheKey(credentials, proxyUrl) {
   const seed = [
-    credentials?.providerSpecificData?.machineId,
-    credentials?.accessToken,
-    proxyUrl || "direct",
-  ].filter(Boolean).join(":");
-  if (!seed) return "cursor-anonymous";
-  return crypto.createHash("sha256").update(`cursor:${seed}`).digest("hex");
+    credentials.providerSpecificData.machineId,
+    credentials.accessToken,
+    credentials.providerSpecificData.ghostMode !== false,
+    getCursorModelsUrl(),
+    getAvailableModelsUrl(),
+    proxyUrl,
+  ];
+  return crypto.createHash("sha256").update(JSON.stringify(seed)).digest("hex");
 }
+
+// Failed lookups are cached briefly so /v1/models does not re-dial Cursor on every request.
+const catalogCache = createCatalogCache({
+  ttlMs: CACHE_TTL_MS,
+  negativeTtlMs: NEGATIVE_CACHE_TTL_MS,
+  keyFn: cacheKey,
+});
 
 function firstString(fields, fieldNumber) {
   const value = fields.get(fieldNumber)?.[0]?.value;
@@ -94,6 +110,20 @@ export function parseCursorUsableModels(payload) {
 }
 
 /**
+ * OmniRoute #20171: offer the DeepSeek effort ids Cursor accepts, only when the
+ * account lists the base model. Discovered variants win over added ones.
+ */
+export function addCursorEffortAliases(models) {
+  const base = models.find((model) => model.id === "deepseek-v41-flash-1017");
+  if (!base) return models;
+  const known = new Set(models.map((model) => model.id));
+  const aliases = ["medium", "max"]
+    .map((effort) => ({ ...base, id: `${base.id}-${effort}`, name: `${base.name} (${effort})`, defaultOn: false }))
+    .filter((alias) => !known.has(alias.id));
+  return [...models, ...aliases];
+}
+
+/**
  * agent.api5.cursor.sh is HTTP/2-only; Node fetch/undici cannot speak h2.
  * Unary GetUsableModels uses an unframed protobuf body (application/proto).
  */
@@ -101,7 +131,7 @@ async function http2PostProto(url, headers, body, signal, timeoutMs, proxyUrl) {
   const client = await connectHttp2(url, { proxyUrl, timeoutMs, signal });
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
-    const chunks = [];
+    const bodyState = { chunks: [], total: 0 };
     let responseHeaders = {};
     let settled = false;
     let req;
@@ -132,11 +162,18 @@ async function http2PostProto(url, headers, body, signal, timeoutMs, proxyUrl) {
     });
 
     req.on("response", (hdrs) => { responseHeaders = hdrs; });
-    req.on("data", (chunk) => { chunks.push(chunk); });
+    req.on("data", (chunk) => {
+      if (settled) return;
+      try {
+        appendBoundedCursorChunk(bodyState, chunk, MAX_CATALOG_BYTES);
+      } catch (error) {
+        finish(reject)(error);
+      }
+    });
     req.on("end", finish(() => {
       resolve({
         status: Number(responseHeaders[":status"] || 0),
-        body: Buffer.concat(chunks),
+        body: Buffer.concat(bodyState.chunks, bodyState.total),
       });
     }));
     req.on("error", finish(reject));
@@ -176,6 +213,56 @@ async function fetchCursorCatalog(credentials, signal, proxyOptions) {
   }
 
   return mergeCursorModelFlags(parseCursorUsableModels(new Uint8Array(response.body)), response.body);
+}
+
+/** Normalize the JSON AvailableModels catalog used by Cursor's older endpoint. */
+export function normalizeCursorAvailableModels(payload) {
+  const root = payload && isObject(payload) ? payload : {};
+  const nested = root.models && !Array.isArray(root.models) && isObject(root.models) ? root.models : {};
+  const candidates = [payload, root.items, root.models, root.availableModels, root.available_models, root.model, nested.models, nested.items, nested.list].flatMap((value) => Array.isArray(value) ? value : []);
+  const seen = new Set();
+  const models = candidates.flatMap((entry) => {
+    if (entry && isObject(entry) && (entry.disabled === true || entry.isDisabled === true || entry.usable === false || entry.isUsable === false)) return [];
+    const id = (isString(entry) ? entry : [entry?.name, entry?.modelId, entry?.model_id, entry?.id, entry?.slug].find((value) => isString(value) && value.trim()))?.trim();
+    if (!id || seen.has(id)) return [];
+    seen.add(id);
+    const name = [entry?.displayName, entry?.display_name, entry?.title, entry?.label].find((value) => isString(value) && value.trim())?.trim() || id;
+    const context = entry?.contextTokenLimit ?? entry?.context_token_limit;
+    const definitions = entry?.parameterDefinitions ?? entry?.parameter_definitions;
+    const efforts = new Set();
+    for (const definition of Array.isArray(definitions) ? definitions : []) {
+      if (!["effort", "reasoning"].includes(definition?.id)) continue;
+      const type = definition.parameterType ?? definition.parameter_type;
+      const options = type?.enumParameter?.values ?? type?.enum_parameter?.values;
+      for (const option of Array.isArray(options) ? options : []) {
+        if (!option?.blockedByAdminAllowlist && !option?.blocked_by_admin_allowlist && isString(option?.value) && option.value.trim()) efforts.add(option.value.trim());
+      }
+    }
+    const model = { id, name };
+    if (Number.isInteger(context) && context > 0) model.contextLength = context;
+    if (efforts.size) model.supportedThinkingEfforts = [...efforts];
+    return [model];
+  });
+  if (models.length && !seen.has("auto")) models.unshift({ id: "auto", name: "Auto" });
+  return models;
+}
+
+async function fetchAvailableModels(credentials, signal, proxyOptions) {
+  const url = getAvailableModelsUrl();
+  if (!url) return null;
+  const { machineId, ghostMode } = credentials.providerSpecificData;
+  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) : AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const response = await proxyAwareFetch(url, {
+    method: "POST",
+    headers: { ...buildCursorHeaders(credentials.accessToken, machineId, ghostMode !== false), "content-type": "application/json", accept: "application/json" },
+    body: "{}", redirect: "error", signal: requestSignal,
+  }, proxyOptions);
+  if (!response.ok || /proto/i.test(response.headers.get("content-type") || "")) {
+    void response.body?.cancel().catch(() => {});
+    return null;
+  }
+  const text = await readBoundedResponseText(response, { signal: requestSignal, maxBytes: MAX_CATALOG_BYTES, timeoutMs: FETCH_TIMEOUT_MS });
+  return text ? normalizeCursorAvailableModels(JSON.parse(text)) : null;
 }
 
 /**
@@ -261,32 +348,40 @@ export async function resolveCursorModels(credentials, options = {}) {
   };
   let proxyUrl;
   try { proxyUrl = cursorProxyUrl(getCursorModelsUrl(), proxyOptions); } catch { return null; }
-  const key = cacheKey(credentials, proxyUrl);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached?.expiresAt > now) return { models: cached.models };
-    // Failed lookups are cached briefly so /v1/models does not re-dial Cursor on every request.
-    if (negativeCache.get(key) > now) return null;
-  }
+  const key = catalogCache.keyFor(credentials, proxyUrl);
 
-  try {
-    const models = await fetchCursorCatalog(credentials, options.signal, proxyOptions);
-    if (!models?.length) {
-      negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
+  const loadCatalog = async () => {
+    try {
+      let models;
+      try { models = await fetchCursorCatalog(credentials, options.signal, proxyOptions); } catch (error) {
+        if (options.signal?.aborted) throw error;
+        models = null;
+      }
+      if (!models?.length) {
+        const fallbackProxy = proxyUrl ? { ...proxyOptions, strictProxy: true } : proxyOptions;
+        models = await fetchAvailableModels(credentials, options.signal, fallbackProxy);
+      }
+      return models?.length ? { models: addCursorEffortAliases(models) } : null;
+    } catch (error) {
+      options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${sanitizeErrorMessage(error?.message || error)}`);
+      // An aborted lookup says nothing about the account, so it must not be negatively cached.
+      if (options.signal?.aborted) throw error;
       return null;
     }
-    negativeCache.delete(key);
-    catalogCache.set(key, { expiresAt: now + CACHE_TTL_MS, models });
-    return { models };
-  } catch (error) {
-    if (!options.signal?.aborted) negativeCache.set(key, now + NEGATIVE_CACHE_TTL_MS);
-    options.log?.warn?.("CURSOR_MODELS", `Live model fetch failed: ${error?.message || error}`);
+  };
+
+  try {
+    const catalog = await catalogCache.load(key, loadCatalog, {
+      force: Boolean(options.forceRefresh),
+      ageFromStart: true,
+      flightKey: options.signal ? null : JSON.stringify([key, proxyOptions]),
+    });
+    return catalog ? { models: catalog.models } : null;
+  } catch {
     return null;
   }
 }
 
 export function clearCursorModelCache() {
   catalogCache.clear();
-  negativeCache.clear();
 }

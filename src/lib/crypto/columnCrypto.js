@@ -95,6 +95,18 @@ function loadMasterKey({ allowDefault = false } = {}) {
   }
 }
 
+/** True only when a master key file is already present. Does not mint one. */
+export function masterKeyPresent() {
+  if (cachedKey) return true;
+  if (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR) return false;
+  try {
+    const raw = fs.readFileSync(path.join(getDataDir(), MASTER_KEY_BASENAME));
+    return raw.length === MASTER_KEY_BYTES;
+  } catch {
+    return false;
+  }
+}
+
 /** Derive an installation-scoped usage identity without exporting the master key. */
 export function usageKeyDigest(secret) {
   return crypto.createHmac("sha256", loadMasterKey({ allowDefault: true })).update(secret).digest("hex");

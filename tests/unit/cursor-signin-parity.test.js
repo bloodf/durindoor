@@ -5,7 +5,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), local: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.create }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.create }));
 vi.mock("@/lib/oauth/services/cursorLocalStore.js", () => ({ findAndReadCursorLocalAuth: mocks.local }));
 
 import { POST } from "../../src/app/api/oauth/cursor/import/route.js";

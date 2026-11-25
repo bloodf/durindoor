@@ -8,10 +8,11 @@ import { annotateClientAdmissionFailure } from "./operationalMetrics.js";
 
 import { createHash } from "node:crypto";
 import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
-import { errorResponse, unavailableResponse, getClientStatusFromError } from "../utils/error.js";
+import { errorResponse, unavailableResponse, getClientStatusFromError, sanitizeErrorMessage } from "../utils/error.js";
 import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../utils/streamLifecycle.js";
 import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
+import { isUnavailableNotice } from "../utils/unavailableNotice.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
@@ -350,6 +351,7 @@ const comboWeightedRotationState = new Map();
  */
 const comboConversationAffinity = new Map();
 export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
+const affinityScopeCounts = new Map();
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -759,11 +761,29 @@ function affinityKeyFor(rotationKey, conversationKey, apiKeyId) {
   return apiKeyId ? `${rotationKey}:${conversationKey}:key:${JSON.stringify(apiKeyId)}` : `${rotationKey}:${conversationKey}`;
 }
 
+// Keep per-caller counts so ordinary insertions do not scan the affinity map.
+function deleteConversationAffinity(key) {
+  const entry = comboConversationAffinity.get(key);
+  if (!entry) return;
+  const scope = entry.scope || null;
+  const count = affinityScopeCounts.get(scope) || 0;
+  if (count <= 1) affinityScopeCounts.delete(scope);
+  else affinityScopeCounts.set(scope, count - 1);
+  comboConversationAffinity.delete(key);
+}
+
+function setConversationAffinity(key, entry) {
+  deleteConversationAffinity(key);
+  const scope = entry.scope || null;
+  affinityScopeCounts.set(scope, (affinityScopeCounts.get(scope) || 0) + 1);
+  comboConversationAffinity.set(key, entry);
+}
+
 function pruneConversationAffinity(scope, now = Date.now()) {
   let count = 0;
   for (const [key, value] of comboConversationAffinity) {
     if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
-      comboConversationAffinity.delete(key);
+      deleteConversationAffinity(key);
     } else if ((value.scope || null) === scope) {
       count++;
     }
@@ -771,7 +791,7 @@ function pruneConversationAffinity(scope, now = Date.now()) {
   for (const [key, value] of comboConversationAffinity) {
     if (count < MAX_CONVERSATION_AFFINITY_ENTRIES) break;
     if ((value.scope || null) === scope) {
-      comboConversationAffinity.delete(key);
+      deleteConversationAffinity(key);
       count--;
     }
   }
@@ -1250,13 +1270,14 @@ export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, c
     const affinity = comboConversationAffinity.get(affinityKey);
     if (affinity && now - affinity.lastUsed <= CONVERSATION_AFFINITY_TTL_MS) {
       const pinnedIndex = affinity.index % models.length;
-      comboConversationAffinity.delete(affinityKey);
-      comboConversationAffinity.set(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
+      setConversationAffinity(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
       return rotateModelsFromIndex(models, pinnedIndex);
     }
 
-    pruneConversationAffinity(apiKeyId, now);
-    comboConversationAffinity.set(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
+    if (!affinity && (affinityScopeCounts.get(apiKeyId || null) || 0) >= MAX_CONVERSATION_AFFINITY_ENTRIES) {
+      pruneConversationAffinity(apiKeyId || null, now);
+    }
+    setConversationAffinity(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
   }
 
   const rotatedModels = rotateModelsFromIndex(models, currentIndex);
@@ -1275,12 +1296,13 @@ export function resetComboRotation(comboName) {
     comboRotationState.delete(comboName);
     const prefix = `${comboName}:`;
     for (const key of comboConversationAffinity.keys()) {
-      if (key.startsWith(prefix)) comboConversationAffinity.delete(key);
+      if (key.startsWith(prefix)) deleteConversationAffinity(key);
     }
   } else {
     comboWeightedRotationState.clear();
     comboRotationState.clear();
     comboConversationAffinity.clear();
+    affinityScopeCounts.clear();
   }
 }
 
@@ -1365,6 +1387,18 @@ export async function detectUpstreamError(response) {
     payload.error :
     payload?.error?.message ?? payload?.message ?? payload?.detail;
     return isString(message) && message.trim() ? message.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The model/client-unavailable notice a 2xx JSON completion carries as its answer, or null. */
+async function detectUnavailableNotice(response) {
+  if (!response.headers?.get?.("content-type")?.toLowerCase().includes("json")) return null;
+  try {
+    const payload = await response.clone().json();
+    const text = extractPanelText(payload?.response ?? payload);
+    return isUnavailableNotice(text) ? text : null;
   } catch {
     return null;
   }
@@ -1670,7 +1704,7 @@ export async function handleComboChat({
     if (idx !== 0) return;
     const pinned = comboConversationAffinity.get(rrAffinityKey);
     if (pinned && activeModels[pinned.index % activeModels.length] === failedModelStr) {
-      comboConversationAffinity.delete(rrAffinityKey);
+      deleteConversationAffinity(rrAffinityKey);
     }
     affinityReleased = true;
   };
@@ -1746,7 +1780,12 @@ export async function handleComboChat({
       if (result.ok) {
         const upstreamError = await detectUpstreamError(result);
         if (upstreamError) {
-          const { shouldFallback } = checkFallbackError(result.status, upstreamError, 0, splitModelString(modelStr).provider, result.headers);
+          const { shouldFallback } = checkFallbackError({
+            status: result.status,
+            errorText: upstreamError,
+            headers: result.headers,
+            ...splitModelString(modelStr),
+          });
           if (!shouldFallback) {
             log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
             return result;
@@ -1758,10 +1797,29 @@ export async function handleComboChat({
           continue;
         }
 
+        // OmniRoute #21066: a 200 saying the model is gone is a failed member.
+        const failOverNotice = (notice) => {
+          const message = sanitizeErrorMessage(notice).slice(0, 300);
+          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.GONE);
+          releaseFailedAffinity(modelStr, i);
+          recordFailure(HTTP_STATUS.GONE, message);
+          log.warn("COMBO", `Model ${modelStr} answered 200 with an unavailable notice, trying next`);
+        };
+        const jsonNotice = await detectUnavailableNotice(result);
+        if (jsonNotice) {
+          failOverNotice(jsonNotice);
+          continue;
+        }
+
         let successfulResult = result;
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
-          const { hasContent, body: replayBody, streamError } = await peekStreamForContent(result);
+          const { hasContent, body: replayBody, streamError, notice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true });
+          if (notice) {
+            replayBody?.cancel("combo member reported itself unavailable").catch(() => {});
+            failOverNotice(notice);
+            continue;
+          }
           if (!hasContent && result.claudeFast === true) {
             releaseFailedAffinity(modelStr, i);
             return replayBody ? new Response(replayBody, {
@@ -1898,14 +1956,13 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, requestScoped, terminal } = checkFallbackError(
-        result.status,
+      const { shouldFallback, requestScoped, terminal } = checkFallbackError({
+        status: result.status,
         errorText,
-        0,
-        splitModelString(modelStr).provider,
-        result.headers,
-        errorBody
-      );
+        headers: result.headers,
+        structuredError: errorBody,
+        ...splitModelString(modelStr),
+      });
 
       // A request-scoped 4xx (validation, unsupported parameter, context overflow)
       // means this member cannot serve THIS request, not that its credential is

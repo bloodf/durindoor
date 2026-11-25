@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { execFileSync, spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras } from "./detect.js";
+import { findHeadroomBinary, HEADROOM_COMPRESSION_EXTRAS, getInstalledHeadroomExtras, probeProxyRunning } from "./detect.js";
 import { ensureManagedVenv, managedVenvBinary } from "./pythonEnv.js";
 import { createDiagnostic, quoteShellArg, redactSensitive, SetupError } from "@/shared/utils/setupDiagnostics.js";
 import { isNumber } from "../../shared/utils/typeChecks.js";
@@ -108,9 +108,16 @@ export function getManagedPid() {
  * Start the managed Headroom proxy with CPU-heavy Kompress disabled unless
  * explicitly enabled by a caller.
  *
- * @param {{port?: number, kompress?: boolean}} [options] Proxy launch options.
+ * With `url`, a healthy proxy that DurinDoor does not manage is reused and stays
+ * under its owner's control, whether it answers before the launch or wins a
+ * startup race against our child (9router#5850).
+ *
+ * @param {{url?: string, port?: number, kompress?: boolean}} [options] Proxy launch options.
  */
-export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false } = {}) {
+export async function startHeadroomProxy({ url, port = DEFAULT_PORT, kompress = false } = {}) {
+  const external = { running: true, external: true, alreadyRunning: true };
+  // Probe before looking for a CLI: reusing an external proxy needs none.
+  if (url && !getManagedPid() && await probeProxyRunning(url) && !getManagedPid()) return external;
   const safePort = Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
   const managedBinary = managedVenvBinary("headroom");
   const binary = managedBinary || findHeadroomBinary();
@@ -157,7 +164,7 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
   writePid(child.pid);
 
   // Wait until the process either stays alive briefly (success) or exits fast (failure).
-  await new Promise((resolve, reject) => {
+  const startup = new Promise((resolve, reject) => {
     let settled = false;
     let startupTimer;
     const closeOnce = () => {
@@ -201,6 +208,18 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, kompress = false
     child.once("error", onError);
     child.once("exit", onExit);
   });
+  try {
+    await startup;
+  } catch (error) {
+    if (!url || error.code !== "EARLY_EXIT" || !await probeProxyRunning(url)) throw error;
+    const managedPid = getManagedPid();
+    return managedPid ? { pid: managedPid, alreadyRunning: true, source } : external;
+  }
+
+  // Keep the ChildProcess handle for stopHeadroomProxy(), while allowing
+  // one-shot callers to exit without waiting for the long-lived proxy.
+  const unrefChild = child.unref;
+  if (unrefChild) unrefChild.call(child);
 
   const spawnedPid = child.pid;
   child.once("exit", () => {

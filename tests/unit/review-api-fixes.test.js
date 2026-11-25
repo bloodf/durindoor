@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   handleChat: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getModelAliases: mocks.getModelAliases, setModelAlias: mocks.setModelAlias, deleteModelAlias: mocks.deleteModelAlias,
   getCustomModels: mocks.getCustomModels, addCustomModel: mocks.addCustomModel,
   updateCustomModel: mocks.updateCustomModel, deleteCustomModel: mocks.deleteCustomModel,

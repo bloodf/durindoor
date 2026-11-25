@@ -1,6 +1,7 @@
 import { FORMATS, detectFormatByEndpoint } from "../translator/formats.js";
 import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
+  CLAUDE_ERROR_TYPES,
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
   MAX_RATE_LIMIT_COOLDOWN_MS } from
@@ -105,6 +106,9 @@ const RESET_HEADERS = Object.freeze([
 const RELATIVE_MILLISECOND_FIELDS = new Set(["retry_after_ms", "retryafterms"]);
 const RELATIVE_SECOND_FIELDS = new Set(["retryafter", "retry_after"]);
 const ABSOLUTE_RESET_FIELDS = new Set(["reset_at", "resets_at", "resetat", "resetsat"]);
+const CODEBUDDY_DATA_RESET_FIELDS = [
+"resetTime", "reset_time", "resetAt", "reset_at", "resetsAt", "resets_at",
+"unlockTime", "unlock_time", "availableAt"];
 const EXPLICIT_QUOTA_TEXT = /(?:\bquota\b[^\n]{0,48}\b(?:reached|exceeded|exhausted|depleted|reset)\b|\b(?:reached|exceeded|exhausted|depleted)\b[^\n]{0,48}\bquota\b|\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b|\b(?:reached|exceeded|exhausted)\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\blimit\b|\blimit\b[^\n]{0,48}\b(?:weekly|daily|session|usage)\b[^\n]{0,48}\b(?:reached|exceeded|exhausted)\b)/i;
 const STRUCTURED_QUOTA_EXHAUSTION_CODES = new Set([
 "billing_hard_limit_reached",
@@ -220,12 +224,23 @@ function googleErrorInfoReset(root, now, maxDelayMs) {
   return null;
 }
 
-function findJsonReset(value, now, maxDelayMs) {
+function findJsonReset(value, now, maxDelayMs, provider) {
   let visited = 0;
   const visit = (node, depth) => {
     if (depth > 4 || visited++ > 100 || !node || !isObject(node)) return null;
     for (const [rawKey, item] of Object.entries(node).slice(0, 50)) {
       const key = rawKey.toLowerCase();
+      // OmniRoute fb5fe2a: only CodeBuddy treats its data envelope as a reset hint.
+      if (depth === 0 && key === "data") {
+        if (provider === "codebuddy-intl" && item && isObject(item)) {
+          // OmniRoute a104888: the envelope's reset field has several spellings.
+          for (const field of CODEBUDDY_DATA_RESET_FIELDS) {
+            const reset = absoluteFromEpoch(item[field], now, maxDelayMs) || absoluteFromIso(item[field], now, maxDelayMs);
+            if (reset) return reset;
+          }
+        }
+        continue;
+      }
       let reset = null;
       if (RELATIVE_MILLISECOND_FIELDS.has(key)) reset = relativeReset(item, 1, now, maxDelayMs);else
       if (RELATIVE_SECOND_FIELDS.has(key)) {
@@ -367,7 +382,7 @@ export function parseRateLimitEvidence({
   if (!resetAtMs && isString(bodyText) && bodyText.length <= 64 * 1024) {
     try {
       const body = JSON.parse(bodyText);
-      resetAtMs = googleErrorInfoReset(body, safeNow, maxDelayMs) || findJsonReset(body, safeNow, maxDelayMs);
+      resetAtMs = googleErrorInfoReset(body, safeNow, maxDelayMs) || findJsonReset(body, safeNow, maxDelayMs, provider);
       if (resetAtMs) source = "structured_body";
     } catch {/* non-JSON provider body */}
   }
@@ -706,7 +721,11 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   };
   const body = clientFormat === FORMATS.CLAUDE ? {
     type: "error",
-    error: { type: clientStatus === 401 ? "authentication_error" : rendered.type, message: rendered.message }
+    error: {
+      type: clientStatus === 401 ? CLAUDE_ERROR_TYPES[clientStatus] :
+        (isString(details?.type) ? details.type : CLAUDE_ERROR_TYPES[clientStatus] ?? rendered.type),
+      message: rendered.message
+    }
   } : { ...(isObject(safeBody?.error) ? safeBody : null), error: { ...(isObject(safeBody?.error) ? details : null), ...rendered } };
   return {
     success: false, status: statusCode, error: safeMessage, resetsAtMs,

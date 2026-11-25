@@ -337,7 +337,7 @@ export async function pruneComboSteps(id, stale, { reason = "Model no longer in 
 /**
  * Put pruned steps back at their original position (clamped). `models`
  * limits the restore to those model ids; omitted restores every record. A
- * step whose model is already on the combo is dropped from the record
+ * step whose model was already on the combo before restore is dropped from the record
  * without being added twice. Returns null when the combo does not exist.
  * @returns {Promise<{ combo: object, restored: object[] }|null>}
  */
@@ -354,10 +354,11 @@ export async function restorePrunedSteps(id, { models: only = null, now = new Da
     const selected = records.filter((record) => !wanted || wanted.has(record.model)).sort((a, b) => a.step - b.step);
     const rest = records.filter((record) => !selected.includes(record));
     const models = [...combo.models];
+    const existingModels = new Set(models);
     const members = [...combo.members];
     const restored = [];
     for (const record of selected) {
-      if (models.includes(record.model)) continue;
+      if (existingModels.has(record.model)) continue;
       const at = Math.min(record.step, models.length);
       models.splice(at, 0, record.model);
       members.splice(at, 0, { id: record.model, weight: record.weight });

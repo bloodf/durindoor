@@ -17,7 +17,7 @@ async function setup() {
   }));
   vi.doMock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
   const { POST } = await import("@/app/api/provider-nodes/route.js");
-  const { getProviderNodeById } = await import("@/models/index.js");
+  const { getProviderNodeById } = await import("@/lib/localDb");
   const { disposeRequestDetailsRepo } = await import("@/lib/db/repos/requestDetailsRepo.js");
   return { POST, getProviderNodeById, disposeRequestDetailsRepo };
 }

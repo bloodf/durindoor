@@ -192,6 +192,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `coqui` |  | freeTier | `` |
 | `coze` | openai | apikey | `https://api.coze.com/v1/chat/completions` |
 | `crof` |  | apikey | `https://crof.ai/v1/chat/completions` |
+| `crowllm` |  | apikey | `https://crowllm.com/v1/chat/completions` |
 | `cursor` | cursor | oauth | `https://api2.cursor.sh` |
 | `cursor-api` | cursor | apikey | `https://api2.cursor.sh` |
 | `dahl` |  | apikey | `https://inference.dahl.global/v1/chat/completions` |
@@ -445,6 +446,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `t3-web` | openai | webCookie | `https://t3.chat/api/chat` |
 | `tabitoken` | claude | apikey | `https://tabitoken.com/v1/messages` |
 | `tavily` |  | apikey | `` |
+| `teamorouter` | openai | apikey | `https://api.teamorouter.com/v1/chat/completions` |
 | `tencent` |  | freeTier | `https://api.hunyuan.cloud.tencent.com/v1/chat/completions` |
 | `tencent-aistudio-web` | openai | webCookie | `https://aistudio.tencent.ai/api/chat` |
 | `thebai` |  | apikey | `https://api.theb.ai/v1/chat/completions` |

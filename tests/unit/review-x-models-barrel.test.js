@@ -8,6 +8,7 @@ const oldPath = "src/" + "models";
 
 function filesIn(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === "node_modules") return [];
     const path = join(dir, entry.name);
     return entry.isDirectory() ? filesIn(path) : [path];
   });

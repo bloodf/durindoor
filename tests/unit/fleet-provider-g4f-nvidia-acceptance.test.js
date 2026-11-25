@@ -17,14 +17,11 @@ vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
   getProviderNodeById: vi.fn(),
+  getProviderConnections: vi.fn(),
+  updateProviderConnection: vi.fn(),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn().mockResolvedValue({}),
-}));
-
-vi.mock("@/lib/localDb.js", () => ({
-  getProviderConnections: vi.fn(),
-  updateProviderConnection: vi.fn(),
 }));
 
 import { getProviderConnections } from "@/lib/localDb.js";

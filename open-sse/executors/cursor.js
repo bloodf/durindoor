@@ -124,7 +124,9 @@ export function isAgentCapableRequest(body) {
   });
 }
 
-function encodeHistoryMessage(message) {
+const isInstructionMessage = (message) => message?.role === ROLE.SYSTEM || message?.role === ROLE.DEVELOPER;
+
+function formatHistoryMessage(message) {
   const content = textFromContent(message?.content);
   const extras = [];
   if (message?.role === ROLE.ASSISTANT && message.tool_calls?.length) {
@@ -136,14 +138,7 @@ function encodeHistoryMessage(message) {
     extras.push(`[tool_result id=${message.tool_call_id || ""}]`);
   }
   const textBody = [content, ...extras].filter(Boolean).join("\n");
-  if (!textBody) return null;
-
-  // ConversationHistoryMessage.user / .assistant -> repeated content -> text.
-  const text = agentString(1, textBody);
-  if (message.role === ROLE.ASSISTANT) {
-    return agentMessage(2, agentMessage(1, agentMessage(1, text)));
-  }
-  return agentMessage(1, agentMessage(1, agentMessage(1, text)));
+  return textBody ? `[${message.role}]\n${textBody}` : "";
 }
 
 // Effort, thinking, and fast picker suffixes can be model parameters. Sending `claude-4.5-opus-high-thinking` as the
@@ -298,21 +293,24 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
   // custom_system_prompt (RunRequest field 8) makes AgentService return an
   // empty turn. Fold system text into the current user message instead.
   const system = messages
-    .filter((message) => message?.role === ROLE.SYSTEM)
+    .filter(isInstructionMessage)
     .map((message) => textFromContent(message.content))
     .filter(Boolean)
     .join("\n\n");
-  const chatMessages = messages.filter((message) => message?.role !== ROLE.SYSTEM);
-  const currentIndex = [...chatMessages].map((message) => message?.role).lastIndexOf(ROLE.USER);
-  const current = currentIndex >= 0 ? chatMessages[currentIndex] : chatMessages.at(-1);
-  const history = chatMessages
-    .slice(0, currentIndex >= 0 ? currentIndex : -1)
-    .map(encodeHistoryMessage)
-    .filter(Boolean);
-  const rawUser = textFromContent(current?.content) || "Continue.";
-  const userText = system ? `${system}\n\n${rawUser}` : rawUser;
+  const chatMessages = messages.filter((message) => !isInstructionMessage(message));
+  const current = chatMessages.at(-1);
+  const history = chatMessages.slice(0, -1).map(formatHistoryMessage).filter(Boolean);
+  const rawUser = (current?.role === ROLE.USER ?
+    textFromContent(current.content) :
+    formatHistoryMessage(current)) || "Continue.";
+  // UserMessageAction has no history field: stateless turns replay prior
+  // messages inside UserMessage.text (decolua/9router#4867).
+  const prompt = history.length ?
+    `<conversation_history>\n${history.join("\n\n")}\n</conversation_history>\n\n${rawUser}` :
+    rawUser;
+  const userText = system ? `${system}\n\n${prompt}` : prompt;
 
-  // agent.v1.UserMessageAction.user_message and its optional history.
+  // agent.v1.UserMessageAction.user_message.
   // selected_context (3) + mode=1 (4) match cursor-agent's wire format; without
   // them the server may accept the RPC and stream an empty turn.
   const userMessage = concatBuffers(
@@ -321,13 +319,7 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     agentMessage(3, new Uint8Array()),
     encodeField(4, PROTOBUF_VARINT, 1),
   );
-  const conversationHistory = history.length
-    ? concatBuffers(...history.map((entry) => agentMessage(1, entry)))
-    : null;
-  const userAction = concatBuffers(
-    agentMessage(1, userMessage),
-    ...(conversationHistory ? [agentMessage(7, conversationHistory)] : []),
-  );
+  const userAction = agentMessage(1, userMessage);
   const conversationAction = agentMessage(1, userAction);
   const { modelId, parameters, omitModelDetails } = resolveAgentRunModel(model, reasoningEffort, catalogIds);
   // RequestedModel field 7 is reserved for Bedrock credentials.
@@ -797,9 +789,9 @@ const CURSOR_EMPTY_TURN_RETRY_DELAY_MS = (() => {
 export function tailOnlyCursorMessages(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return messages || [];
   const systemMessages = messages.filter(
-    (message) => message?.role === ROLE.SYSTEM && !/\[(durindoor|9router)\] Long session/.test(String(message?.content || "")),
+    (message) => isInstructionMessage(message) && !/\[(durindoor|9router)\] Long session/.test(String(message?.content || "")),
   );
-  const chatMessages = messages.filter((message) => message?.role !== ROLE.SYSTEM);
+  const chatMessages = messages.filter((message) => !isInstructionMessage(message));
   let anchor = chatMessages.length - 1;
   for (let i = chatMessages.length - 1; i >= 0; i--) {
     if (chatMessages[i]?.role === ROLE.USER || chatMessages[i]?.role === ROLE.TOOL) {
@@ -852,7 +844,13 @@ export class CursorExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials) {
     // Messages are already translated by chatCore (claude→openai→cursor)
     // Do NOT call openaiToCursorRequest again — double-translation drops tool_results
-    const messages = body.messages || [];
+    // ChatService only has user/assistant roles, so instructions travel as labelled
+    // user text there. AgentService reads the real roles.
+    const messages = (body.messages || []).map((message) =>
+      isInstructionMessage(message) ?
+        { ...message, role: ROLE.USER, content: `[System Instructions]\n${textFromContent(message.content)}` } :
+        message
+    );
     const tools = body.tools || [];
     const reasoningEffort = body.reasoning_effort || null;
     const ua = credentials?.rawHeaders?.["user-agent"] || "";

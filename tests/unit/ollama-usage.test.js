@@ -212,7 +212,7 @@ describe("getUsageForProvider(ollama)", () => {
       providerSpecificData: {},
     });
 
-    expect(usage.message).toMatch(/no usage limits/i);
+    expect(usage.message).toMatch(/no usage reported/i);
     expect(usage.quotas).toEqual({});
   });
 

@@ -61,7 +61,8 @@ function assertValidName(name) {
 
 async function assertNameAvailable(name, excludeId) {
   const existing = await getComboByName(name);
-  if (existing && existing.id !== excludeId) {
+  // The stored id and the caller's id can differ in type (route string vs number).
+  if (existing && String(existing.id) !== String(excludeId)) {
     throw new ComboManagementError("Combo name already exists");
   }
 }

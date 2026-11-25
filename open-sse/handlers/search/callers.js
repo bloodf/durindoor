@@ -39,7 +39,7 @@ import { resolveSearchBaseUrl } from "./baseUrl.js";
  * @param {string[]} [domainFilter]
  * @returns {{includes: string[], excludes: string[]}}
  */
-import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export function parseDomainFilter(domainFilter) {
   if (!domainFilter?.length) return { includes: [], excludes: [] };
   const includes = domainFilter.filter((d) => !d.startsWith("-"));
@@ -64,6 +64,38 @@ export function getProviderSetting(params, key) {
   }
   return undefined;
 }
+
+/** The caller's `provider_options.<id>` object, or an empty one. */
+function getProviderOptions(params, providerId) {
+  const options = params.providerOptions?.[providerId];
+  return options && isObject(options) && !Array.isArray(options) ? options : {};
+}
+
+/** Allow-listed copy, so a caller cannot add arbitrary upstream fields. */
+function pickFields(source, keys) {
+  if (!source || !isObject(source)) return {};
+  return Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+}
+
+// `stream` and `outputSchema` are left out: both change the response into
+// streamed synthesized output, which the JSON search contract cannot carry.
+const EXA_OPTION_FIELDS = [
+  "category", "userLocation", "moderation", "additionalQueries", "objective",
+  "systemPrompt", "compliance", "startPublishedDate", "endPublishedDate"
+];
+const EXA_CONTENT_FIELDS = [
+  "text", "highlights", "summary", "extras", "subpages", "subpageTarget",
+  "livecrawlTimeout", "maxAgeHours"
+];
+// Query, result count, domains and country come from the generic request only.
+const TAVILY_OPTION_FIELDS = [
+  "search_depth", "chunks_per_source", "time_range", "start_date", "end_date",
+  "include_published_date", "filter_by_published_date", "include_answer",
+  "include_raw_content", "include_images", "include_image_descriptions",
+  "include_favicon", "include_domains_mode", "language", "filter_by_language",
+  "auto_parameters", "exact_match", "include_usage", "safe_search"
+];
+const TAVILY_TOPICS = new Set(["general", "news", "finance"]);
 
 /**
  * Resolve the search base URL, requiring caller-controlled overrides to be
@@ -139,32 +171,8 @@ function buildPerplexityRequest(config, params) {
   };
 }
 
-function buildExaRequest(config, params) {
-  const { includes, excludes } = parseDomainFilter(params.domainFilter);
-  const body = {
-    query: params.query,
-    numResults: params.maxResults,
-    type: "auto",
-    text: true,
-    highlights: true
-  };
-  if (includes.length) body.includeDomains = includes;
-  if (excludes.length) body.excludeDomains = excludes;
-  if (params.searchType === "news") body.category = "news";
-  return {
-    url: resolveBaseUrl(config, params),
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": params.token },
-      body: JSON.stringify(body)
-    }
-  };
-}
-
-const PARALLEL_MODES = new Set(["turbo", "fast", "basic", "advanced"]);
-
-/** Map 9router time_range to Parallel source_policy.after_date (YYYY-MM-DD). */
-function parallelAfterDate(timeRange) {
+/** First day (YYYY-MM-DD) of a generic `time_range`; undefined for `any` or unknown values. */
+function timeRangeStartDate(timeRange) {
   if (!timeRange || timeRange === "any") return undefined;
   const from = new Date();
   if (timeRange === "day") from.setUTCDate(from.getUTCDate() - 1);
@@ -180,6 +188,34 @@ function parallelAfterDate(timeRange) {
   else return undefined;
   return from.toISOString().slice(0, 10);
 }
+
+function buildExaRequest(config, params) {
+  const { includes, excludes } = parseDomainFilter(params.domainFilter);
+  const exa = getProviderOptions(params, "exa");
+  const body = {
+    query: params.query,
+    numResults: params.maxResults,
+    type: isString(exa.type) ? exa.type : "auto",
+    // Exa reads content options only under `contents`.
+    contents: { text: true, highlights: true, ...pickFields(exa.contents, EXA_CONTENT_FIELDS) }
+  };
+  if (includes.length) body.includeDomains = includes;
+  if (excludes.length) body.excludeDomains = excludes;
+  if (params.searchType === "news") body.category = "news";
+  const publishedAfter = timeRangeStartDate(params.timeRange);
+  if (publishedAfter && exa.endPublishedDate === undefined) body.startPublishedDate = `${publishedAfter}T00:00:00.000Z`;
+  Object.assign(body, pickFields(exa, EXA_OPTION_FIELDS));
+  return {
+    url: resolveBaseUrl(config, params),
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": params.token },
+      body: JSON.stringify(body)
+    }
+  };
+}
+
+const PARALLEL_MODES = new Set(["turbo", "fast", "basic", "advanced"]);
 
 function buildParallelRequest(config, params) {
   if (params.searchType && params.searchType !== "web") throw new Error("Unsupported Parallel search type");
@@ -227,7 +263,7 @@ function buildParallelRequest(config, params) {
     body.advanced_settings.excerpt_settings = { max_chars_per_result: maxChars };
   }
 
-  const afterDate = parallelAfterDate(params.timeRange);
+  const afterDate = timeRangeStartDate(params.timeRange);
   if (afterDate) {
     body.advanced_settings.source_policy = {
       ...(body.advanced_settings.source_policy || {}),
@@ -257,14 +293,21 @@ function buildParallelRequest(config, params) {
 
 function buildTavilyRequest(config, params) {
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
+  const tavily = getProviderOptions(params, "tavily");
+  const searchTopic = TAVILY_TOPICS.has(params.searchType) ? params.searchType : "general";
   const body = {
     query: params.query,
     max_results: params.maxResults,
-    topic: params.searchType === "news" ? "news" : "general"
+    topic: TAVILY_TOPICS.has(tavily.topic) ? tavily.topic : searchTopic
   };
   if (includes.length) body.include_domains = includes;
   if (excludes.length) body.exclude_domains = excludes;
   if (params.country) body.country = params.country;
+  // A caller's own date window replaces the generic one instead of mixing with it.
+  const hasOwnWindow = ["time_range", "start_date", "end_date"].some((key) => tavily[key] !== undefined);
+  const startDate = hasOwnWindow ? undefined : timeRangeStartDate(params.timeRange);
+  if (startDate) body.start_date = startDate;
+  Object.assign(body, pickFields(tavily, TAVILY_OPTION_FIELDS));
   return {
     url: resolveBaseUrl(config, params),
     init: {
@@ -548,7 +591,7 @@ function buildKeenableRequest(config, params) {
   const body = { query: params.query, max_results: params.maxResults };
   if (includes.length === 1) body.site = keenableHost(includes[0]);
   if (excludes.length) body.exclude_domains = excludes.map(keenableHost);
-  const publishedAfter = parallelAfterDate(params.timeRange);
+  const publishedAfter = timeRangeStartDate(params.timeRange);
   if (publishedAfter) body.published_after = publishedAfter;
   return {
     url: KEENABLE_SEARCH_URL,

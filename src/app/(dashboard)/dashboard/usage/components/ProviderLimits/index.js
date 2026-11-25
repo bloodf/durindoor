@@ -1571,8 +1571,9 @@ export default function ProviderLimits() {
           const isGrouped = group.connections.length > 1;
           // Connections can share a team's prepaid balance. Keep credit rows
           // per account, including zero balances and saved merged preferences.
+          // Rolling spend rows have no window to add up, so they stay separate too.
           const canMerge = isGrouped && !group.connections.some((conn) =>
-            (quotaData[conn.id]?.quotas || []).some((quota) => quota.isCreditBalance === true)
+            (quotaData[conn.id]?.quotas || []).some((quota) => quota.isCreditBalance === true || quota.isSpend === true)
           );
           const isMerged = canMerge && mergedProviders[group.provider] === true;
           const isCodexGroup = group.provider === "codex";

@@ -147,8 +147,9 @@ export function getConnectionQuotaRemaining(connection, quotaData) {
 }
 
 // Ignore unreported rows; a zero total alone does not establish depletion.
+// Spend rows are not quotas, and an estimate must not get an account disabled.
 function getUsableQuotaPercentages(quotas = []) {
-  return quotas.filter((quota) => quota && !quota.notReported && !quota.unlimited && (
+  return quotas.filter((quota) => quota && !quota.notReported && !quota.unlimited && !quota.isSpend && !quota.isEstimate && (
     Number.isFinite(quota.remainingPercentage) ||
     (!quota.isCredits && Number.isFinite(quota.remaining)) ||
     (Number.isFinite(quota.total) && quota.total > 0 && Number.isFinite(quota.used))
@@ -1020,9 +1021,9 @@ export function parseQuotaData(provider, data) {
         break;
 
       case "ollama":
-        // Session (5h) / Weekly (7d) / Monthly usage from ollama.com/api/usage. Carries
-        // remainingPercentage only — the API reports a ratio, not an absolute
-        // remaining count, and the bar reads the percentage.
+        // Older plans: Session (5h) / Weekly (7d) / Monthly usage from
+        // ollama.com/api/usage, as remainingPercentage only. Per-token pricing:
+        // rolling "Spent (…)" rows (isSpend) plus an estimated plan pool.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([name, quota]) => {
             normalizedQuotas.push({
@@ -1030,7 +1031,11 @@ export function parseQuotaData(provider, data) {
               used: quota.used || 0,
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
-              remainingPercentage: quota.remainingPercentage
+              remainingPercentage: quota.remainingPercentage,
+              isSpend: quota.isSpend === true,
+              isEstimate: quota.isEstimate === true,
+              requestCount: quota.requestCount,
+              currency: quota.currency
             });
           });
         }

@@ -233,6 +233,15 @@ Search body: `query` (required), plus `model` or `provider`. Fetch body: `url` (
 
 Search `searchConfig` providers in the registry today: `serper`, `youcom`, `searxng`, `linkup`, `exa`, `perplexity`, `glm`, `brave-search`, `searchapi`, `google-pse`, `tavily`, `ollama`, `keenable`. Fetch `fetchConfig` providers: `exa`, `tinyfish`, `jina-reader`, `tavily`, `firecrawl`, `firecrawl_custom`, `ollama`, `keenable`. Combos work on both routes when every member is that kind.
 
+### Exa and Tavily options
+
+`time_range` (`day`, `week`, `month`, `year`) becomes Exa's `startPublishedDate` and Tavily's `start_date`. Provider fields go under `provider_options.exa` or `provider_options.tavily`. Fields outside these lists are dropped.
+
+- Exa: `type`, `category`, `userLocation`, `moderation`, `additionalQueries`, `objective`, `systemPrompt`, `compliance`, `startPublishedDate`, `endPublishedDate`, and under `contents`: `text`, `highlights`, `summary`, `extras`, `subpages`, `subpageTarget`, `livecrawlTimeout`, `maxAgeHours`. `stream` and `outputSchema` are not supported. `endPublishedDate` replaces the `time_range` window.
+- Tavily: `topic` (`general`, `news`, `finance`; also settable as `search_type`), `search_depth`, `chunks_per_source`, `time_range`, `start_date`, `end_date`, `include_published_date`, `filter_by_published_date`, `include_answer`, `include_raw_content`, `include_images`, `include_image_descriptions`, `include_favicon`, `include_domains_mode`, `language`, `filter_by_language`, `auto_parameters`, `exact_match`, `include_usage`, `safe_search`. Your own date fields replace the `time_range` window.
+- Extra result fields are returned in `provider_raw`.
+- Some options, such as deeper search types, can cost more at the provider. The recorded cost estimate stays at the per-query rate.
+
 ### Keenable (keyless, explicit only)
 
 `keenable` is a keyless provider for Keenable's public tier. It is used only when a request or combo names it (`provider: "keenable"`, `model: "keenable/search"` or `"keenable/fetch"`). It is never added to default routes, auto combos or automatic fallback, and it does not appear in `/v1/models/web` unless you save a `keenable` connection. Account setup is not needed.

@@ -126,7 +126,7 @@ export function isAgentCapableRequest(body) {
 
 const isInstructionMessage = (message) => message?.role === ROLE.SYSTEM || message?.role === ROLE.DEVELOPER;
 
-function formatHistoryMessage(message) {
+function formatHistoryMessage(message, escapeHistory = false) {
   const content = textFromContent(message?.content);
   const extras = [];
   if (message?.role === ROLE.ASSISTANT && message.tool_calls?.length) {
@@ -137,7 +137,12 @@ function formatHistoryMessage(message) {
   if (message?.role === ROLE.TOOL) {
     extras.push(`[tool_result id=${message.tool_call_id || ""}]`);
   }
-  const textBody = [content, ...extras].filter(Boolean).join("\n");
+  let textBody = [content, ...extras].filter(Boolean).join("\n");
+  // Keep replayed text from creating history boundaries or forged turn labels.
+  if (escapeHistory) {
+    textBody = textBody.replace(/<\/conversation_history>|\[(?:user|assistant|tool|system|developer)\]/gi,
+      (marker) => marker.startsWith("<") ? `&lt;${marker.slice(1)}` : `&#91;${marker.slice(1)}`);
+  }
   return textBody ? `[${message.role}]\n${textBody}` : "";
 }
 
@@ -299,7 +304,7 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     .join("\n\n");
   const chatMessages = messages.filter((message) => !isInstructionMessage(message));
   const current = chatMessages.at(-1);
-  const history = chatMessages.slice(0, -1).map(formatHistoryMessage).filter(Boolean);
+  const history = chatMessages.slice(0, -1).map((message) => formatHistoryMessage(message, true)).filter(Boolean);
   const rawUser = (current?.role === ROLE.USER ?
     textFromContent(current.content) :
     formatHistoryMessage(current)) || "Continue.";

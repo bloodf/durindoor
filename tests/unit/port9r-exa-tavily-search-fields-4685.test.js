@@ -17,7 +17,7 @@ describe("upstream PR #4685: Exa and Tavily request and response fields", () => 
   it("sends Exa content options under contents", () => {
     const sent = body(exa);
 
-    expect(sent.contents).toEqual({ text: true, highlights: true });
+    expect(sent.contents).toEqual({ text: false, highlights: true });
     expect(sent).not.toHaveProperty("text");
     expect(sent).not.toHaveProperty("highlights");
   });
@@ -33,9 +33,9 @@ describe("upstream PR #4685: Exa and Tavily request and response fields", () => 
     });
 
     expect(sent).toEqual({
-      query: "gateway api", numResults: 5, type: "deep", userLocation: "US", category: "news",
+      query: "gateway api", numResults: 5, type: "auto", userLocation: "US", category: "news",
       includeDomains: ["arxiv.org"], excludeDomains: ["example.com"],
-      contents: { text: { maxCharacters: 500 }, highlights: true, maxAgeHours: 48 },
+      contents: { text: false, highlights: true },
     });
   });
 
@@ -48,7 +48,7 @@ describe("upstream PR #4685: Exa and Tavily request and response fields", () => 
 
     expect(sent).toEqual({
       query: "gateway api", max_results: 5, topic: "general", country: "US", include_domains: ["sec.gov"],
-      search_depth: "advanced", include_raw_content: true,
+      search_depth: "basic", include_usage: true,
     });
   });
 

@@ -72,7 +72,6 @@ export function openaiToAntigravityResponse(chunk, state) {
       // Ownership rules, in order: explicit index, explicit id, a new id opens
       // a new call, then the most recently active call.
       let idx;
-      let bindUnbound = false;
       if (Number.isInteger(tc.index)) {
         idx = tc.index;
       } else if (known !== undefined) {
@@ -82,7 +81,6 @@ export function openaiToAntigravityResponse(chunk, state) {
         const compatible = unbound.length === 1 && (!tc.function?.name ||
           !state._toolCallAccum[unbound[0]].name || state._toolCallAccum[unbound[0]].name === tc.function.name);
         idx = compatible ? unbound[0] : (indexes.length ? latest + 1 : latest);
-        bindUnbound = compatible;
       } else if (active !== undefined) {
         idx = active;
       } else if (indexes.length <= 1) {
@@ -102,7 +100,9 @@ export function openaiToAntigravityResponse(chunk, state) {
         replaceRetained(state, retainedSize(accum.id), retainedSize(tc.id));
         accum.id = tc.id;
       }
-      const appendName = Boolean(tc.function?.name) && !(bindUnbound && accum.name === tc.function.name);
+      // A name may be split across chunks, but some providers repeat the whole
+      // name on every argument chunk; skip an exact repeat (upstream #4511).
+      const appendName = Boolean(tc.function?.name) && tc.function.name !== accum.name;
       chargeRetained(state, (appendName ? tc.function.name.length : 0) + (tc.function?.arguments?.length || 0));
       if (appendName) accum.name += tc.function.name;
       if (tc.function?.arguments) accum.arguments += tc.function.arguments;

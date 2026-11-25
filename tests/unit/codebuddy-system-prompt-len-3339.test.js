@@ -73,7 +73,9 @@ describe("CodeBuddyExecutor system-prompt identity filter (#3823)", () => {
       ],
     });
 
+    // The CN gateway needs a leading system message, so one is added (upstream #4511).
     expect(output.messages).toEqual([
+      { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: LONG_PROJECT_PROMPT },
       { role: "assistant", content: IDENTITY_PROMPT },
     ]);

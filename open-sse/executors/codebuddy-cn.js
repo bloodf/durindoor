@@ -1,5 +1,6 @@
 import { DefaultExecutor } from "./default.js";
 import { normalizeCodeBuddyRequest, normalizeCodeBuddyResponse, sanitizeCodeBuddyMessages } from "./codebuddy-protocol.js";
+import { ROLE } from "../translator/schema/index.js";
 
 /**
  * CodeBuddyExecutor — talks to https://copilot.tencent.com/v2/chat/completions.
@@ -21,6 +22,10 @@ export class CodeBuddyExecutor extends DefaultExecutor {
 
     if (Array.isArray(transformed.messages)) {
       transformed.messages = sanitizeCodeBuddyMessages(this.provider, transformed.messages);
+      // The gateway answers 400 11128 unless a system prompt comes first (upstream #4511).
+      if (!transformed.messages.some((message) => message?.role === ROLE.SYSTEM)) {
+        transformed.messages = [{ role: ROLE.SYSTEM, content: "You are a helpful assistant." }, ...transformed.messages];
+      }
     }
 
     return normalizeCodeBuddyRequest(transformed);

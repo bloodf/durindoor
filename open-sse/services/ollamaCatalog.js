@@ -1,8 +1,11 @@
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { createCatalogCache } from "./catalogCache.js";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 256;
-const cache = new Map();
-const inFlight = new Map();
+// Fallback data for failed lookups, expiring after the TTL.
+const cache = createCatalogCache({ ttlMs: CACHE_TTL_MS, maxEntries: CACHE_MAX_ENTRIES });
+// Discovery always re-reads the daemon; only concurrent callers share a result.
+const discoveries = createCatalogCache({ keyFn: (scope) => `${scope}\0catalog` });
 const lastKnownGood = new Map();
 const observedContexts = new Map();
 
@@ -35,18 +38,9 @@ export function isLegacyOllamaEmbeddingModel(model) {
   return /\b(?:bge|minilm|nomic embed|mxbai embed|snowflake arctic embed|all minilm|e5|gte)\b/.test(normalized);
 }
 
-function cached(key) {
-  const value = cache.get(key);
-  if (!value || value.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return null;
-  }
-  return value.value;
-}
-
-function store(map, key, value, expiresAt = null) {
+function store(map, key, value) {
   if (map.size >= CACHE_MAX_ENTRIES) map.delete(map.keys().next().value);
-  map.set(key, expiresAt ? { value, expiresAt } : value);
+  map.set(key, value);
 }
 
 export function getOllamaCatalogModel(host, accountId, model) {
@@ -56,9 +50,8 @@ export function getOllamaCatalogModel(host, accountId, model) {
 /** `/api/ps` is sole source for served context; fetchImpl enforces caller policy. */
 export async function discoverOllamaCatalog({ host, accountId = "", fetchImpl }) {
   const scope = `${host}\0${accountId}`;
-  const catalogKey = `${scope}\0catalog`;
-  if (inFlight.has(catalogKey)) return inFlight.get(catalogKey);
-  const request = (async () => {
+  const catalogKey = discoveries.keyFor(scope);
+  return discoveries.load(catalogKey, async () => {
     try {
       const [tagsResponse, psResponse] = await Promise.all([
         fetchImpl("/api/tags", { method: "GET" }),
@@ -75,7 +68,7 @@ export async function discoverOllamaCatalog({ host, accountId = "", fetchImpl })
         const contextKey = `${modelKey}\0context`;
         const currentContext = servedContexts.get(id);
         if (currentContext) {
-          store(cache, contextKey, currentContext, Date.now() + CACHE_TTL_MS);
+          cache.set(contextKey, currentContext);
           store(observedContexts, contextKey, currentContext);
         }
         let declared = capabilities(tag);
@@ -87,30 +80,24 @@ export async function discoverOllamaCatalog({ host, accountId = "", fetchImpl })
             // Tags stay membership source; cached enrichment below remains usable.
           }
         }
-        const previous = cached(modelKey) || lastKnownGood.get(modelKey);
-        const contextWindow = currentContext ?? cached(contextKey) ?? observedContexts.get(contextKey);
+        const previous = cache.get(modelKey) || lastKnownGood.get(modelKey);
+        const contextWindow = currentContext ?? cache.get(contextKey) ?? observedContexts.get(contextKey);
         const model = {
           id,
           name: isString(tag.name) && tag.name.trim() ? tag.name : id,
           ...(declared.has("embedding") && !declared.has("completion") ? { kind: "embedding" } : declared.size ? { kind: "llm" } : previous?.kind ? { kind: previous.kind } : isLegacyOllamaEmbeddingModel(tag) ? { kind: "embedding" } : null),
           ...(declared.size ? { capabilities: { tools: declared.has("tools"), vision: declared.has("vision"), ...(contextWindow ? { contextWindow } : null) } } : previous?.capabilities ? { capabilities: { ...previous.capabilities, ...(contextWindow ? { contextWindow } : null) } } : contextWindow ? { capabilities: { contextWindow } } : null),
         };
-        store(cache, modelKey, model, Date.now() + CACHE_TTL_MS);
+        cache.set(modelKey, model);
         store(lastKnownGood, modelKey, model);
         models.push(model);
       }
-      store(cache, catalogKey, models, Date.now() + CACHE_TTL_MS);
+      cache.set(catalogKey, models);
       store(lastKnownGood, catalogKey, models);
       return { models, source: "live", degraded: false };
     } catch {
-      const models = cached(catalogKey) || lastKnownGood.get(catalogKey) || [];
+      const models = cache.get(catalogKey) || lastKnownGood.get(catalogKey) || [];
       return models.length ? { models, source: "cache", degraded: true, warning: "Ollama discovery failed; using last known catalog." } : { models: [], source: "unavailable", degraded: true, warning: "Ollama discovery failed." };
     }
-  })();
-  inFlight.set(catalogKey, request);
-  try {
-    return await request;
-  } finally {
-    if (inFlight.get(catalogKey) === request) inFlight.delete(catalogKey);
-  }
+  });
 }

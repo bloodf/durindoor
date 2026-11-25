@@ -25,6 +25,9 @@ import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { BaseExecutor } from "./base.js";
+import { bindsConnectionRoute, abortable, createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildErrorBody } from "../utils/error.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -370,7 +373,7 @@ export class ZcodeExecutor extends BaseExecutor {
   buildHeaders() { return {}; }
   transformRequest() { return null; }
 
-  async #events({ model, prompt, signal }) {
+  async #events({ model, prompt, signal, dispatch }) {
     const options = this.options;
     const spawnProcess = options.spawnProcess || defaultSpawnZcodeProcess;
     const ownsCwd = !options.cwd;
@@ -395,9 +398,10 @@ export class ZcodeExecutor extends BaseExecutor {
             try { conversation.applyFrame(message.params); queue.push({ frame: true }); } catch (error) { queue.push({ failure: error }); }
           }
         });
-        await client.command(null, "createSession", buildCreateSessionPayload({ sessionId, workspaceId: cwd, cwd, model }));
-        await client.request(ZCODE_METHODS.subscribe, { topic: `conversation/${sessionId}` });
-        await client.command(sessionId, "sendText", { text: prompt, toolDisallowlist: [...ZCODE_TOOL_DENYLIST] });
+        await abortable(client.command(null, "createSession", buildCreateSessionPayload({ sessionId, workspaceId: cwd, cwd, model })), signal);
+        await abortable(client.request(ZCODE_METHODS.subscribe, { topic: `conversation/${sessionId}` }), signal);
+        // sendText is the one billable send; session setup is not charged.
+        await dispatch(() => client.command(sessionId, "sendText", { text: prompt, toolDisallowlist: [...ZCODE_TOOL_DENYLIST] }));
 
         let emitted = 0;
         const deadline = Date.now() + (options.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS);
@@ -438,20 +442,35 @@ export class ZcodeExecutor extends BaseExecutor {
     };
   }
 
-  async execute({ model, body, stream, credentials, signal }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     if (!isZcodeDispatchEnabled(credentials)) {
       return this.#fail(new ZcodeError(403, "zcode_dispatch_disabled",
         `ZCode session dispatch is disabled for this connection. Set providerSpecificData.${ZCODE_OPT_IN_KEY} to true to opt in.`), model);
+    }
+    if (bindsConnectionRoute(input.proxyOptions)) {
+      return this.#fail(new ZcodeError(400, "zcode_proxy_unsupported", "ZCode cannot use gateway proxy or relay settings."), model);
     }
     const max = this.options.maxConcurrent || DEFAULT_MAX_CONCURRENT;
     if (this.active >= max) return this.#fail(new ZcodeError(429, "zcode_busy", "Too many concurrent ZCode sessions."), model);
     this.active += 1;
     let resolvedModel = model;
     let started = null;
+    const sender = createExecutorSender(this, input);
+    let ack = null;
+    const dispatch = async (send) => {
+      ack = await sender.sendRequest(ZCODE_URL, { signal }, null, { transport: send });
+    };
+    // Every response returned after the send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(ack, result.response);
+      return ack ? { ...result, attemptStartedAt: sender.attemptStartedAt } : result;
+    };
     try {
       resolvedModel = resolveZcodeModel(model);
       const prompt = buildZcodePrompt(body);
-      started = await this.#events({ model: resolvedModel, prompt, signal });
+      started = await this.#events({ model: resolvedModel, prompt, signal, dispatch });
       const generator = started.run();
       const release = () => { this.active -= 1; };
       const wantsStream = stream === true || body?.stream === true;
@@ -476,10 +495,10 @@ export class ZcodeExecutor extends BaseExecutor {
         } : undefined;
         const completion = { id, object: "chat.completion", created, model: resolvedModel, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] };
         if (usage) completion.usage = usage;
-        return {
+        return carry({
           response: new Response(JSON.stringify(completion), { status: 200, headers: { "Content-Type": "application/json" } }),
           url: ZCODE_URL, headers: {}, transformedBody: { model: resolvedModel },
-        };
+        });
       }
 
       // Pull the first event before answering so setup failures keep a real HTTP status.
@@ -520,15 +539,19 @@ export class ZcodeExecutor extends BaseExecutor {
           await generator.return(undefined).catch(() => {});
         },
       });
-      return {
+      return carry({
         response: new Response(readable, { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" } }),
         url: ZCODE_URL, headers: {}, transformedBody: { model: resolvedModel },
-      };
+      });
     } catch (error) {
-      if (error?.name === "AbortError") throw error;
+      if (error?.name === "AbortError") {
+        await settleProviderAttemptDispatch(ack, { reason: "abort" });
+        throw error;
+      }
       // Once the generator exists, the JSON/stream paths above own the slot release.
       if (!started) this.active -= 1;
-      return this.#fail(error, resolvedModel);
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      return carry(this.#fail(error, resolvedModel));
     }
   }
 }

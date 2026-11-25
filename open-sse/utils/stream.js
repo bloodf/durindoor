@@ -1,7 +1,7 @@
 import { antigravityGeminiResponse } from "../handlers/chatCore/antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
-import { formatClaudeSseError } from "./sseFrames.js";
+import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
@@ -22,7 +22,7 @@ import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.j
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
-import { advancePendingSseLineBytes } from "./pendingSseLine.js";
+import { advancePendingSseLineBytes, MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 import { isProviderKeepaliveEvent } from "./providerKeepalive.js";
 import {
   createMinimaxThinkingStreamState,
@@ -55,6 +55,39 @@ const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "g
 // Bound finish_reason -> real usage deferral when the upstream never sends a
 // usage trailer or [DONE]. This is not a general stream inactivity timeout.
 const PENDING_COMPLETION_FLUSH_MS = 3000;
+
+// This transform forwards line by line (it also carries NDJSON), so it reads
+// each line's fields with the shared parser instead of waiting for whole frames.
+/** Trimmed value of a line's `data:` field, or null for any other line. */
+function sseLineData(line) {
+  const { hasData, data } = parseSseFrame(line);
+  // A bare `data` line (no colon) is forwarded untouched.
+  return hasData && line !== "data" ? data.trim() : null;
+}
+
+const sseLineEvent = (line) => parseSseFrame(line).eventName?.trim() || null;
+
+/** Forwarded `data:x` lines are written as `data: x`. */
+const spaceDataField = (line) => line.replace(/^data:(?! )/, "data: ");
+
+/** A `data:` line holding only the start of a JSON value split over several data lines. */
+function startsSplitData(line) {
+  const value = sseLineData(line);
+  if (!value?.startsWith("{") && !value?.startsWith("[")) return false;
+  try {JSON.parse(value);return false;} catch {return true;}
+}
+
+/** One `data:` line for held lines that form a single JSON value, else null. */
+function joinSplitData(lines) {
+  const { data } = parseSseFrame(lines.map((line) => line.trim()).join("\n"));
+  try {JSON.parse(data);} catch {return null;}
+  const eol = lines[0].endsWith("\r") ? "\r" : "";
+  return {
+    others: lines.filter((line) => sseLineData(line.trim()) === null),
+    // Newlines between JSON tokens are whitespace.
+    line: `data: ${data.replace(/\n/g, " ")}${eol}`
+  };
+}
 
 function normalizeStreamError(error, secrets = []) {
   // Public fields only: redact the selected credential values before they reach the client.
@@ -592,6 +625,8 @@ export function createSSEStream(options = {}) {
   };
 
   let streamDoneSent = false; // track duplicate [DONE] across transform + flush
+  // A forwarded data line still waiting for the blank line that ends its frame.
+  let dataFrameOpen = false;
   // OpenAI choices terminate independently. Suppress only repeated terminal
   // chunks for the same index; another choice may still finish later.
   const passthroughFinishedChoices = new Set();
@@ -645,29 +680,22 @@ export function createSSEStream(options = {}) {
     const summary = providerSummary.finalize(usage);
     return hasTokenLimitTerminal() ? { ...summary, hasTokenLimitTerminal: true } : summary;
   };
-  const observeBufferedUpstream = (text, pendingEventName = null) => {
-    let eventName = pendingEventName;
-    for (const rawLine of String(text || "").split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim() || null;
-        continue;
-      }
-      if (!line.startsWith("data:") && !line.startsWith("{")) continue;
-      const parsed = parseSSELine(line, targetFormat);
-      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });else
-      if (parsed) {
-        upstreamTerminal.observe({ chunk: parsed, eventName });
-        if (
-        targetFormat === FORMATS.CLAUDE &&
-        parsed?.type === "message_stop" &&
-        upstreamTerminal.outcome === "success")
-        claudeTerminalSeen = true;
-      } else
-      if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
-      eventName = null;
-    }
-    return eventName;
+  const observeBufferedUpstream = (line, pendingEventName = null) => {
+    if (line.startsWith("event:")) return sseLineEvent(line);
+    const data = sseLineData(line);
+    if (data === null && !line.startsWith("{")) return pendingEventName;
+    const parsed = parseSSELine(line, targetFormat);
+    if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName: pendingEventName });else
+    if (parsed) {
+      upstreamTerminal.observe({ chunk: parsed, eventName: pendingEventName });
+      if (
+      targetFormat === FORMATS.CLAUDE &&
+      parsed?.type === "message_stop" &&
+      upstreamTerminal.outcome === "success")
+      claudeTerminalSeen = true;
+    } else
+    if (line.startsWith("{") || data) upstreamTerminal.fail();
+    return null;
   };
 
   // The compatibility parser is enabled only by exact provider transport/model
@@ -850,12 +878,40 @@ export function createSSEStream(options = {}) {
     return selected;
   };
 
-  const processLines = (lines, controller) => {
-      for (const [lineIndex, line] of lines.entries()) {
-        const trimmed = line.trim();
+  // Lines of a frame whose JSON spans several `data:` lines, held until the
+  // frame ends. Only a line that fails to parse on its own starts a hold.
+  let splitData = null;
+  // Held lines being processed again as they were; they must not be held twice.
+  let replayLines = 0;
+  const holdSplitData = (line) => {splitData = { lines: [line], size: line.length };};
 
-        if (pendingClaudeFinish && trimmed) {
-          const receipt = parseSSELine(trimmed, targetFormat);
+  const processLines = (lines, controller) => {
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        const trimmed = line.trim();
+        // The synthetic Claude finish line is never part of an upstream frame.
+        const mayHold = !releasingClaudeFinish && replayLines === 0;
+        if (!releasingClaudeFinish && replayLines > 0) replayLines--;
+
+        if (splitData && !releasingClaudeFinish) {
+          if (trimmed && sseLineData(trimmed) !== "[DONE]" && splitData.size <= MAX_PENDING_SSE_LINE_BYTES) {
+            splitData.lines.push(line);
+            splitData.size += line.length;
+            continue;
+          }
+          const held = splitData.lines;
+          splitData = null;
+          const joined = joinSplitData(held);
+          if (!joined) replayLines = held.length;
+          const released = joined ? [...joined.others, joined.line] : held;
+          lines = [...lines.slice(0, lineIndex), ...released, ...lines.slice(lineIndex)];
+          lineIndex--;
+          continue;
+        }
+
+        const receipt = pendingClaudeFinish && trimmed ? parseSSELine(trimmed, targetFormat) : null;
+        // A usage trailer split over data lines is awaited until it is joined.
+        if (pendingClaudeFinish && trimmed && (receipt || !startsSplitData(trimmed))) {
           const finish = pendingClaudeFinish;
           pendingClaudeFinish = null;
           clearCompletionFlushTimer();
@@ -869,7 +925,7 @@ export function createSSEStream(options = {}) {
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
           if (trimmed.startsWith("event:")) {
-            const evt = trimmed.slice(6).trim();
+            const evt = sseLineEvent(trimmed) || "";
             eventTypeCounts[evt] = (eventTypeCounts[evt] || 0) + 1;
           }
         }
@@ -878,7 +934,7 @@ export function createSSEStream(options = {}) {
         // next label in every mode/format so event/payload contradictions cannot
         // be hidden by passthrough normalization.
         if (trimmed.startsWith("event:")) {
-          currentUpstreamEvent = trimmed.slice(6).trim() || null;
+          currentUpstreamEvent = sseLineEvent(trimmed);
           if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES) {
             currentOpenAIResponsesEvent = currentUpstreamEvent;
           } else if (responsesPassthrough) {
@@ -897,8 +953,9 @@ export function createSSEStream(options = {}) {
           let pendingInlineThinkingOutput = "";
           const inlineThinkingRecoveryChoices = [];
 
-          const isDoneLine = /^data:\s*\[DONE\]\s*$/.test(trimmed);
-          const isDataLine = trimmed.startsWith("data:");
+          const dataValue = sseLineData(trimmed);
+          const isDoneLine = dataValue === "[DONE]";
+          const isDataLine = dataValue !== null;
           if (filterEmptyOpenAIFrames) {
             if (!trimmed) {
               pendingSSEFields = "";
@@ -927,9 +984,9 @@ export function createSSEStream(options = {}) {
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
           }
 
-          if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
+          if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? dataValue : trimmed)) {
             try {
-              const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              const parsed = JSON.parse(isDataLine ? dataValue : trimmed);
               // A replayed Responses frame re-sends a sequence_number that was
               // already forwarded. Forwarding it again duplicates its content,
               // and its held event label has to go with it.
@@ -1249,6 +1306,11 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
             } catch {
+              if (mayHold && startsSplitData(trimmed)) {
+                currentUpstreamEvent = upstreamEventForLine;
+                holdSplitData(line);
+                continue;
+              }
               upstreamTerminal.fail();
               // Skip non-JSON data lines silently — don't forward garbage to clients.
               // Upstream providers sometimes return plain-text errors (HTML, rate-limit
@@ -1258,11 +1320,7 @@ export function createSSEStream(options = {}) {
           }
 
           if (!injectedUsage) {
-            if (line.startsWith("data:") && !line.startsWith("data: ")) {
-              output = "data: " + line.slice(5) + "\n";
-            } else {
-              output = line + "\n";
-            }
+            output = spaceDataField(line) + "\n";
           }
 
           if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
@@ -1278,6 +1336,8 @@ export function createSSEStream(options = {}) {
             pendingSSEFields = "";
           }
 
+          if (isDataLine) dataFrameOpen = true;else
+          if (!trimmed) dataFrameOpen = false;
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           continue;
@@ -1288,7 +1348,8 @@ export function createSSEStream(options = {}) {
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) {
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) upstreamTerminal.fail();
+          if (mayHold && targetFormat !== FORMATS.OLLAMA && startsSplitData(trimmed)) holdSplitData(line);else
+          if (sseLineData(trimmed)) upstreamTerminal.fail();
           continue;
         }
 
@@ -1577,13 +1638,29 @@ export function createSSEStream(options = {}) {
       }
       pendingLineBytes = nextPendingLineBytes;
       const text = decoder.decode(chunk, { stream: true });
+      const heldCR = buffer.endsWith("\r");
       buffer += text;
       reqLogger?.appendProviderChunk?.(text);
 
-      const lastNewline = text.lastIndexOf("\n");
-      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
-      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
-      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
+      // Lines end at LF, CRLF or CR. A CR closing this read waits for the next
+      // one, which may start with its LF. Only the new text is searched.
+      const lastCR = text.length > 1 ? text.lastIndexOf("\r", text.length - 2) : -1;
+      const lastEnd = Math.max(text.lastIndexOf("\n"), lastCR);
+      const offset = buffer.length - text.length;
+      let splitAt = -1;
+      if (lastEnd >= 0) splitAt = offset + lastEnd;else
+      if (heldCR && text) splitAt = offset - 1;
+      let lines = [];
+      if (splitAt >= 0) {
+        const complete = buffer.slice(0, splitAt + 1);
+        // A CRLF line keeps its CR, so forwarded lines keep their bytes.
+        lines = complete.split(complete.includes("\r") ? /\r(?!\n)|\n/ : "\n");
+        lines.pop();
+        const endedAtCR = buffer[splitAt] === "\r";
+        buffer = buffer.slice(splitAt + 1);
+        // The byte cap above only resets at LF.
+        if (endedAtCR) pendingLineBytes = sharedEncoder.encode(buffer).byteLength;
+      }
 
       processLines(selectKeepaliveLines(lines), controller);
     },
@@ -1595,6 +1672,29 @@ export function createSSEStream(options = {}) {
       try {
         const remaining = decoder.decode();
         if (remaining) buffer += remaining;
+
+        // A held CR with nothing before it is the final frame's blank line.
+        if (buffer === "\r") {
+          buffer = "";
+          processLines(selectKeepaliveLines([""]), controller);
+        }
+        // The stream ended inside a split frame, with or without a final newline.
+        if (splitData) {
+          const held = splitData.lines;
+          splitData = null;
+          const tailData = sseLineData(buffer.trim());
+          const takesTail = tailData !== null && tailData !== "[DONE]";
+          const joined = joinSplitData(takesTail ? [...held, buffer] : held);
+          if (!joined) {
+            replayLines = held.length;
+            processLines(held, controller);
+          } else if (takesTail) {
+            processLines(joined.others, controller);
+            buffer = joined.line;
+          } else {
+            processLines([...joined.others, joined.line], controller);
+          }
+        }
 
         if (pendingClaudeFinish) {
           const finish = pendingClaudeFinish;
@@ -1673,7 +1773,7 @@ export function createSSEStream(options = {}) {
               upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
               currentUpstreamEvent = null;
               recordCompletionData(parsed, { content: true });
-              const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+              const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
               output = `${prefix}${JSON.stringify(parsed)}\n\n`;
             } else if (parsed && targetFormat === FORMATS.OPENAI) {
               const tokenLimit = isOpenAITokenLimitFrame(parsed);
@@ -1687,7 +1787,7 @@ export function createSSEStream(options = {}) {
                 upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
                 currentUpstreamEvent = null;
                 recordCompletionData(parsed, { content: true, tokenLimit });
-                const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+                const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
             } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
@@ -1697,13 +1797,10 @@ export function createSSEStream(options = {}) {
             } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
-              output = buffer;
-              if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-                output = "data: " + buffer.slice(5);
-              }
+              output = spaceDataField(buffer);
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
-            if (output && filterEmptyOpenAIFrames && trimmedBuffer.startsWith("data:")) {
+            if (output && filterEmptyOpenAIFrames && sseLineData(trimmedBuffer) !== null) {
               output = pendingSSEFields + output;
               pendingSSEFields = "";
             } else if (output && responsesPassthrough) {
@@ -1712,6 +1809,7 @@ export function createSSEStream(options = {}) {
               pendingSSEFields = "";
             }
             if (output) {
+              dataFrameOpen = false;
               reqLogger?.appendConvertedChunk?.(output);
               controller.enqueue(sharedEncoder.encode(output));
             }
@@ -1762,7 +1860,8 @@ export function createSSEStream(options = {}) {
           !isClaudeStream &&
           upstreamTerminal.outcome !== "failure")
           {
-            const doneOutput = "data: [DONE]\n\n";
+            // Close the open frame first, or [DONE] would join its data.
+            const doneOutput = `${dataFrameOpen ? "\n" : ""}data: [DONE]\n\n`;
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }

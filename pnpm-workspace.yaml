@@ -25,3 +25,4 @@ allowBuilds:
   koffi: true # Native FFI backend required by tls-client-node.
   tls-client-node: true # Production TLS transport native library provisioning.
   unrs-resolver: true # Native import resolver used by the lint toolchain.
+  puppeteer: false # Do not download Chromium. Recovery stays disabled until sandbox and egress are proved.

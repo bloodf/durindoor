@@ -1,16 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { analyzeVitestReport, printAnalysis } from "./verify-no-regression.mjs";
 import { verifyBaselineDiff } from "./verify-baseline-diff.mjs";
 import { writeDiagnosticJunit, writeJunitReport } from "./junit.mjs";
+import {
+  combineBatchReports, fullBatchArgs, mandatoryTestInventory, missingFromDiscovery, partitionInventory,
+} from "./full-batches.mjs";
 
 import { validateCompletedReportStates } from "./report-states.mjs";
 
 const testsDir = fileURLToPath(new URL("../", import.meta.url));
+const repoRoot = path.resolve(testsDir, "..");
 const reportPath = path.join(testsDir, ".test-results.json");
 const junitPath = path.join(testsDir, ".test-results.junit.xml");
+const inventoryPath = path.join(testsDir, ".full-inventory.json");
+const batchReportPath = (index) => path.join(testsDir, `.full-batch-${index + 1}.json`);
+
+// Every command in the gate has a five-minute ceiling, including kill grace.
+export const COMMAND_TIMEOUT_MS = 300_000;
 
 export function readFreshReport(file, startedAt) {
   if (!fs.existsSync(file)) throw new Error("Vitest did not create a JSON report");
@@ -62,22 +71,86 @@ function ensureDiagnosticArtifacts(error) {
   if (!fs.existsSync(junitPath)) writeDiagnosticJunit(error, junitPath);
 }
 
-export function runCi() {
-  fs.rmSync(reportPath, { force: true });
-  fs.rmSync(junitPath, { force: true });
-  const startedAt = Date.now();
-  const vitestBin = fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url));
-  const result = spawnSync(process.execPath, [vitestBin, "run", "--reporter=json", `--outputFile=${reportPath}`], {
-    cwd: testsDir,
-    env: process.env,
-    stdio: "inherit",
-  });
-  if (result.error) throw result.error;
+function killGroup(pid) {
+  try { process.kill(-pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+}
 
-  const report = readFreshReport(reportPath, startedAt);
-  validateVitestExecution(report, result.status ?? 1, result.signal);
-  writeJunitReport(report, junitPath);
-  const analysis = analyzeVitestReport(report);
+// Runs one command in its own process group; on timeout the whole group
+// (Vitest and its forks) is killed and the result is marked timedOut.
+export function runSupervised(command, args, { cwd, env = process.env, timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let child;
+    try {
+      child = spawn(command, args, { cwd, env, stdio: "inherit", detached: true });
+    } catch (error) {
+      resolve({ code: null, signal: null, timedOut: false, error, startedAt, durationMs: 0 });
+      return;
+    }
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; killGroup(child.pid); }, timeoutMs);
+    const finish = (result) => {
+      clearTimeout(timer);
+      // Reap fork workers a crashed or killed runner may leave behind.
+      if (child.pid) killGroup(child.pid);
+      resolve({ timedOut, startedAt, durationMs: Date.now() - startedAt, ...result });
+    };
+    child.on("error", (error) => finish({ code: null, signal: null, error }));
+    child.on("close", (code, signal) => finish({ code, signal }));
+  });
+}
+
+function assertCompleted(label, result) {
+  if (result.error) throw result.error;
+  if (result.timedOut) throw new Error(`${label} exceeded the ${COMMAND_TIMEOUT_MS}ms command ceiling`);
+}
+
+function trackedTestPaths() {
+  const result = spawnSync("git", ["ls-files", "-z", "--", "tests"], { cwd: repoRoot, encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    throw new Error(`cannot list the tracked test inventory: ${result.error?.message || result.stderr.trim()}`);
+  }
+  return result.stdout.split("\0").filter(Boolean);
+}
+
+async function discoverBatches(vitestBin, env) {
+  const result = await runSupervised(process.execPath,
+    [vitestBin, "list", "--filesOnly", `--json=${inventoryPath}`], { cwd: testsDir, env });
+  assertCompleted("Vitest discovery", result);
+  if (result.code !== 0) throw new Error(`Vitest discovery exited ${result.code ?? result.signal}`);
+  const batches = partitionInventory(readFreshReport(inventoryPath, result.startedAt), testsDir);
+  const mandatory = mandatoryTestInventory(trackedTestPaths(),
+    { hasCloud: fs.existsSync(path.join(repoRoot, "cloud")) });
+  const missing = missingFromDiscovery(batches, mandatory);
+  if (missing.length > 0) {
+    throw new Error(`Vitest discovery missed ${missing.length} tracked test file(s): ${missing.slice(0, 5).join(", ")}`);
+  }
+  return batches;
+}
+
+export async function runCi({ env = process.env } = {}) {
+  for (const file of [reportPath, junitPath, inventoryPath]) fs.rmSync(file, { force: true });
+  const vitestBin = fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url));
+  const batches = await discoverBatches(vitestBin, env);
+  console.log(`test:ci: ${batches.flat().length} files in ${batches.length} sequential batches`);
+
+  const reports = [];
+  for (let i = 0; i < batches.length; i++) {
+    const file = batchReportPath(i);
+    fs.rmSync(file, { force: true });
+    console.log(`test:ci: batch ${i + 1}/${batches.length} start (${batches[i].length} files)`);
+    const result = await runSupervised(process.execPath, fullBatchArgs(testsDir, batches[i], file), { cwd: testsDir, env });
+    assertCompleted(`Vitest batch ${i + 1}`, result);
+    const report = readFreshReport(file, result.startedAt);
+    validateVitestExecution(report, result.code ?? 1, result.signal);
+    console.log(`test:ci: batch ${i + 1}/${batches.length} finished in ${(result.durationMs / 1000).toFixed(1)}s`);
+    reports.push(report);
+  }
+
+  const merged = combineBatchReports(batches, reports, testsDir);
+  fs.writeFileSync(reportPath, `${JSON.stringify(merged)}\n`);
+  writeJunitReport(merged, junitPath);
+  const analysis = analyzeVitestReport(merged);
   printAnalysis(analysis);
   verifyBaselineDiff();
   if (analysis.regressions.length > 0) {
@@ -86,11 +159,9 @@ export function runCi() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    runCi();
-  } catch (error) {
+  runCi().catch((error) => {
     ensureDiagnosticArtifacts(error);
     console.error(`CI test gate failed: ${error.message}`);
     process.exit(1);
-  }
+  });
 }

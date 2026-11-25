@@ -1,3 +1,4 @@
+import { estimateCompressionTokens } from "../services/compression/stats.js";
 import { githubRateLimit } from "./chatCore/githubRateLimit.js";
 import { updateProviderConnection } from "@/lib/localDb.js";
 import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
@@ -184,9 +185,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
-  // Kimi Code's /responses serves Responses clients only; typed server tools from
-  // Chat/Claude clients must stay on their native transport (#1368).
-  const responsesClientsOnly = provider === "kimi-coding-apikey";
+  // Kimi Code and Kimi Platform /responses serve Responses clients only; typed
+  // server tools from Chat/Claude clients stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey" || provider === "kimi";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
     (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
@@ -986,6 +987,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // as a response-header value. Catastrophic seam failure restores the pre-stack
   // snapshot and emits no header. Fail-open throughout.
   let compressionHeaderValue = null;
+  let compressionStats = null;
   if (tokenSaverEnabled && compressionEnabled) {
     const adaptiveBudget = normalizeContextBudgetConfig(compressionAdaptive);
     const preStackSnapshot = structuredClone(translatedBody);
@@ -1014,6 +1016,9 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       translatedBody = compressedBody;
       if (headerValue) {
         compressionHeaderValue = headerValue;
+        const tokensBefore = estimateCompressionTokens(preStackSnapshot);
+        const tokensAfter = estimateCompressionTokens(compressedBody);
+        compressionStats = { tokensBefore, tokensAfter, tokensSaved: Math.max(0, tokensBefore - tokensAfter) };
         xf.push(`COMPRESS:${headerValue}`);
       }
     } catch (err) {
@@ -1126,6 +1131,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
           phantomSavings: headroomStats ? isHeadroomPhantomSavings(headroomStats, headroomDiagnostics) : false,
           diagnostic: hrDiagnostic
         },
+        compression: compressionStats,
         pxpipe: pxpipeSummary ? {
           applied: pxpipeSummary.applied,
           tokensBeforeEst: pxpipeSummary.tokensBeforeEst,

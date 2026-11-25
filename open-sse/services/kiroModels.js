@@ -27,6 +27,7 @@ import { join } from "path";
 // Runtime user profiles are not standalone assets; avoid recursive NFT globs.
 const runtimeJoin = join.bind(null);
 import { refreshKiroToken } from "./tokenRefresh.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -248,9 +249,6 @@ function normalizeKiroSsoScope(scopes) {
   return isString(scopes) ? scopes.trim() : "";
 }
 
-/** @type {Map<string, { expiresAt: number, models: any[] }>} */
-const catalogCache = new Map();
-
 /**
  * Strip the `-agentic` and/or `-thinking` suffixes from a synthetic id, if
  * any. The implementation lives in `providers/models/kiroVariants.js` next to
@@ -387,6 +385,8 @@ function cacheKey(credentials) {
   return createHash("sha256").update(`kiro:${seed}`).digest("hex");
 }
 
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, keyFn: cacheKey });
+
 /**
  * Resolve the live Kiro model catalog for a credential and expand each entry
  * into 9router variants (`-thinking`, `-agentic`, `-thinking-agentic`). Each
@@ -413,15 +413,27 @@ export async function resolveKiroModels(credentials, options = {}) {
     return null;
   }
 
-  const key = cacheKey(credentials);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) {
-      return { models: cached.models, rawModels: cached.rawModels };
-    }
-  }
+  const key = catalogCache.keyFor(credentials);
+  const catalog = await catalogCache.load(key, () => loadKiroCatalog(credentials, options), {
+    force: Boolean(options.forceRefresh),
+    ageFromStart: true,
+    // Accounts can share a cache key, so only an identical request is shared: same
+    // tokens, egress route and token persistence. An abortable caller stays alone.
+    flightKey: options.signal ? null : JSON.stringify([
+      key,
+      credentials.accessToken,
+      credentials.refreshToken,
+      credentials.providerSpecificData,
+      options.proxyOptions || null,
+      Boolean(options.onCredentialsRefreshed)
+    ])
+  });
 
+  return catalog ? { models: catalog.models, rawModels: catalog.rawModels } : null;
+}
+
+/** One uncached Kiro catalog load, including the refresh-and-retry path. */
+async function loadKiroCatalog(credentials, options) {
   let raw;
   try {
     raw = await fetchKiroCatalogRaw(credentials, options.signal, options.proxyOptions);
@@ -497,12 +509,6 @@ export async function resolveKiroModels(credentials, options = {}) {
     }
   }
 
-  catalogCache.set(key, {
-    expiresAt: now + CACHE_TTL_MS,
-    models: expanded,
-    rawModels: raw
-  });
-
   return { models: expanded, rawModels: raw };
 }
 
@@ -512,7 +518,7 @@ export async function resolveKiroModels(credentials, options = {}) {
  */
 export function invalidateKiroModelCache(credentials) {
   if (!credentials) return;
-  catalogCache.delete(cacheKey(credentials));
+  catalogCache.delete(catalogCache.keyFor(credentials));
 }
 
 /**

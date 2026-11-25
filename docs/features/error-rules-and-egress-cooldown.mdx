@@ -37,6 +37,11 @@ Example: a provider that returns HTTP 429 with the text `daily cap hit` when its
 
 Declaring a rule for a provider is the opt-in. There is no separate allowlist to widen.
 
+### Built-in rules for Cline and Kilo
+
+- **Cline daily free limit.** A 429 that says `Try again in 19h 39m` (also `19h39m`, `39m`, `45s`) benches the refused model for that stated wait, capped at seven days, instead of retrying after a few seconds. Other Cline models on the connection keep routing. A missing or malformed wait uses the normal 429 backoff, and other providers ignore the phrase.
+- **Kilo paid model.** A 401, 402 or 403 whose error code is exactly `PAID_MODEL_AUTH_REQUIRED` (on `kilo-gateway` or `kilocode`) locks only the refused model for two minutes, so free models on the same connection keep routing. If the refused model id is not in the provider's catalog, no lock is written and the request moves on to the next candidate. A message about an invalid or expired key keeps the normal authentication handling.
+
 ## Egress-bucketed 429 cooldown
 
 `settings.egressBucketedProviders` opts a provider into cooling down every sibling connection that shares the same egress IP when one connection hits a 429. This matters for providers whose upstream quota is bucketed by IP address rather than by account: without it, DurinDoor keeps retrying every sibling connection one at a time until each burns its own guaranteed-to-fail call.

@@ -614,7 +614,7 @@ export class KiroExecutor extends BaseExecutor {
     const url = buildKiroCreateResponseUrl(resolveKiroRegion(credentials));
     const transformedBody = buildKiroCreateResponseBody({ body, credentials, model });
     const headers = buildKiroCreateResponseHeaders({ credentials, body });
-    const fetchOptions = { method: "POST", headers, body: JSON.stringify(transformedBody), signal };
+    const fetchOptions = { method: "POST", headers, body: JSON.stringify(transformedBody), redirect: "error", signal };
     if (directFetch) fetchOptions.directFetch = directFetch;
     const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, fetchOptions, proxyOptions));
     const attemptStartedAt = getCurrentProviderAttemptTimestamp() || Date.now();

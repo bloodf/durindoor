@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { abortable, createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { tlsFetchLMArena } from "../services/lmarenaTlsClient.js";
+import { runWithTlsProxyOptions } from "../services/tlsClientBase.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const URL = "https://arena.ai/nextjs-api/stream/create-evaluation";
@@ -27,10 +29,27 @@ export class LmarenaExecutor extends BaseExecutor {
   constructor(config = {}) { super("lmarena", { baseUrl: URL, ...config }); }
   buildUrl() { return URL; }
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    // The TLS client resolves its proxy from this scope, not from the send.
+    return runWithTlsProxyOptions(input.proxyOptions, () =>
+      withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed)));
+  }
+
+  async runChat(input, sender, billed) {
     const { model, body, stream, credentials, signal } = input; const cookie = cookieOf(credentials);
     if (!cookie) return { response: error(401, "Arena session cookie is missing"), url: URL, headers: {}, transformedBody: null };
     const headers = { "Content-Type": "application/json", Accept: "text/event-stream", Origin: "https://arena.ai", Referer: "https://arena.ai/", Cookie: cookie };
-    const result = await tlsFetchLMArena(URL, { method: "POST", headers, body: JSON.stringify(upstreamBody(model, body?.messages, credentials)), signal, stream: !!stream, sameOriginRedirects: true });
+    const request = { method: "POST", headers, body: JSON.stringify(upstreamBody(model, body?.messages, credentials)), stream: !!stream, sameOriginRedirects: true };
+    // The browser-TLS client is the transport. A streamed call answers at the first
+    // bytes. A buffered call answers with the whole reply, which the client's own
+    // timeout bounds, so the send itself stands in for response headers.
+    const sent = billed(await sender.sendRequest(URL, { signal }, input.proxyOptions, {
+      transport: stream ?
+        (options) => tlsFetchLMArena(URL, { ...request, signal: options.signal }) :
+        () => ({ reply: tlsFetchLMArena(URL, { ...request, signal }) })
+    }));
+    const result = stream ? sent : await abortable(sent.reply, signal);
     if (result.status >= 400) return { response: error(result.status, result.text || `Arena returned HTTP ${result.status}`), url: URL, headers, transformedBody: body };
     const upstream = new Response(result.text || "", { status: result.status, headers: { "content-type": "text/event-stream" } });
     if (stream) return { response: new Response(openAIStream(result.body || result.response?.body || upstream.body, model), { status: 200, headers: { "content-type": "text/event-stream" } }), url: URL, headers, transformedBody: body };

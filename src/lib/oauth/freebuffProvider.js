@@ -18,7 +18,7 @@
  * device-session token, never a paid Codebuff API key.
  */
 import { randomBytes } from "node:crypto";
-import { FREEBUFF_OAUTH } from "open-sse/config/freebuff.js";
+import { FREEBUFF_OAUTH } from "../../../open-sse/config/freebuff.js";
 import { isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { credentialFetch } from "../../../open-sse/utils/credentialFetch.js";
 

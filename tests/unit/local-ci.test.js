@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   selectRiskFloor, validateSelection, testEnvironment, scopedTestArgs, fullTestArgs,
-  validateTestReport, validateReceipt, terminateCommandGroup, assertPrivateTemporaryRoot,
+  validateTestReport, validateReceipt, terminateCommandGroup, assertPrivateTemporaryRoot, fullTestDependencyCommands,
 } from "../../scripts/local-ci.mjs";
 
 const base = "a".repeat(40);
@@ -20,6 +20,18 @@ it("reports genuine full-batch progress while retaining machine JSON and executi
     "--maxWorkers=4", "--isolate", "--pool=forks", "--reporter=verbose", "--reporter=json",
     `--outputFile.json=${report}`,
   ]);
+});
+it("installs root, CLI, and test dependencies in the private snapshot before full test collection", () => {
+  const snapshot = "/private/checkpoint/src";
+  expect(fullTestDependencyCommands(snapshot)).toEqual([
+    ["pnpm-install-root", "pnpm", ["install", "--frozen-lockfile"]],
+    ["pnpm-install-cli", "pnpm", ["install", "--frozen-lockfile"], { cwd: path.join(snapshot, "cli") }],
+    ["pnpm-install-tests", "pnpm", ["install", "--frozen-lockfile"], { cwd: path.join(snapshot, "tests") }],
+  ]);
+  const source = readFileSync(new URL("../../scripts/local-ci.mjs", import.meta.url), "utf8");
+  expect(source).toContain('...fullTestDependencyCommands(dirs.src)');
+  expect(source.indexOf('...fullTestDependencyCommands(dirs.src)'))
+    .toBeLessThan(source.indexOf('const discovery = await run("vitest-inventory"'));
 });
 const head = "b".repeat(40);
 const policySha256 = "c".repeat(64);

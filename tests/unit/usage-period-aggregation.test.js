@@ -1,3 +1,4 @@
+import { convertLegacyUsageDaily } from "@/lib/db/migrations/037-usage-daily-rollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -231,6 +232,7 @@ describe("usage period aggregation", () => {
       `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`,
       ["2023-01-01", JSON.stringify(legacy)],
     );
+    adapter.transaction(() => convertLegacyUsageDaily(adapter));
 
     const stats = await db.getUsageStats("all");
     expect(stats.byProvider.legacy).toMatchObject({

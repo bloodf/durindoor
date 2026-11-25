@@ -84,8 +84,7 @@ function freezeClock() {
 async function seed(db, usage, opts) {
   const { rows, days, rowsPerDay } = opts;
   // Seed representative events through production writes, then replicate their
-  // multiplicities in SQL. This avoids millions of JSON read/modify/write cycles
-  // during setup without inventing daily-rollup or materialized-view semantics.
+  // multiplicities in SQL to keep setup practical for multi-million-row fixtures.
   let representatives = days ? Math.min(100, rowsPerDay) : rows;
   while (days && rowsPerDay % representatives !== 0) representatives--;
   const factor = days ? rowsPerDay / representatives : 1;
@@ -135,22 +134,10 @@ async function seed(db, usage, opts) {
         db.run(`INSERT INTO ${table} (${quoted}) SELECT ${columns.map((column) => column === "timestamp" ? `SUBSTR(source.timestamp, 1, 10) || benchCopies.clock || SUBSTR(source.timestamp, 20)` : `source."${column}"`).join(", ")} FROM ${table} AS source CROSS JOIN benchCopies WHERE source.id <= ? AND benchCopies.n = ?`, [sourceMaxId, copy]);
       }
     }
-    // The rollup blob is a tree of numeric leaves keyed by dimension. Branch on
-    // the shape each case actually handles — finite number, array, object —
-    // rather than narrowing a representation with `typeof`.
-    const multiply = (value) => {
-      if (Number.isFinite(value)) return value * factor;
-      if (Array.isArray(value)) return value.map(multiply);
-      if (value instanceof Object) {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, multiply(item)]));
-      }
-      return value;
-    };
+    const { USAGE_DAILY_ROLLUP_SUMS } = await import("../src/lib/db/helpers/usageDailyRollups.js");
     db.transaction(() => {
-      for (const { dateKey } of db.all("SELECT dateKey FROM usageDaily")) {
-        const row = db.get("SELECT dateKey, data FROM usageDaily WHERE dateKey = ?", [dateKey]);
-        db.run("UPDATE usageDaily SET data = ? WHERE dateKey = ?", [JSON.stringify(multiply(JSON.parse(row.data))), row.dateKey]);
-      }
+      db.run(`UPDATE usageDailyRollups SET ${USAGE_DAILY_ROLLUP_SUMS.map((field) => `"${field}" = "${field}" * ?`).join(", ")}`,
+        USAGE_DAILY_ROLLUP_SUMS.map(() => factor));
       db.run("UPDATE _meta SET value = ? WHERE key = 'totalRequestsLifetime'", [String(rows)]);
     });
     db.exec("DROP TABLE benchCopies");

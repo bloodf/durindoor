@@ -1,0 +1,70 @@
+---
+title: Antigravity rotation
+description: Antigravity refresh protection is incomplete. Browser recovery and the scheduler stay off.
+---
+
+Antigravity refresh protection is incomplete. Some stored-credential refresh paths bypass the database lease, so the lease does not yet prevent concurrent refreshes across all routes. Browser password recovery and the automatic scheduler remain disabled.
+
+## Refresh lease
+
+The shared credential coordinator and generic provider refresh acquire a lease for a stored connection. Direct executor refreshes used by translator send, image and embeddings handlers, and standalone chat can bypass it. The provider test route and `agy` model discovery also contain direct Google refresh calls. These paths can dispatch while a lease is active or uncertain. Do not rely on the lease as a cross-route safety guarantee until those paths are integrated and tested. The lease holds a unique owner, a generation, an expiry, and a fencing token. Database time decides expiry. The in-process refresh lock is not cross-process safety.
+
+For leased paths, attempt states are `idle`, `claimed`, `dispatched`, `uncertain`, and `reauth`. The following behavior does not apply to bypassing paths.
+
+- A claimed lease that has expired can be taken again.
+- On leased paths, `dispatched` blocks another dispatch. Expiry after dispatch becomes `uncertain` and still blocks. It does not authorize a retry.
+- `invalid_grant` becomes `reauth`. The refresh path does not launch a browser.
+- The current implementation treats HTTP 429 as non-consuming backoff and returns the attempt to `idle`. Google non-consumption has not been established; a forced refresh can skip this backoff. This remains an unresolved replay risk.
+- HTTP 5xx, a timeout, a connection reset, an empty body, or a throw after dispatch becomes `uncertain`.
+- A successful refresh writes the token pair and clears the marker in the same transaction. It does not bump the generation. An omitted replacement refresh token is kept.
+- OAuth replacement and interactive reauth bump the generation, even when the refresh token string is unchanged.
+- Pre-dispatch failures use bounded exponential backoff, add 0–30 seconds of jitter, and honor a larger `Retry-After`. `retryCount` and `nextRetryAt` survive restart. After 5 failures the category is `budget_exhausted` until an operator reset. Reset clears the budget only while the state is `idle`. `force` skips `nextRetryAt` and the budget. It does not skip `uncertain`, `reauth`, or `dispatched`.
+
+The previous access token stays usable until it expires. A commit checks generation, owner, fencing token, the `dispatched` state, connection existence, the refresh-token revision, and enablement. A success that returns after the lease expired still commits if nothing has observed the expiry. Once an acquire, reset, generation advance, or management action has made the attempt `uncertain`, the late result is discarded and the state stays `uncertain`. No fencing token can fence Google.
+
+## Management API
+
+`GET` and `POST /api/oauth/antigravity/rotation` stay protected when dashboard login is optional. A browser request needs a same-origin `Origin`, or the machine-bound CLI token. The session is a dashboard JWT or `x-9r-cli-token`.
+
+`enroll`, `replace`, `enable`, and `scheduler-enable` also require header `x-9r-password` and a dashboard password that is not the built-in default. `disable`, `delete`, `retry`, `reset`, and `scheduler-disable` need the session and the origin check. These authorization requirements do not mean the protected actions are currently available: `enroll`, `replace`, and `enable` return `reauth_required` without writing recovery credentials. `scheduler-enable` reports `schedulerEnabled: false`; the scheduler cannot be enabled through this API.
+
+The JSON body limit is 8192 bytes. Public errors are allowlisted categories. Status returns `attemptState`, `errorCategory`, `recoveryEnabled`, `retryCount`, `nextRetryAt`, `subjectPresent`, and `schedulerEnabled`. It does not return tokens, the recovery password, ciphertext, email, the owner, the fencing token, or the subject string. `GET` does not start the scheduler.
+
+Recovery enrollment, password replacement, and enablement are not supported by the current API. It rejects all three actions with `reauth_required`, even when a subject and password are supplied; those values are not stored. Status always reports `recoveryEnabled: false` and `subjectPresent: false`, including when legacy lease rows contain those values. Operators cannot enable browser recovery or change those status flags through the API. If an account needs recovery, use the normal Antigravity provider sign-in/reauthentication flow in the dashboard. A blank password does not delete or replace a stored recovery password. Disable fences the generation and keeps any existing ciphertext. Delete removes only the recovery row and fences the generation; it does not delete the access or refresh token.
+
+Sign-in still succeeds when Google omits a subject. The current rotation API does not use a subject for enrollment or enablement because both actions are rejected. Dashboard and CLI authorization use PKCE (`code_challenge` and `code_verifier`). A missing verifier or challenge fails closed.
+
+## Scheduler
+
+The scheduler is hard-disabled. `scheduler-enable` returns `schedulerEnabled: false` and does not start it; boot does not resume it. An unexpired `dispatched` lease stays `busy` on leased paths, including after the holder process is killed. Expired dispatched leases become `uncertain` on acquire and are not replayed by those paths.
+
+## Browser recovery
+
+There is no production stored-password recovery caller. The browser helper requires both of these flags:
+
+- `DURINDOOR_ANTIGRAVITY_BROWSER_RECOVERY=1`
+- `DURINDOOR_ANTIGRAVITY_EGRESS_ENFORCED=1`
+
+Setting the flags is not proof of a sandbox or of egress control. Leave them unset. The real browser path does not type a password and does not click consent or solve a challenge. A callback is accepted only when scheme, host, port, and path match exactly and the URL has one `code` and one `state`. The classifier makes that decision before DNS. Chrome request interception does not by itself stop a local TCP connection. Any other host is resolved and allowed only when every address is public HTTPS on port 443 and the hostname is on the reviewed Google list. That check is not an operating-system egress boundary.
+
+Chromium is not downloaded at install or at gateway startup. A missing browser disables recovery and does not stop the gateway. The pinned packages are `puppeteer@25.18.1` (Apache-2.0), `puppeteer-extra@3.3.6` (MIT), and `puppeteer-extra-plugin-stealth@2.11.2` (MIT). puppeteer-core records Chrome-for-Testing `157.0.8103.78`. This port does not install that build.
+
+Temporary browser profiles are created mode `0700` and removed on success, failure, and cancellation. Crash dumps are disabled. The Chromium sandbox flags are left on.
+
+## Storage
+
+Migration 37 adds `antigravityRefreshLeases` and `antigravityRecoveryCredentials`. On PostgreSQL the epoch-millisecond columns are `BIGINT`. Recovery ciphertext is AES-256-GCM with AAD `antigravity-recovery:v1:<connectionId>:recoveryPassword`. A missing master key fails closed when a recovery row already exists. The first enrollment may create the key.
+
+Export does not select either table. Import rejects a payload that contains `antigravityRecoveryCredentials` or `antigravityRefreshLeases`. Import of a different refresh token advances the generation. The same refresh token leaves an `uncertain` or `reauth` block in place. Connections removed by import drop their rotation rows.
+
+## Gates still closed
+
+Do not enable the scheduler or the browser flags until an owner shows:
+
+- a real Chromium sandbox
+- egress enforcement in the owner container, including child processes, redirects, and DNS rebinding
+- leased cross-route concurrency and crash tests on SQLite and disposable PostgreSQL
+- verified identity provenance, explicit scope-bound consent, and a reviewed stored-credential recovery caller
+- a disposable Google account, if a live provider check is required
+
+This page does not authorize a production deploy, a Chromium download, or use of real credentials.

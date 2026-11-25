@@ -267,10 +267,21 @@ export const MODEL_PRICING = {
   "agnes-3.0-pro": { input: 0.45, output: 0.90, cached: 0.045 },
 
   // === Gemini ===
-  "gemini-3.8-flash": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-high": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-medium": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-low": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
+  // Google Gemini API paid Standard tier, USD per 1M tokens, checked 2026-11-24 (9router#5846):
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // Thinking bills as output; cache writes carry no fee, so cache_creation = input.
+  // 3.8 / 3.6 Flash rise to $1.50 / $7.50 / $0.15 cached on 2027-01-01: update these rows then.
+  "gemini-3.8-flash": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-high": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-medium": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-low": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-high": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-medium": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-low": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  // Text input rate; image, audio and video inputs cost more and are not modelled.
+  "gemini-embedding-2": { input: 0.20, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+  "gemini-embedding-2-preview": { input: 0.20, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
   "gemini-3-flash-preview": { input: 0.50, output: 3.00, cached: 0.03, reasoning: 4.50, cache_creation: 0.50 },
   "gemini-3-pro-preview": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
   "gemini-3.1-pro-low": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
@@ -366,6 +377,11 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // Gemma 4 has no paid tier on the Gemini API, so it bills $0 there only
+  // (9router#5846, checked 2026-11-24). Other hosts of the same id keep their own pricing.
+  gemini: {
+    "gemma-4-31b-it": { input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+  },
   // Gemini Developer API standard paid tier; implicit cache reads only.
   // https://ai.google.dev/gemini-api/docs/pricing#gemini-4-hydrogen
   "gemini-interactions": {

@@ -3,12 +3,10 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 import { PROVIDERS } from "../config/providers.js";
 import { getModelMeta } from "../config/providerModels.js";
 import { parseVertexSaJson, refreshVertexToken, refreshGoogleToken, classifyVertexCredential, VERTEX_CREDENTIAL } from "../services/tokenRefresh.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "../services/tokenRefresh/dedup.js";
-import { getCurrentProviderAttemptTimestamp } from "../services/providerAttemptContext.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
-import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
@@ -154,7 +152,10 @@ export class VertexExecutor extends BaseExecutor {
     return { accessToken: result.accessToken, expiresAt: result.expiresAt };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const effectiveCredentials = credentials ? { ...credentials } : credentials;
     const { saJson, adcJson } = resolveVertexCredential(effectiveCredentials?.apiKey);
 
@@ -204,30 +205,22 @@ export class VertexExecutor extends BaseExecutor {
       transformedBody.contents = contents;
     }
 
-    const connectController = new AbortController();
-    const mergedSignal = signal ? AbortSignal.any([signal, connectController.signal]) : connectController.signal;
-    const connectTimer = setTimeout(() => connectController.abort(new Error("Vertex connect timeout")), this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS);
-    let response;
-    try {
-      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
-        method: "POST",
-        headers,
-        // Only the partner endpoint speaks Chat Completions; Gemini stays native.
-        body: JSON.stringify(this.provider === "vertex-partner" ?
-          this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody),
-        signal: mergedSignal,
-        redirect: "error"
-      }, proxyOptions));
-    } finally {
-      clearTimeout(connectTimer);
-    }
+    const response = await sender.sendRequest(url, {
+      method: "POST",
+      headers,
+      // Only the partner endpoint speaks Chat Completions; Gemini stays native.
+      body: JSON.stringify(this.provider === "vertex-partner" ?
+        this.prepareOpenAIToolMessagesForWire(transformedBody) : transformedBody),
+      signal,
+      redirect: "error"
+    }, proxyOptions);
 
     return {
       response,
       url,
       headers,
       transformedBody,
-      attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+      attemptStartedAt: sender.attemptStartedAt,
       terminalProvenance: "upstream"
     };
   }

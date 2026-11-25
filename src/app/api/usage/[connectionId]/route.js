@@ -3,7 +3,7 @@ import "open-sse/index.js";
 
 import { getProviderConnectionById } from "@/lib/localDb";
 import { getConnectionUsageSummary } from "@/lib/db/repos/monitoringUsageRepo.js";
-import { fetchXaiQuota } from "@/lib/usage/xaiQuotaAdapter.js";
+import { fetchXaiOAuthAccount, fetchXaiQuota } from "@/lib/usage/xaiQuotaAdapter.js";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { fetchGrokCliCreditsConfig } from "open-sse/services/usage/grok-cli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -120,32 +120,13 @@ export async function GET(request, { params }) {
       }
     }
 
-    // xAI: the SuperGrok weekly pool is readable via grok.com's gRPC-web
-    // GetGrokCreditsConfig with the OAuth token (same endpoint the grok-cli
-    // provider uses). When it resolves, surface the real weekly % + reset as
-    // the primary row; otherwise fall back to local-history aggregation.
+    // xAI OAuth: show the account's billing quotas and plan (upstream
+    // decolua/9router#2672) plus the SuperGrok weekly pool from grok.com's
+    // gRPC-web GetGrokCreditsConfig. Each read fails open to local history.
     if (connection.provider === 'xai') {
       const local = await aggregateLocalUsage(connection, 'xAI / Grok Build');
       if (isOAuth && connection.accessToken) {
-        try {
-          const credits = await fetchGrokCliCreditsConfig(connection.accessToken, proxyOptions);
-          if (credits && Number.isFinite(credits.percentUsed)) {
-            const used = Math.round(Math.max(0, Math.min(100, credits.percentUsed)));
-            local.quotas = {
-              'Weekly SuperGrok': {
-                used,
-                total: 100,
-                remainingPercentage: Math.max(0, 100 - used),
-                resetAt: credits.resetAt || null,
-                unlimited: false,
-              },
-              ...local.quotas,
-            };
-            local.displayMessage = `xAI / Grok Build — SuperGrok weekly pool ${used}% used.`;
-          }
-        } catch {
-          /* fail-open: keep local-history-only card */
-        }
+        return Response.json(await addXaiOAuthQuotas(local, connection, proxyOptions));
       }
       if (!isOAuth) {
         const snapshot = await fetchXaiQuota({ connection, proxyOptions });
@@ -190,6 +171,41 @@ export async function GET(request, { params }) {
     console.warn(`[Usage] ${provider}: ${safeMessage}`);
     return Response.json({ error: safeMessage }, { status: 500 });
   }
+}
+
+/** Merge live xAI OAuth quotas ahead of the local-history card. */
+async function addXaiOAuthQuotas(local, connection, proxyOptions) {
+  const [credits, account] = await Promise.all([
+    fetchGrokCliCreditsConfig(connection.accessToken, proxyOptions).catch(() => null),
+    fetchXaiOAuthAccount({ connection, proxyOptions }).catch(() => null),
+  ]);
+  const live = account?.outcome === "success" ? { ...account.quotas } : {};
+  let weekly = null;
+  if (credits && Number.isFinite(credits.percentUsed)) {
+    const used = Math.round(Math.max(0, Math.min(100, credits.percentUsed)));
+    weekly = {
+      used,
+      total: 100,
+      remainingPercentage: Math.max(0, 100 - used),
+      resetAt: credits.resetAt || null,
+      unlimited: false,
+    };
+    // The aggregate billing "Credits" row is the same weekly pool.
+    delete live.Credits;
+  }
+  const quotas = weekly ? { 'Weekly SuperGrok': weekly, ...live } : live;
+  if (Object.keys(quotas).length === 0) return local;
+  // The dashboard hides the quota table while `message` is set.
+  const { message: _message, ...card } = local;
+  const plan = account?.outcome === "success" ? account.plan : card.plan || 'xAI / Grok Build';
+  return {
+    ...card,
+    plan,
+    quotas: { ...quotas, ...local.quotas },
+    displayMessage: weekly ?
+      `xAI / Grok Build — SuperGrok weekly pool ${weekly.used}% used.` :
+      `xAI ${plan} — live account quota.`,
+  };
 }
 
 /**

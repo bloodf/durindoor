@@ -80,7 +80,9 @@ export function startConsoleLogTransport({
       void switchToPolling();
       return;
     }
-    source.onopen = () => { clearWatchdog(); report("streaming"); };
+    // Open only proves headers arrived. A buffering tunnel sends those and holds
+    // the events, so only a first event disarms the watchdog (upstream #2554).
+    source.onopen = () => report("streaming");
     source.onmessage = (event) => {
       if (stopped) return;
       clearWatchdog();

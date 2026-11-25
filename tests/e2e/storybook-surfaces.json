@@ -6996,7 +6996,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx#ComboFormModal",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx",
       "symbol": "ComboFormModal",
-      "sourceSha256": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c",
+      "sourceSha256": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -7027,7 +7027,7 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "ddcb358b2eda7092ab8cf7557f9a5ee38c2cd04e50f0ebde0b05ea4582704fb4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c"
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
           },
           "proposedSourceEvidence": "LoadFailureError play opens live ComboFormModal and proves Create Combo heading, Combo Name, and No models added yet. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review."
         },
@@ -7043,7 +7043,7 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "ddcb358b2eda7092ab8cf7557f9a5ee38c2cd04e50f0ebde0b05ea4582704fb4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c"
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
           },
           "proposedSourceEvidence": "SaveFailure Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
           "expectedVisibleText": "Failed to save combo",
@@ -7064,7 +7064,7 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "ddcb358b2eda7092ab8cf7557f9a5ee38c2cd04e50f0ebde0b05ea4582704fb4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c"
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
           },
           "expectedVisibleText": "Create Combo"
         },
@@ -7081,7 +7081,7 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "ddcb358b2eda7092ab8cf7557f9a5ee38c2cd04e50f0ebde0b05ea4582704fb4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c"
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
           },
           "expectedVisibleText": "Create Combo"
         }
@@ -7102,7 +7102,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx#ModelItem",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx",
       "symbol": "ModelItem",
-      "sourceSha256": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c",
+      "sourceSha256": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -7126,7 +7126,7 @@
             "src/app/(dashboard)/dashboard/combos/page.js": "ddcb358b2eda7092ab8cf7557f9a5ee38c2cd04e50f0ebde0b05ea4582704fb4",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
-            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "bcc1b9acd1dcaeb40eb3a4bc79148df04ca020e9bb90b5e4a223f7b7d8040e5c"
+            "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
           },
           "proposedSourceEvidence": "Actual EditFlow retains the real form and ModelItem rows, asserting visible model IDs and disabled first Move up/last Move down boundaries; the form heading is not substituted for private row content. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
           "expectedVisibleText": "openai/gpt-4o",
@@ -8633,7 +8633,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Streaming",
           "expectedVisibleText": "Console Log"
@@ -8651,7 +8651,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Empty fixture settles to actual no-console-logs message, not a guessed output label.",
           "expectedVisibleText": "No console logs yet."
@@ -8671,7 +8671,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Paused holds actual polling transport updates, shows new-line buffer and ends without resuming. Corrected polling fixture explicitly nulls inherited SSE descriptor; meta beforeEach and returned cleanup reset poll counter. Source reasoning only, runtime pending.",
           "expectedVisibleText": "Paused"
@@ -8692,7 +8692,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Separate resume story invokes real paused buffering, clicks Jump to latest and leaves Streaming visible. Corrected polling fixture explicitly nulls inherited SSE descriptor; meta beforeEach and returned cleanup reset poll counter. Source reasoning only, runtime pending.",
           "expectedVisibleText": "Streaming"
@@ -8717,7 +8717,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "Own Filtered narrows HEADROOM/Warn and types skipped, asserting the visible marked result and remaining log count. Corrected Paused/Resume states do not replace this existing filter/search coverage."
         }
@@ -8886,7 +8886,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Filtered parent render",
           "expectedVisibleText": "HEADROOM"
@@ -8967,7 +8967,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Filtered parent interaction",
           "expectedVisibleText": "Error"
@@ -9049,7 +9049,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/app/(dashboard)/dashboard/console-log/transport.js": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c"
+            "src/app/(dashboard)/dashboard/console-log/transport.js": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d"
           },
           "proposedSourceEvidence": "ConsoleLogClient.stories.jsx#Streaming parent fixture",
           "expectedVisibleText": "provider timeout"
@@ -9421,7 +9421,7 @@
       "id": "src/app/(dashboard)/dashboard/console-log/transport.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/console-log/transport.js",
       "symbol": "[module]",
-      "sourceSha256": "3696f445342e4daa96a34c2a388a8851bbddfd338ced742caffb3b3b0efb650c",
+      "sourceSha256": "214d31b9c4d5215c9c23d21023afdfdcd3e1521bfaf5f22863e30e0ffeacc61d",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48194,7 +48194,7 @@
       "id": "src/shared/components/ComboFormModal.js#ComboFormModal",
       "sourcePath": "src/shared/components/ComboFormModal.js",
       "symbol": "ComboFormModal",
-      "sourceSha256": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+      "sourceSha256": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48216,7 +48216,7 @@
             "empty-models"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Create renders ComboFormModal with combo=null and isOpen=true; Modal renders the Create Combo dialog with its empty-model state.",
@@ -48232,7 +48232,7 @@
             "capability-ceiling"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "EditWithPriorityAndCapabilities supplies claude-reliable with two models, moves anthropic/claude-sonnet up, then saves through the rendered Edit Combo dialog.",
@@ -48247,7 +48247,7 @@
             "alias-fetch-error"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "AliasFetchError supplies claude-x and a 503 alias route; its play reaches the Edit Combo dialog and saves the rendered form.",
@@ -48335,7 +48335,7 @@
       "id": "src/shared/components/ComboFormModal.js#ModelItem",
       "sourcePath": "src/shared/components/ComboFormModal.js",
       "symbol": "ModelItem",
-      "sourceSha256": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+      "sourceSha256": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -48356,7 +48356,7 @@
             "reorder"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Only EditWithPriorityAndCapabilities supplies a nonempty models array and clicks ModelItem's rendered Move anthropic/claude-sonnet up control.",
@@ -48371,7 +48371,7 @@
             "alias-fetch-error"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "AliasFetchError supplies anthropic/claude-sonnet, so ComboFormModal maps that entry through rendered ModelItem despite alias fetch failure.",
@@ -48442,7 +48442,7 @@
       "id": "src/shared/components/ComboFormModal.js#PrunedStepsList",
       "sourcePath": "src/shared/components/ComboFormModal.js",
       "symbol": "PrunedStepsList",
-      "sourceSha256": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+      "sourceSha256": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -48464,7 +48464,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -48477,7 +48477,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -48490,7 +48490,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -48506,7 +48506,7 @@
       "id": "src/shared/components/ComboFormModal.js#StaleStepBadge",
       "sourcePath": "src/shared/components/ComboFormModal.js",
       "symbol": "StaleStepBadge",
-      "sourceSha256": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+      "sourceSha256": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -48528,7 +48528,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -48541,7 +48541,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -48554,7 +48554,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/shared/components/ComboFormModal.js": "5f21fc1c6d3e6d4d3b2c90c651fef67881039765e9459e674d540aa3540ae977",
+            "src/shared/components/ComboFormModal.js": "b215829459c59091f8dbbe61e3eba6c954b86bee590d876b17a1ce9a542abe77",
             "src/shared/components/ComboFormModal.stories.jsx": "e4cde93f770c8be52a60dacf0ad808405c3b42a79d7bd1335de6507568f47f4d"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -53382,7 +53382,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+      "sourceSha256": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53407,7 +53407,7 @@
             "search"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "OpenLLM opens Select Model, waits for Combos, then types into rendered Search models textbox.",
@@ -53422,7 +53422,7 @@
             "selected-model"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithSelection supplies selected and added Claude Sonnet model; play asserts rendered pressed chip.",
@@ -53437,7 +53437,7 @@
             "selected-combo"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithCombosAndSelection supplies selected fast combo; play asserts rendered pressed fast chip.",
@@ -53452,7 +53452,7 @@
             "embedding-kind"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "EmbeddingKind opens Select Embedding Model with kindFilter=embedding; play verifies Combos is absent.",
@@ -53467,7 +53467,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "a5971e8f1d74c0430e95a37e41b34f553c15aa10488db01e84bfa314bf537177",
+            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false; play asserts Select Model dialog absent.",

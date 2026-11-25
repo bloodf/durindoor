@@ -4,6 +4,7 @@ import {
   prepareProviderAttemptDispatch,
   runProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
   transferProviderAttemptDispatch
 } from "../services/providerAttemptContext.js";
 import {
@@ -18,6 +19,11 @@ const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
 export function requestAbortError(reason) {
   if (reason instanceof Error && reason.name === "AbortError") return reason;
   return new DOMException("Provider request aborted", "AbortError");
+}
+
+/** A refused redirect rejects the send instead of returning the 3xx response. */
+export function isRefusedRedirect(error) {
+  return /unexpected redirect/i.test(`${error?.message} ${error?.cause?.message}`);
 }
 
 /** Release a discarded response without trusting provider-controlled cancel latency. */
@@ -46,6 +52,16 @@ function sendThroughProxy(url, options, proxyOptions, { observePatchedFetch, unr
   }
   // An unrouted send (a local sidecar) passes no connection route at all.
   return unrouted ? proxyAwareFetch(url, options) : proxyAwareFetch(url, options, proxyOptions);
+}
+
+/**
+ * A replacement global fetch to hand to proxyAwareFetch as `directFetch`. The
+ * patched global is left out: it re-enters proxyAwareFetch, which would record
+ * and charge one physical send twice.
+ */
+export function unpatchedGlobalFetch() {
+  const live = globalThis.fetch;
+  return live?.[DURINDOOR_FETCH_PATCH] === true ? undefined : live;
 }
 
 /** Stop waiting on a pending operation as soon as the signal aborts. */
@@ -161,6 +177,31 @@ export function createRequestSender({
       return timeout?.aborted && deadline.mergedSignal.reason === timeout.reason ? timeout.reason : null;
     }
   };
+}
+
+/**
+ * Run an execute() body that makes its quota-bearing send somewhere inside. The
+ * body passes that send's response to billed(); the ticket then moves to the
+ * returned response, or is settled when the body throws instead.
+ */
+export async function withBillableDispatch(sender, run) {
+  let dispatch = null;
+  let startedAt = null;
+  const billed = (response) => {
+    dispatch = response;
+    startedAt = sender.attemptStartedAt;
+    return response;
+  };
+  try {
+    const result = await run(billed);
+    if (!result?.response) return result;
+    transferProviderAttemptDispatch(dispatch, result.response);
+    const attemptStartedAt = startedAt ?? sender.attemptStartedAt;
+    return attemptStartedAt ? { ...result, attemptStartedAt } : result;
+  } catch (error) {
+    await settleProviderAttemptDispatch(dispatch, { reason: error?.name === "AbortError" ? "abort" : "transport_error" });
+    throw error;
+  }
 }
 
 /**

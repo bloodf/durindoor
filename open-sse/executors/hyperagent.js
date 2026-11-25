@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createErrorResult } from "../utils/error.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -129,14 +130,24 @@ function completion(text, model, threadId, sessionId, messages, stream) {
 export class HyperAgentExecutor extends BaseExecutor {
   constructor(deps = {}) {
     super("hyperagent", { id: "hyperagent", baseUrl: `${ORIGIN}/api/threads` });
-    this.fetch = deps.fetch || ((...args) => proxyAwareFetch(...args));
+    this.fetch = deps.fetch || null;
   }
 
-  async request(url, init, signal, proxyOptions = null) {
-    return credentialFetch((target, request) => this.fetch(target, request, proxyOptions), url, { ...init, signal, redirect: "manual" });
+  /** An injected fetch replaces the network send; the sender's policy still applies to it. */
+  async request(url, init, signal, proxyOptions, sender, quotaBearing = false) {
+    return credentialFetch((target, request) => sender.sendRequest(target, request, proxyOptions, {
+      quotaBearing,
+      transport: this.fetch ? (options) => this.fetch(target, options, proxyOptions) : null,
+    }), url, { ...init, signal, redirect: "manual" });
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const body = input.body || {};
     const credentials = input.credentials || {};
     const cookie = cookieFrom(credentials);
@@ -158,17 +169,18 @@ export class HyperAgentExecutor extends BaseExecutor {
     }
     try {
       if (!threadId) {
-        const created = await this.request(`${ORIGIN}/api/threads`, { method: "POST", headers: browserHeaders(cookie, { "content-type": "application/json", "x-request-id": randomUUID() }), body: "{}" }, input.signal, input.proxyOptions);
+        const created = await this.request(`${ORIGIN}/api/threads`, { method: "POST", headers: browserHeaders(cookie, { "content-type": "application/json", "x-request-id": randomUUID() }), body: "{}" }, input.signal, input.proxyOptions, sender);
         if (created.status === 401 || created.status === 403 || (created.status >= 300 && created.status < 400)) return errorResult(401, "Expired HyperAgent cookie", body, credentials);
         threadId = await readThreadId(created);
         if (threadId) rememberOwnedThread(owner, threadId);
         if (!threadId) return errorResult(created.status === 429 ? 429 : created.status >= 400 ? created.status : 502, `Could not create HyperAgent thread (HTTP ${created.status})`, body, credentials);
       }
       const family = /fable/i.test(model) ? "fable" : /sonnet/i.test(model) ? "sonnet" : "opus";
-      const configured = await this.request(`${ORIGIN}/api/threads/${encodeURIComponent(threadId)}`, { method: "PATCH", headers: browserHeaders(cookie, { "content-type": "application/json", "x-request-id": randomUUID(), referer: `${ORIGIN}/thread/${threadId}` }), body: JSON.stringify({ modelId: model, defaultSubagentModel: family, runtimeId: "claude-agents-sdk", executionMode: "auto" }) }, input.signal, input.proxyOptions);
+      const configured = await this.request(`${ORIGIN}/api/threads/${encodeURIComponent(threadId)}`, { method: "PATCH", headers: browserHeaders(cookie, { "content-type": "application/json", "x-request-id": randomUUID(), referer: `${ORIGIN}/thread/${threadId}` }), body: JSON.stringify({ modelId: model, defaultSubagentModel: family, runtimeId: "claude-agents-sdk", executionMode: "auto" }) }, input.signal, input.proxyOptions, sender);
       if (configured.status === 401 || configured.status === 403) return errorResult(401, "Expired HyperAgent cookie", body, credentials);
       if (!configured.ok) return errorResult(configured.status === 429 ? 429 : configured.status, `HyperAgent thread configuration failed (HTTP ${configured.status})`, body, credentials);
-      const chat = await this.request(`${ORIGIN}/api/threads/${encodeURIComponent(threadId)}/chat`, { method: "POST", headers: browserHeaders(cookie, { "content-type": "application/json", referer: `${ORIGIN}/thread/${threadId}`, "x-request-id": randomUUID() }), body: JSON.stringify({ sessionId: sessionId || null, unifiedStream: true, searchMode: "exa", enableExecuteScript: false, enablePersistentSandbox: true, enableWebpage: true, enableSlides: true, tablesEnabled: true, enableWebSearch: true, enableBrowser: true, enableImageGeneration: true, enableVideoGeneration: true, enableAudioGeneration: true, enableTranscription: true, enableAvatarVideo: true, enableExaFindSimilar: true, enableExaAnswer: true, enableExaResearch: true, enableExaWebsets: true, enableGeoTools: true, hyperAppsEnabled: false, documentsEnabled: true, enableThreadSearch: true, residentialProxyEnabled: false, solveCaptchasEnabled: true, content: contentText(userText.content), debug: false, enabledIntegrations: [], integrationMode: "open", globalTablesEnabled: true }) }, input.signal, input.proxyOptions);
+      // Thread setup is not charged; only the chat turn is quota-bearing.
+      const chat = billed(await this.request(`${ORIGIN}/api/threads/${encodeURIComponent(threadId)}/chat`, { method: "POST", headers: browserHeaders(cookie, { "content-type": "application/json", referer: `${ORIGIN}/thread/${threadId}`, "x-request-id": randomUUID() }), body: JSON.stringify({ sessionId: sessionId || null, unifiedStream: true, searchMode: "exa", enableExecuteScript: false, enablePersistentSandbox: true, enableWebpage: true, enableSlides: true, tablesEnabled: true, enableWebSearch: true, enableBrowser: true, enableImageGeneration: true, enableVideoGeneration: true, enableAudioGeneration: true, enableTranscription: true, enableAvatarVideo: true, enableExaFindSimilar: true, enableExaAnswer: true, enableExaResearch: true, enableExaWebsets: true, enableGeoTools: true, hyperAppsEnabled: false, documentsEnabled: true, enableThreadSearch: true, residentialProxyEnabled: false, solveCaptchasEnabled: true, content: contentText(userText.content), debug: false, enabledIntegrations: [], integrationMode: "open", globalTablesEnabled: true }) }, input.signal, input.proxyOptions, sender, true));
       if (chat.status === 401 || chat.status === 403) return errorResult(401, "Expired HyperAgent cookie", body, credentials);
       if (!chat.ok) return errorResult(chat.status === 429 ? 429 : chat.status, `HyperAgent chat HTTP ${chat.status}`, body, credentials);
       const parsed = await parseSse(chat);
@@ -179,6 +191,7 @@ export class HyperAgentExecutor extends BaseExecutor {
       }
       return { response: completion(parsed.text.trim(), parsed.modelId || model, threadId, parsed.sessionId || sessionId, messages, input.stream ?? body.stream), url: `${ORIGIN}/api/threads/${encodeURIComponent(threadId)}/chat`, headers: { Cookie: "***" }, transformedBody: { threadId, sessionId: parsed.sessionId || sessionId, model: parsed.modelId || model } };
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       const status = error.status === 429 || /quota|rate.?limit|credits? exceeded/i.test(error.message || "") ? 429 : error.status === 401 || error.status === 403 || error.name === "CredentialRedirectError" ? 401 : 502;
       return errorResult(status, status === 401 ? "HyperAgent session cookie is expired or invalid" : error.message || "HyperAgent request failed", body, credentials);
     }

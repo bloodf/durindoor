@@ -601,8 +601,10 @@ export class AntigravityExecutor extends BaseExecutor {
     // provider boundary. Conversation content and shared Gemini translators stay untouched.
     if (requestWithoutTools.systemInstruction?.parts) {
       const competitiveMarker = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+      const blanked = new Set();
       for (const part of requestWithoutTools.systemInstruction.parts) {
         if (!isString(part.text)) continue;
+        const hadText = part.text.trim() !== "";
         part.text = rewriteOpenCodeBranding(part.text);
         part.text = part.text.replace(ANTIGRAVITY_BILLING_HEADER_RE, "");
         part.text = part.text.replace(ANTIGRAVITY_HERMES_IDENTITY_REWRITE.from, ANTIGRAVITY_HERMES_IDENTITY_REWRITE.to);
@@ -612,6 +614,14 @@ export class AntigravityExecutor extends BaseExecutor {
         for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES.slice(1)) {
           part.text = part.text.replace(from, to);
         }
+        if (hadText && part.text.trim() === "") blanked.add(part);
+      }
+      // A part the rewrites emptied (a billing-header line on its own) is not sent (9router#5847).
+      if (blanked.size) {
+        requestWithoutTools.systemInstruction = {
+          ...requestWithoutTools.systemInstruction,
+          parts: requestWithoutTools.systemInstruction.parts.filter((part) => !blanked.has(part))
+        };
       }
     }
     // The real client always opens the system prompt with the Antigravity identity (upstream

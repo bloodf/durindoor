@@ -8,10 +8,10 @@ export const INHERIT_COMBO_STRATEGY = "inherit";
  * value, and only `null` deletes one. Removals are therefore written as `null`.
  * `fallback` is a real override (the global strategy may differ), so it is
  * stored; only `inherit` clears the strategy. An entry with no remaining
- * setting is removed.
+ * setting is removed; an explicit zero timeout remains a setting.
  */
 export function updateComboStrategy(strategies, comboName, patch) {
   const entry = { ...strategies[comboName], ...patch };
   if (entry.fallbackStrategy === INHERIT_COMBO_STRATEGY) entry.fallbackStrategy = null;
-  return { ...strategies, [comboName]: Object.values(entry).some(Boolean) ? entry : null };
+  return { ...strategies, [comboName]: Object.values(entry).some((value) => value !== null && value !== undefined) ? entry : null };
 }

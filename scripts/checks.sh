@@ -43,20 +43,18 @@ elif [ "$#" -gt 0 ]; then run pnpm exec eslint "$@"; fi
 if node -e 'const fs=require("fs"); const files=fs.readFileSync(process.argv[1],"utf8").split(/\r?\n/); process.exit(files.some(f => /\.(?:[cm]?[jt]s|[jt]sx)$/.test(f) && !/^(tests|tools\/oxlint\/anti-slop|node_modules|website\/node_modules)\//.test(f) && !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f)) ? 0 : 1)' "$work/files"; then
   run pnpm run lint:anti-slop
 fi
+# Combine explicit tests and static import matches, then run every batch.
+(cat "$work/tests"; printf "\n"; cat "$work/related"; printf "\n") | awk 'NF && !seen[$0]++' > "$work/all-tests"
 set --
-while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "$file"; done < "$work/tests"
+while IFS= read -r file || [ -n "$file" ]; do
+  [ -n "$file" ] || continue
+  set -- "$@" "$file"
+  if [ "$#" -eq 150 ]; then
+    (cd tests && timeout 300 node node_modules/vitest/vitest.mjs run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: selected tests batch' >&2; failed=1; }
+    set --
+  fi
+done < "$work/all-tests"
 if [ "$#" -gt 0 ]; then
-  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: selected tests' >&2; failed=1; }
-fi
-set --
-while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "../$file"; done < "$work/related"
-if [ "$#" -gt 0 ]; then
-  shards=${CHECKS_RELATED_SHARDS:-4}
-  case "$shards" in *[!0-9]*|''|0*) echo 'CHECKS_RELATED_SHARDS must be a positive integer without leading zeroes' >&2; exit 1 ;; esac
-  shard=1
-  while [ "$shard" -le "$shards" ]; do
-    (cd tests && timeout 300 node node_modules/vitest/vitest.mjs related --run --passWithNoTests --maxWorkers=50% "--shard=$shard/$shards" "$@") || { echo "FAILED: related tests shard $shard/$shards" >&2; failed=1; }
-    shard=$((shard + 1))
-  done
+  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: selected tests batch' >&2; failed=1; }
 fi
 exit "$failed"

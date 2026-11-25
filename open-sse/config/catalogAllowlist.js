@@ -46,6 +46,7 @@ export const REVIEWED_ORPHANS = new Map([
   ["pricing:gpt-5.2-pro", "#592/#3481 official-price alias"],
   ["pricing:o1-pro", "#592/#3481 official-price alias"],
   ["pricing:gpt-5.6", "priced alias present in upstream"],
+  ["pricing:gemini-embedding-2", "#5846 forward-priced embedding id"],
   ["pricing:gemini-3.1-pro-high", "priced alias present in upstream"],
   ["pricing:deepseek-v3.2-chat", "priced alias present in upstream"],
   ["pricing:deepseek-v3.2-reasoner", "priced alias present in upstream"],

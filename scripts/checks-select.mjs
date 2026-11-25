@@ -7,7 +7,7 @@ import { isMainModule } from "./lib/is-main-module.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Select changed files and tests mentioning deleted file basenames. */
+/** Select changed tests and tracked tests that mention changed source imports. */
 export function selectChecks(changedFiles, deletedFiles = []) {
   const result = { eslint: [], tests: [], related: [] };
   for (const file of new Set(changedFiles)) {
@@ -16,13 +16,14 @@ export function selectChecks(changedFiles, deletedFiles = []) {
     if (/^tests\/(?:unit|translator)\/.*\.test\.(?:js|mjs)$/.test(file)) {
       result.tests.push(file.slice(6));
     } else if (!file.startsWith("tests/") && /\.(?:js|jsx|mjs|cjs|ts|tsx)$/.test(file)) {
-      result.related.push(file);
+      addRelated(file, result.related);
     }
   }
   const deleted = [...new Set(deletedFiles.filter(Boolean))];
   if (deleted.length) {
     result.fullLint = true;
     for (const file of deleted) {
+      if (/\.(?:js|jsx|mjs|cjs|ts|tsx)$/.test(file) && !file.startsWith("tests/")) addRelated(file, result.related);
       const basename = path.basename(file, path.extname(file));
       if (!basename) continue;
       let matches;
@@ -39,6 +40,29 @@ export function selectChecks(changedFiles, deletedFiles = []) {
     }
   }
   return result;
+}
+
+// Git searches tracked test files even when the source has been deleted.
+function addRelated(file, related) {
+  const ext = path.extname(file);
+  const stemPath = file.slice(0, -ext.length);
+  const stem = path.basename(stemPath);
+  const patterns = [stemPath];
+  if (file.startsWith("src/")) patterns.push(`@/${stemPath.slice(4)}`);
+  if (stem !== "index") {
+    for (const suffix of ['"', '.js"', "'", ".js'"]) patterns.push(`/${stem}${suffix}`);
+  }
+  let matches;
+  try {
+    matches = execFileSync("git", ["grep", "-l", "-F", ...patterns.flatMap((pattern) => ["-e", pattern]), "--", ":(glob)tests/**/*.test.js", ":(glob)tests/**/*.test.mjs"], { cwd: root, encoding: "utf8" });
+  } catch (error) {
+    if (error.status === 1) return;
+    throw error;
+  }
+  for (const match of matches.trim().split("\n")) {
+    const test = match.slice(6);
+    if (!related.includes(test)) related.push(test);
+  }
 }
 
 if (isMainModule(import.meta.url)) {

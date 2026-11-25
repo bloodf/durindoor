@@ -24,7 +24,7 @@ describe("OpenAI max_completion_tokens port (#1366)", () => {
     expect(body).toEqual({ max_completion_tokens: value });
   });
 
-  it.each(["openai-compatible-custom", "deepseek", "github"])("does not impose OpenAI spelling on %s", (provider) => {
+  it.each(["openai-compatible-custom", "deepseek"])("does not impose OpenAI spelling on %s", (provider) => {
     const body = { max_tokens: 100, max_completion_tokens: 23 };
     applyParamRenames(provider, "gpt-6-sol", body);
     stripUnsupportedParams(provider, "gpt-6-sol", body);

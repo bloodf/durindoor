@@ -3,12 +3,14 @@ const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
 async function request(method, url, requestOptions, data, jsonParseFallback = null, skipErrorBody = false) {
   // Mutation wrappers treat null options as omitted.
-  const { strictJson = false, ...options } = requestOptions ?? {};
-  const init = { ...options, method, headers: { ...DEFAULT_HEADERS, ...options.headers } };
+  const { strictJson = false, defaultHeaders = true, ...options } = requestOptions ?? {};
+  const init = { ...options, method, headers: { ...(defaultHeaders ? DEFAULT_HEADERS : null), ...options.headers } };
+  if (!defaultHeaders && !options.headers) delete init.headers;
   // Fetch defaults to GET; omit the explicit method for existing read callers.
   if (method === "GET") delete init.method;
   if (data !== undefined) init.body = JSON.stringify(data);
-  const response = await fetch(url, init);
+  // A bare read stays a one-argument fetch.
+  const response = Object.keys(init).length ? await fetch(url, init) : await fetch(url);
   let body = null;
   if (response.ok || !skipErrorBody) {
     body = strictJson
@@ -27,6 +29,7 @@ async function request(method, url, requestOptions, data, jsonParseFallback = nu
 /**
  * jsonParseFallback applies to parse failures only. strictJson propagates parse errors (except 204).
  * skipErrorBody rejects on a non-OK status using statusText and a null error body, without reading it.
+ * `defaultHeaders: false` omits the JSON Content-Type, for reads that must send a bare request.
  */
 export const get = (url, { jsonParseFallback = null, skipErrorBody = false, ...options } = {}) =>
   request("GET", url, options, undefined, jsonParseFallback, skipErrorBody);

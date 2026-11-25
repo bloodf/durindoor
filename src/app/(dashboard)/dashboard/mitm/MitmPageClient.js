@@ -12,6 +12,7 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
+import { readModelAliases } from "@/shared/utils/modelAliases";
 
 export default function MitmPageClient() {
   const v5 = useUiV5();
@@ -51,11 +52,7 @@ export default function MitmPageClient() {
 
   const fetchAliases = async () => {
     try {
-      const res = await fetch("/api/models/alias");
-      if (res.ok) {
-        const data = await res.json();
-        setModelAliases(data.aliases || {});
-      }
+      setModelAliases(await readModelAliases({ skipErrorBody: true }));
     } catch { /* ignore */ }
   };
 

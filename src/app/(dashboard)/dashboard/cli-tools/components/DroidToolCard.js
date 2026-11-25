@@ -13,6 +13,7 @@ import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { isUndefined } from "../../../../../shared/utils/typeChecks.js";
 import DocsLink from "@/shared/components/DocsLink";
 import { isDurinDoorDroidModel } from "@/shared/utils/droidConfig";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
 
@@ -69,15 +70,7 @@ export default function DroidToolCard({
     if (isExpanded) fetchModelAliases();
   }, [isExpanded]);
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
+  const fetchModelAliases = () => loadModelAliases(setModelAliases);
 
   // Pre-fill model list from existing config (supports multi-model)
   useEffect(() => {

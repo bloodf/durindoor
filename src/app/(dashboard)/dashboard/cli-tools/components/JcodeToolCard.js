@@ -11,6 +11,7 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 export default function JcodeToolCard({
   tool,
@@ -62,15 +63,7 @@ export default function JcodeToolCard({
     if (isExpanded) fetchModelAliases();
   }, [isExpanded]);
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
+  const fetchModelAliases = () => loadModelAliases(setModelAliases);
 
   useEffect(() => {
     if (jcodeStatus?.installed && !hasInitializedModel.current) {

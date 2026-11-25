@@ -11,6 +11,7 @@ import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 import { isBrowser } from "../../../../../shared/utils/typeChecks.js";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 const ENDPOINT = "/api/cli-tools/hermes-settings";
 
@@ -64,15 +65,7 @@ export default function HermesToolCard({
     if (isExpanded) fetchModelAliases();
   }, [isExpanded]);
 
-  const fetchModelAliases = async () => {
-    try {
-      const res = await fetch("/api/models/alias");
-      const data = await res.json();
-      if (res.ok) setModelAliases(data.aliases || {});
-    } catch (error) {
-      console.log("Error fetching model aliases:", error);
-    }
-  };
+  const fetchModelAliases = () => loadModelAliases(setModelAliases);
 
   useEffect(() => {
     if (hermesStatus?.installed && !hasInitializedModel.current) {

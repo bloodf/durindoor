@@ -13,6 +13,7 @@ import {
 } from "open-sse/utils/outboundUrlGuard.js";
 import { sanitizeInstanceHeaders } from "@/lib/mcp/gateway/instanceHeaders";
 import { closeInstance } from "@/lib/mcp/gateway/stdioClient";
+import { evictHttpSession } from "@/lib/mcp/gateway/httpClient";
 import { isObject } from "../../../../../shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
@@ -107,12 +108,17 @@ export async function PUT(request, context) {
 
     // Fold any manually-entered OAuth client credentials into oauthTokens,
     // merging with (not clobbering) whatever token material is already stored.
-    const oauthTokens = mergeOauthClientConfig(existing?.oauthTokens, body);
+    // OAuth credentials and discovery metadata are bound to the old origin.
+    const origin = (url) => { try { return new URL(url).origin; } catch { return null; } };
+    const originChanged = body.url !== undefined && origin(body.url) !== origin(existing.url);
+    const oauthTokens = mergeOauthClientConfig(originChanged ? null : existing?.oauthTokens, body);
+    if (originChanged) body.oauthTokens = null;
     if (oauthTokens) body.oauthTokens = oauthTokens;
     const inst = await updateInstance(id, body);
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
     // Drop any cached stdio child so the next request picks up the edit.
     try { closeInstance(id); } catch { /* best effort */ }
+    evictHttpSession(id);
     return NextResponse.json({ instance: stripSecrets(inst) });
   } catch (e) {
     const err = e && isObject(e) ? e : {};
@@ -129,6 +135,7 @@ export async function DELETE(_request, context) {
     const ok = await deleteInstance(id);
     if (!ok) return NextResponse.json({ error: "not found" }, { status: 404 });
     try { closeInstance(id); } catch { /* best effort */ }
+    evictHttpSession(id);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

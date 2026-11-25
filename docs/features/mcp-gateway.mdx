@@ -44,6 +44,8 @@ Both share the same JSON-RPC handler and the same key check.
 | `/api/mcp-gateway/sse` | GET | SSE handshake. Returns a message URL for this session. |
 | `/api/mcp-gateway/message?sessionId=` | POST | SSE companion. Missing `sessionId` is 400. |
 
+The SSE handshake advertises the message URL in its `endpoint` event, including the `DURINDOOR_BASE_PATH` prefix when one is set. The stream sends a comment ping every 25 seconds. A stream that stops being read, with no message posts for 30 minutes, is closed; reconnect to get a new session. At most 5 streams per gateway key and 100 in total can be open at once. A further handshake returns 429.
+
 `GET /api/mcp-gateway` returns 405 with `Allow: POST`. Clients that send `Accept: text/event-stream` still get JSON on the POST path.
 
 Stdio gateway bridge for cowork plugins only spawns registered bridge commands, never a command supplied by a client request. Separately, registered stdio instances (`npx`, `python`, `docker`, `command` kinds) run their operator-saved command and arguments on the DurinDoor host. Both are server-side configuration, not client-controlled execution.
@@ -59,6 +61,8 @@ Gateway keys are separate secrets; they are not dashboard session cookies.
 Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, or `?key=`. A missing or inactive key returns JSON-RPC error `gateway key missing` or `gateway key invalid` with HTTP 401.
 
 Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
+
+Over SSE, the message URL never contains the key. A client on the DurinDoor host that opened the stream with `?key=` can post to that URL as advertised: the session id stands for the key, which is checked again on every message. Treat the session id as a secret. A client on another machine must still send the key with each message POST, so a remote client that cannot send headers should use streamable HTTP with `?key=`. Sessions opened with a header key always need the key on each message.
 
 `POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
 

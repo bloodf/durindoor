@@ -94,7 +94,7 @@ function npmInstall(pkgs, { silent = false } = {}) {
 
 // Public: ensure systray2 is installed on macOS/Linux only.
 // Windows skips entirely (uses PowerShell tray).
-function ensureTrayRuntime({ silent = false } = {}) {
+function ensureTrayRuntime({ silent = false, allowInstall = true } = {}) {
   if (process.platform === "win32") {
     return { systray: false, skipped: true };
   }
@@ -107,6 +107,7 @@ function ensureTrayRuntime({ silent = false } = {}) {
     if (!silent) console.log("✅ System tray ready");
     return { systray: true };
   }
+  if (!allowInstall) return { systray: false };
   cleanupLegacySystray({ silent });
   const ok = npmInstall([`${SYSTRAY_PKG}@${SYSTRAY_VERSION}`], { silent });
   if (ok) chmodSystrayBin({ silent });

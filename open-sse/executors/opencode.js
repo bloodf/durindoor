@@ -58,7 +58,7 @@ import { getOpencodeTlsFetch } from "../services/opencodeTlsClient.js";
 // OpenCode v2 UA shape (upstream 5bdcd5e7): opencode/<channel>/<version>/<client>.
 // Upstream rejects the v1 "opencode/1.18.x" form with 403 FreeTierError since
 // 2026-10-14.
-export const OPENCODE_UA = "opencode/latest/2.3.2/cli";
+export const OPENCODE_UA = "opencode/latest/2.4.1/cli";
 const OPENCODE_CLIENT = "cli";
 // Models served by /inference/v1/messages (Claude wire format); every other model
 // stays on /chat/completions (or /responses, gated separately by /muse/).

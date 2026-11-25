@@ -149,8 +149,8 @@ describe("OpenCodeExecutor free-tier client identity (5bdcd5e7)", () => {
     const executor = new OpenCodeExecutor();
     const headers = executor.buildHeaders({ id: "noauth", connectionId: "noauth" }, true, null, "big-pickle");
     // Pinned as a literal, independent of the constant: upstream 403s the v1 form.
-    expect(headers["User-Agent"]).toBe("opencode/latest/2.3.2/cli");
-    expect(OPENCODE_UA).toBe("opencode/latest/2.3.2/cli");
+    expect(headers["User-Agent"]).toBe("opencode/latest/2.4.1/cli");
+    expect(OPENCODE_UA).toBe("opencode/latest/2.4.1/cli");
     expect(headers["x-opencode-client"]).toBe("cli");
   });
 

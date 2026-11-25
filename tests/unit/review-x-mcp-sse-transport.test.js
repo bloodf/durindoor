@@ -1,6 +1,7 @@
 // Issue 2526: MCP gateway SSE base path, `?key=` auth and stream lifetime.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   active: new Set(),
@@ -12,12 +13,18 @@ vi.mock("@/lib/localDb", () => ({
   getGrantsForKeyDetailed: vi.fn(async () => []),
   getEnabledInstancesByIds: vi.fn(async () => []),
   saveRequestUsage: vi.fn(async () => {}),
+  getSettings: vi.fn(async () => ({ requireLogin: true })),
+  validateApiKey: vi.fn(async () => false),
+  getApiKeyByKey: vi.fn(async () => null),
 }));
+vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: vi.fn(async () => "cli-token") }));
+vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardAuthToken: vi.fn(async () => false) }));
 vi.mock("@/lib/db/repos/usageRepo.js", () => ({ getBillingEpoch: vi.fn(async () => 0) }));
 
 const { GET } = await import("../../src/app/api/mcp-gateway/sse/route.js");
 const { POST } = await import("../../src/app/api/mcp-gateway/message/route.js");
 const sessions = await import("../../src/lib/mcp/gateway/sseSessions.js");
+const { proxy } = await import("../../src/dashboardGuard.js");
 
 const ORIGIN = "https://router.example";
 const PAST_TTL_MS = sessions.__test__.SESSION_TTL_MS + 2 * sessions.__test__.SWEEP_INTERVAL_MS;
@@ -72,6 +79,7 @@ afterEach(async () => {
   sessions.__test__.getStore().clear();
   sessions.__test__.stopSweeper();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("endpoint event", () => {
@@ -117,6 +125,55 @@ describe("?key= sessions", () => {
     const { endpoint } = await open({ query: "", headers: { Authorization: "Bearer key-a" } });
     expect((await post(endpoint)).status).toBe(401);
     expect((await post("/api/mcp-gateway/message?sessionId=unknown")).status).toBe(401);
+  });
+});
+
+describe("remote callers behind the dashboard guard", () => {
+  // Without the wrapper's peer proof no request counts as loopback.
+  beforeEach(() => vi.stubEnv("NINEROUTER_PEER_TOKEN", ""));
+
+  const remote = (path, { method = "POST", headers = {} } = {}) => new NextRequest(new URL(path, ORIGIN), {
+    method,
+    headers: { host: "router.example", "Content-Type": "application/json", ...headers },
+    ...(method === "POST" ? { body: JSON.stringify({ jsonrpc: "2.0", id: 7, method: "ping" }) } : null),
+  });
+  const passes = (response) => response.headers.get("x-middleware-next") === "1";
+
+  /** What Next does: the guard first, then the route when the guard passes. */
+  async function guardedPost(path, options) {
+    const request = remote(path, options);
+    const guard = await proxy(request);
+    return passes(guard) ? POST(request) : guard;
+  }
+
+  it("completes the ?key= flow with no key on the message POST", async () => {
+    expect(passes(await proxy(remote("/api/mcp-gateway/sse?key=key-a", { method: "GET" })))).toBe(true);
+    const { reader, endpoint } = await open();
+    expect((await guardedPost(endpoint)).status).toBe(202);
+    expect(decoder.decode((await reader.read()).value)).toContain(`"id":7`);
+  });
+
+  it("leaves authentication of a keyless message to the route", async () => {
+    const { endpoint } = await open({ query: "", headers: { Authorization: "Bearer key-a" } });
+    for (const path of [endpoint, "/api/mcp-gateway/message?sessionId=unknown"]) {
+      const response = await guardedPost(path);
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
+    }
+  });
+
+  it.each([
+    ["a message GET", "/api/mcp-gateway/message?sessionId=s", { method: "GET" }],
+    ["a message POST without sessionId", "/api/mcp-gateway/message", {}],
+    ["a message POST with an empty sessionId", "/api/mcp-gateway/message?sessionId=", {}],
+    ["the SSE surface", "/api/mcp-gateway/sse?sessionId=s", {}],
+    ["streamable HTTP", "/api/mcp-gateway?sessionId=s", {}],
+    ["an invalid header key", "/api/mcp-gateway/message?sessionId=s", { headers: { Authorization: "Bearer wrong" } }],
+    ["an invalid query key", "/api/mcp-gateway/message?sessionId=s&key=wrong", {}],
+  ])("still requires a gateway key for %s", async (_label, path, options) => {
+    const response = await proxy(remote(path, options));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "gateway key required" });
   });
 });
 

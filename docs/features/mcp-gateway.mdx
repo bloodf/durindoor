@@ -62,7 +62,7 @@ Send the secret as `Authorization: Bearer …`, `x-api-key`, `x-goog-api-key`, o
 
 Prefer an authorization header when the client supports one. Query-string keys can be recorded in proxy and access logs or browser history; use `?key=` only for clients that cannot send headers.
 
-Over SSE, the message URL never contains the key. A client on the DurinDoor host that opened the stream with `?key=` can post to that URL as advertised: the session id stands for the key, which is checked again on every message. Treat the session id as a secret. A client on another machine must still send the key with each message POST, so a remote client that cannot send headers should use streamable HTTP with `?key=`. Sessions opened with a header key always need the key on each message.
+`?key=` works for both halves of the SSE transport. Open the stream with `/api/mcp-gateway/sse?key=…`, then post to the advertised message URL as it is. That URL never contains the key: the session id stands for it, and the key is checked again on every message, so disabling the key stops the session. Treat the session id as a secret. A session opened with a header key still needs the key on each message POST.
 
 `POST /api/mcp-gateway/keys` and `GET /api/mcp-gateway/keys/<id>/reveal` are local-request only (403 otherwise). The list endpoint never returns the raw secret. Create returns it once. Reveal exists for a signed-in local dashboard session, same as DurinDoor API keys.
 

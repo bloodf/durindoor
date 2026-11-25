@@ -1,6 +1,7 @@
 import { detectFormat } from "../services/provider.js";
 import { SKIP_PATTERNS } from "../config/runtimeConfig.js";
 import { createSyntheticResponse } from "./bypassResponse.js";
+import { CLAUDE_CODE_META_FLAGS, detectClaudeCodeMetaReply } from "./claudeCodeMetaRequests.js";
 
 /**
  * Check for bypass patterns - return fake response without calling provider
@@ -69,7 +70,17 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
     }
   }
 
-  if (!shouldBypass) return null;
+  let replyText;
+  if (!shouldBypass) {
+    const enabled = (key) => process.env[key]?.trim().toLowerCase() === "true";
+    const reply = detectClaudeCodeMetaReply(body, {
+      commandPrefix: enabled(CLAUDE_CODE_META_FLAGS.commandPrefix),
+      suggestion: enabled(CLAUDE_CODE_META_FLAGS.suggestion),
+      filepaths: enabled(CLAUDE_CODE_META_FLAGS.filepaths),
+    });
+    if (!reply) return null;
+    replyText = reply.text;
+  }
 
   const sourceFormat = detectFormat(body);
   const stream = body.stream !== false;
@@ -83,5 +94,5 @@ export function handleBypassRequest(body, model, userAgent = "", ccFilterNaming 
     return createSyntheticResponse({ sourceFormat, model, text: namingText, stream });
   }
 
-  return createSyntheticResponse({ sourceFormat, model, stream });
+  return createSyntheticResponse({ sourceFormat, model, text: replyText, stream });
 }

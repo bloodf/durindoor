@@ -11,6 +11,20 @@ import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js
 import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
 import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
+
+// The one signature held for the next function call; replacing or clearing it frees the old one.
+function setPendingThoughtSignature(state, signature) {
+  replaceRetained(state, retainedSize(state.pendingThoughtSignature), retainedSize(signature));
+  state.pendingThoughtSignature = signature;
+}
+
+// Remember a tool-call id (which may carry a signature), charging it once.
+function rememberId(state, ids, id) {
+  if (ids.has(id)) return;
+  chargeRetained(state, retainedSize(id));
+  ids.add(id);
+}
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
@@ -25,7 +39,7 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   const upstreamId = functionCall.id;
   if (isString(upstreamId) && upstreamId && state.emittedGeminiCallIds?.has(upstreamId)) return null;
   if (isString(upstreamId) && upstreamId) {
-    (state.emittedGeminiCallIds ??= new Set()).add(upstreamId);
+    rememberId(state, state.emittedGeminiCallIds ??= new Set(), upstreamId);
   }
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
@@ -47,8 +61,8 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
     storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model);
   }
   const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
-  state.seenToolCallIds.add(id);
-  if (upstreamId) state.seenToolCallIds.add(upstreamId);
+  rememberId(state, state.seenToolCallIds, id);
+  if (upstreamId) rememberId(state, state.seenToolCallIds, upstreamId);
   const toolCall = {
     id,
     index: toolCallIndex,
@@ -138,7 +152,7 @@ export function geminiToOpenAIResponse(chunk, state) {
     for (const part of content.parts) {
       const hasThoughtSig = part.thoughtSignature || part.thought_signature;
       if (hasThoughtSig && isString(hasThoughtSig)) {
-        state.pendingThoughtSignature = hasThoughtSig;
+        setPendingThoughtSignature(state, hasThoughtSig);
       }
       const isThought = part.thought === true;
 
@@ -165,7 +179,7 @@ export function geminiToOpenAIResponse(chunk, state) {
         if (hasFunctionCall) {
           const call = emitFunctionCall(part.functionCall, state, hasThoughtSig);
           if (call) results.push(call);
-          state.pendingThoughtSignature = null;
+          setPendingThoughtSignature(state, null);
         }
 
         // A signed image part is still an image: the signature must not swallow it.
@@ -196,7 +210,7 @@ export function geminiToOpenAIResponse(chunk, state) {
         const sig = state.pendingThoughtSignature || null;
         const call = emitFunctionCall(part.functionCall, state, sig);
         if (call) results.push(call);
-        state.pendingThoughtSignature = null;
+        setPendingThoughtSignature(state, null);
       }
 
       // Inline data (images)

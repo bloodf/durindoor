@@ -16,7 +16,7 @@
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { chargeRetained } from "../../utils/streamRetainedBudget.js";
+import { chargeRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
 function stopThinkingBlock(state, results) {
   if (!state.thinkingBlockStarted) return;
@@ -184,6 +184,12 @@ export function kiroToClaudeResponse(chunk, state) {
         stopThinkingBlock(state, results);
         stopTextBlock(state, results);
         const toolBlockIndex = state.nextBlockIndex++;
+        const replaced = state.toolCalls.get(idx);
+        replaceRetained(
+          state,
+          retainedSize(replaced?.id) + retainedSize(replaced?.name),
+          retainedSize(tc.id) + retainedSize(toolName)
+        );
         state.toolCalls.set(idx, {
           id: tc.id,
           name: toolName,

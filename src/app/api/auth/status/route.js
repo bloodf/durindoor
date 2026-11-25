@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSettings } from "@/lib/localDb";
-import { isOidcConfigured } from "@/lib/auth/oidc";
+import { isOidcConfigured, isOidcAuthMode, isPasswordLoginAllowed } from "@/lib/auth/oidc";
 import {
   getDashboardAuthSession,
   isUsingDefaultPassword,
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Login bootstrap contract: reports the session state and whether the literal
- * built-in password is active, so the client never guesses from missing hashes.
+ * built-in password is active and which login methods are available.
  */
 export async function GET() {
   try {
@@ -32,6 +32,8 @@ export async function GET() {
       authMode,
       mfaEnabled: isMfaEnabled(settings),
       oidcConfigured: isOidcConfigured(settings),
+      passwordAvailable: authMode === "password" || isPasswordLoginAllowed(settings),
+      oidcAvailable: authMode !== "password" && isOidcAuthMode(authMode) && isOidcConfigured(settings),
       oidcLoginLabel: (settings.oidcLoginLabel || "Sign in with OIDC").trim() || "Sign in with OIDC",
       hasPassword: !!settings.password,
       usingDefaultPassword,
@@ -48,6 +50,8 @@ export async function GET() {
       authMode: "password",
       mfaEnabled: false,
       oidcConfigured: false,
+      passwordAvailable: true,
+      oidcAvailable: false,
       oidcLoginLabel: "Sign in with OIDC",
       hasPassword: false,
       usingDefaultPassword: false,

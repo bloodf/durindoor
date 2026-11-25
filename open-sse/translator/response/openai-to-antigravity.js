@@ -3,7 +3,7 @@ import { FORMATS } from "../formats.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { GEMINI_ROLE, OPENAI_FINISH, GEMINI_FINISH } from "../schema/index.js";
-import { chargeRetained } from "../../utils/streamRetainedBudget.js";
+import { chargeRetained, releaseRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
 // Convert OpenAI SSE chunk to Antigravity SSE format
 // Real Antigravity format:
@@ -98,9 +98,13 @@ export function openaiToAntigravityResponse(chunk, state) {
         state._toolCallAccum[idx] = { id: "", name: "", arguments: "" };
       }
       const accum = state._toolCallAccum[idx];
-      if (tc.id) accum.id = tc.id;
-      chargeRetained(state, (tc.function?.name?.length || 0) + (tc.function?.arguments?.length || 0));
-      if (tc.function?.name && !(bindUnbound && accum.name === tc.function.name)) accum.name += tc.function.name;
+      if (tc.id) {
+        replaceRetained(state, retainedSize(accum.id), retainedSize(tc.id));
+        accum.id = tc.id;
+      }
+      const appendName = Boolean(tc.function?.name) && !(bindUnbound && accum.name === tc.function.name);
+      chargeRetained(state, (appendName ? tc.function.name.length : 0) + (tc.function?.arguments?.length || 0));
+      if (appendName) accum.name += tc.function.name;
       if (tc.function?.arguments) accum.arguments += tc.function.arguments;
       state._activeToolIndex = idx;
     }
@@ -126,6 +130,9 @@ export function openaiToAntigravityResponse(chunk, state) {
       });
     }
     // The calls are out; a repeated finish chunk must not emit them again.
+    for (const accum of Object.values(state._toolCallAccum)) {
+      releaseRetained(state, retainedSize(accum.id) + accum.name.length + accum.arguments.length);
+    }
     state._toolCallAccum = {};
   }
 

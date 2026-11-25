@@ -22,6 +22,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
 function ensureState(state, model) {
   state.responseId ??= `chatcmpl-${Date.now()}`;
@@ -165,6 +166,7 @@ export function commandCodeToOpenAIResponse(chunk, state) {
         if (state.commandCodeToolCallIds.has(id)) break;
         // Validate before reserving the id so a rejected call never shadows a later valid one.
         const args = toolArguments(event);
+        chargeRetained(state, retainedSize(id) + retainedSize(name) + args.length);
         state.commandCodeToolCallIds.add(id);
         state.commandCodeToolCalls.push({ id, name, arguments: args });
         break;

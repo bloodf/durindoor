@@ -7,6 +7,7 @@ import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.j
 import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained, releaseRetained } from "../../utils/streamRetainedBudget.js";
 
 function restoreToolName(name, toolNameMap) {
   return normalizeClaudeToolName(name, toolNameMap);
@@ -42,7 +43,10 @@ export function geminiToClaudeResponse(chunk, state) {
   }
   for (const part of candidate.content?.parts || []) {
     const inlineSignature = readInlineSignature(part);
-    if (!part.functionCall && inlineSignature) state.standaloneSignatureQueue.push(inlineSignature);
+    if (!part.functionCall && inlineSignature) {
+      chargeRetained(state, inlineSignature.length);
+      state.standaloneSignatureQueue.push(inlineSignature);
+    }
     if (part.thought === true && part.text) {
       if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
@@ -62,13 +66,18 @@ export function geminiToClaudeResponse(chunk, state) {
           }
           continue;
         }
+        chargeRetained(state, providerCallId.length);
         emittedIds.add(providerCallId);
       }
       if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       const call = part.functionCall;
       const id = call.id || `toolu_${Date.now()}_${index}`;
-      const callSignature = inlineSignature || (state.standaloneSignatureQueue.length ? state.standaloneSignatureQueue.shift() : null);
+      let callSignature = inlineSignature;
+      if (!callSignature && state.standaloneSignatureQueue.length) {
+        callSignature = state.standaloneSignatureQueue.shift();
+        releaseRetained(state, callSignature.length);
+      }
       if (callSignature) storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), callSignature);
       results.push({ type: "content_block_start", index, content_block: { type: "tool_use", id, name: restoreToolName(call.name, state.toolNameMap), input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(geminiPlaceholderStripperFor(state)(call.name, call.args || {})) } }, { type: "content_block_stop", index });
       state.hasToolUse = true;

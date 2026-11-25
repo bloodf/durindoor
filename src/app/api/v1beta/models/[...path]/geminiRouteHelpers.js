@@ -1,3 +1,5 @@
+import { isObject, isString } from "@/shared/utils/typeChecks.js";
+
 /** Parse Gemini actions from the last colon while retaining slash-separated model IDs. */
 export function parseGeminiModelPath(path) {
   if (!Array.isArray(path)) return null;
@@ -14,10 +16,10 @@ export function estimateGeminiCountTokens(body) {
   const request = body?.generateContentRequest || body || {};
   let chars = 0;
   let media = 0;
-  const add = (value) => { if (value !== undefined) chars += (typeof value === 'string' ? value : JSON.stringify(value) || '').length; };
+  const add = (value) => { if (value !== undefined) chars += (isString(value) ? value : JSON.stringify(value) || '').length; };
   const content = (item) => {
     for (const part of Array.isArray(item?.parts) ? item.parts : []) {
-      if (!part || typeof part !== "object") continue;
+      if (!part || !isObject(part)) continue;
       add(part.text);
       if (part.functionCall) { add(part.functionCall.name); add(part.functionCall.args); }
       if (part.functionResponse) { add(part.functionResponse.name); add(part.functionResponse.response); }

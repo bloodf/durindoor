@@ -13,9 +13,9 @@ import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js
 
 /** Normalize provider usage before it reaches clients expecting integer token counts. */
 function terminalUsage(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (!raw || !isObject(raw) || Array.isArray(raw)) return null;
   const count = (value) => {
-    if (typeof value !== "number" && (typeof value !== "string" || !value.trim())) return undefined;
+    if (!isNumber(value) && (!isString(value) || !value.trim())) return undefined;
     const number = Number(value);
     return Number.isFinite(number) ? Math.max(0, Math.round(number)) : undefined;
   };
@@ -23,7 +23,7 @@ function terminalUsage(raw) {
   if (!keys.some((key) => count(raw[key]) !== undefined)) return null;
   const clean = (value) => {
     if (Array.isArray(value)) return value.map(clean);
-    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clean(v)]).filter(([, v]) => v !== undefined));
+    if (value && isObject(value)) return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clean(v)]).filter(([, v]) => v !== undefined));
     return count(value);
   };
   const usage = toResponsesUsage(clean(raw));
@@ -33,7 +33,7 @@ function terminalUsage(raw) {
 }
 
 // Create log directory for responses (Node.js only)
-import { isFunction, isObject, isRecord, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
   if (!isFunction(fs.mkdirSync)) {
@@ -289,7 +289,7 @@ export function createResponsesApiTransformStream(logger = null) {
         const error = state.upstreamError;
         response.error = {
           code: String(error?.code || error?.type || "upstream_error"),
-          message: sanitizeErrorMessage(typeof error === "string" ? error : error?.message || "Upstream stream failed"),
+          message: sanitizeErrorMessage(isString(error) ? error : error?.message || "Upstream stream failed"),
         };
       } else if (state.finishReason === "length") {
         eventType = "response.incomplete";

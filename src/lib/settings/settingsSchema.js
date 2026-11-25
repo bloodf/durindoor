@@ -72,6 +72,8 @@ const DEFAULT_SETTINGS = {
   requireLogin: true,
   tunnelDashboardAccess: true,
   authMode: "password",
+  // SSO protocol read by the OIDC gate (decolua/9router#5851); only "oidc" enables it.
+  ssoType: "oidc",
   oidcIssuerUrl: "",
   oidcClientId: "",
   oidcClientSecret: "",

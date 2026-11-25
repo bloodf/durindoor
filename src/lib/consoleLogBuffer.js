@@ -7,6 +7,7 @@ const consoleLevels = ["log", "info", "warn", "error", "debug"];
 if (!global._consoleLogBufferState) {
   global._consoleLogBufferState = {
     logs: [],
+    start: 0,
     revision: 0,
     patched: false,
     originals: {},
@@ -26,6 +27,7 @@ if (!state.emitter) {
 if (!state.pendingLines) state.pendingLines = [];
 if (!state.flushTimer) state.flushTimer = null;
 if (!Number.isSafeInteger(state.revision)) state.revision = 0;
+if (!Number.isSafeInteger(state.start)) state.start = 0;
 
 const FLUSH_INTERVAL_MS = 100;
 const MAX_BATCH_LINES = 50;
@@ -35,7 +37,9 @@ function flushPendingLines() {
   if (!state.pendingLines.length) return;
 
   const lines = state.pendingLines.splice(0, state.pendingLines.length);
-  state.emitter.emit("lines", lines);
+  if (state.emitter.listenerCount("lines")) {
+    state.emitter.emit("lines", lines.map(formatLine));
+  }
 }
 
 function scheduleFlush() {
@@ -44,8 +48,8 @@ function scheduleFlush() {
   state.flushTimer?.unref?.();
 }
 
-function toLogLine(level, args) {
-  return args.map(formatArg).join(" ");
+function formatLine(line) {
+  return Array.isArray(line) ? line.map(formatArg).join(" ") : line;
 }
 
 // Strip ANSI escape codes so terminal colors don't bleed into UI
@@ -65,11 +69,17 @@ function formatArg(arg) {
   }
 }
 
-function appendLine(line) {
-  state.logs.push(line);
+function appendLine(args) {
+  // Keep argument arrays independent while deferring object serialization to readers.
+  const line = args.map((arg) => Array.isArray(arg) ? arg.slice() : arg);
+  if (state.logs.length < CONSOLE_LOG_CONFIG.maxLines) {
+    state.logs.push(line);
+  } else {
+    state.logs[state.start] = line;
+    state.start = (state.start + 1) % CONSOLE_LOG_CONFIG.maxLines;
+  }
   state.revision += 1;
-  const overflow = state.logs.length - CONSOLE_LOG_CONFIG.maxLines;
-  if (overflow > 0) state.logs.splice(0, overflow);
+  if (!state.emitter.listenerCount("lines")) return;
   state.pendingLines.push(line);
   if (state.pendingLines.length >= MAX_BATCH_LINES) {
     if (state.flushTimer) {
@@ -88,7 +98,7 @@ export function initConsoleLogCapture() {
   for (const level of consoleLevels) {
     state.originals[level] = console[level];
     console[level] = (...args) => {
-      appendLine(toLogLine(level, args));
+      appendLine(args);
       state.originals[level](...args);
     };
   }
@@ -97,15 +107,16 @@ export function initConsoleLogCapture() {
 }
 
 export function getConsoleLogs() {
-  return state.logs;
+  return state.logs.slice(state.start).concat(state.logs.slice(0, state.start)).map(formatLine);
 }
 
 export function getConsoleLogSnapshot() {
-  return { logs: [...state.logs], revision: state.revision };
+  return { logs: getConsoleLogs(), revision: state.revision };
 }
 
 export function clearConsoleLogs() {
   state.logs = [];
+  state.start = 0;
   state.pendingLines = [];
   state.revision += 1;
   if (state.flushTimer) {

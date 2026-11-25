@@ -7,7 +7,7 @@ import { dbg } from "../utils/debugLog.js";
 
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
-import { findOffendingField, findRejected422Field } from "../config/providerFieldStrips.js";
+import { findOffendingField, findRejected422Field, findRejectedMessageField, stripAssistantMessageFields } from "../config/providerFieldStrips.js";
 import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -294,6 +294,7 @@ export class BaseExecutor {
     const dispatchesByUrl = {};
     // Keep explicit 400 downgrades across rebuilt attempts in this execution.
     const strippedFields = new Set();
+    const strippedMessageFields = new Set();
     // Merge default retry config with provider-specific config (base ceiling per status).
     // NOTE: never mutate this.config — executors are cached singletons shared across
     // concurrent requests. All per-request policy lives in local vars derived from requestPolicy.
@@ -456,6 +457,9 @@ export class BaseExecutor {
           requestBody = { ...requestBody };
           for (const field of strippedFields) delete requestBody[field];
         }
+        if (strippedMessageFields.size && Array.isArray(requestBody?.messages)) {
+          requestBody = stripAssistantMessageFields(requestBody, strippedMessageFields);
+        }
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
@@ -525,10 +529,17 @@ export class BaseExecutor {
             strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
             log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
-            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
-            cancelDiscardedResponse(response);
-            response = await send(bodyStr);
-          } else break;
+          } else {
+            const messageField = findRejectedMessageField(response.status, errorText, requestBody);
+            if (!messageField) break;
+            requestBody = stripAssistantMessageFields(requestBody, [messageField]);
+            strippedMessageFields.add(messageField);
+            bodyStr = JSON.stringify(requestBody);
+            log?.debug?.("RETRY", `Provider rejected message field ${messageField}; stripping and retrying`);
+          }
+          await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+          cancelDiscardedResponse(response);
+          response = await send(bodyStr);
         }
         if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
           evictResponseDispatcher(response);

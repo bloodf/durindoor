@@ -711,7 +711,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }) || availableConnections[0] :
       availableConnections[0];
     } else if (strategy === "round-robin") {
-      const stickyLimit = providerOverride.stickyRoundRobinLimit || selectionSettings.stickyRoundRobinLimit || 3;
+      // An explicit 0 keeps the current account until it is unavailable (upstream #3259).
+      const configuredStickyLimit = providerOverride.stickyRoundRobinLimit ?? selectionSettings.stickyRoundRobinLimit;
+      const stickyLimit = configuredStickyLimit === 0 ? Infinity : configuredStickyLimit || 3;
 
       const pickOldest = () => {
         const sortedByOldest = [...availableConnections].sort((a, b) => {

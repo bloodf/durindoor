@@ -23,6 +23,7 @@ import {
   isKiroFamilyProvider } from
 "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
+import { COMMANDCODE_MAX_TOKENS } from "../config/commandcode.js";
 import REGISTRY from "./registry/index.js";
 import { AUDITED_PROVIDER_CAPABILITIES } from "./vendorModelCapabilities.js";
 import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
@@ -1472,7 +1473,7 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
         thinkingFormat: "commandcode",
         vision: !isCommandCodeTextOnly(normalizedModel),
         contextWindow: 1000000,
-        maxOutput: 384000,
+        maxOutput: COMMANDCODE_MAX_TOKENS,
       });
     }
   }

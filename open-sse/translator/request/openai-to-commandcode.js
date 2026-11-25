@@ -14,6 +14,7 @@ import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { DEFAULT_MAX_TOKENS, HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { COMMANDCODE_MAX_TOKENS } from "../../config/commandcode.js";
 import { stripThinkingSuffix } from "../concerns/thinkingUnified.js";
 import { encodeDataUri, parseDataUri } from "../concerns/image.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -216,7 +217,7 @@ export function openaiToCommandCodeRequest(model, body, stream /* , credentials 
   const { messages, system } = convertMessages(body.messages);
   const requestedMaxTokens = body.max_tokens ?? body.max_output_tokens ?? DEFAULT_MAX_TOKENS;
   const safeMaxTokens = Math.max(Number(requestedMaxTokens) || DEFAULT_MAX_TOKENS, 1);
-  const maxTokens = Math.min(safeMaxTokens, getCapabilitiesForModel("commandcode", cleanModel).maxOutput);
+  const maxTokens = Math.min(safeMaxTokens, getCapabilitiesForModel("commandcode", cleanModel).maxOutput, COMMANDCODE_MAX_TOKENS);
   const params = {
     model: cleanModel,
     messages,

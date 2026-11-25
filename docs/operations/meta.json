@@ -13,6 +13,7 @@
     "opentelemetry",
     "operational-metrics",
     "api-key-scoping",
-    "webhooks"
+    "webhooks",
+    "stream-status-colors"
   ]
 }

@@ -1,5 +1,6 @@
 import { statsEmitter, getUsageStats } from "@/lib/usageDb";
 import { VALID_USAGE_STATS_PERIODS } from "@/lib/usagePeriods.js";
+import { createStatsBroadcaster } from "@/lib/usage/statsBroadcaster.js";
 
 export const dynamic = "force-dynamic";
 // Bound aggregation work and listener counts per process. A missing credential
@@ -7,17 +8,10 @@ export const dynamic = "force-dynamic";
 const MAX_PER_KEY = 4;
 const MAX_TOTAL = 100;
 const subscribers = new Map();
-const aggregations = new Map();
 let total = 0;
+// One computation per period, fanned out to every stream that asked for it.
+const broadcaster = createStatsBroadcaster({ emitter: statsEmitter, compute: (period) => getUsageStats(period) });
 
-function sharedStats(period) {
-  if (!aggregations.has(period)) {
-    const promise = Promise.resolve().then(() => getUsageStats(period));
-    aggregations.set(period, promise);
-    promise.finally(() => { if (aggregations.get(period) === promise) aggregations.delete(period); }).catch(() => {});
-  }
-  return aggregations.get(period);
-}
 /**
  * Streams full stats for the requested dashboard period (upstream #3388).
  * Invalid periods are rejected consistently with the REST stats endpoint.
@@ -38,7 +32,7 @@ export async function GET(request) {
   subscribers.set(principal, (subscribers.get(principal) || 0) + 1);
 
   const encoder = new TextEncoder();
-  const state = { closed: false, keepalive: null, send: null, sending: false, queued: false };
+  const state = { closed: false, keepalive: null, unsubscribe: null };
 
   const cleanup = () => {
     if (state.closed) return;
@@ -47,8 +41,7 @@ export async function GET(request) {
     const remaining = subscribers.get(principal) - 1;
     if (remaining) subscribers.set(principal, remaining);
     else subscribers.delete(principal);
-    if (state.send) statsEmitter.off("update", state.send);
-    if (state.send) statsEmitter.off("pending", state.send);
+    state.unsubscribe?.();
     if (state.keepalive) clearInterval(state.keepalive);
   };
 
@@ -57,38 +50,27 @@ export async function GET(request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      state.send = async () => {
-        if (state.closed) return;
-        if (state.sending) {
-          state.queued = true;
-          return;
-        }
-
-        state.sending = true;
-        try {
-          do {
-            state.queued = false;
-            // Full aggregation stays debounce-bounded by statsEmitter scheduling and this send/queue coalescer.
-            const stats = await sharedStats(period);
-            if (state.closed) return;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
-          } while (!state.closed && state.queued);
-        } catch {
-          cleanup();
-        } finally {
-          state.sending = false;
-        }
-      };
-
       if (state.closed) {
         controller.close();
         return;
       }
 
-      statsEmitter.on("update", state.send);
-      statsEmitter.on("pending", state.send);
+      const push = (stats) => {
+        if (state.closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
+        } catch {
+          cleanup();
+        }
+      };
+      state.unsubscribe = broadcaster.subscribe(period, { onStats: push, onError: cleanup });
 
-      await state.send();
+      try {
+        const stats = await broadcaster.snapshot(period);
+        push(stats);
+      } catch {
+        cleanup();
+      }
       if (state.closed) return;
 
       state.keepalive = setInterval(() => {

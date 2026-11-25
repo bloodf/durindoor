@@ -4,14 +4,14 @@
  */
 
 // Ensure outbound fetch respects HTTP(S)_PROXY/ALL_PROXY in Node runtime
-import "open-sse/index.js";
-import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
+import "../../../open-sse/utils/proxyFetch.js";
+import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "../../../open-sse/config/grokCli.js";
 import crypto from "crypto";
-import { buildKimiDeviceHeaders } from "open-sse/config/appConstants.js";
-import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "open-sse/services/antigravityProvisioning.js";
-import { readBoundedResponseText } from "open-sse/utils/error.js";
+import { buildKimiDeviceHeaders } from "../../../open-sse/config/appConstants.js";
+import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "../../../open-sse/services/antigravityProvisioning.js";
+import { readBoundedResponseText } from "../../../open-sse/utils/error.js";
 
-import { generatePKCE, generateState } from "./utils/pkce";
+import { generatePKCE, generateState } from "./utils/pkce.js";
 import {
   CLAUDE_CONFIG,
   CODEX_CONFIG,
@@ -40,8 +40,8 @@ import {
   GROK_CLI_CONFIG,
   getOAuthClientMetadata,
   OAUTH_TIMEOUT } from
-"./constants/oauth";
-import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
+"./constants/oauth.js";
+import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai.js";
 import {
   validateXaiOAuthEndpoint,
   decodeXaiIdTokenEmail,
@@ -50,7 +50,7 @@ import {
   fetchClaudeProfile,
   claudeProfileFields,
   fetchKiroProfileArn } from
-"./providerHelpers";
+"./providerHelpers.js";
 import { isFunction, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { assertPublicUrlResolved } from "../../shared/utils/ssrfGuard.js";
 import { OAuthCancelledError, throwIfOAuthCancelled } from "./cancellation.js";

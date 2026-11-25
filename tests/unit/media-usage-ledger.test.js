@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -164,7 +165,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     });
     expectMetadata(row, usage);
     await expectCounters(1, 0.25);
-    const daily = adapter.all("SELECT data FROM usageDaily").map((row) => JSON.parse(row.data));
+    const daily = [...readUsageDailyRollups(adapter)].map(({ day }) => day);
     expect(daily).toHaveLength(1);
     expect(daily[0]).toMatchObject({ requests: 1, cost: 0.25, promptTokens: 0, completionTokens: 0 });
   });
@@ -179,7 +180,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     }));
     expect(rows().map((row) => row.usageEventId)).toEqual([usage.usageEventId, "media-fixture:account-a:event-b"]);
     await expectCounters(2, 0.5, 14, 6);
-    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 2, cost: 0.5 });
+    expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 2, cost: 0.5 });
   });
 
   it.each(["prune", "all", "1h"])("retains legacy event receipts through %s history removal", async (mode) => {
@@ -245,7 +246,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     expect(fresh.auth.billingEpoch).not.toBe("");
     expect((await evaluateApiKeyAuth(secret, { required: true })).billingEpoch).toBe(fresh.auth.billingEpoch);
     const historyBefore = adapter.all("SELECT * FROM usageHistory");
-    const dailyBefore = adapter.all("SELECT * FROM usageDaily");
+    const dailyBefore = adapter.all("SELECT * FROM usageDailyRollups ORDER BY id");
     const totalsBefore = await database.getApiKeyUsageTotals(keyId);
     const receiptsBefore = adapter.all("SELECT key FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key");
     for (const billingEpoch of [undefined, admission.auth.billingEpoch, "wrong-generation"]) {
@@ -256,7 +257,7 @@ describe("media usage in the existing usageHistory ledger", () => {
         .rejects.toThrow("Stale or missing billing epoch");
     }
     expect(adapter.all("SELECT * FROM usageHistory")).toEqual(historyBefore);
-    expect(adapter.all("SELECT * FROM usageDaily")).toEqual(dailyBefore);
+    expect(adapter.all("SELECT * FROM usageDailyRollups ORDER BY id")).toEqual(dailyBefore);
     expect(await database.getApiKeyUsageTotals(keyId)).toEqual(totalsBefore);
     expect(adapter.all("SELECT key FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key")).toEqual(receiptsBefore);
     const current = event({ billingEpoch: fresh.auth.billingEpoch });
@@ -301,14 +302,14 @@ describe("media usage in the existing usageHistory ledger", () => {
       await database.importDb(snapshot);
       const before = {
         history: adapter.all("SELECT * FROM usageHistory"),
-        daily: adapter.all("SELECT * FROM usageDaily"),
+        daily: adapter.all("SELECT * FROM usageDailyRollups ORDER BY id"),
         totals: adapter.all("SELECT * FROM apiKeyUsageTotals"),
         receipts: adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key"),
       };
       release();
       await rejected;
       expect(adapter.all("SELECT * FROM usageHistory")).toEqual(before.history);
-      expect(adapter.all("SELECT * FROM usageDaily")).toEqual(before.daily);
+      expect(adapter.all("SELECT * FROM usageDailyRollups ORDER BY id")).toEqual(before.daily);
       expect(adapter.all("SELECT * FROM apiKeyUsageTotals")).toEqual(before.totals);
       expect(adapter.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key")).toEqual(before.receipts);
     } finally {
@@ -360,14 +361,14 @@ describe("media usage in the existing usageHistory ledger", () => {
     expectMetadata(rows()[0], usage);
     // Counters sum known spend only; this zero must not erase the row's unknown status.
     await expectCounters(1, 0, 0, 0, 1);
-    const daily = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    const daily = [...readUsageDailyRollups(adapter)][0].day;
     expect(daily).toMatchObject({ requests: 1, cost: 0, unknownCostRequests: 1 });
     for (const dimension of ["byProvider", "byModel", "byAccount", "byApiKey", "byEndpoint"]) {
       expect(Object.values(daily[dimension])).toEqual([expect.objectContaining({ requests: 1, cost: 0, unknownCostRequests: 1 })]);
     }
     await policy.recordApiKeyUsageForResponse(secret, new Response(null), event({ usageEventId: "known-after-unknown" }));
     await expectCounters(2, 0.25, 0, 0, 1);
-    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 2, cost: 0.25, unknownCostRequests: 1 });
+    expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 2, cost: 0.25, unknownCostRequests: 1 });
   });
 
   it("does not charge validation failures, policy denials or upstream failures", async () => {
@@ -378,7 +379,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       }))).toBe(response);
     }
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     await expectCounters(0, 0);
     // Failed attempts cannot spend the next successful request's allowance.
     await policy.recordApiKeyUsageForResponse(secret, new Response(null), event());
@@ -420,7 +421,7 @@ describe("media usage in the existing usageHistory ledger", () => {
   ])("rejects invalid normalized accounting without partial writes: %j", async (invalid) => {
     await expect(policy.recordApiKeyUsageForResponse(secret, new Response(null), event(invalid))).rejects.toThrow();
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     await expectCounters(0, 0);
   });
 
@@ -429,7 +430,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       BEGIN SELECT RAISE(ABORT, 'injected totals failure'); END`);
     await expect(policy.recordApiKeyUsageForResponse(secret, new Response(null), event())).rejects.toThrow();
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     expect(adapter.all("SELECT key FROM kv WHERE scope = 'usageEventReceipts'")).toEqual([]);
     expect(await database.getApiKeyUsageTotals(keyId)).toMatchObject({ totalRequests: 0, totalCost: 0 });
     adapter.run("DROP TRIGGER fail_media_totals");
@@ -445,7 +446,7 @@ describe("media usage in the existing usageHistory ledger", () => {
     const row = adapter.get("SELECT * FROM usageHistory");
     expect(row).toMatchObject({ apiKey: null, cost: null, promptTokens: 0, completionTokens: 0 });
     expect(JSON.parse(row.meta)).toMatchObject({ costStatus: "unknown", nativeUnits: { images: 2 } });
-    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 1, cost: 0, unknownCostRequests: 1 });
+    expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 1, cost: 0, unknownCostRequests: 1 });
   });
 
   it("rejects incomplete native accounting instead of guessing billing", async () => {
@@ -513,7 +514,7 @@ describe("media usage in the existing usageHistory ledger", () => {
   ])("rejects invalid or unallocatable token counts without partial writes: %j", async (tokens) => {
     await expect(database.saveRequestUsage({ ...event({ tokens }), apiKey: secret, strict: true })).rejects.toThrow("Usage");
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     await expectCounters(0, 0);
   });
 
@@ -535,7 +536,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       await expect(observeNativeResponse(response, input).text()).rejects.toThrow("Usage");
     }
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     await expectCounters(0, 0);
   });
 
@@ -546,7 +547,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       latencySamples: 999, ttftSamples: -50, timedCompletionTokens: 99999 }), apiKey: secret, strict: true });
     const expected = { latencyMs, ttftMs, latencySamples, ttftSamples, timedCompletionTokens };
     expect(rows()[0]).toMatchObject({ latencyMs, ttftMs, completionTokens: 3 });
-    const daily = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    const daily = [...readUsageDailyRollups(adapter)][0].day;
     expect(daily).toMatchObject(expected);
     for (const dimension of ["byProvider", "byModel", "byAccount", "byApiKey", "byEndpoint"]) {
       for (const bucket of Object.values(daily[dimension])) expect(bucket).toMatchObject(expected);
@@ -558,7 +559,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       await expect(database.saveRequestUsage({ ...event({ [field]: value }), apiKey: secret, strict: true })).rejects.toThrow("Usage timing");
     }
     expect(rows()).toEqual([]);
-    expect(adapter.all("SELECT data FROM usageDaily")).toEqual([]);
+    expect(adapter.all("SELECT id FROM usageDailyRollups ORDER BY id")).toEqual([]);
     await expectCounters(0, 0);
   });
 
@@ -583,7 +584,7 @@ describe("media usage in the existing usageHistory ledger", () => {
       await database.saveRequestUsage({ ...event({ usageEventId: id, provider: "__proto__", model: "constructor",
         cost, costStatus: cost === null ? "unknown" : "known", requests: 400, unknownCostRequests: 999 }), apiKey: secret, strict: true });
     }
-    const daily = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    const daily = [...readUsageDailyRollups(adapter)][0].day;
     expect(Object.hasOwn(daily.byProvider, "__proto__")).toBe(true);
     expect(daily.byProvider.__proto__).toMatchObject({ requests: 2, unknownCostRequests: 1, cost: 0.25 });
     expect(await database.getUsageStats("today")).toMatchObject({ totalRequests: 2, unknownCostRequests: 1 });

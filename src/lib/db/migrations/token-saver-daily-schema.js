@@ -1,6 +1,10 @@
-import { tokenSaverEventColumns } from "../../../../open-sse/rtk/index.js";
-
-export const TOKEN_SAVER_SUM_COLUMNS = Object.keys(tokenSaverEventColumns({})).filter((name) => name !== "hrState" && name !== "hrSkipReason");
+// Frozen at migration creation so runtime telemetry changes cannot alter the schema.
+export const TOKEN_SAVER_SUM_COLUMNS = Object.freeze([
+  "rtkRequestsWithHits", "rtkHits", "rtkBytesBefore", "rtkBytesAfter", "rtkBytesSaved",
+  "hrTokensBefore", "hrTokensAfter", "hrTokensSaved", "hrBodyBytesBefore", "hrBodyBytesAfter",
+  "hrPhantomSavings", "pxApplied", "pxTokensBeforeEst", "pxTokensAfterEst", "pxTokensSavedEst",
+  "pxImageCount", "totalActualBytesSaved",
+]);
 export const TOKEN_SAVER_DAILY_COLUMNS = ["requestsObserved", ...TOKEN_SAVER_SUM_COLUMNS, "compressed", "skipped", "disabled"];
 export const TOKEN_SAVER_AGGREGATES = [
   "COUNT(*) AS requestsObserved",

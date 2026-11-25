@@ -256,7 +256,7 @@ function summarizeRpmLimitedConnections(connections, rpmLimit, now) {
   };
 }
 
-async function buildPublicNoAuthCredential(providerId) {
+async function buildPublicNoAuthCredential(providerId, sessionId) {
   const settings = await getSettings();
   const override = (settings.providerStrategies || {})[providerId] || {};
   const strategy = override.rotateStrategy || "none";
@@ -264,7 +264,7 @@ async function buildPublicNoAuthCredential(providerId) {
   if (strategy !== "none") {
     const allPools = await getProxyPools({ isActive: true });
     const poolIds = allPools.filter((p) => p.proxyUrl).map((p) => p.id);
-    pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+    pickedId = pickProxyPoolId(poolIds, strategy, providerId, sessionId);
   }
   const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
   return buildNoAuthCredential({}, resolvedProxy, null);
@@ -475,7 +475,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
       // Inject a public no-auth credential only when no real connection exists.
       if (scopedHasOverlap && connections.length === 0) {
-        return publicFallbackAllowed ? buildPublicNoAuthCredential(providerId) : null;
+        return publicFallbackAllowed ? buildPublicNoAuthCredential(providerId, sessionId) : null;
       }
       if (!scopedHasOverlap) {
         log.warn("AUTH", `${provider} | scope produced empty intersection; denying`);
@@ -532,7 +532,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       // Pollinations (and similar) still serve unauthenticated traffic.
       if (isNoAuthProvider && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to public no-auth`);
-        return buildPublicNoAuthCredential(providerId);
+        return buildPublicNoAuthCredential(providerId, sessionId);
       }
       if (providerHasOptionalAuth(providerId) && publicFallbackAllowed) {
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);

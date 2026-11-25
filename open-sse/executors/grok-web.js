@@ -3,7 +3,9 @@ import { ACCEPT_ENCODING } from "../utils/zstdCompat.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 
@@ -299,7 +301,10 @@ export class GrokWebExecutor extends BaseExecutor {
     super("grok-web", PROVIDERS["grok-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -378,16 +383,22 @@ export class GrokWebExecutor extends BaseExecutor {
     log?.info?.("GROK-WEB", `Query to ${model} (grok=${grokModel}, mode=${modelMode}), len=${message.length}`);
 
     let response;
+    const result = (reply) => {
+      transferProviderAttemptDispatch(response, reply);
+      return { response: reply, url: GROK_CHAT_API, headers, transformedBody: grokPayload, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
-      response = await proxyAwareFetch(GROK_CHAT_API, {
+      response = await sender.sendRequest(GROK_CHAT_API, {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal
       }, proxyOptions);
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
+      if (signal?.aborted) throw requestAbortError(signal.reason);
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Grok connection failed: ${err.message || String(err)}`, type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     if (!response.ok) {
@@ -399,14 +410,14 @@ export class GrokWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: errMsg, type: "upstream_error", code: `HTTP_${status}` }
       }), { status, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     if (!response.body) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Grok returned empty response body", type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     const cid = `chatcmpl-grok-${crypto.randomUUID().slice(0, 12)}`;
@@ -422,7 +433,7 @@ export class GrokWebExecutor extends BaseExecutor {
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal, message);
     }
-    return { response: finalResponse, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+    return result(finalResponse);
   }
 }
 

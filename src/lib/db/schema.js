@@ -1,12 +1,13 @@
 import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.js";
+import { USAGE_DAILY_ROLLUP_TABLE } from "./helpers/usageDailyRollups.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -311,12 +312,14 @@ export const TABLES = {
     primaryKey: "PRIMARY KEY (dateKey, provider, model, connectionId, apiKey, endpoint)",
     indexes: ["CREATE INDEX IF NOT EXISTS idx_uls_date ON usageLastSeen(dateKey)"],
   },
+  // Staging table for older migrations and legacy JSON imports.
   usageDaily: {
     columns: {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
   },
+  usageDailyRollups: USAGE_DAILY_ROLLUP_TABLE,
   // Aggregate Token Saver telemetry (port of 9router #2562). One row per
   // persisted logical request; `data` is the normalized event JSON. DB-native
   // autoincrement id — no caller/JS key. `timestamp` (ISO) backs today/24h/all

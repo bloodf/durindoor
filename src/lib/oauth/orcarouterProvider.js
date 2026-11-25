@@ -16,8 +16,8 @@ import {
   resolveAuthBase,
   ORCAROUTER_ID,
   ORCAROUTER_CONSOLE_URL } from
-"open-sse/providers/orcarouterCatalog.js";
-import { PROVIDER_OAUTH } from "open-sse/providers/index.js";
+"../../../open-sse/providers/orcarouterCatalog.js";
+import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 import { isNumber, isString } from "../../shared/utils/typeChecks.js";
 
 export const ORCAROUTER_APP_NAME = "DurinDoor";

@@ -102,9 +102,9 @@ export function getModelSupportedFormats(aliasOrId, modelId) {
     if (!model || !model.kind || model.kind === "llm") return ["openai", "openai-responses"];
   }
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.supportedFormats || null;
-  // The Kimi Platform exposes both APIs for platform model IDs, including
+  // The Kimi Platform exposes all three APIs for platform model IDs, including
   // IDs discovered after the bundled catalog was published.
-  if (aliasOrId === "kimi") return ["openai", "claude"];
+  if (aliasOrId === "kimi") return ["openai", "claude", "openai-responses"];
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);

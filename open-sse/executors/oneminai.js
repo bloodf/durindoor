@@ -13,9 +13,9 @@
 import { randomUUID } from "node:crypto";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildErrorBody, readBoundedResponseText } from "../utils/error.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 
 export const ONEMINAI_CHAT_URL = "https://api.1min.ai/api/chat-with-ai";
 const MAX_STREAM_ERROR_DATA_CHARS = 64 * 1024;
@@ -233,7 +233,13 @@ export class OneMinAiExecutor extends BaseExecutor {
     return { type: "UNIFY_CHAT_WITH_AI", model, promptObject: { prompt: buildPrompt(messages) } };
   }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, proxyOptions = null }, sender, billed) {
     // The prompt-string wire has no tool or media channel (upstream strips
     // these params). Reject instead of silently dropping them.
     const unsupported = unsupportedFeature(body);
@@ -252,11 +258,10 @@ export class OneMinAiExecutor extends BaseExecutor {
 
     let response;
     try {
-      // Quota-bearing dispatch: proxyAwareFetch then refuses redirects (redirect:"error").
-      response = await runQuotaBearingProviderRequest(() =>
-      proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions));
+      // The sender charges quota and refuses redirects.
+      response = billed(await sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions));
     } catch (error) {
-      if (error?.name === "AbortError" || signal?.aborted) throw error;
+      if (isQuotaDispatchUnavailable(error) || error?.name === "AbortError" || signal?.aborted) throw error;
       return result(jsonResponse(502, buildErrorBody(502, `1min.ai fetch error: ${error?.message || error}`)));
     }
 

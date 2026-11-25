@@ -1,4 +1,6 @@
 import { BaseExecutor } from "./base.js";
+import { cancelDiscardedResponse, createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createHash } from "crypto";
@@ -79,19 +81,19 @@ function resetJwtCache() {
   jwtExpiresAt = 0;
 }
 
-async function bootstrapJwt(proxyOptions = null) {
+async function bootstrapJwt(proxyOptions = null, send = (url, init) => proxyAwareFetch(url, init, proxyOptions)) {
   if (cachedJwt && Date.now() < jwtExpiresAt - JWT_EXPIRY_BUFFER_MS) {
     return cachedJwt;
   }
 
-  const response = await proxyAwareFetch(BOOTSTRAP_URL, {
+  const response = await send(BOOTSTRAP_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
     },
     body: JSON.stringify({ client: generateFingerprint() })
-  }, proxyOptions);
+  });
 
   if (!response.ok) {
     throw new Error(`MiMo bootstrap failed: ${response.status}`);
@@ -132,10 +134,18 @@ export class MimoFreeExecutor extends BaseExecutor {
     return injectSystemMarker(body);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }, sender, billed) {
+    // The JWT bootstrap is not charged; each chat send is quota-bearing.
+    const setup = (url, init) => sender.sendRequest(url, { ...init, signal }, proxyOptions, { quotaBearing: false });
     let jwt;
     try {
-      jwt = await bootstrapJwt(proxyOptions);
+      jwt = await bootstrapJwt(proxyOptions, setup);
     } catch (error) {
       log?.error?.("AUTH", `MiMo bootstrap failed: ${error.message}`);
       throw error;
@@ -148,15 +158,18 @@ export class MimoFreeExecutor extends BaseExecutor {
     const bodyStr = JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody));
     log?.debug?.("FETCH", `MIMO-FREE → ${url} | body=${bodyStr.length}B`);
 
-    const response = await proxyAwareFetch(url, { method: "POST", headers, body: bodyStr, signal }, proxyOptions);
+    const send = async () => billed(await sender.sendRequest(url, { method: "POST", headers, body: bodyStr, signal }, proxyOptions));
+    const response = await send();
 
     // On auth failure, invalidate cache and retry once with a fresh JWT
     if (response.status === 401 || response.status === 403) {
       log?.debug?.("AUTH", `MiMo auth failed (${response.status}), re-bootstrapping...`);
+      await settleProviderAttemptDispatch(response, { reason: "fallback" });
+      cancelDiscardedResponse(response);
       resetJwtCache();
-      jwt = await bootstrapJwt(proxyOptions);
+      jwt = await bootstrapJwt(proxyOptions, setup);
       headers["Authorization"] = `Bearer ${jwt}`;
-      const retryResponse = await proxyAwareFetch(url, { method: "POST", headers, body: bodyStr, signal }, proxyOptions);
+      const retryResponse = await send();
       return { response: retryResponse, url, headers, transformedBody };
     }
 

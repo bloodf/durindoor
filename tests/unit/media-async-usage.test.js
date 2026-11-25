@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -184,7 +185,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ costStatus: "known", costSource: "provider" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.4, unknownCostRequests: 0 });
-    const day = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    const day = [...readUsageDailyRollups(adapter)][0].day;
     expect(day).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
     expect(Object.values(day.byProvider)[0]).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
     expect(adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'").value).toBe("1");
@@ -386,7 +387,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect(rows()).toEqual([]);
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 0, totalCost: 0, unknownCostRequests: 0 });
-    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 0, unknownCostRequests: 0 });
+    expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 0, unknownCostRequests: 0 });
     expect(adapter.all("SELECT * FROM usageLastSeen")).toEqual([]);
   });
 });

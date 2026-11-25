@@ -214,7 +214,7 @@ function createRealtimeSession({ ws, session, chat, headers = {}, maxItems = MAX
       const contentType = res.headers?.get?.("content-type") || "";
       if (contentType.includes("text/event-stream") && res.body) {
         for await (const chunk of iterateSSE(res.body)) {
-          if (chunk.data === "[DONE]") break;
+          if (chunk.data.trim() === "[DONE]") break;
           let json;
           try {json = JSON.parse(chunk.data);} catch {continue;}
           const choice = json.choices?.[0];

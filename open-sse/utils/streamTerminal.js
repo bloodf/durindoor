@@ -22,7 +22,7 @@ const MASKED_GATEWAY_ERROR_REASONS = new Set([
 "timeout"
 ]);
 
-function choiceHasOutput(choice) {
+export function choiceHasOutput(choice) {
   const message = choice?.message || choice?.delta || {};
   const hasToolCall = Array.isArray(message.tool_calls) &&
   message.tool_calls.some((toolCall) => isString(toolCall?.function?.name) && toolCall.function.name.length > 0);

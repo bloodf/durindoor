@@ -216,3 +216,31 @@ describe("masked HTTP-200 gateway errors (upstream #3611)", () => {
     expect((await result.response.json()).choices[0].message.tool_calls).toHaveLength(1);
   });
 });
+
+describe("masked gateway errors in OpenAI passthrough streams (upstream #3611)", () => {
+  const nativeFinish = { choices: [{ index: 0, delta: {}, finish_reason: "stop", native_finish_reason: "network_error" }] };
+
+  it.each([
+    ["a terminated frame", sse(nativeFinish, "[DONE]")],
+    ["an unterminated final frame", `data: ${JSON.stringify(nativeFinish)}`]
+  ])("replaces the empty success with an error from %s", async (_label, input) => {
+    const output = await passthrough(input);
+
+    expect(output).toContain('"message":"Upstream provider error: network_error"');
+    expect(output).not.toContain('"finish_reason":"stop"');
+  });
+
+  it.each([
+    ["text", { content: "partial" }],
+    ["a tool call", { tool_calls: toolCalls }]
+  ])("keeps the finish after the stream already delivered %s", async (_label, delta) => {
+    const output = await passthrough(sse(
+      { choices: [{ index: 0, delta, finish_reason: null }] },
+      nativeFinish,
+      "[DONE]"
+    ));
+
+    expect(output).toContain('"finish_reason":"stop"');
+    expect(output).not.toContain('"error"');
+  });
+});

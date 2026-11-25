@@ -13,6 +13,7 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { isSafetyStopPayload } from "./safetyStopFrame.js";
 import { createNoticeGate, isUnavailableNotice } from "./unavailableNotice.js";
+import { jsonDocumentFrame } from "./jsonDocumentFrame.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
@@ -264,6 +265,11 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
         pending += decoder.decode();
         const tail = pending.trim();
         if (tail && inspect(tail)) return result(safetyStop ? "safety_stop" : "content", { done: true });
+        // Not SSE after all: judge a whole JSON document by the same frame rules.
+        const document = jsonDocumentFrame(await new Blob(chunks).text());
+        if (document && inspect(`data: ${JSON.stringify(document)}`)) {
+          return result(safetyStop ? "safety_stop" : "content", { done: true });
+        }
         return result(!streamError && hasTokenLimitTerminal?.() ? "content" : "empty", { done: true });
       }
 

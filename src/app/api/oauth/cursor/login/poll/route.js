@@ -18,7 +18,7 @@ export async function POST(request) {
     const existing = details.accountId && (await getProviderConnections({ provider: "cursor" })).find((c) => c.authType === "oauth" && (c.providerSpecificData?.accountId || c.providerSpecificData?.userId) === details.accountId);
     const providerSpecificData = { ...existing?.providerSpecificData, machineId, authMethod: "deep_control", provider: "Deep Control", accountId: details.accountId, userId: details.accountId };
     const values = { accessToken: result.accessToken, refreshToken: result.refreshToken, expiresAt: details.expiresAt, email: details.email, providerSpecificData, testStatus: "active" };
-    const connection = existing ? await updateProviderConnection(existing.id, values) : await createProviderConnection({ provider: "cursor", authType: "oauth", ...values }, { createOnly: true });
+    const connection = existing ? await updateProviderConnection(existing.id, values, { replacesCredential: true }) : await createProviderConnection({ provider: "cursor", authType: "oauth", ...values }, { createOnly: true });
     return Response.json({ status: "ok", success: true, connection: { id: connection.id, provider: "cursor", email: connection.email || details.email } });
   } catch {
     return Response.json({ status: "error", error: "Failed to save Cursor connection" }, { status: 500 });

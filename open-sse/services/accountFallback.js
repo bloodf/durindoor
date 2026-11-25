@@ -350,7 +350,9 @@ function classifyFallbackError({
   // signal) keeps the exponential-backoff path below untouched.
   if (status === 429) {
     const now = Date.now();
-    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, now });
+    // Native Gemini, TTS and STT callers pass the raw body here, so its Gemini
+    // quota hints need the provider (decolua/9router#4348).
+    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, now, provider: provider === "gemini" ? provider : null });
     if (evidence?.state === "exhausted") {
       // Resetless exhaustion: no parseable deadline, so fall through to the
       // rule loop for the (short) bench duration but preserve the classifier

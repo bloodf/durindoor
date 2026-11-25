@@ -82,7 +82,7 @@ These cards share one settings form: endpoint, API key, and model. Pi takes a li
 
 | Tool | Card | Config file | What apply writes |
 | --- | --- | --- | --- |
-| Pi | `pi` | `~/.pi/agent/models.json` (or `~/.pi/models.json` if only that exists) | `providers.durindoor` with `api: "openai-completions"` and the model list |
+| Pi | `pi` | `~/.pi/agent/models.json` (or `~/.pi/models.json` if only that exists) | `providers.durindoor` with the model list; a new entry gets `api: "openai-completions"`, and a saved `api` value is kept |
 | Crush | `crush` | `$XDG_CONFIG_HOME/crush/crush.json`, default `~/.config/crush/crush.json` | `providers.durindoor` with `type: "openai-compat"` |
 | ForgeCode | `forge` | `~/.forge/config.toml` | `[openai]` table with `api_key`, `base_url`, `model` |
 | Smelt | `smelt` | `~/.smelt/config.json` | top-level `baseUrl`, `apiKey`, `model`, `_managedBy: "durindoor"` |

@@ -80,7 +80,8 @@ export async function POST(request) {
       map((connection) =>
       updateProviderConnection(connection.id, {
         [lockKey]: null,
-        ...(connection.testStatus === "unavailable" ?
+        // The account stays unavailable while another lock is running (upstream #4305).
+        ...(connection.testStatus === "unavailable" && getActiveModelLocks(connection).every((lock) => lock.key === lockKey) ?
         {
           testStatus: "active",
           lastError: null,

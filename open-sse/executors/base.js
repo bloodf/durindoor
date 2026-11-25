@@ -397,10 +397,10 @@ export class BaseExecutor {
       if (response && Number(statusKey) === HTTP_STATUS.RATE_LIMITED &&
           !this.computeRetryDelay && matchedRule?.action !== "retry") {
         const now = Date.now();
-        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, now });
+        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, provider: this.provider, now });
         if (evidence?.source !== "retry_after") {
           const bodyText = await readOptionalProbeText(response, { signal });
-          evidence = parseRateLimitEvidence({ status: 429, bodyText, now });
+          evidence = parseRateLimitEvidence({ status: 429, bodyText, provider: this.provider, now });
         }
         const remaining = Math.min(attempts - retryAttemptsByUrl[urlIndex],
           maxTransportAttempts == null ? Infinity : maxTransportAttempts - dispatchesByUrl[urlIndex]);

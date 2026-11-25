@@ -20,7 +20,7 @@ import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
-import { createUpstreamTerminalTracker } from "./streamTerminal.js";
+import { choiceHasOutput, classifyMaskedGatewayError, createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
 import { advancePendingSseLineBytes, MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 import { isProviderKeepaliveEvent } from "./providerKeepalive.js";
@@ -652,6 +652,19 @@ export function createSSEStream(options = {}) {
     return { changed, keep: choiceCount === 0 || parsed.choices.length > 0 || Boolean(parsed.usage) };
   };
 
+  // An upstream gateway can hide its failure behind an HTTP 200 finish chunk
+  // (native_finish_reason). With no output before it, that finish becomes an
+  // in-band error, so the turn is not recorded as a blank success (upstream #3611).
+  let openAIOutputSeen = false;
+  const maskedGatewayErrorEnvelope = (parsed) => {
+    if (targetFormat !== FORMATS.OPENAI || !Array.isArray(parsed?.choices)) return null;
+    openAIOutputSeen ||= parsed.choices.some(choiceHasOutput);
+    const reason = openAIOutputSeen ? null : classifyMaskedGatewayError(parsed);
+    return reason ?
+    { error: { message: `Upstream provider error: ${reason}`, type: "upstream_error", code: reason } } :
+    null;
+  };
+
   let claudeTerminalSeen = false;
   let upstreamErrorForwarded = false;
   // First in-stream error envelope (OpenAI/Anthropic `error`, Responses
@@ -984,7 +997,9 @@ export function createSSEStream(options = {}) {
 
           if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? dataValue : trimmed)) {
             try {
-              const parsed = JSON.parse(isDataLine ? dataValue : trimmed);
+              const upstreamChunk = JSON.parse(isDataLine ? dataValue : trimmed);
+              const gatewayError = maskedGatewayErrorEnvelope(upstreamChunk);
+              const parsed = gatewayError ?? upstreamChunk;
               // A replayed Responses frame re-sends a sequence_number that was
               // already forwarded. Forwarding it again duplicates its content,
               // and its held event label has to go with it.
@@ -1030,7 +1045,7 @@ export function createSSEStream(options = {}) {
               // from the thinking block start. Strict Messages clients deserialize
               // that field before the later signature_delta arrives, so inject an
               // empty placeholder when the provider quirk requests it (#2706).
-              let fieldsInjected = false;
+              let fieldsInjected = gatewayError !== null;
               if (
               PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
               parsed.type === "content_block_start" &&
@@ -1761,7 +1776,8 @@ export function createSSEStream(options = {}) {
 
           if (buffer) {
             const trimmedBuffer = buffer.trim();
-            const parsed = parseSSELine(trimmedBuffer, targetFormat);
+            const bufferedChunk = parseSSELine(trimmedBuffer, targetFormat);
+            const parsed = maskedGatewayErrorEnvelope(bufferedChunk) ?? bufferedChunk;
             const bufferedError = extractStreamErrorPayload(parsed);
             let output = "";
             if (parsed?.done) {

@@ -5701,7 +5701,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
-            "src/shared/constants/cliTools.js": "39738fe2c7f35633039a54a62adc75dfd2bede251cb00f62336427af5025abac"
+            "src/shared/constants/cliTools.js": "39c26f12f669db71488ba146d5471ed684c15ebeadb4983fe0fdb96a4efaa8ed"
           },
           "proposedSourceEvidence": "Every own export uses MITM_TOOLS.antigravity.defaultModels[0], whose real visible label is Gemini 3.8 Flash (High). WithModel proves an input value (not text content); ClearModel clears that input; Reasoning effort is aria metadata. Required visible expectation is the actual model label, with own play retaining input/reasoning/clear behavioral assertions.",
           "expectedVisibleText": "Gemini 3.8 Flash (High)"
@@ -5720,7 +5720,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
-            "src/shared/constants/cliTools.js": "39738fe2c7f35633039a54a62adc75dfd2bede251cb00f62336427af5025abac"
+            "src/shared/constants/cliTools.js": "39c26f12f669db71488ba146d5471ed684c15ebeadb4983fe0fdb96a4efaa8ed"
           },
           "proposedSourceEvidence": "Every own export uses MITM_TOOLS.antigravity.defaultModels[0], whose real visible label is Gemini 3.8 Flash (High). WithModel proves an input value (not text content); ClearModel clears that input; Reasoning effort is aria metadata. Required visible expectation is the actual model label, with own play retaining input/reasoning/clear behavioral assertions."
         },
@@ -5736,7 +5736,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
-            "src/shared/constants/cliTools.js": "39738fe2c7f35633039a54a62adc75dfd2bede251cb00f62336427af5025abac"
+            "src/shared/constants/cliTools.js": "39c26f12f669db71488ba146d5471ed684c15ebeadb4983fe0fdb96a4efaa8ed"
           },
           "proposedSourceEvidence": "Every own export uses MITM_TOOLS.antigravity.defaultModels[0], whose real visible label is Gemini 3.8 Flash (High). WithModel proves an input value (not text content); ClearModel clears that input; Reasoning effort is aria metadata. Required visible expectation is the actual model label, with own play retaining input/reasoning/clear behavioral assertions.",
           "expectedVisibleText": "Gemini 3.8 Flash (High)"
@@ -5752,7 +5752,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
-            "src/shared/constants/cliTools.js": "39738fe2c7f35633039a54a62adc75dfd2bede251cb00f62336427af5025abac"
+            "src/shared/constants/cliTools.js": "39c26f12f669db71488ba146d5471ed684c15ebeadb4983fe0fdb96a4efaa8ed"
           },
           "proposedSourceEvidence": "Every own export uses MITM_TOOLS.antigravity.defaultModels[0], whose real visible label is Gemini 3.8 Flash (High). WithModel proves an input value (not text content); ClearModel clears that input; Reasoning effort is aria metadata. Required visible expectation is the actual model label, with own play retaining input/reasoning/clear behavioral assertions.",
           "expectedVisibleText": "Gemini 3.8 Flash (High)"
@@ -5769,7 +5769,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.js": "d8d57499817d4150c21dadacbe3abe43304217c8d7ae91da0bd4028cca0ebf1c",
             "src/app/(dashboard)/dashboard/cli-tools/components/MitmModelMappingRow.stories.jsx": "e9f53054ddddf40ac2f36ff48424a3138bd2b974618921afe496b80f8f2200d5",
-            "src/shared/constants/cliTools.js": "39738fe2c7f35633039a54a62adc75dfd2bede251cb00f62336427af5025abac"
+            "src/shared/constants/cliTools.js": "39c26f12f669db71488ba146d5471ed684c15ebeadb4983fe0fdb96a4efaa8ed"
           },
           "proposedSourceEvidence": "Every own export uses MITM_TOOLS.antigravity.defaultModels[0], whose real visible label is Gemini 3.8 Flash (High). WithModel proves an input value (not text content); ClearModel clears that input; Reasoning effort is aria metadata. Required visible expectation is the actual model label, with own play retaining input/reasoning/clear behavioral assertions.",
           "expectedAccessibleName": "provider/model-id",

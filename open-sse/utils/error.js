@@ -318,7 +318,7 @@ function absoluteResetFromText(text, now, maxDelayMs, naiveZoneSuffix = "Z") {
   return resetAtMs;
 }
 
-function durationResetFromText(text, now, maxDelayMs) {
+function durationResetFromText(text, now, maxDelayMs, { allowTryAgain = false } = {}) {
   if (!isString(text) || text.length > 64 * 1024) return null;
   const unitMs = {
     w: 7 * 24 * 60 * 60 * 1000,
@@ -338,15 +338,16 @@ function durationResetFromText(text, now, maxDelayMs) {
     seconds: 1000
   };
   const durations = new Set();
-  const clausePattern = /\b(?:retry|retrying|reset|resets|resetting)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
+  const clausePattern = /\b(retry|retrying|reset|resets|resetting|try again)\b[^\r\n]{0,32}?\b(?:in|after)\s+((?:\d{1,6}(?:\.\d{1,9})?\s*(?:weeks?|days?|hours?|minutes?|seconds?|[wdhms])\s*){1,6})/gi;
   for (const clause of text.matchAll(clausePattern)) {
+    if (!allowTryAgain && clause[1].toLowerCase() === "try again") continue;
     let duration = 0;
     let matches = 0;
-    for (const match of clause[1].matchAll(/(\d{1,6})\s*(weeks?|days?|hours?|minutes?|seconds?|[wdhms])/gi)) {
+    for (const match of clause[2].matchAll(/(\d{1,6}(?:\.\d{1,9})?)\s*(weeks?|days?|hours?|minutes?|seconds?|[wdhms])/gi)) {
       const amount = Number(match[1]);
       const factor = unitMs[match[2].toLowerCase()];
-      if (!Number.isSafeInteger(amount) || !factor) continue;
-      duration += amount * factor;
+      if (!Number.isFinite(amount) || !factor) continue;
+      duration += Math.round(amount * factor);
       matches += 1;
       if (!Number.isSafeInteger(duration)) return null;
     }
@@ -412,7 +413,9 @@ export function parseRateLimitEvidence({
   if (!resetAtMs) {
     const naiveZoneSuffix = NAIVE_RESET_TIMEZONES[provider] || "Z";
     resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs, naiveZoneSuffix) ||
-    durationResetFromText(bodyText, safeNow, maxDelayMs);
+    // "try again in N" is read for ordinary cooldowns only (upstream #3612):
+    // on an exhausted quota that wording stays with the Cline-scoped parser.
+    durationResetFromText(bodyText, safeNow, maxDelayMs, { allowTryAgain: !explicitQuota });
     if (resetAtMs) source = "quota_text";
   }
 

@@ -810,7 +810,27 @@ function computeFinishReason(state) {
  * Translate OpenAI Responses API chunk to OpenAI Chat Completions format
  * This is for when Codex returns data and we need to send it to an OpenAI-compatible client
  */
-export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot = false) {
+export function openaiResponsesToOpenAIResponse(chunk, state) {
+  return announceAssistantRole(state, translateResponsesChunk(chunk, state));
+}
+
+/**
+ * Chat Completions streams name the assistant role on their first delta; Responses
+ * streams have no event for it. Strict clients drop streamed tool calls without it
+ * (OmniRoute #3911).
+ */
+function announceAssistantRole(state, result) {
+  if (!result || state.respRoleAnnounced) return result;
+  const delta = [result].flat()[0]?.choices?.[0]?.delta;
+  if (delta) {
+    delta.role = ROLE.ASSISTANT;
+    state.respRoleAnnounced = true;
+  }
+  return result;
+}
+
+// Recursive calls stay here so the role lands on the first chunk in output order.
+function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
   if (!chunk) {
     // Flush: send final chunk with finish_reason
     if (state.finishReasonSent || !state.started) return null;
@@ -998,8 +1018,8 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
     if (!outputKnown && !anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
         !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
       const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
-      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", output_index: data.output_index, item }, state);
-      const args = openaiResponsesToOpenAIResponse({ type: eventType, output_index: data.output_index, item }, state);
+      const header = translateResponsesChunk({ type: "response.output_item.added", output_index: data.output_index, item }, state);
+      const args = translateResponsesChunk({ type: eventType, output_index: data.output_index, item }, state);
       return [header, ...(Array.isArray(args) ? args : [args])].filter(Boolean);
     }
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
@@ -1041,10 +1061,10 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
 
   // Respect the status of generic terminal events before recovering a snapshot.
   if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "failed") {
-    return openaiResponsesToOpenAIResponse({ type: "response.failed", response: { ...data.response, error: data.response.error || { message: "Response failed" } } }, state);
+    return translateResponsesChunk({ type: "response.failed", response: { ...data.response, error: data.response.error || { message: "Response failed" } } }, state);
   }
   if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "incomplete") {
-    return openaiResponsesToOpenAIResponse({ type: "response.incomplete", response: data.response }, state);
+    return translateResponsesChunk({ type: "response.incomplete", response: data.response }, state);
   }
 
   // Response completed or coherently ended incomplete.
@@ -1055,7 +1075,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
         (data.response?.status == null || data.response.status === "completed") && Array.isArray(data.response?.output)) {
       for (const [output_index, item] of data.response.output.entries()) {
         if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL) continue;
-        const result = openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state, true);
+        const result = translateResponsesChunk({ type: "response.output_item.done", output_index, item }, state, true);
         if (result) toolSnapshots.push(...(Array.isArray(result) ? result : [result]));
       }
     }

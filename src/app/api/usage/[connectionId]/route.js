@@ -193,7 +193,7 @@ async function addXaiOAuthQuotas(local, connection, proxyOptions) {
     // The aggregate billing "Credits" row is the same weekly pool.
     delete live.Credits;
   }
-  const quotas = { ...(weekly ? { 'Weekly SuperGrok': weekly } : {}), ...live };
+  const quotas = weekly ? { 'Weekly SuperGrok': weekly, ...live } : live;
   if (Object.keys(quotas).length === 0) return local;
   // The dashboard hides the quota table while `message` is set.
   const { message: _message, ...card } = local;

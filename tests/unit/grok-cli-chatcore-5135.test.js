@@ -62,3 +62,33 @@ describe("grok-cli dispatch with chatCore's frozen request context", () => {
     expect(headers.get("x-grok-turn-idx")).toBe("1");
   });
 });
+
+describe("decolua/9router#5135 - Grok 4.6 and 4.7 reasoning effort", () => {
+  it.each(["grok-4.6", "grok-4.7", "grok-4.7-build-fast"])("forwards an explicit effort to %s", async (model) => {
+    const { wire } = await dispatch(model, { reasoning_effort: "low" });
+    expect(wire.model).toBe(model);
+    expect(wire.reasoning.effort).toBe("low");
+  });
+
+  it.each([
+    ["grok-4.5-low", "grok-4.5", "low"],
+    ["grok-4.6-low", "grok-4.6", "low"],
+    ["grok-4.6-xhigh", "grok-4.6", "xhigh"],
+    ["grok-4.7-medium", "grok-4.7", "medium"],
+    ["grok-4.7-build-fast-low", "grok-4.7-build-fast", "low"],
+  ])("keeps the %s effort suffix after the upstream id is resolved", async (id, model, effort) => {
+    const { wire } = await dispatch(id);
+    expect(wire.model).toBe(model);
+    expect(wire.reasoning.effort).toBe(effort);
+  });
+
+  it("lets an explicit effort win over the suffix", async () => {
+    const { wire } = await dispatch("grok-4.6-high", { reasoning_effort: "low" });
+    expect(wire.reasoning.effort).toBe("low");
+  });
+
+  it.each(["grok-build", "grok-composer-2.5-fast"])("sends no effort to %s", async (model) => {
+    const { wire } = await dispatch(model, { reasoning_effort: "low" });
+    expect(wire.reasoning?.effort).toBeUndefined();
+  });
+});

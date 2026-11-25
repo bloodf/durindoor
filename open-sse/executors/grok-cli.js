@@ -467,11 +467,14 @@ export class GrokCliExecutor extends BaseExecutor {
     }
 
     // Resolve upstream model id (strip effort suffix from virtual models).
-    let modelEffort = resolveEffortFromModel(body.model || model);
+    const wireEffort = resolveEffortFromModel(body.model || model);
     let resolvedModel = body.model || model;
-    if (modelEffort) {
-      resolvedModel = resolvedModel.replace(new RegExp(`-${modelEffort}$`), "");
+    if (wireEffort) {
+      resolvedModel = resolvedModel.replace(new RegExp(`-${wireEffort}$`), "");
     }
+    // chatCore swaps a catalog row such as grok-4.6-low for its upstream id before
+    // dispatch, so the suffix then survives only on the requested catalog id.
+    let modelEffort = wireEffort || resolveEffortFromModel(requestContext?.catalogModel);
     // Catalog is keyed by primary alias `gb` (`gc` belongs to Gemini CLI).
     resolvedModel = getModelUpstreamId("gb", resolvedModel) || resolvedModel;
     body.model = resolvedModel;

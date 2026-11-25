@@ -13,7 +13,7 @@ import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
-import { isFunction, isString } from "@/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { isOperatorRequest } from "@/dashboardGuard";
@@ -33,11 +33,13 @@ import {
 // round-trip (workspaceId, nested oauthProxy, ...), so an exhaustive allowlist would hide them. Instead a
 // key is shown only when it is not an explicit secret and does not look like one: a new secret stored under
 // a credential-shaped name (copilotToken, dcaToken, ...) stays hidden without being listed here.
-const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid/i;
+const SECRET_LIKE_PROVIDER_SPECIFIC_KEY = /token|secret|cookie|password|passwd|credential|api[-_]?key|authorization|passkey|uuid|jwt/i;
 const NON_SECRET_PROVIDER_SPECIFIC_FIELDS = new Set([
 "tokenEndpoint", "token_endpoint", "enablePromptCacheKey", "copilotTokenExpiresAt"]
 );
 const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
+"jwt",
+"storageState",
 "opendesignControlKey",
 "chatgptPlanAccount",
 "chatgptPlanBindingRevision",
@@ -57,6 +59,14 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 function isSecretProviderSpecificKey(key) {
   if (SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key)) return true;
   return !NON_SECRET_PROVIDER_SPECIFIC_FIELDS.has(key) && SECRET_LIKE_PROVIDER_SPECIFIC_KEY.test(key);
+}
+
+/** Ignore redaction placeholders on sensitive metadata updates, preserving stored values. */
+export function omitMaskedProviderSecrets(data) {
+  if (!data || !isObject(data) || Array.isArray(data)) return data;
+  return Object.fromEntries(Object.entries(data).filter(([key, value]) =>
+    !(isSecretProviderSpecificKey(key) && isString(value) && /^(?:\*{3,}|•{3,}|\[redacted\])$/i.test(value.trim()))
+   ));
 }
 
 const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [

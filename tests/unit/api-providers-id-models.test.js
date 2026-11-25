@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from "vitest";
 const routedFetch = vi.hoisted(() => vi.fn());
 const resolveConnectionProxyConfig = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
 }));
 
@@ -47,7 +47,7 @@ vi.mock("open-sse/services/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { refreshGoogleToken } from "@/sse/services/tokenRefresh";

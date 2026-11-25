@@ -24,7 +24,7 @@ vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: mocks.isOperatorRequest,
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProxyPools: mocks.getProxyPools,
   getProxyPoolById: mocks.getProxyPoolById,
   getProviderConnections: mocks.getProviderConnections,

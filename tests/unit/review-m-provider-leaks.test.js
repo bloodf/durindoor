@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   connection: null,
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => [mocks.connection]),
   getProviderConnectionById: vi.fn(async () => mocks.connection),
   getProviderNodes: vi.fn(() => []),

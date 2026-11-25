@@ -16,7 +16,7 @@ vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => 
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false })),
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
   getProviderNodeById: vi.fn(),
 }));

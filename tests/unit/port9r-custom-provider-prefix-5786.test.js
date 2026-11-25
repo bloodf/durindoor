@@ -504,7 +504,7 @@ describe("route selection", () => {
   });
 
   async function seed() {
-    const { createProviderNode, createProviderConnection, addCustomModel } = await import("@/models/index.js");
+    const { createProviderNode, createProviderConnection, addCustomModel } = await import("@/lib/localDb");
     await createProviderNode(node());
     await createProviderConnection({
       provider: NODE_ID,
@@ -526,7 +526,7 @@ describe("route selection", () => {
   });
 
   it("routes the node id of a node without a configured prefix", async () => {
-    const { createProviderNode } = await import("@/models/index.js");
+    const { createProviderNode } = await import("@/lib/localDb");
     await createProviderNode(node({ id: OTHER_NODE_ID, prefix: "", name: "NoPrefix" }));
     const { getModelInfo } = await import("@/sse/services/model.js");
     await expect(getModelInfo(`${OTHER_NODE_ID}/${MODEL}`)).resolves.toEqual({
@@ -536,7 +536,7 @@ describe("route selection", () => {
   });
 
   it("keeps a built-in provider alias authoritative over a colliding node prefix", async () => {
-    const { createProviderNode } = await import("@/models/index.js");
+    const { createProviderNode } = await import("@/lib/localDb");
     await createProviderNode(node({ id: OTHER_NODE_ID, prefix: "cf", name: "Colliding" }));
     const { getModelInfo } = await import("@/sse/services/model.js");
     const resolved = await getModelInfo(`cf/${MODEL}`);

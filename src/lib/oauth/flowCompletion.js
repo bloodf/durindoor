@@ -9,7 +9,7 @@ import {
   createProviderConnection,
   getProviderConnectionById,
   updateProviderConnection } from
-"@/models";
+"@/lib/localDb";
 import { isOAuthFlowClaimActive } from "@/lib/oauth/flowStore.js";
 import { requireCodexWorkspace } from "@/lib/oauth/codexWorkspace.js";
 import { resolveCodexAccountId } from "../../../open-sse/shared/codexAccountId.js";

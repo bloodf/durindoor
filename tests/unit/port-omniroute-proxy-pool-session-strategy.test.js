@@ -13,7 +13,7 @@ vi.mock("@/lib/localDb", () => ({
   ...mocks,
   getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), validateApiKey: vi.fn(),
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProxyPoolById: async (id) => (await mocks.getProxyPools()).find((pool) => pool.id === id),
 }));
 

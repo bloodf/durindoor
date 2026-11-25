@@ -11,7 +11,7 @@ vi.mock("open-sse/utils/outboundUrlGuard.js", async (importOriginal) => ({
   OutboundUrlGuardError: class OutboundUrlGuardError extends Error {},
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderNodeById: mocks.getProviderNodeById,
 }));
 

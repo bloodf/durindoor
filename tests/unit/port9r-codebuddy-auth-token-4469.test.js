@@ -33,7 +33,7 @@ vi.mock("next/server", () => ({
   },
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(async (id) => mockConnections.get(id) ?? null),
   getProviderConnections: vi.fn(async () => Array.from(mockConnections.values())),
   createProviderConnection: mockCreate,

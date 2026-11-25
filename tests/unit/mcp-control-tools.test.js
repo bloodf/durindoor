@@ -48,7 +48,7 @@ vi.mock("@/shared/services/providerQuotaTracker", () => ({
   refreshProviderQuota: mocks.refreshProviderQuota,
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: mocks.getProviderConnections,
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,

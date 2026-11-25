@@ -2,7 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
-import { getProviderConnectionById, getProviderNodeById } from "@/models";
+import { getProviderConnectionById, getProviderNodeById } from "@/lib/localDb";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";

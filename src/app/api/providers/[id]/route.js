@@ -9,7 +9,7 @@ import {
   getProxyPoolById,
   updateProviderConnection,
   deleteProviderConnection } from
-"@/models";
+"@/lib/localDb";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadata.js";
 import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";

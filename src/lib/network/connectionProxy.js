@@ -1,4 +1,4 @@
-import { getProxyPoolById } from "@/models";
+import { getProxyPoolById } from "@/lib/localDb";
 import { isObject } from "../../shared/utils/typeChecks.js";
 
 const OAUTH_PROXY_MODES = new Set(["legacy", "direct", "strict-pool"]);

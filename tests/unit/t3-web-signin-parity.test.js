@@ -7,7 +7,7 @@ const { getProviderConnectionById, saveRequestDetail, updateProviderConnection, 
   logTargetRequest: vi.fn(),
   saveRequestDetail: vi.fn(async () => {}),
 }));
-vi.mock("@/models", () => ({ getProviderConnectionById }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById }));
 vi.mock("@/lib/localDb", async (importOriginal) => ({
   ...await importOriginal(),
   getProviderConnectionById,

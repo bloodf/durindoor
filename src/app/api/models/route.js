@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getModelAliases, setModelAlias } from "@/models";
+import { getModelAliases, setModelAlias } from "@/lib/localDb";
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { getProviderAlias, resolveProviderId } from "@/shared/constants/providers";

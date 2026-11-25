@@ -1,6 +1,6 @@
 import { isString } from "../../../../../../shared/utils/typeChecks.js";
 import { cursorTokenDetails, pollCursorLoginSession } from "@/lib/oauth/services/cursorLogin.js";
-import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/models";
+import { createProviderConnection, getProviderConnections, updateProviderConnection } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { isNonAdminApiKeyCaller } from "@/dashboardGuard";
 

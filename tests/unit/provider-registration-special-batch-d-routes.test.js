@@ -16,7 +16,7 @@ vi.mock("next/server", () => ({
   NextResponse: { json: (body, init) => ({ status: init?.status || 200, body, json: async () => body }) },
 }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn(async () => {}) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProviderConnection: mocks.createProviderConnection,
   getProxyPoolById: vi.fn(),
 }));

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";

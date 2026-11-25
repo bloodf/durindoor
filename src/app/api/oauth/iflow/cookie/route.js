@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 
 /**
  * iFlow Cookie-Based Authentication

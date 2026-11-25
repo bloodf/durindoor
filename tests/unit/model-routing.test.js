@@ -10,7 +10,7 @@ async function setupDb() {
   process.env.DATA_DIR = tempDir;
   vi.resetModules();
 
-  const { createProviderNode } = await import("@/models/index.js");
+  const { createProviderNode } = await import("@/lib/localDb");
   const { getModelInfo } = await import("@/sse/services/model.js");
 
   return {

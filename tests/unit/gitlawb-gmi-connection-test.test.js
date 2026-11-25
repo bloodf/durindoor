@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   updateProviderConnection: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({ getProviderConnections: mocks.getProviderConnections }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: mocks.getProviderConnections }));
 
 vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: mocks.getProviderConnectionById,

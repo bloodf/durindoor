@@ -16,11 +16,11 @@ vi.mock("@/lib/network/connectionProxy", () => ({
 }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("@/sse/services/tokenRefresh", () => ({ updateProviderCredentials: vi.fn() }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() }));
 
 import * as localDb from "@/lib/localDb";
 import * as disabledModelsDb from "@/lib/disabledModelsDb";
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 const originalFetch = global.fetch;
 

@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getProviderConnectionById = vi.hoisted(() => vi.fn());
 const updateProviderConnection = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById,
   updateProviderConnection,
   getProxyPoolById: vi.fn(),

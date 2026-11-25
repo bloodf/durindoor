@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
 import { resolveKiroCredentialsFromSsoCache } from "open-sse/services/kiroModels.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";

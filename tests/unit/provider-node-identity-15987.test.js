@@ -49,7 +49,7 @@ async function setupTestContext(nodeData, { operator = false } = {}) {
 
   const { POST } = await import("@/app/api/providers/route.js");
   const { PUT } = await import("@/app/api/providers/[id]/route.js");
-  const { createProviderNode, getProviderConnections } = await import("@/models/index.js");
+  const { createProviderNode, getProviderConnections } = await import("@/lib/localDb");
   const { disposeRequestDetailsRepo } = await import("@/lib/db/repos/requestDetailsRepo.js");
 
   const node = await createProviderNode(nodeData);

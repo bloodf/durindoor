@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProviderConnection } from "@/models";
+import { createProviderConnection } from "@/lib/localDb";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 import { CODEX_FINGERPRINT_MODES } from "open-sse/config/codexIdentity.js";
 import { normalizeCodexImportRecord } from "@/lib/oauth/codexImportRecord.js";

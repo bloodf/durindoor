@@ -5,7 +5,7 @@ const operator = vi.hoisted(() => ({ value: true }));
 vi.mock("@/dashboardGuard", () => ({
   isOperatorRequest: vi.fn(async () => operator.value),
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(() => []),
@@ -40,7 +40,7 @@ import { CODEX_CLI_VERSION } from "../../open-sse/config/appConstants.js";
 import { mergeSyncedCatalog } from "../../src/lib/modelAutoSync/catalog.js";
 import * as localDb from "@/lib/localDb";
 import * as disabledModelsDb from "@/lib/disabledModelsDb";
-import * as models from "@/models";
+import * as models from "@/lib/localDb";
 
 const jsonRequest = (url, body) =>
   new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

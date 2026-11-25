@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 // validation probes and upstream requests carry no auth header.
 const nodes = vi.hoisted(() => new Map());
 vi.mock("@/dashboardGuard", () => ({ isOperatorRequest: vi.fn(async () => true) }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []),
   getProviderConnectionById: vi.fn(),
   getProviderNodes: vi.fn(async () => [...nodes.values()]),
@@ -19,7 +19,7 @@ vi.mock("@/models", () => ({
 const { POST: createProvider } = await import("@/app/api/providers/route.js");
 const { POST: validateProvider } = await import("@/app/api/providers/validate/route.js");
 const { DefaultExecutor } = await import("open-sse/executors/default.js");
-const models = await import("@/models");
+const models = await import("@/lib/localDb");
 
 let server;
 let baseUrl;

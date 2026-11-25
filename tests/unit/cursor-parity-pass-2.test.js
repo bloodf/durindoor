@@ -68,7 +68,7 @@ describe("Cursor usage parity through the usage route", () => {
 });
 
 const loginMocks = vi.hoisted(() => ({ create: vi.fn(), list: vi.fn(), update: vi.fn(), machine: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: loginMocks.create, getProviderConnections: loginMocks.list, updateProviderConnection: loginMocks.update }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: loginMocks.create, getProviderConnections: loginMocks.list, updateProviderConnection: loginMocks.update }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: loginMocks.machine }));
 import { POST as startLogin } from "../../src/app/api/oauth/cursor/login/start/route.js";
 import { POST as pollLogin } from "../../src/app/api/oauth/cursor/login/poll/route.js";

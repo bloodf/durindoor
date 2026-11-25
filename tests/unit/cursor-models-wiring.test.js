@@ -25,7 +25,7 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   refreshGoogleToken: vi.fn(),
   updateProviderCredentials: vi.fn(),
 }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() }));
 vi.mock("open-sse/services/cursorModels.js", () => ({ resolveCursorModels: mocks.resolveCursorModels }));
 vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
 vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));

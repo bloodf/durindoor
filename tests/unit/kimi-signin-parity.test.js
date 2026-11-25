@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createProviderConnection } = vi.hoisted(() => ({ createProviderConnection: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({
   ensureOutboundProxyInitialized: async () => {},
 }));

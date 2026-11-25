@@ -18,7 +18,7 @@ vi.mock("next/server", () => ({
   },
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProviderConnection: mocks.createProviderConnection,
 }));
 

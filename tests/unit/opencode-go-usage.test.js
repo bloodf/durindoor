@@ -17,7 +17,7 @@ vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
-vi.mock("@/models", () => ({ getProviderNodeById: mocks.getProviderNodeById }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: mocks.getProviderNodeById }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));

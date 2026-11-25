@@ -18,7 +18,7 @@ vi.mock("@/lib/localDb", () => ({
   getCustomModels: async () => dashboardDb.custom,
   getCachedSharedModelMetadata: async () => dashboardDb.shared,
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getModelAliases: async () => dashboardDb.aliases,
   setModelAlias: vi.fn(),
 }));

@@ -47,7 +47,7 @@ vi.mock("@/mitm/controlProof", () => ({
   CONTROL_PROOF_HEADER: "x-9r-owner-proof",
   verifyControlProof: vi.fn(),
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProxyPool: mocks.createProxyPool,
   getProxyPools: mocks.getProxyPools,
   getProxyPoolById: mocks.getProxyPoolById,

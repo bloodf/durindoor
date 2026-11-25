@@ -21,7 +21,7 @@ vi.mock("@/lib/localDb", () => ({
   getProxyPools: vi.fn(),
   getQuotaReservationPressure: vi.fn(),
 }));
-vi.mock("@/models", () => routeDbMocks);
+vi.mock("@/lib/localDb", () => routeDbMocks);
 vi.mock("@/shared/services/quotaAutoPing", () => ({
   notifyQuotaAutoPingSettingChanged: vi.fn(),
 }));

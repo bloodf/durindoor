@@ -1,7 +1,7 @@
 import http from "http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/models", () => ({ createProxyPool: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ createProxyPool: vi.fn() }));
 
 import { RELAY_WORKER_CODE } from "../../src/app/api/proxy-pools/cloudflare-deploy/route.js";
 import { RELAY_FUNCTION_CODE } from "../../src/app/api/proxy-pools/vercel-deploy/route.js";

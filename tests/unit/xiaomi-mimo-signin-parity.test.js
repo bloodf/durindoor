@@ -1,7 +1,7 @@
 // Port of OmniRoute #15307: discover each Xiaomi API catalog using its own key.
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ get: vi.fn(), proxy: vi.fn(), fetch: vi.fn() }));
-vi.mock("@/models", () => ({ getProviderConnectionById: mocks.get }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.get }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.proxy }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch }));
 vi.mock("next/server", () => ({ NextResponse: { json: (body, init = {}) => Response.json(body, init) } }));

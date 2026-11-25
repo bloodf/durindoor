@@ -1,4 +1,4 @@
-import { getProviderConnectionById, updateProviderConnection } from "@/models";
+import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { canAccessManagementApi, isOperatorRequest, hasExactRequestOrigin } from "@/dashboardGuard";
 import { isIsolatedLoginRequest } from "@/lib/webLoginSession";
 import { refreshProfile } from "./profile.js";

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createProviderConnection: vi.fn(async (data) => ({ id: "c1", provider: data.provider, email: data.email, name: data.name })),
 }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.createProviderConnection }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.createProviderConnection }));
 
 const { POST } = await import("../../src/app/api/oauth/codex/import-token/route.js");
 

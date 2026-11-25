@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { canManageAccessConfig } from "@/dashboardGuard";
-import { deleteProviderNodeWithConnections, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
+import { deleteProviderNodeWithConnections, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/lib/localDb";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { PROVIDER_NODE_INVALID, validateProviderNode } from "@/lib/providerNodes/validateNode";
 

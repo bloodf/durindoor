@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
 
 import { CommandCodeExecutor } from "../../open-sse/executors/commandcode.js";
 import { POST } from "../../src/app/api/providers/validate/route.js";

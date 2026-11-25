@@ -55,6 +55,16 @@ describe("Kiro MITM model slots", () => {
   });
 });
 
+describe("Kiro non-Anthropic picker parity (upstream #3610)", () => {
+  it("offers a mappable slot for Qwen3 Coder Next", () => {
+    expect(MITM_TOOLS.kiro.defaultModels).toContainEqual({ id: "qwen3-coder-next", name: "Qwen3 Coder Next", alias: "qwen3-coder-next" });
+  });
+
+  it.each(["glm-5", "MiniMax-M2.5"])("strips image and audio input for text-only %s", (id) => {
+    expect(PROVIDER_MODELS.kr.find((model) => model.id === id)?.strip).toEqual(["image", "audio"]);
+  });
+});
+
 describe("Kiro static provider models", () => {
   it("includes Claude Sonnet 5 and its synthetic Kiro variants", () => {
     const ids = (PROVIDER_MODELS.kr || []).map((model) => model.id);

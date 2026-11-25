@@ -1,7 +1,6 @@
 import { BaseExecutor } from "./base.js";
-import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { getProviderPluginManifestHeader } from "../config/providerPluginManifestUrl.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -78,28 +77,24 @@ export class CliproxyapiExecutor extends BaseExecutor {
     return headers;
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log } = input;
     const baseUrl = await resolveCliproxyapiBaseUrl();
     const url = `${baseUrl}/v1/chat/completions`;
     const transformedBody =
     body && isObject(body) ? { ...body, model: body.model || model } : body;
     const headers = this.buildHeaders(credentials, stream);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(new Error("cliproxyapi fetch timeout")), FETCH_CONNECT_TIMEOUT_MS);
-    const mergedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
 
-    try {
-      log?.debug?.("CLIPROXYAPI", `dispatch ${model} -> ${url}`);
-      const response = await proxyAwareFetch(url, {
-        method: "POST",
-        headers,
-        // Keep bridge metadata internal; serialize failure meaning on a wire-only copy.
-        body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)),
-        signal: mergedSignal
-      });
-      return { response, url, headers, transformedBody };
-    } finally {
-      clearTimeout(timeout);
-    }
+    log?.debug?.("CLIPROXYAPI", `dispatch ${model} -> ${url}`);
+    // The sidecar is local: no connection proxy options.
+    const response = await sender.sendRequest(url, {
+      method: "POST",
+      headers,
+      // Keep bridge metadata internal; serialize failure meaning on a wire-only copy.
+      body: JSON.stringify(this.prepareOpenAIToolMessagesForWire(transformedBody)),
+      signal
+    }, null, { unrouted: true });
+    return { response, url, headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
   }
 }

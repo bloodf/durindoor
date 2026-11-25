@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor } from "./base.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import { buildErrorBody, readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
-import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 export const NLP_CLOUD_BASE = "https://api.nlpcloud.io/v1/gpu";
@@ -96,10 +96,12 @@ export class NlpCloudExecutor extends BaseExecutor {
   buildHeaders(credentials, stream) {
     return { "Content-Type": "application/json", Accept: stream ? "text/event-stream" : "application/json", Authorization: `Bearer ${credentials?.apiKey || credentials?.accessToken || ""}` };
   }
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
     let payload;
     const url = this.buildUrl(model || "");
-    const result = (response, headers = {}, transformedBody = body, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance });
+    const sender = createExecutorSender(this, input);
+    const result = (response, headers = {}, transformedBody = body, terminalProvenance) => ({ response, url, headers, transformedBody, terminalProvenance, attemptStartedAt: sender.attemptStartedAt });
     // The physical upstream Response owns the quota dispatch ticket. Every
     // returned response below replaces it, so the ticket has to follow the
     // replacement; otherwise the reservation is orphaned and never settled.
@@ -113,7 +115,7 @@ export class NlpCloudExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials, stream);
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal }, proxyOptions));
+      response = await sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(payload), signal }, proxyOptions);
     } catch (error) {
       // A local quota denial is a gateway capacity decision, not a provider
       // failure. Keep its type so chatCore reports local quota unavailability

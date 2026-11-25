@@ -38,6 +38,9 @@ describe("offline staged artifact compatibility (#1143)", () => {
     for (const name of ["cli.js", "package.json", "src"]) {
       fs.cpSync(path.join(cli, name), path.join(dir, name), { recursive: true });
     }
+    const startup = path.join(dir, "app/src/lib/startup");
+    fs.mkdirSync(startup, { recursive: true });
+    fs.copyFileSync(path.join(root, "src/lib/startup/listenConfig.cjs"), path.join(startup, "listenConfig.cjs"));
     const stub = path.join(dir, "node_modules", "node-machine-id");
     fs.mkdirSync(stub, { recursive: true });
     fs.writeFileSync(path.join(stub, "index.js"), "exports.machineIdSync = () => \"fixture\";");

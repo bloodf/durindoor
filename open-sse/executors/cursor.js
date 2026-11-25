@@ -29,12 +29,12 @@ import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
-import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
 import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import {
-  runProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
   transferProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -828,34 +828,34 @@ export class CursorExecutor extends BaseExecutor {
     return generateCursorBody(messages, model, tools, reasoningEffort, forceAgentMode);
   }
 
-  async makeFetchRequest(url, headers, body, signal, proxyOptions = null) {
+  async makeFetchRequest(url, headers, body, signal, proxyOptions = null,
+    sender = createExecutorSender(this, {}, { observePatchedFetch: false })) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    const connectController = new AbortController();
-    const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-    const onAbort = () => connectController.abort(cursorAbortError(signal.reason));
-    signal?.addEventListener?.("abort", onAbort, { once: true });
-    const timeout = setTimeout(
-      () => connectController.abort(new Error("Cursor response headers timed out")),
-      timeoutMs
-    );
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(() => credentialFetch((target, init) => proxyAwareFetch(target, init, proxyOptions), url, {
+      response = await credentialFetch((target, init) => sender.sendRequest(target, init, proxyOptions), url, {
         method: "POST",
         headers,
         body,
-        signal: connectController.signal
-      }));
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener?.("abort", onAbort);
+        signal: signal || undefined
+      });
+    } catch (error) {
+      if (signal?.aborted) throw cursorAbortError(signal.reason);
+      if (sender.timeoutReason) throw new Error("Cursor response headers timed out");
+      throw error;
     }
 
-    return {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: await readCursorResponseBody(response, signal)
-    };
+    try {
+      return {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: await readCursorResponseBody(response, signal),
+        dispatch: response
+      };
+    } catch (error) {
+      await settleProviderAttemptDispatch(response, { reason: signal?.aborted ? "abort" : "transport_error" });
+      throw error;
+    }
   }
 
   makeHttp2Request(url, headers, body, signal) {
@@ -1091,7 +1091,8 @@ export class CursorExecutor extends BaseExecutor {
     };
   }
 
-  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null }) {
+  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null,
+    sender = createExecutorSender(this, { attemptStartedAt }, { observePatchedFetch: false }) }) {
     const agentEndpoint = PROVIDER_OAUTH.cursor?.agentEndpoint;
     if (!agentEndpoint) throw new Error("Cursor AgentService endpoint is not configured");
 
@@ -1127,24 +1128,28 @@ export class CursorExecutor extends BaseExecutor {
 
     // The ID is private to this request, including its tail-only retry.
     const conversationId = crypto.randomUUID();
-    const openAgentSession = async (frameMessages) => {
-      const session = await this.openAgentHttp2Stream(url, headers, requestController.signal, proxyOptions);
+    const openAgentSession = async (frameMessages, sendSignal) => {
+      const session = await this.openAgentHttp2Stream(url, headers, sendSignal, proxyOptions);
       session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort, catalogIds, conversationId));
       return session;
     };
 
     const headersTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
     let session;
-    let responseHeaders;
-    try {
-      responseHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-        session = await openAgentSession(workingMessages);
+    // Each AgentService run (first turn or tail-only retry) is one physical send.
+    const dispatchAgent = (frameMessages) => sender.sendRequest(url, { signal: requestController.signal }, proxyOptions, {
+      transport: async ({ signal: sendSignal }) => {
+        session = await openAgentSession(frameMessages, sendSignal);
         return withCursorTimeout(
           session.responseHeaders,
           headersTimeoutMs,
           "Cursor AgentService response headers timed out"
         );
-      }));
+      }
+    });
+    let responseHeaders;
+    try {
+      responseHeaders = await dispatchAgent(workingMessages);
     } catch (error) {
       session?.close();
       if (isQuotaDispatchUnavailable(error) || error?.name === "AbortError") throw error;
@@ -1153,7 +1158,7 @@ export class CursorExecutor extends BaseExecutor {
 
     const bindDispatch = (result) => {
       transferProviderAttemptDispatch(responseHeaders, result.response);
-      return result;
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
     };
     const status = Number(responseHeaders[":status"] || 0);
     if (status !== 200) {
@@ -1183,7 +1188,6 @@ export class CursorExecutor extends BaseExecutor {
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -1387,14 +1391,7 @@ export class CursorExecutor extends BaseExecutor {
           workingMessages = tailOnlyCursorMessages(originalMessages);
           let retryHeaders;
           try {
-            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-              session = await openAgentSession(workingMessages);
-              return withCursorTimeout(
-                session.responseHeaders,
-                headersTimeoutMs,
-                "Cursor AgentService response headers timed out"
-              );
-            }));
+            retryHeaders = await dispatchAgent(workingMessages);
           } catch (error) {
             try { session?.close(); } catch {}
             throw error;
@@ -1444,7 +1441,6 @@ export class CursorExecutor extends BaseExecutor {
           headers,
           transformedBody: body,
           responseFormat: FORMATS.OPENAI,
-          attemptStartedAt,
         });
       }
       const message = { role: "assistant", content: content || null };
@@ -1463,7 +1459,6 @@ export class CursorExecutor extends BaseExecutor {
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -1534,23 +1529,24 @@ export class CursorExecutor extends BaseExecutor {
       headers,
       transformedBody: body,
       responseFormat: FORMATS.OPENAI,
-      attemptStartedAt,
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null } = input;
     if (signal?.aborted) throw cursorAbortError(signal.reason);
+    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
+    attemptStartedAt :
+    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    const sender = createExecutorSender(this, { ...input, attemptStartedAt: providerAttemptStartedAt }, { observePatchedFetch: false });
     // AgentService uses the selected CONNECT or SOCKS route for HTTP/2.
     if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
-      const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-      attemptStartedAt :
-      isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
       try {
-        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: agentAttemptStartedAt });
+        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: providerAttemptStartedAt, sender });
       } catch (error) {
         if (isQuotaDispatchUnavailable(error)) throw error;
         if (error?.name === "AbortError") {
-          error.providerAttemptStartedAt = agentAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
         return {
@@ -1560,7 +1556,7 @@ export class CursorExecutor extends BaseExecutor {
           url: `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`,
           headers: {},
           transformedBody: body,
-          attemptStartedAt: agentAttemptStartedAt,
+          attemptStartedAt: sender.attemptStartedAt,
         };
       }
     }
@@ -1568,16 +1564,26 @@ export class CursorExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
-    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-    attemptStartedAt :
-    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    // The upstream object holding this request's quota ticket.
+    let dispatch = null;
+    const carry = (result) => {
+      transferProviderAttemptDispatch(dispatch, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
-      const response = http2 && !shouldForceFetch ?
-      await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
-        () => this.makeHttp2Request(url, headers, transformedBody, signal)
-      )) :
-      await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      let response;
+      if (http2 && !shouldForceFetch) {
+        // The reply is the whole buffered answer, bounded by makeHttp2Request's own
+        // timer, so the send itself stands in for response headers.
+        dispatch = await sender.sendRequest(url, { signal: signal || undefined }, proxyOptions, {
+          transport: () => ({ reply: this.makeHttp2Request(url, headers, transformedBody, signal) })
+        });
+        response = await dispatch.reply;
+      } else {
+        response = await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions, sender);
+        dispatch = response.dispatch;
+      }
 
       if (response.status !== 200) {
         const errorResponse = new Response(JSON.stringify({
@@ -1590,36 +1596,36 @@ export class CursorExecutor extends BaseExecutor {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
-        return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+        return carry({ response: errorResponse, url, headers, transformedBody: body });
       }
 
       // A successful upstream response without a body cannot contain Cursor frames.
       if (!response.body) {
-        return {
+        return carry({
           response: new Response(JSON.stringify({ error: { message: "Cursor upstream returned an empty response body", type: "server_error", code: "" } }), {
             status: 502,
             headers: { "Content-Type": "application/json" },
           }),
-          url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt,
-        };
+          url, headers, transformedBody: body,
+        });
       }
 
       const transformedResponse = stream !== false ?
       this.transformProtobufToSSE(response.body, model, body) :
       this.transformProtobufToJSON(response.body, model, body);
 
-      return {
+      return carry({
         response: transformedResponse,
         url,
         headers,
         transformedBody: body,
-        attemptStartedAt: providerAttemptStartedAt,
         terminalProvenance: "validated"
-      };
+      });
     } catch (error) {
+      await settleProviderAttemptDispatch(dispatch, { reason: error?.name === "AbortError" ? "abort" : "transport_error" });
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.name === "AbortError") {
-        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        error.providerAttemptStartedAt = sender.attemptStartedAt;
         throw error;
       }
       const errorResponse = new Response(JSON.stringify({
@@ -1632,7 +1638,7 @@ export class CursorExecutor extends BaseExecutor {
         status: HTTP_STATUS.SERVER_ERROR,
         headers: { "Content-Type": "application/json" }
       });
-      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
     }
   }
 

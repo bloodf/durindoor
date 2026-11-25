@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
 import { guardedProbeFetch, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
+import { normalizeNodeBaseUrl } from "../../../../lib/providerNodes/validateNode.js";
 
 class ProbeFailure extends Error {
   constructor(cause) {
@@ -130,7 +130,7 @@ export async function POST(request) {
     }
 
     // Validate URL format (http(s) only)
-    if (!isValidUrl(baseUrl)) {
+    if (!isString(baseUrl) || !isValidUrl(baseUrl)) {
       return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
     }
 
@@ -147,11 +147,14 @@ export async function POST(request) {
     // The fetch helper itself (guardedProbeFetch) re-runs
     // `assertOutboundUrlAllowed` on every URL it opens.
 
+    // Probe the base URL exactly as saving the node would store it.
+    let nodeBase;
+    try { nodeBase = normalizeNodeBaseUrl(type, baseUrl).replace(/\/$/, ""); } catch (error) {
+      return NextResponse.json({ valid: false, error: error.message }, { status: 400 });
+    }
+
     if (type === "systemone-compatible") {
-      let modelsUrl;
-      try { modelsUrl = `${normalizeSystemoneBaseUrl(baseUrl)}/models`; } catch (error) {
-        return NextResponse.json({ valid: false, error: error.message }, { status: 400 });
-      }
+      const modelsUrl = `${nodeBase}/models`;
       const probeSignal = AbortSignal.any([request.signal, AbortSignal.timeout(10000)]);
       let res;
       try {
@@ -191,13 +194,12 @@ export async function POST(request) {
 
     // Custom Embedding Validation - test POST /embeddings directly
     if (type === "custom-embedding") {
-      const normalizedBase = baseUrl.trim().replace(/\/$/, "");
       if (!modelId?.trim()) {
         return NextResponse.json({ valid: false, error: "Model ID required for embedding validation" });
       }
       let embedRes;
       try {
-        embedRes = await guardedFetch(`${normalizedBase}/embeddings`, {
+        embedRes = await guardedFetch(`${nodeBase}/embeddings`, {
           method: "POST",
           headers: {
             ...nodeAuthHeaders(apiKey),
@@ -230,12 +232,7 @@ export async function POST(request) {
 
     // Anthropic Compatible Validation
     if (type === "anthropic-compatible") {
-      let normalizedBase = baseUrl.trim().replace(/\/$/, "");
-      if (normalizedBase.endsWith("/messages")) {
-        normalizedBase = normalizedBase.slice(0, -9);
-      }
-
-      const modelsUrl = `${normalizedBase}/models`;
+      const modelsUrl = `${nodeBase}/models`;
       let res;
       try {
         res = await guardedFetch(modelsUrl, {
@@ -261,7 +258,7 @@ export async function POST(request) {
       if (modelId) {
         let chatRes;
         try {
-          chatRes = await guardedFetch(`${normalizedBase}/chat/completions`, {
+          chatRes = await guardedFetch(`${nodeBase}/chat/completions`, {
             method: "POST",
             headers: {
               ...nodeAuthHeaders(apiKey, { xApiKey: true }),
@@ -293,7 +290,7 @@ export async function POST(request) {
     }
 
     // OpenAI Compatible Validation (Default)
-    const modelsUrl = `${baseUrl.replace(/\/$/, "")}/models`;
+    const modelsUrl = `${nodeBase}/models`;
     let res;
     try {
       res = await guardedFetch(modelsUrl, {
@@ -315,7 +312,7 @@ export async function POST(request) {
     if (modelId) {
       let chatRes;
       try {
-        chatRes = await guardedFetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        chatRes = await guardedFetch(`${nodeBase}/chat/completions`, {
           method: "POST",
           headers: {
             ...nodeAuthHeaders(apiKey),

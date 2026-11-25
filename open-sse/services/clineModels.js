@@ -1,6 +1,7 @@
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { createCatalogCache } from "./catalogCache.js";
 
 const CLINE_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 // The free tier is published only here: /api/v1/models carries no `cline-free/*`
@@ -8,6 +9,10 @@ const CLINE_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 // Source: decolua/9router#4334 (199173fe).
 const CLINE_RECOMMENDED_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
 const FETCH_TIMEOUT_MS = 5000;
+// No TTL: every lookup stays live, and only concurrent identical ones share it.
+const catalogCache = createCatalogCache({
+  keyFn: (token, proxyOptions) => JSON.stringify([token, proxyOptions]),
+});
 
 /** Free tier from the recommended-models feed. [] on any failure: it is additive only. */
 async function fetchClineFreeTierModels(proxyOptions) {
@@ -44,6 +49,14 @@ export async function resolveClineModels(connection, options = {}) {
   const token = isString(connection?.accessToken) ? connection.accessToken.trim() : "";
   if (!token || process.env.CLINE_LIVE_CATALOG !== "true") return [];
 
+  const proxyOptions = options.proxyOptions || null;
+  return catalogCache.load(
+    catalogCache.keyFor(token, proxyOptions),
+    () => fetchClineCatalog(token, proxyOptions),
+  );
+}
+
+async function fetchClineCatalog(token, proxyOptions) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -51,7 +64,7 @@ export async function resolveClineModels(connection, options = {}) {
       method: "GET",
       headers: buildClineHeaders(token, { Accept: "application/json" }),
       signal: controller.signal,
-    }, options.proxyOptions || null);
+    }, proxyOptions);
     if (!response.ok) return [];
 
     const json = await response.json();
@@ -64,7 +77,7 @@ export async function resolveClineModels(connection, options = {}) {
 
     // Catalog entry wins on a shared id; feed only adds the missing cline-free/* ids.
     const byId = new Map(catalog.map((model) => [model.id, model]));
-    for (const model of await fetchClineFreeTierModels(options.proxyOptions || null)) {
+    for (const model of await fetchClineFreeTierModels(proxyOptions)) {
       if (!byId.has(model.id) && !model.id.startsWith("cline-pass/")) byId.set(model.id, model);
     }
     return [...byId.values()].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);

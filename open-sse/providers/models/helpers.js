@@ -33,3 +33,16 @@ export function isMuseSparkModel(modelId) {
   const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return /^muse[-_]?spark(?:$|[-_:.\s])/i.test(base);
 }
+
+/**
+ * Claude family by the model component only ("cc/claude-…", "anthropic/claude-…",
+ * Bedrock-style "us.anthropic.claude-…"); a namespace such as "claude-gw/glm-5.3"
+ * or an alias such as "mimo-v2.5-pro-claude" does not count. Thinking signatures
+ * are family-bound, so an unknown family classifies as non-Claude (decolua/9router#5129).
+ */
+export function isClaudeModel(modelId) {
+  if (!isString(modelId) || !modelId) return false;
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
+  return /(?:^|\.)claude-/i.test(base);
+}

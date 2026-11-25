@@ -19,7 +19,11 @@ it("persists saved proxy settings rather than resolved runtime proxy fields on r
   }, null, { force: true });
   expect(mocks.update).toHaveBeenCalledWith("connection", expect.objectContaining({
     providerSpecificData: { proxyPoolId: "pool", account: "refreshed" },
-  }), expect.objectContaining({ returnCommitResult: true }));
+  }), { returnCommitResult: true, shouldCommitConnection: expect.any(Function) });
+  // The write is guarded by the presented token: a newer stored rotation is kept.
+  const { shouldCommitConnection } = mocks.update.mock.calls[0][2];
+  expect(shouldCommitConnection({ refreshToken: "refresh" })).toBe(true);
+  expect(shouldCommitConnection({ refreshToken: "rotated-elsewhere" })).toBe(false);
 });
 
 it("keeps saved proxy settings when a Copilot token rotates", async () => {

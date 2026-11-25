@@ -174,6 +174,13 @@ export async function exchangeAndSaveAuthorizationCode(provider, code, state, fl
     upstreamError.code = "OAUTH_UPSTREAM_FAILURE";
     throw upstreamError;
   }
+  // Never persist a credential-less "active" row or overwrite a reconnect target
+  // with one. API-key sign-ins (OrcaRouter) carry apiKey instead (upstream #3350).
+  if (!tokenData?.accessToken && !tokenData?.apiKey) {
+    const emptyExchange = new Error("Token exchange returned no access token");
+    emptyExchange.code = "OAUTH_UPSTREAM_FAILURE";
+    throw emptyExchange;
+  }
   if (provider === "codex" && payload.codexFingerprintMode) {
     tokenData.providerSpecificData = {
       ...tokenData.providerSpecificData,

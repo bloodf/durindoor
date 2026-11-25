@@ -359,6 +359,21 @@ function convertSystemToDeveloperRole(body) {
   }
 }
 
+// Legacy `{role, content: "text"}` items reach Codex /responses without the
+// message type or typed parts it expects, so repair only role-bearing messages.
+// Tool calls, reasoning and already-typed content pass through (upstream #3361).
+function normalizeCodexMessageItems(body) {
+  if (!Array.isArray(body.input)) return;
+  body.input = body.input.map((item) => {
+    if (!item || !isObject(item) || Array.isArray(item) || !item.role) return item;
+    if (item.type && item.type !== RESPONSES_ITEM.MESSAGE) return item;
+    const message = { ...item, type: RESPONSES_ITEM.MESSAGE };
+    if (!isString(item.content)) return message;
+    const partType = item.role === ROLE.ASSISTANT ? RESPONSES_ITEM.OUTPUT_TEXT : RESPONSES_ITEM.INPUT_TEXT;
+    return { ...message, content: [{ type: partType, text: item.content }] };
+  });
+}
+
 // Assistant history in the Responses API must use `output_text` (or `refusal`),
 // never `input_text` (which is user-only). codex-cli replays assistant turns as
 // `input_text` (or legacy `text`); normalize them so the Codex/OpenAI backend
@@ -1081,6 +1096,7 @@ export class CodexExecutor extends BaseExecutor {
 
     // Keep system prompts in body.input as role=developer so they stay in the cacheable prefix
     convertSystemToDeveloperRole(body);
+    normalizeCodexMessageItems(body);
     // Rewrite replayed assistant history input_text/text parts → output_text (#6932)
     normalizeCodexAssistantHistory(body);
     // Drop reasoning another provider sealed (Grok Build) before the replayed

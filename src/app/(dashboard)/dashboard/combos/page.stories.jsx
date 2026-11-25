@@ -4,6 +4,7 @@ globalThis.React ??= React;
 
 import { expect, userEvent, waitFor, within } from "storybook/test";
 
+import { settleImages } from "../../../../../.storybook/settle-images.js";
 import CombosPage from "./page.js";
 import CombosError from "./error.js";
 
@@ -264,6 +265,7 @@ export const LoadFailureError = {
       scenario: "default",
       pathname: "/dashboard/combos",
       routes: {
+        "GET /api/usage/combos": { body: { rows: [], boundary: "Last seven days" } },
         "GET /api/combos": { status: 500, body: { error: "Upstream broken" } },
         "GET /api/providers": { body: { connections: [] } },
         "GET /api/settings": { body: {} },
@@ -292,6 +294,8 @@ const spacingParameters = {
     pathname: "/dashboard/combos",
     routes: {
       ...fixtureRoutes("default"),
+      "GET /api/models/custom": { body: { models: [] } },
+      "GET /api/models/disabled": { body: { disabled: {} } },
       "GET /api/models/alias": { body: { aliases: {} } },
     },
   },
@@ -312,8 +316,12 @@ const assertSpacingModal = async () => {
   // Select an existing combo through the real picker: nested combos are valid members.
   await userEvent.click(within(dialog).getByRole("button", { name: "Add Model" }));
   const picker = await canvas.findByRole("dialog", { name: "Add Model to Combo" });
-  await userEvent.click(await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ }));
-  await userEvent.click(within(picker).getByRole("button", { name: "Done" }));
+  const model = await within(picker).findByRole("button", { name: /^production-fallback(?:\s|$)/ });
+  await userEvent.click(model);
+  await expect(model).toHaveAttribute("aria-pressed", "true");
+  // Closing the picker removes its provider logos; Firefox fails any still loading.
+  await expect(await settleImages(picker)).toBeGreaterThan(0);
+  await userEvent.click(within(picker).getByRole("button", { name: "Close", exact: true }));
   await waitFor(() => expect(picker).not.toBeInTheDocument());
   const drag = within(dialog).getByRole("button", { name: "Drag to reorder production-fallback" });
   const row = drag.parentElement;
@@ -374,8 +382,61 @@ export const ConnectionUsage = {
     },
   },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("heading", { name: "Connection usage" })).toBeVisible();
-    await expect(await canvas.findByText("OpenAI prod")).toBeVisible();
+    const connectionName = "OpenAI prod";
+    const usageSection = () => canvasElement.querySelector('section[aria-labelledby="connection-usage-heading"]');
+    const hasConnectionCell = () =>
+      Array.from(usageSection()?.querySelectorAll("td") ?? []).some(
+        (cell) => cell.textContent.trim() === connectionName,
+      );
+
+    // Usage rows and connection names load independently. Observe the canvas
+    // so the wait also works if the usage section has yet to mount.
+    if (!hasConnectionCell()) {
+      const timeoutMs = 10_000;
+      await new Promise((resolve, reject) => {
+        const observer = new MutationObserver(() => {
+          if (hasConnectionCell()) {
+            observer.disconnect();
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        const timer = setTimeout(() => {
+          observer.disconnect();
+          clearTimeout(timer);
+          reject(new Error(`Connection usage did not show the "${connectionName}" cell within ${timeoutMs} ms`));
+        }, timeoutMs);
+        observer.observe(canvasElement, { childList: true, subtree: true, characterData: true });
+      });
+    }
+
+    const usage = within(usageSection());
+    await expect(usage.getByRole("heading", { name: "Connection usage" })).toBeVisible();
+    await expect(usage.getByRole("cell", { name: connectionName, exact: true })).toBeVisible();
   },
 };
+
+const restrictedCombo = { ...baseCombos[0], allowedConnectionIds: ["conn-openai-1"] };
+const allowListRoutes = {
+  ...fixtureRoutes("default"),
+  "GET /api/combos": { body: { combos: [restrictedCombo] } },
+  "PUT /api/combos/combo-prod-1": { status: 503, body: { error: "Restriction rejected" } },
+};
+export const RetainedError = {
+  parameters: { storyFixture: { pathname: "/dashboard/combos", routes: allowListRoutes } },
+  play: async () => {
+    const canvas = within(document.body);
+    await userEvent.click(await canvas.findByRole("button", { name: "Clear (unrestrict)" }));
+    await expect(await canvas.findByRole("alert")).toHaveTextContent("Restriction rejected");
+    await expect(canvas.getByText(/Your change is retained/)).toBeVisible();
+  },
+};
+export const RejectedClearAndRetry = {
+  ...RetainedError,
+  play: async () => {
+    await RetainedError.play();
+    await userEvent.click(within(document.body).getByRole("button", { name: "Retry" }));
+    await expect(await within(document.body).findByRole("alert")).toHaveTextContent("Restriction rejected");
+  },
+};
+export const Retry = LoadFailureError;

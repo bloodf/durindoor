@@ -1,6 +1,5 @@
 // ElevenLabs TTS — voice id with optional model_id prefix
 import { Buffer } from "node:buffer";
-import elevenlabs from "../../providers/registry/elevenlabs.js";
 
 const VOICES_TTL = 24 * 60 * 60 * 1000;
 const _voicesCache = new Map(); // by API key
@@ -55,11 +54,11 @@ export default {
     let modelId = "eleven_flash_v2_5";
     let voiceId = model;
     if (model && model.includes("/")) [modelId, voiceId] = model.split("/");
-    else if (elevenlabs.ttsConfig.models.some((entry) => entry.id === model)) {
+    else if (model?.startsWith("eleven_")) {
       modelId = model;
       voiceId = options.voice;
     }
-    if (options.voice) voiceId = options.voice;
+    else if (options.voice) voiceId = options.voice;
     if (!voiceId) throw new Error("ElevenLabs voice is required");
 
     const output = OUTPUT_FORMATS[responseFormat] || OUTPUT_FORMATS.mp3;

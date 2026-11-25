@@ -117,16 +117,18 @@ function extractRealtimeKey(req) {
  * @param {object} opts
  * @param {string|null} opts.key
  * @param {string|null} [opts.cliToken] - machine-bound operator token
+ * @param {boolean} [opts.remotePeer] - upgrade originated outside direct loopback
  * @param {string} opts.authUrl - absolute URL of the bridge
  * @param {typeof fetch} [opts.fetchFn] - injectable for tests
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{ ok: boolean, status: number, reason?: string }>}
  */
-async function probeApiKey({ key, cliToken = null, authUrl, fetchFn = fetch, timeoutMs = 5000 }) {
+async function probeApiKey({ key, cliToken = null, remotePeer = false, authUrl, fetchFn = fetch, timeoutMs = 5000 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = {};
+    if (remotePeer) headers["x-forwarded-for"] = "0.0.0.0";
     if (key) headers.Authorization = `Bearer ${key}`;
     if (cliToken) headers["x-9r-cli-token"] = cliToken;
     const res = await fetchFn(authUrl, {
@@ -150,7 +152,7 @@ async function probeApiKey({ key, cliToken = null, authUrl, fetchFn = fetch, tim
  * @returns {string}
  */
 function loopbackAuthUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/realtime/auth`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/realtime/auth`;
 }
 
 /**
@@ -160,17 +162,19 @@ function loopbackAuthUrl(port) {
  * @returns {string}
  */
 function loopbackChatUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/chat/completions`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/chat/completions`;
 }
 
 function loopbackNativeRealtimeUrl(port) {
-  return `http://127.0.0.1:${port}/api/v1/realtime/native`;
+  return `http://127.0.0.1:${port}${process.env.DURINDOOR_BASE_PATH || ""}/api/v1/realtime/native`;
 }
 
 /** True for supported native realtime WebSocket paths (trailing slash allowed). */
 function isRealtimePath(url) {
   try {
-    const pathname = new URL(url || "/", "http://localhost").pathname;
+    let pathname = new URL(url || "/", "http://localhost").pathname;
+    const basePath = process.env.DURINDOOR_BASE_PATH || "";
+    if (basePath && pathname.startsWith(`${basePath}/`)) pathname = pathname.slice(basePath.length);
     return pathname === "/v1/realtime" || pathname === "/v1/realtime/" ||
       pathname === "/v1/realtime/translations" || pathname === "/v1/realtime/translations/" ||
       pathname === "/v1/live/sessions" || pathname === "/v1/live/sessions/" ||

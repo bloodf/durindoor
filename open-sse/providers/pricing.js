@@ -1,3 +1,4 @@
+import { decodeUsdReceipt } from "../../src/lib/usage/receipt.js";
 import REGISTRY from "./registry/index.js";
 import { JEV_INPUT_PRICE_PER_MTOK, JEV_OUTPUT_PRICE_PER_MTOK } from "../config/jev.js";
 import {
@@ -126,6 +127,10 @@ export function isPaidModel(modelStr) {
   // Provider has a free roster → keep only the models the catalog marks free
   // (or an explicit zero-price row). Pricing is resolved raw-alias-first so
   // alias-keyed overrides (PROVIDER_PRICING.gh) still feed zero-price detection.
+  // The local table holds metered API rates, not provider payload evidence, so
+  // its positive rates must not trigger the #20060 paid veto against the
+  // curated free roster: check the roster without pricing first.
+  if (isFreeModel(provider, { id: model })) return false;
   const pricing =
   getPricingForModel(providerOrAlias, model) ?? getPricingForModel(provider, model);
   return !isFreeModel(provider, { id: model, pricing });
@@ -174,10 +179,12 @@ export const MODEL_PRICING = {
   // === Anthropic / Claude ===
   /** Opus 5.5 list price: $4 in / $20 out, $0.20 cache read, $5 5-minute cache write. */
   "claude-opus-5-5": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },
+  "claude-opus-5-5-max": { input: 4.00, output: 20.00, cached: 0.20, reasoning: 20.00, cache_creation: 5.00 },
   /** Haiku 5.5 list price (platform.claude.com/docs/en/about-claude/pricing): prompts over 100K tokens bill every rate at 5x. */
   "claude-haiku-5-5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
   "claude-haiku-5.5": { input: 0.10, output: 0.50, cached: 0.01, reasoning: 0.50, cache_creation: 0.125, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
   "claude-sonnet-5-5": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
+  "claude-sonnet-5-5-max": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50 },
   "claude-sonnet-5": { input: 3.00, output: 15.00, cached: 0.30, reasoning: 15.00, cache_creation: 3.75 },
   "claude-opus-4-6": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 25.00, cache_creation: 6.25 },
   "claude-opus-4-5-20251101": { input: 5.00, output: 25.00, cached: 0.50, reasoning: 25.00, cache_creation: 6.25 },
@@ -255,11 +262,26 @@ export const MODEL_PRICING = {
   "o3-pro": { input: 20.00, output: 80.00, cached: 20.00, reasoning: 80.00, cache_creation: 20.00 },
   "o4-mini": { input: 1.10, output: 4.40, cached: 0.275, reasoning: 4.40, cache_creation: 1.10 },
 
+  // === Agnes AI ===
+  // Vendor doc page: cache read is 10% of regular input. 3.0 Flash has no published price.
+  "agnes-3.0-pro": { input: 0.45, output: 0.90, cached: 0.045 },
+
   // === Gemini ===
-  "gemini-3.8-flash": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-high": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-medium": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
-  "gemini-3.8-flash-low": { input: 1.50, output: 7.50, cached: 0.15, reasoning: 11.25, cache_creation: 1.875 },
+  // Google Gemini API paid Standard tier, USD per 1M tokens, checked 2026-11-24 (9router#5846):
+  // https://ai.google.dev/gemini-api/docs/pricing
+  // Thinking bills as output; cache writes carry no fee, so cache_creation = input.
+  // 3.8 / 3.6 Flash rise to $1.50 / $7.50 / $0.15 cached on 2027-01-01: update these rows then.
+  "gemini-3.8-flash": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-high": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-medium": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.8-flash-low": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-high": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-medium": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  "gemini-3.6-flash-low": { input: 0.75, output: 3.75, cached: 0.075, reasoning: 3.75, cache_creation: 0.75 },
+  // Text input rate; image, audio and video inputs cost more and are not modelled.
+  "gemini-embedding-2": { input: 0.20, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+  "gemini-embedding-2-preview": { input: 0.20, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
   "gemini-3-flash-preview": { input: 0.50, output: 3.00, cached: 0.03, reasoning: 4.50, cache_creation: 0.50 },
   "gemini-3-pro-preview": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
   "gemini-3.1-pro-low": { input: 2.00, output: 12.00, cached: 0.25, reasoning: 18.00, cache_creation: 2.00 },
@@ -355,6 +377,11 @@ export const MODEL_PRICING = {
  * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
  */
 export const PROVIDER_PRICING = {
+  // Gemma 4 has no paid tier on the Gemini API, so it bills $0 there only
+  // (9router#5846, checked 2026-11-24). Other hosts of the same id keep their own pricing.
+  gemini: {
+    "gemma-4-31b-it": { input: 0, output: 0, cached: 0, reasoning: 0, cache_creation: 0 },
+  },
   // Gemini Developer API standard paid tier; implicit cache reads only.
   // https://ai.google.dev/gemini-api/docs/pricing#gemini-4-hydrogen
   "gemini-interactions": {
@@ -372,6 +399,11 @@ export const PROVIDER_PRICING = {
   },
   // OpenAI API list price. Over 272K input, whole request uses long-context rates.
   openai: {
+    // GPT-6.2 Sol bills like 6.1 Sol; Astra is cheaper than GPT-6 Astra.
+    // https://developers.openai.com/api/docs/models/gpt-6.2-sol
+    // https://developers.openai.com/api/docs/models/gpt-6.2-astra
+    "gpt-6.2-sol": { input: 2.00, output: 10.00, cached: 0.20, reasoning: 10.00, cache_creation: 2.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gpt-6.2-astra": { input: 8.00, output: 40.00, cached: 0.40, reasoning: 40.00, cache_creation: 10.00, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
     "gpt-6-astra": { input: 10.00, output: 50.00, cached: 1.00, reasoning: 50.00, cache_creation: 12.50, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
   },
   // Cline advertises these exact ids as Free; other providers bill their twins.
@@ -382,7 +414,9 @@ export const PROVIDER_PRICING = {
   },
   // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
   gh: {
-    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 }
+    "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
+    // Copilot uses a dotted ID for the canonical Sonnet 5.5 model.
+    "claude-sonnet-5.5": MODEL_PRICING["claude-sonnet-5-5"]
   },
   // Expose the current canonical tier to pricing management, without alias rows.
   xai: {
@@ -393,6 +427,24 @@ export const PROVIDER_PRICING = {
   // with the earlier upstream pricing commit (41588bea), not yet ported.
   tokenrouter: {
     "z-ai/glm-5.3-free": { input: 0, output: 0, cached: 0, reasoning: 0 },
+  },
+
+  // Gisoo (gisoo.pro) — prepaid relay. The relay publishes its own per-model
+  // rates in the public catalog (`GET /api/v1/models`, `pricing.input_per_million`
+  // etc.), and they differ from the canonical vendor prices, so the seed models
+  // carry the relay's published rates. Reasoning tokens are billed as output.
+  // Rates read from the live catalog on 2026-11-20; long-context rows repeat
+  // the published "over the threshold" rates as multipliers.
+  gisoo: {
+    "claude-opus-5-5": { input: 5.60, output: 28.00, cached: 0.28 },
+    "claude-sonnet-5-5": { input: 2.80, output: 14.00, cached: 0.14 },
+    "claude-haiku-5-5": { input: 0.14, output: 0.70, cached: 0.014, longContextThreshold: 100000, longContextInputMultiplier: 5, longContextOutputMultiplier: 5 },
+    "gpt-5.6-sol": { input: 5.60, output: 28.00, cached: 0.56, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gpt-5.5": { input: 7.00, output: 42.00, cached: 0.70, longContextThreshold: 272000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "gemini-3.8-flash": { input: 0.90, output: 4.50, cached: 0.09 },
+    "gemini-3.1-pro-preview": { input: 2.80, output: 16.80, cached: 0.28, longContextThreshold: 200000, longContextInputMultiplier: 2, longContextOutputMultiplier: 1.5 },
+    "deepseek-v4-pro": { input: 1.848, output: 5.544, cached: 0.0616 },
+    "deepseek-flash": { input: 0.36, output: 1.44, cached: 0.0072 }
   },
 
   // Fireworks AI — OpenAI-compatible, reasoning/cache_creation not separately
@@ -662,12 +714,11 @@ const ZERO_COST_BREAKDOWN = Object.freeze({
 export function calculateCostBreakdown(tokens, pricing) {
   if (!tokens) return ZERO_COST_BREAKDOWN;
 
-  const directCost = tokens.cost_usd ?? tokens.cost_in_usd;
-  if (Number.isFinite(Number(directCost)) && Number(directCost) >= 0) {
-    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(directCost) };
-  }
-  if (Number.isFinite(Number(tokens.cost_in_usd_ticks)) && Number(tokens.cost_in_usd_ticks) >= 0) {
-    return { ...ZERO_COST_BREAKDOWN, totalCost: Number(tokens.cost_in_usd_ticks) / 1_000_000_000_000 };
+  for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
+    if (tokens[field] == null) continue;
+    const cost = decodeUsdReceipt(tokens[field], field);
+    if (cost !== null) return { ...ZERO_COST_BREAKDOWN, totalCost: cost };
+    break;
   }
   if (!pricing) return ZERO_COST_BREAKDOWN;
 

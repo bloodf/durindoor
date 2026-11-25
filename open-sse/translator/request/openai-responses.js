@@ -4,7 +4,8 @@
  * Responses API uses: { input: [...], instructions: "..." }
  * Chat API uses: { messages: [...] }
  */
-import { register } from "../index.js";
+import { CLAUDE_THINKING_PREFIX, decodeClaudeThinking } from "../concerns/claudeThinkingEnvelope.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
@@ -17,10 +18,14 @@ import {
   resolveDeclaredCustom,
   responsesImageUrl,
 } from "../formats/responsesApi.js";
-import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM, CLAUDE_BLOCK, CLAUDE_NATIVE_TOOLS, VALID_OPENAI_CONTENT_TYPES, RESPONSES_INCLUDE, RESPONSES_INCLUDE_ENTRIES } from "../schema/index.js";
+import { normalizeResponsesImageReplay } from "../concerns/responsesImageReplay.js";
+import { parseDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { MAX_IMAGE_BYTES } from "../../config/mediaConfig.js";
+import { isValidClaudeSignature } from "../../utils/claudeSignature.js";
 import { fixMissingToolResponses, EMPTY_TOOL_RESULT_TEXT } from "../concerns/toolCall.js";
-import { normalizeToolSchema } from "../concerns/toolSchema.js";
+import { normalizeToolSchema, normalizeToolParameters, sanitizeToolSchemaParameters } from "../concerns/toolSchema.js";
 
 import { isBoolean, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -30,34 +35,6 @@ function withBooleanStrict(fn, source) {
 }
 // Responses API enforces max 64 chars on call_id (#393) — clamping lives in
 // clampResponsesCallId (formats/responsesApi.js), standardized upstream in #3819.
-
-/** Repair truncated array keywords in Responses tool schemas before Chat forwarding.
- * Traverse schema positions only, so literal enum/default values are preserved.
- */
-function sanitizeChatSchema(schema) {
-  if (!schema || !isObject(schema) || Array.isArray(schema)) return schema;
-  const result = { ...schema };
-  for (const key of ["enum", "required", "anyOf", "oneOf", "allOf", "prefixItems"]) {
-    if (!(key in result)) continue;
-    let value = result[key];
-    if (!Array.isArray(value) && value && isObject(value)) {
-      const keys = Object.keys(value);
-      if (keys.length && keys.every((entry, index) => entry === String(index))) value = keys.map((entry) => value[entry]);
-    }
-    if (!Array.isArray(value)) { delete result[key]; continue; }
-    result[key] = ["anyOf", "oneOf", "allOf", "prefixItems"].includes(key) ? value.map(sanitizeChatSchema) : value;
-  }
-  for (const key of ["items", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "unevaluatedProperties", "additionalItems", "contentSchema", "unevaluatedItems"]) {
-    if (result[key] && isObject(result[key])) result[key] = Array.isArray(result[key]) ? result[key].map(sanitizeChatSchema) : sanitizeChatSchema(result[key]);
-    else if (isString(result[key]) && /^\[(?:MaxDepth|Truncated|Circular|Object|Array)\]$/.test(result[key].trim())) result[key] = {};
-  }
-  for (const key of ["properties", "$defs", "definitions", "patternProperties", "dependentSchemas"]) {
-    if (result[key] && isObject(result[key]) && !Array.isArray(result[key])) {
-      result[key] = Object.fromEntries(Object.entries(result[key]).map(([name, value]) => [name, sanitizeChatSchema(value)]));
-    }
-  }
-  return result;
-}
 
 /**
  * Scan a Responses API `input[]` and collect every `call_id` declared by a
@@ -180,7 +157,22 @@ function pairHistoricalToolCalls(input) {
  */
 function lowerCustomToolHistory(items) {
   if (!Array.isArray(items)) return items;
-  return items.map((item) => {
+  // A custom call with a blank call_id can never be paired with its output, so it is skipped
+  // (with the blank-id output that answers it) instead of being re-paired later under a
+  // made-up id and an empty result (OmniRoute #20243). Valid pairs are untouched.
+  let blankCustomCalls = 0;
+  const hasCallId = (item) => isString(item.call_id) && item.call_id.trim() !== "";
+  return items.flatMap((item) => {
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL && !hasCallId(item)) {
+      blankCustomCalls += 1;
+      return [];
+    }
+    if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT && !hasCallId(item) && blankCustomCalls > 0) {
+      blankCustomCalls -= 1;
+      return [];
+    }
+    return [item];
+  }).map((item) => {
     if (item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL) {
       const { input, ...rest } = item;
       const raw = isString(input) ? input : input == null ? "" : JSON.stringify(input);
@@ -305,11 +297,57 @@ function splitToolOutputImages(output) {
   return { content: parts.length === 0 ? "[]" : collapseTextParts(parts), images };
 }
 
+/**
+ * Fixed per-request bounds for tool-output images re-injected into Chat
+ * history (no configuration surface). Bytes reuse the existing per-image
+ * `MAX_IMAGE_BYTES` ceiling at twice that size, measured as URL length (a data
+ * URL's length is its base64 payload).
+ */
+export const MAX_TOOL_OUTPUT_IMAGES = 16;
+export const MAX_TOOL_OUTPUT_IMAGE_BYTES = 2 * MAX_IMAGE_BYTES;
+
+const imageUrlSize = (part) => {
+  const url = part?.image_url?.url;
+  return isString(url) ? url.length : 0;
+};
+
+/**
+ * Keep the newest tool-output images that fit both budgets and replace older
+ * ones, in place, with a text note. Keeping is a strict newest-first prefix, so
+ * a smaller older image never survives a newer dropped one; surviving images
+ * keep their original order. `groups` are follow-up user messages in history
+ * order, each `{ message, entries: [{ part, callId }] }`.
+ */
+export function boundToolOutputImages(groups, maxCount = MAX_TOOL_OUTPUT_IMAGES, maxBytes = MAX_TOOL_OUTPUT_IMAGE_BYTES) {
+  const all = groups.flatMap((g) => g.entries);
+  let count = 0;
+  let bytes = 0;
+  let cut = all.length;
+  while (cut > 0) {
+    const size = imageUrlSize(all[cut - 1].part);
+    if (count + 1 > maxCount || bytes + size > maxBytes) break;
+    count++;
+    bytes += size;
+    cut--;
+  }
+  if (cut === 0) return;
+  const dropped = new Set(all.slice(0, cut));
+  for (const { message, entries } of groups) {
+    message.content = entries.map((entry) => dropped.has(entry) ?
+    { type: OPENAI_BLOCK.TEXT, text: `[Earlier tool output image omitted to bound request size (tool_call_id: ${entry.callId})]` } :
+    entry.part);
+  }
+}
+
 function responsesContentToOpenAI(c) {
-  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text };
+  if (c?.type === RESPONSES_ITEM.INPUT_TEXT || c?.type === RESPONSES_ITEM.OUTPUT_TEXT) return { type: OPENAI_BLOCK.TEXT, text: c.text, ...(c.cache_control?.type === "ephemeral" && { cache_control: c.cache_control }) };
   if (c?.type === RESPONSES_ITEM.INPUT_IMAGE) {
     const url = responsesImageUrl(c);
     return { type: OPENAI_BLOCK.IMAGE_URL, image_url: { url, detail: c.detail || "auto" } };
+  }
+  if (c?.type === RESPONSES_ITEM.INPUT_FILE) {
+    const { file_data, file_id, file_url, filename } = c;
+    return { type: OPENAI_BLOCK.FILE, file: Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
   }
   return c;
 }
@@ -333,7 +371,7 @@ function qualifyNamespacedChoice(choice) {
   return Array.isArray(qualified.tools) ? { ...qualified, tools: qualified.tools.map(qualify) } : qualified;
 }
 
-export function openaiResponsesToOpenAIRequest(model, body, stream, credentials) {
+export function openaiResponsesToOpenAIRequest(model, body, stream, credentials, translationContext = null) {
   if (!body.input) return body;
 
   const result = { ...body };
@@ -348,6 +386,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   let currentAssistantMsg = null;
   let pendingToolResults = [];
   let pendingReasoning = "";
+  let pendingClaudeThinking = [];
+  let pendingEnvelope = null;
+  let thinkingOrigin = null;
   // True once this pending assistant turn absorbed a Responses `message` item.
   // A tool-only turn (function_call first) followed by a later assistant
   // message is a new turn (#1335); trailing text after a message-opened turn
@@ -397,7 +438,31 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  const inputItems = stripOrphanedToolOutputs(repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input))));
+  let repairedItems = repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input)));
+  if (translationContext?.targetFormat === FORMATS.CLAUDE && Array.isArray(repairedItems)) {
+    const known = collectKnownCallIds(repairedItems);
+    repairedItems = repairedItems.map((item) => {
+      if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || known.has(item.call_id)) return item;
+      const raw = Array.isArray(item.output) ? item.output : [{ type: RESPONSES_ITEM.INPUT_TEXT, text: isString(item.output) ? item.output : JSON.stringify(item.output ?? "") }];
+      const content = [];
+      let droppedCache = null;
+      for (const part of raw) {
+        let converted = responsesContentToOpenAI(part);
+        const cache = part?.cache_control?.type === "ephemeral" ? part.cache_control : null;
+        if (converted?.type === OPENAI_BLOCK.TEXT && !converted.text?.trim()) {
+          if (content.length && cache && !content.at(-1).cache_control) content[content.length - 1] = { ...content.at(-1), cache_control: cache };
+          else if (!content.length && cache) droppedCache = cache;
+          continue;
+        }
+        if (cache && converted) converted = { ...converted, cache_control: cache };
+        if (converted) content.push(converted);
+      }
+      if (!content.length) content.push({ type: OPENAI_BLOCK.TEXT, text: "Tool result was empty.", ...(droppedCache && { cache_control: droppedCache }) });
+      if (!content.at(-1).cache_control && item.cache_control?.type === "ephemeral") content[content.length - 1] = { ...content.at(-1), cache_control: item.cache_control };
+      return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content };
+    });
+  }
+  const inputItems = stripOrphanedToolOutputs(repairedItems);
   if (!inputItems) return body;
 
   // Declared tool types (custom vs function) on this request, hoisted above
@@ -438,6 +503,16 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       currentAssistantMsg.reasoning_content = pendingReasoning;
       pendingReasoning = "";
     }
+    if (pendingEnvelope && currentAssistantMsg.tool_calls?.length) {
+      currentAssistantMsg._responsesClaudeThinking = pendingEnvelope;
+      delete currentAssistantMsg.reasoning_content;
+    }
+    pendingEnvelope = null;
+    if (pendingClaudeThinking.length && !currentAssistantMsg._responsesClaudeThinking) {
+      currentAssistantMsg._responsesClaudeThinking = pendingClaudeThinking;
+    }
+    pendingClaudeThinking = [];
+    thinkingOrigin = null;
     if (!currentAssistantMsg.tool_calls?.length) delete currentAssistantMsg.tool_calls;
     // A text-only content array (no tool calls survived, or every call was
     // nameless) must ship as a string. filterToOpenAIFormat only collapses
@@ -476,6 +551,13 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
   // Images lifted out of tool outputs wait here until the run of tool
   // messages ends, so a user message never splits parallel tool results.
   let pendingToolImages = [];
+  const toolImageGroups = [];
+  const flushToolImages = () => {
+    const message = { role: ROLE.USER, content: pendingToolImages.map((e) => e.part) };
+    toolImageGroups.push({ message, entries: pendingToolImages });
+    result.messages.push(message);
+    pendingToolImages = [];
+  };
 
   for (const item of inputItems) {
     // Determine item type - Droid CLI sends role-based items without 'type' field
@@ -483,8 +565,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
     const itemType = item.type || (item.role ? RESPONSES_ITEM.MESSAGE : null);
 
     if (pendingToolImages.length > 0 && itemType !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT && itemType !== RESPONSES_ITEM.REASONING) {
-      result.messages.push({ role: ROLE.USER, content: pendingToolImages });
-      pendingToolImages = [];
+      flushToolImages();
     }
 
     if (itemType === RESPONSES_ITEM.MESSAGE) {
@@ -526,6 +607,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         pendingToolResults = [];
       }
       pendingReasoning = "";
+      pendingClaudeThinking = [];
+      pendingEnvelope = null;
+      thinkingOrigin = null;
       result.messages.push({ role: item.role, content });
     } else
     if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
@@ -592,24 +676,48 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       }
       // Add tool result immediately; its images follow in a user message
       const { content, images } = splitToolOutputImages(item.output);
-      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content });
-      pendingToolImages.push(...images);
+      // Claude requires a tool result's cache marker on the outer block.
+      const partCache = Array.isArray(item.output) ? item.output.findLast((part) => part?.cache_control?.type === "ephemeral")?.cache_control : null;
+      const cache = partCache || (item.cache_control?.type === "ephemeral" ? item.cache_control : null);
+      result.messages.push({ role: ROLE.TOOL, tool_call_id: item.call_id, content, ...(cache && { cache_control: cache }) });
+      pendingToolImages.push(...images.map((part) => ({ part, callId: item.call_id })));
     } else
     if (itemType === RESPONSES_ITEM.REASONING) {
       // Buffer reasoning text; attached to next assistant message/function_call
+      const restored = translationContext?.targetFormat === FORMATS.CLAUDE ? decodeClaudeThinking(item.encrypted_content, model) : null;
+      if (restored) pendingEnvelope = restored;
       const txt = extractReasoningText(item);
       if (txt) pendingReasoning = pendingReasoning ? `${pendingReasoning}\n${txt}` : txt;
+      if (translationContext?.targetFormat === FORMATS.CLAUDE && isString(item.encrypted_content) && !item.encrypted_content.startsWith(CLAUDE_THINKING_PREFIX) && isValidClaudeSignature(item.encrypted_content)) {
+        const match = isString(item.id) ? /^rs_(.+)_(\d+)$/.exec(item.id) : null;
+        const origin = match && Number.isSafeInteger(Number(match[2])) ? { id: match[1], index: Number(match[2]) } : null;
+        const block = { type: CLAUDE_BLOCK.THINKING, thinking: txt, signature: item.encrypted_content.split("#").at(-1).trim() };
+        if (origin && thinkingOrigin && origin.id === thinkingOrigin.id && origin.index === thinkingOrigin.index) {
+          pendingClaudeThinking[pendingClaudeThinking.length - 1] = block;
+        } else {
+          if (!origin || !thinkingOrigin || origin.id !== thinkingOrigin.id || origin.index < thinkingOrigin.index) pendingClaudeThinking = [];
+          pendingClaudeThinking.push(block);
+        }
+        thinkingOrigin = origin;
+      }
       continue;
     }
   }
 
   // Flush remaining
   flushAssistant();
-  if (pendingToolImages.length > 0) result.messages.push({ role: ROLE.USER, content: pendingToolImages });
+  if (pendingToolImages.length > 0) flushToolImages();
+  boundToolOutputImages(toolImageGroups);
   if (pendingToolResults.length > 0) {
     for (const tr of pendingToolResults) {
       result.messages.push(tr);
     }
+  }
+
+  // Upstreams reject messages:[]. Skipped replay items (blank-id custom calls and their outputs)
+  // can leave nothing, so keep the placeholder the empty-input path uses (OmniRoute #20243).
+  if (result.messages.length === 0 && Array.isArray(body.input) && body.input.length > 0) {
+    result.messages = [{ role: ROLE.USER, content: "..." }];
   }
 
   // Convert tools format.
@@ -629,7 +737,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // Validate its schema too so a Chat-shaped tool cannot skip #1334 checks.
       if (tool.function) {
         if (tool.function.parameters === undefined) return tool;
-        return { ...tool, function: { ...tool.function, parameters: normalizeToolSchema(tool.function.parameters, tool.function.name) } };
+        return { ...tool, function: { ...tool.function, parameters: sanitizeToolSchemaParameters(tool.function.parameters, tool.function.name) } };
       }
       // Responses namespace tools have no Chat equivalent. Expand each declared
       // subtool; response state keeps the namespace for the reverse projection.
@@ -644,7 +752,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
           function: withBooleanStrict({
             name: namespace ? `${namespace}.${subtool.name}` : subtool.name,
             description: String(subtool.description || tool.description || ""),
-            parameters: normalizeToolParameters(normalizeToolSchema(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
+            parameters: normalizeToolParameters(sanitizeToolSchemaParameters(subtool.parameters, namespace ? `${namespace}.${subtool.name}` : subtool.name))
           }, subtool)
         }));
       }
@@ -653,17 +761,18 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       // tool whose single parameter is the raw `input` string. The response
       // translator re-emits it as a custom_tool_call by name (OmniRoute #7905).
       if (tool.type === "custom" && isString(tool.name) && tool.name.trim() !== "") {
+        const formatHint = [tool.format?.syntax, tool.format?.definition].filter(Boolean).join("\n");
         return {
           type: OPENAI_BLOCK.FUNCTION,
           function: withBooleanStrict({
             name: tool.name,
-            description: String(tool.description || ""),
-            parameters: {
+            description: [String(tool.description || ""), formatHint].filter(Boolean).join("\n\n"),
+            parameters: sanitizeToolSchemaParameters({
               type: "object",
-              properties: { input: { type: "string" } },
+              properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
               required: ["input"],
               additionalProperties: false
-            }
+            }, tool.name)
           }, tool)
         };
       }
@@ -677,19 +786,28 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         function: withBooleanStrict({
           name,
           description: String(tool.description || ""),
-          parameters: normalizeToolParameters(normalizeToolSchema(tool.parameters, name))
+          parameters: normalizeToolParameters(sanitizeToolSchemaParameters(tool.parameters, name))
         }, tool)
       };
     }).
     filter(Boolean);
-    result.tools = result.tools.map((tool) => tool.function?.parameters === undefined ? tool : ({
-      ...tool, function: { ...tool.function, parameters: sanitizeChatSchema(tool.function.parameters) }
-    }));
   }
   const customToolNames = [...declaredToolTypes].filter(([, type]) => type === "custom").map(([name]) => name);
   if (customToolNames.length > 0) result._customToolNames = customToolNames;
 
   // Cleanup Responses API specific fields
+  // Translate Responses structured output to the Chat Completions shape.
+  if (result.text?.format) {
+    const format = result.text.format;
+    if (format.type === "json_schema") {
+      const { type, ...schema } = format;
+      result.response_format = { type, json_schema: schema };
+    } else if (format.type === "json_object") {
+      result.response_format = { type: "json_object" };
+    }
+    delete result.text;
+  }
+
   // Map Responses-only max_output_tokens to Chat max_tokens (avoid leaking unknown field upstream)
   if (result.max_output_tokens !== undefined) {
     if (result.max_tokens === undefined) result.max_tokens = result.max_output_tokens;
@@ -751,10 +869,21 @@ function extractInstructionsText(content) {
  */
 function chatPartToResponses(c, contentType) {
   if (c.type === OPENAI_BLOCK.TEXT) return { type: contentType, text: c.text };
+  if (c.type === OPENAI_BLOCK.FILE && c.file && isObject(c.file)) {
+    const { file_data, file_id, file_url, filename } = c.file;
+    return { type: RESPONSES_ITEM.INPUT_FILE, ...Object.fromEntries(Object.entries({ file_data, file_id, file_url, filename }).filter(([, value]) => value !== undefined)) };
+  }
+  if (contentType === RESPONSES_ITEM.OUTPUT_TEXT && (c.type === OPENAI_BLOCK.IMAGE_URL || c.type === RESPONSES_ITEM.INPUT_IMAGE || c.type === OPENAI_BLOCK.IMAGE)) {
+    const url = c.type === OPENAI_BLOCK.IMAGE ? (isString(c.image) ? c.image : null) : (isString(c.image_url) ? c.image_url : c.image_url?.url);
+    return { type: contentType, text: isString(url) && url ? `[Image: ${url}]` : "[Image]" };
+  }
   if (c.type === OPENAI_BLOCK.IMAGE_URL) {
     const url = isString(c.image_url) ? c.image_url : c.image_url?.url;
     // No usable URL: fall through to the text serialization below.
     if (isString(url) && url) return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: url, detail: c.image_url?.detail || "auto" };
+  }
+  if (c.type === OPENAI_BLOCK.IMAGE && parseDataUri(c.image)) {
+    return { type: RESPONSES_ITEM.INPUT_IMAGE, image_url: c.image, detail: c.detail || "auto" };
   }
   if (c.type === RESPONSES_ITEM.INPUT_IMAGE) return c;
   const text = c.text || c.content || JSON.stringify(c);
@@ -779,25 +908,19 @@ function chatCustomToolInput(tc) {
   return args;
 }
 
-/**
- * Ensure object schema always has properties field (required by Codex Responses API)
- */
-function normalizeToolParameters(params) {
-  if (!params) return { type: "object", properties: {} };
-  if (params.type === "object" && !params.properties) return { ...params, properties: {} };
-  return params;
-}
 
 /**
  * Normalize Chat Completions output limits at the shared Responses wire seam.
- * Native max_output_tokens wins when both fields are present.
+ * Native max_output_tokens wins, followed by max_completion_tokens and max_tokens.
  */
 function normalizeResponsesOutputLimit(source, target) {
   if (target.max_output_tokens === undefined) {
     if (source.max_output_tokens !== undefined) target.max_output_tokens = source.max_output_tokens;else
+    if (source.max_completion_tokens !== undefined) target.max_output_tokens = source.max_completion_tokens;else
     if (source.max_tokens !== undefined) target.max_output_tokens = source.max_tokens;
   }
   delete target.max_tokens;
+  delete target.max_completion_tokens;
   return target;
 }
 
@@ -834,7 +957,7 @@ function ensureResponsesInputOrContinuity(result) {
  */
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   if (body.input) {
-    const cleanInput = stripOrphanedToolOutputs(body.input);
+    const cleanInput = stripOrphanedToolOutputs(normalizeResponsesImageReplay(body.input));
     const result = cleanInput === body.input ? { ...body, model, stream } : { ...body, input: cleanInput, model, stream };
     return ensureResponsesInputOrContinuity(normalizeResponsesOutputLimit(body, result));
   }
@@ -846,8 +969,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     store: false
   };
 
-  // Extract system message as instructions
-  let hasSystemMessage = false;
+  // Collect all non-empty system/developer message texts in order for instructions (#2184)
+  const instructionParts = [];
   const messages = body.messages || [];
 
   // Declared tool types on this Chat Completions body, hoisted above the
@@ -862,25 +985,23 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   for (const msg of messages) {
     if (msg.role === ROLE.SYSTEM || msg.role === ROLE.DEVELOPER) {
-      // Use the first instruction-bearing message as instructions.
+      // Join all non-empty instruction-bearing messages with "\n" in order (#2184).
       // OpenAI recommends role="developer" for GPT-5/Codex as the system-level prompt.
-      if (!hasSystemMessage) {
-        result.instructions = extractInstructionsText(msg.content);
-        hasSystemMessage = true;
-      }
+      const text = extractInstructionsText(msg.content);
+      if (text) instructionParts.push(text);
       continue; // Skip instruction messages in input
     }
 
     // Convert user/assistant messages to input items
     if (msg.role === ROLE.USER || msg.role === ROLE.ASSISTANT) {
-      // Preserve reasoning_content as a reasoning item (before the message)
-      if (msg.role === ROLE.ASSISTANT && msg.reasoning_content) {
-        result.input.push({
-          type: RESPONSES_ITEM.REASONING,
-          summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: msg.reasoning_content }]
-        });
-      }
-
+      // Chat `reasoning_content` is NOT replayed as a Responses `reasoning`
+      // item. The Responses protocol only accepts a reasoning item the server
+      // issued: `ResponseReasoningItem.id` is required, and continuity for
+      // store=false backends rides on that same item's `encrypted_content` —
+      // never on a summary string. A client-built item is therefore invalid
+      // (OmniRoute #231: client-side ids caused 400 Invalid Request), and this
+      // fork never fabricates a server-generated id. Native Responses history
+      // keeps its own reasoning items through the `body.input` path above.
       const contentType = msg.role === ROLE.USER ? RESPONSES_ITEM.INPUT_TEXT : RESPONSES_ITEM.OUTPUT_TEXT;
       const content = isString(msg.content) ?
       [{ type: contentType, text: msg.content }] :
@@ -932,12 +1053,15 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // Responses has no tool-error flag; retain failure meaning in its output text.
       const errorPrefix = msg.is_error === true ? "[Tool error]\n" : "";
       // Image parts stay media: Responses accepts an input_text/input_image array (#1332).
-      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE);
+      const hasImage = Array.isArray(msg.content) && msg.content.some((c) => c?.type === OPENAI_BLOCK.IMAGE_URL || c?.type === RESPONSES_ITEM.INPUT_IMAGE || (c?.type === OPENAI_BLOCK.IMAGE && Boolean(parseDataUri(c.image))));
       const output = hasImage ?
       [
       ...(errorPrefix ? [{ type: RESPONSES_ITEM.INPUT_TEXT, text: errorPrefix }] : []),
       ...msg.content.map((c) => chatPartToResponses(c, RESPONSES_ITEM.INPUT_TEXT))] :
       `${errorPrefix}${coerceResponsesOutput(msg.content)}`;
+      // No tool_call_id means no call to pair with: drop the output rather than
+      // manufacture an id for it (OmniRoute #20243).
+      if (!isString(msg.tool_call_id) || msg.tool_call_id.trim() === "") continue;
       const callId = clampResponsesCallId(msg.tool_call_id);
       result.input.push({
         type: customCallIds.has(callId) ? RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT : RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
@@ -947,10 +1071,8 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }
   }
 
-  // If no system message, leave instructions empty (will be filled by executor)
-  if (!hasSystemMessage) {
-    result.instructions = "";
-  }
+  // Join all non-empty system/developer texts with "\n", or leave "" (will be filled by executor)
+  result.instructions = instructionParts.join("\n");
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
@@ -980,9 +1102,43 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
     }).filter(Boolean);
   }
 
+  /**
+   * Preserve a caller-provided Responses `include` array on the Responses wire
+   * (OmniRoute #2154, merged upstream as fca89049c90127b48380c624879fb01bd3d5b5c8).
+   * A chat client that asks for `reasoning.encrypted_content` otherwise loses the
+   * request on the way upstream, the provider answers with an empty reasoning
+   * summary, and the client sees no thinking stream at all.
+   *
+   * Only entries the Responses contract defines are carried
+   * (RESPONSES_INCLUDE_ENTRIES): an unknown value is dropped instead of being
+   * forwarded to an upstream that would answer 400 for it, and nothing is
+   * invented here — the target still owns its own policy (the Codex executor
+   * include default, the per-model `dropInclude` filter in
+   * translator/concerns/paramSupport.js).
+   */
+  if (Array.isArray(body.include) && body.include.length > 0) {
+    const requested = body.include.filter((entry) => isString(entry) && RESPONSES_INCLUDE_ENTRIES.includes(entry));
+    if (requested.length > 0) result.include = requested;
+  }
+
   // Only the Claude native-search pivot may force a hosted search choice.
   const claudeSearch = body[CLAUDE_NATIVE_TOOLS]?.some(tool => tool.type === "web_search_20250305") && result.tools?.some(tool => tool.type === OPENAI_BLOCK.WEB_SEARCH);
-  if (claudeSearch) result.include = ["web_search_call.action.sources"];
+  if (claudeSearch) {
+    // Merge with the caller's own entries instead of replacing them: the
+    // native-search include is added, the caller's array is kept.
+    const include = Array.isArray(result.include) ? result.include : [];
+    if (!include.includes(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES)) include.push(RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES);
+    result.include = include;
+  }
+  // Responses text settings take precedence over Chat structured output settings.
+  if (body.text !== undefined) {
+    result.text = body.text;
+  } else if (body.response_format?.type === "json_schema") {
+    const { name, schema, strict, description } = body.response_format.json_schema || body.response_format;
+    result.text = { format: { type: "json_schema", name, schema, strict, description } };
+  } else if (body.response_format?.type === "json_object") {
+    result.text = { format: { type: "json_object" } };
+  }
   if (body.temperature !== undefined) result.temperature = body.temperature;
   normalizeResponsesOutputLimit(body, result);
   if (body.top_p !== undefined) result.top_p = body.top_p;

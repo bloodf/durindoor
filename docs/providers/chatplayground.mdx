@@ -1,0 +1,14 @@
+---
+title: ChatPlayground
+description: Import ChatPlayground Clerk session cookies, discover the live bot catalog, and the 15,000-character message limit.
+---
+
+ChatPlayground uses the signed-in session cookie from `app.chatplayground.ai`. It does not use an API key. The gateway uses `https://app.chatplayground.ai/api/models` for discovery and `https://app.chatplayground.ai/api/chat` for inference. ChatPlayground does not publish a reference for these web-app endpoints.
+
+## Setup
+
+Sign in to ChatPlayground, then capture the `Cookie` request header from an authenticated request to `app.chatplayground.ai`. Import it with the cookie capture extension, paste the `Cookie:` header copied from cURL, or extract the request cookie from a HAR export. Keep the `__client` and `__session` cookies. Treat them as passwords.
+
+The gateway resolves a short-lived Clerk session token and chooses an upstream model endpoint from ChatPlayground's live catalog. Messages are limited to 15,000 characters each. Model availability and session expiration are controlled by ChatPlayground. The public site did not respond within the single unauthenticated 15 second probe on 2026-11-21; that timeout does not establish that the API is gone.
+
+Sources: [ChatPlayground](https://app.chatplayground.ai/).

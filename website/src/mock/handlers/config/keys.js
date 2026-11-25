@@ -57,8 +57,10 @@ function readExpiry(value) {
 
 export default function register(router, { store }) {
   store.define(KEYS, seedApiKeys);
+  store.define("config.keyGroups", []);
 
   router.get("/api/keys", () => ({
+    groups: store.list("config.keyGroups"),
     providerConnections: providerOptions(store),
     keys: store.list(KEYS).map(managementView),
   }));
@@ -84,9 +86,58 @@ export default function register(router, { store }) {
       expiresAt: expiry.value ?? null,
       createdAt: new Date().toISOString(),
       providerConnectionIds: scope.value || [],
+      groupIds: Array.isArray(body.groupIds) ? body.groupIds : [],
       usage: { ...EMPTY_USAGE },
     });
     return reply(record, { status: 201 });
+  });
+
+  // Group labels and key limit snapshots use the same response envelopes as the gateway.
+  router.get("/api/key-groups", () => ({ groups: store.list("config.keyGroups") }));
+  router.post("/api/key-groups", ({ body = {} }) => {
+    if (!isString(body.name) || !body.name.trim()) return badRequest("Name is required");
+    const group = store.insert("config.keyGroups", { id: store.newId("group"), name: body.name.trim(), color: body.color || null, createdAt: new Date().toISOString() });
+    return reply({ group }, { status: 201 });
+  });
+  router.get("/api/key-groups/:id", ({ params }) => {
+    const group = store.find("config.keyGroups", params.id);
+    return group ? { group } : notFound("Group not found");
+  });
+  router.put("/api/key-groups/:id", ({ params, body = {} }) => {
+    const group = store.patch("config.keyGroups", params.id, body);
+    return group ? { group } : notFound("Group not found");
+  });
+  router.delete("/api/key-groups/:id", ({ params }) => {
+    if (!store.remove("config.keyGroups", params.id)) return notFound("Group not found");
+    store.set(KEYS, store.list(KEYS).map((key) => ({ ...key, groupIds: (key.groupIds || []).filter((id) => id !== params.id) })));
+    return { success: true };
+  });
+  router.get("/api/keys/usage", ({ query }) => {
+    const keys = store.list(KEYS).filter((key) => !query.apiKeyId || key.id === query.apiKeyId);
+    if (query.apiKeyId && !keys.length) return notFound("Key not found");
+    return { usage: Object.fromEntries(keys.map((key) => [key.id, { rpm: null, tpm: null, limits: [] }])) };
+  });
+  router.post("/api/keys/:id/rotate", ({ params }) => {
+    const existing = store.find(KEYS, params.id);
+    if (!existing) return notFound("Key not found");
+    const record = store.patch(KEYS, params.id, { key: randomSecret() });
+    return reply({
+      key: record.key,
+      id: record.id,
+      name: record.name,
+      maskedKey: "sk-••••••••",
+      machineId: record.machineId,
+      isActive: record.isActive,
+      allowedCombos: record.allowedCombos || [],
+      dailyLimitTokens: record.dailyLimitTokens ?? null,
+      policy: record.policy ?? null,
+      expiresAt: record.expiresAt ?? null,
+      isAdmin: record.isAdmin ?? false,
+      createdAt: record.createdAt,
+      providerConnectionIds: record.providerConnectionIds || [],
+      groupIds: record.groupIds || [],
+      usage: record.usage || { ...EMPTY_USAGE },
+    }, { headers: { "Cache-Control": "no-store" } });
   });
 
   router.get("/api/keys/policy-catalog", () => ({ models: buildPolicyCatalog() }));
@@ -114,6 +165,7 @@ export default function register(router, { store }) {
     const error = scope.error || limit.error || expiry.error;
     if (error) return badRequest(error);
     if (scope.value !== undefined) changes.providerConnectionIds = scope.value;
+    if (Array.isArray(body.groupIds)) changes.groupIds = body.groupIds;
     if ("dailyLimitTokens" in body) changes.dailyLimitTokens = limit.value;
     if ("expiresAt" in body) changes.expiresAt = expiry.value;
     const policy = readPolicy(body, existing.policy);

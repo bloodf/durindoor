@@ -57,10 +57,18 @@ The saved pair belongs to the paste it came from. Pasting new tokens with **Edit
 | `Kimi error: ...` with an upstream status | Kimi rejected the call. The token is replaced with `[redacted]` in the message. |
 | HTTP 502 | DurinDoor could not reach the Kimi site. |
 
-A 401 that refresh cannot fix, and any 403, cools the connection down for two minutes like any other provider.
+A 401 that refresh cannot fix, and any 403, answers with a message to run the snippet again and re-paste, and cools the connection down for two minutes like any other provider. With more than one Kimi Web connection the request falls back to the next one.
 
-Kimi Web does not report quota. The [Quota Tracker](../features/quota-tracking.mdx) covers the Kimi and Kimi Coding providers, not the web session.
+Kimi Web does not report quota. The [Quota Tracker](../features/quota-tracking.mdx) covers the Kimi and Kimi Coding providers, not the web session. The **Usage** card shows only what DurinDoor recorded for that saved session in the last 30 days, with estimated tokens (about four characters each).
 
 After saving, send a short chat using `kimi-web/k3` or the exact ID shown by your instance, then confirm **Usage**. A successful model-list probe checks the session at that moment; it does not verify tool support or keep the session alive.
 
 Rotated sessions are bound to both the pasted refresh token and the web origin. After upgrading from a version that stored a rotation without its origin, an existing connection may need a fresh paste if its original tokens have expired. Streaming error messages redact the current access token.
+
+## Recovery
+
+1. **Access token expired, refresh token present**: nothing to do. The first 401 triggers a refresh and one retry, and the new pair is saved for that connection only.
+2. **Refresh failed or no refresh token**: log in again at the same site, run the snippet, open the connection with **Edit** and paste. The new paste replaces the old one, keeps the name, priority and settings, and clears the cooldown, so the next request uses it. Sibling connections are untouched.
+3. **Wrong site**: tokens from www.kimi.ai only work with `"origin":"https://www.kimi.ai"` in the paste; DurinDoor never sends a token to the other deployment.
+
+Known limits: no remote quota or plan API, no proactive expiry tracking, and tools and agent modes are not routed. DurinDoor does not emulate browser attestation or work around access controls.

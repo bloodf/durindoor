@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createBetterSqliteAdapter } from "@/lib/db/adapters/betterSqliteAdapter.js";
+import { usageKeyIdentity } from "@/lib/db/helpers/apiKeyAttribution.js";
 import { MIGRATIONS } from "@/lib/db/migrations/index.js";
 import { PG_MIGRATIONS } from "@/lib/db/migrations/postgres/index.js";
 import { applyVersionedMigrations } from "@/lib/db/migrate.js";
@@ -30,6 +31,7 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     applyVersionedMigrations(db, MIGRATIONS.filter(({ version }) => version <= 28));
     // Migration 001 reads the current schema. Remove the new column to model a
     // database created before 030 shipped.
+    db.exec(`DROP INDEX idx_uh_key_session; DROP INDEX idx_uh_key_project`);
     db.exec(`ALTER TABLE usageHistory DROP COLUMN apiKeyId`);
     db.run(`INSERT INTO apiKeys(id, key, createdAt) VALUES ('stable-id', 'fixture-match', ?), ('deleted-id', 'fixture-deleted', ?)`,
       [timestamp, timestamp]);
@@ -52,8 +54,8 @@ it("backfills exact matches atomically and preserves all legacy fields", () => {
     expect(markers()).toEqual(markersBefore);
 
     db.exec(`DROP TRIGGER fail_stamp`);
-    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 1, from: 28, to: 30 });
-    const after = before.map((row, index) => ({ ...row, apiKeyId: index === 0 ? "stable-id" : null }));
+    expect(applyVersionedMigrations(db, MIGRATIONS)).toEqual({ applied: 9, from: 28, to: 38 });
+    const after = before.map((row, index) => ({ ...row, apiKey: index === 0 ? null : (usageKeyIdentity(null, row.apiKey) || null), apiKeyId: index === 0 ? "stable-id" : null }));
     expect(db.all(`SELECT * FROM usageHistory ORDER BY id`)).toEqual(after);
     expect(db.all(`SELECT * FROM apiKeys`)).toEqual(keys);
 
@@ -81,7 +83,7 @@ it("excludes usage history from portable export and detaches both associations o
   const db = await getAdapter();
   db.run(`INSERT INTO usageHistory(timestamp, apiKey, apiKeyId) VALUES
     (?, 'fixture-match', 'stable-id'), (?, NULL, 'id-only')`, [timestamp, timestamp]);
-  const backup = await exportDb();
+  const backup = await exportDb({ includeSecrets: true });
   expect(backup).not.toHaveProperty("usageHistory");
   await importDb(backup);
   expect(db.all(`SELECT timestamp, apiKey, apiKeyId FROM usageHistory ORDER BY id`)).toEqual([

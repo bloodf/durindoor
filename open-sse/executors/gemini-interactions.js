@@ -64,6 +64,9 @@ export class GeminiInteractionsExecutor extends BaseExecutor {
     const generation = {};
     if (Number.isInteger(maxOutput) && maxOutput > 0) generation.max_output_tokens = maxOutput;
     if (Number.isFinite(body.temperature)) generation.temperature = body.temperature;
+    if (model === "gemini-4-hydrogen" && ["low", "medium", "high", "xhigh"].includes(body.reasoning_effort)) {
+      generation.thinking_level = body.reasoning_effort;
+    }
     if (Object.keys(generation).length) request.generation_config = generation;
     return request;
   }

@@ -1,1 +1,1 @@
-{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["../src/*"], "@site/*": ["./src/*"], "@source/*": ["./.source/*"], "open-sse/*": ["../open-sse/*"] } } }
+{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["../src/*"], "@site/*": ["./src/*"], "@source/*": ["./.source/*"], "open-sse/*": ["../open-sse/*"], "three128": ["./node_modules/three"] } } }

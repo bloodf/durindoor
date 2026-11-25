@@ -6,3 +6,18 @@ description: Configure model service tiers and provider-specific routing, includ
 OpenAI and Codex model IDs accept `(fast)` for priority service and `(standard)` for standard service. Combine a tier with a reasoning modifier, for example `cx/gpt-6.1-sol(xhigh,fast)`; the explicit tier overrides the request's `service_tier`. No other provider accepts a service tier: on every other provider `(fast)` and `(standard)` are part of the model ID and are sent to the provider unchanged, so a model that really ends in that text still routes. Availability and charges are determined by the upstream provider.
 
 LLMTR uses an API key from its dashboard. Add the LLMTR provider and route its first-party Qwen model as `lt/llmtr/qwen3-8-27b`; other Chat Completions model IDs can be used with the `lt/` prefix. Model availability and pricing are controlled by LLMTR. A connection test sends a minimal Chat Completions request, which may incur usage; the public model catalog does not validate keys.
+
+## Opt-in message capture
+
+Message capture is off by default. An operator can set `enableSessionCapture` to `true` with `PATCH /api/settings` using a dashboard session or CLI token. For each `POST /v1/chat/completions` or `POST /v1/messages` request you want captured, authenticate with an active gateway API key and send both headers.
+
+- `X-Durindoor-Capture: true`
+- `X-Durindoor-Capture-Session: 550e8400-e29b-41d4-a716-446655440000` (use a UUID for your session)
+
+Capture stores the request's user message text and the successful response's assistant text, including text assembled from streaming deltas. It excludes system and developer messages, prior assistant messages, tool inputs and outputs, reasoning, attachments, and request headers. Failed, interrupted, and oversized responses can be skipped. Capture runs on a best-effort basis and does not affect the response returned to the caller.
+
+Capture stores message text as sent apart from pattern redaction, so callers who opt in must not put secrets in message content. Redaction covers credentials presented by the caller, recognized sensitive fields in structured capture data, bearer tokens, common API key formats, JWTs, and PEM private-key blocks. Secrets in unrecognized formats can remain visible. The maximum stored size is 16 KiB per request and 1 MiB per API key across all sessions. Capture skips turns that exceed the bounds or quota.
+
+Use `GET /v1/session-captures/{session}` to read up to 100 unexpired turns in creation order. Use `?limit=20` to lower that bound. Each turn includes its ID, creation and expiry times, and a `content` object with `user` and `assistant` text arrays. Use `DELETE /v1/session-captures/{session}` to remove your key's saved turns for that session. Both endpoints require an active, unexpired gateway API key and only access its own captures. Access follows the stable key ID through credential rotation. Reads and deletes remain available when operators disable new captures.
+
+Turns expire after seven days. Reads remove the authenticated key's expired rows, and writes or operator maintenance remove expired rows across keys. A full logical database restore clears saved captures. Database files and snapshots can retain copies after a turn expires or is deleted.

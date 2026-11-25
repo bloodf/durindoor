@@ -1,3 +1,4 @@
+import { convertLegacyUsageDaily } from "@/lib/db/migrations/037-usage-daily-rollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +8,7 @@ import { getUsageCalendarCutoff } from "../../src/lib/usagePeriods.js";
 
 import { disposeLoadedRequestDetailsRepo } from "../utils/requestDetailsCleanup.js";
 const now = new Date("2026-09-20T12:00:00.000Z");
-let dir, oldDataDir, repo, db;
+let dir, oldDataDir, repo, db, usageKeyIdentity;
 beforeEach(async () => {
   oldDataDir = process.env.DATA_DIR;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "usage-last-seen-"));
@@ -15,6 +16,7 @@ beforeEach(async () => {
   delete global._dbAdapter;
   vi.resetModules();
   await import("@/lib/db/index.js");
+  ({ usageKeyIdentity } = await import("@/lib/db/helpers/apiKeyAttribution.js"));
   repo = await import("@/lib/db/repos/usageRepo.js");
   db = await (await import("@/lib/db/driver.js")).getAdapter();
   vi.useFakeTimers(); vi.setSystemTime(now);
@@ -28,7 +30,7 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 const entry = (timestamp, extra = {}) => ({ timestamp, provider: "provider", model: "model", tokens: { prompt_tokens: 2, completion_tokens: 3, cached_tokens: 4, reasoning_tokens: 5, cache_creation_input_tokens: 6 }, ...extra });
-const expectedSummary = () => db.all(`SELECT SUBSTR(timestamp,1,10) AS dateKey, COALESCE(provider,'') AS provider, COALESCE(model,'') AS model, COALESCE(connectionId,'') AS connectionId, COALESCE(apiKey,'') AS apiKey, COALESCE(endpoint,'') AS endpoint, MAX(timestamp) AS lastUsed FROM usageHistory GROUP BY SUBSTR(timestamp,1,10), COALESCE(provider,''), COALESCE(model,''), COALESCE(connectionId,''), COALESCE(apiKey,''), COALESCE(endpoint,'') ORDER BY dateKey, provider, model, connectionId, apiKey, endpoint`);
+const expectedSummary = () => db.all(`SELECT SUBSTR(timestamp,1,10) AS dateKey, COALESCE(provider,'') AS provider, COALESCE(model,'') AS model, COALESCE(connectionId,'') AS connectionId, COALESCE(apiKey,'') AS apiKey, COALESCE(endpoint,'') AS endpoint, MAX(timestamp) AS lastUsed FROM usageHistory GROUP BY SUBSTR(timestamp,1,10), COALESCE(provider,''), COALESCE(model,''), COALESCE(connectionId,''), COALESCE(apiKey,''), COALESCE(endpoint,'') ORDER BY dateKey, provider, model, connectionId, apiKey, endpoint`).map((row) => ({ ...row, apiKey: usageKeyIdentity(null, row.apiKey, row.provider) }));
 const actualSummary = () => db.all("SELECT * FROM usageLastSeen ORDER BY dateKey, provider, model, connectionId, apiKey, endpoint");
 
 it("keeps per-day maxima for nullable dimensions and out-of-order writes, matching the old overlay", async () => {
@@ -110,7 +112,7 @@ it("keeps one account row per model across interleaved grouped rows", async () =
   expect(Object.values(stats.byAccount).map(({ rawModel, requests }) => ({ rawModel, requests }))).toEqual([{ rawModel: "first", requests: 2 }, { rawModel: "second", requests: 1 }]);
 });
 
-it("streams daily JSON larger than the PostgreSQL bridge budget without changing stats or charts", async () => {
+it("streams daily rollups larger than the PostgreSQL bridge budget without changing stats or charts", async () => {
   const byModel = {};
   for (let i = 0; i < 1000; i++) byModel[`model-${i}|provider`] = {
     rawModel: `model-${i}`, provider: "provider", requests: 1, promptTokens: 1,
@@ -123,6 +125,7 @@ it("streams daily JSON larger than the PostgreSQL bridge budget without changing
     const dateKey = new Date(Date.UTC(2026, 5, 1 + i)).toISOString().slice(0, 10);
     db.run("INSERT INTO usageDaily(dateKey,data) VALUES (?,?)", [dateKey, data]);
   }
+  db.transaction(() => convertLegacyUsageDaily(db));
   // Exercise the real repository against SQLite, imposing the same response
   // size failure as PostgreSQL's synchronous worker bridge.
   const all = db.all.bind(db);

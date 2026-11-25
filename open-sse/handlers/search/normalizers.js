@@ -5,6 +5,7 @@
  * Each normalizer maps a provider-specific response into the unified SearchResult shape.
  */
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isValidContext7LibraryId } from "../../shared/context7LibraryId.js";
 
 /** Build a unified SearchResult object. */
 function makeResult(providerId, item, idx, now) {
@@ -128,14 +129,15 @@ function normalizeTavily(data, _query, _searchType) {
 }
 
 // Same shape check as the context7 fetch executor's library-id guard:
-// exactly "/owner/repo", path-safe segments, no traversal.
-const CONTEXT7_LIBRARY_ID_RE = /^\/[A-Za-z0-9][\w-]*(?:\.[\w-]+)*\/[A-Za-z0-9][\w-]*(?:\.[\w-]+)*$/;
+// exactly "/owner/repo", path-safe segments, no traversal. The grammar is
+// shared with the fetch path (open-sse/shared/context7LibraryId.js) so the
+// two faces of the provider never drift apart.
 
 function normalizeContext7(data, _query, _searchType) {
   const now = new Date().toISOString();
   const items = data?.results;
   if (!Array.isArray(items)) return { results: [], totalResults: null };
-  const usable = items.filter((item) => isString(item?.id) && CONTEXT7_LIBRARY_ID_RE.test(item.id));
+  const usable = items.filter((item) => isString(item?.id) && isValidContext7LibraryId(item.id));
   const results = usable.map((item, idx) =>
   makeResult("context7", {
     title: item.title,
@@ -319,7 +321,22 @@ function normalizeGlmSearch(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
+function normalizeKeenable(data, _query, _searchType) {
+  const now = new Date().toISOString();
+  const items = Array.isArray(data?.results) ? data.results.filter((item) => item !== null && isObject(item)) : [];
+  const results = items.map((item, idx) =>
+    makeResult("keenable", {
+      title: isString(item.title) ? item.title : "",
+      url: isString(item.url) ? item.url : "",
+      snippet: (isString(item.snippet) && item.snippet) || (isString(item.description) ? item.description : ""),
+      published_at: isString(item.published_at) ? item.published_at : null
+    }, idx, now)
+  );
+  return { results, totalResults: results.length };
+}
+
 const NORMALIZERS = {
+  "keenable": normalizeKeenable,
   "glm": normalizeGlmSearch,
   "serper": normalizeSerper,
   "brave-search": normalizeBrave,

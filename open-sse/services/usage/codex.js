@@ -1,3 +1,4 @@
+import { meetsMinimalCodexClientVersion } from "../../config/codexClientVersion.js";
 /**
  * Codex (OpenAI) usage handler
  */
@@ -173,11 +174,13 @@ function getCodexRateLimitBody(snapshot) {
  */
 function formatCodexWindow(window) {
   const used = Math.max(0, Math.min(100, toFiniteNumber(window?.used_percent ?? window?.percent_used, 0)));
+  const seconds = toFiniteNumber(window?.reset_after_seconds ?? window?.resets_in_seconds ?? window?.resetAfterSeconds, null);
+  const absolute = parseResetTime(window?.reset_at ?? window?.resets_at ?? window?.resetAt ?? null);
   return {
     used,
     total: 100,
     remaining: Math.max(0, 100 - used),
-    resetAt: parseResetTime(window?.reset_at ?? window?.resets_at ?? window?.resetAt ?? null),
+    resetAt: absolute || (seconds > 0 && Number.isFinite(Date.now() + seconds * 1000) && Math.abs(Date.now() + seconds * 1000) <= 8640000000000000 ? new Date(Date.now() + seconds * 1000).toISOString() : null),
     windowSeconds: toFiniteNumber(window?.limit_window_seconds, null),
     unlimited: false
   };
@@ -244,6 +247,7 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
   try {
     const response = await proxyAwareFetch(CODEX_CONFIG.usageUrl, {
       method: "GET",
+      redirect: "error",
       headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken),
       signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS)
     }, proxyOptions);
@@ -263,14 +267,16 @@ export async function getCodexUsage(accessToken, providerSpecificData = {}, prox
     appendCodexQuotaWindows(quotas, "review", reviewRateLimit);
     appendCodexQuotaWindows(quotas, "spark", sparkRateLimit);
 
-    return {
-      plan: data.plan_type || data.summary?.plan || "unknown",
+    const result = {
+      plan: data.plan_type || data.summary?.plan || providerSpecificData?.chatgptPlanType || "unknown",
       limitReached: getCodexRateLimitBody(normalRateLimit)?.limit_reached || false,
       reviewLimitReached: getCodexRateLimitBody(reviewRateLimit)?.limit_reached || false,
       sparkLimitReached: getCodexRateLimitBody(sparkRateLimit)?.limit_reached || false,
       resetCredits,
       quotas
     };
+    if (Object.keys(quotas).length === 0) result.message = "Codex connected. Usage API returned no quota windows.";
+    return result;
   } catch (error) {
     throw new Error(`Failed to fetch Codex usage: ${error.message}`);
   }
@@ -293,6 +299,7 @@ export async function getCodexModels(accessToken, proxyOptions = null, providerS
 
     const response = await proxyAwareFetch(url, {
       method: "GET",
+      redirect: "error",
       headers: buildCodexHeaders(accessToken, providerSpecificData, {}, idToken)
     }, proxyOptions);
     if (!response.ok) return [];
@@ -300,7 +307,7 @@ export async function getCodexModels(accessToken, proxyOptions = null, providerS
     const data = await response.json();
     const models = Array.isArray(data?.models) ? data.models : [];
     return models.
-    filter((model) => model?.supported_in_api !== false && isString(model?.slug) && model.slug).
+    filter((model) => model?.supported_in_api !== false && model?.visibility !== "hide" && meetsMinimalCodexClientVersion(model?.minimal_client_version) && isString(model?.slug) && model.slug).
     sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0));
   } catch {
     return [];

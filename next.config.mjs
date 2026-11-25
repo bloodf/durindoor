@@ -11,12 +11,13 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  basePath: process.env.DURINDOOR_BASE_PATH || "",
   distDir: process.env.NEXT_DIST_DIR || ".next",
   output: "standalone",
   // Isolated provider paths retain upstream slash semantics; src/proxy.js
   // keeps the default no-trailing-slash redirect on ordinary application hosts.
   skipTrailingSlashRedirect: true,
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node", "wreq-js"],
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "pg", "playwright", "playwright-core", "tls-client-node", "wreq-js", "puppeteer", "puppeteer-extra", "puppeteer-extra-plugin-stealth"],
   turbopack: {
     root: tracingRoot
   },
@@ -26,9 +27,15 @@ const nextConfig = {
     "/*": ["./src/lib/db/adapters/pgSyncWorker.cjs"],
   },
   images: {
-    unoptimized: true
+    unoptimized: true,
+    // OmniRoute #20818: Next builds an ImageOptimizerCache for every /_next/image request
+    // before it checks `unoptimized`, and that constructor starts a disk LRU that mkdirs
+    // <distDir>/cache/images. On a global npm install served by an account that cannot write
+    // the install tree (systemd ProtectSystem=full) that mkdir fails. With unoptimized images
+    // the disk cache is never read or written, so 0 turns it off.
+    maximumDiskCacheSize: 0
   },
-  env: {},
+  env: { NEXT_PUBLIC_BASE_PATH: process.env.DURINDOOR_BASE_PATH || "" },
   experimental: {
     // Honor Next's CI CPU budget as well as affinity, leaving at least one worker.
     cpus: Math.max(1, Math.min(availableParallelism(), Number(process.env.CIRCLE_NODE_TOTAL) || Infinity) - 1),
@@ -61,6 +68,7 @@ const nextConfig = {
       config.externals = [
         ({ request }, cb) => (
           request === "better-sqlite3" || request === "pg" || request === "wreq-js"
+            || request === "puppeteer" || request === "puppeteer-extra" || request === "puppeteer-extra-plugin-stealth"
             ? cb(null, `commonjs ${request}`)
             : cb()
         ),
@@ -74,6 +82,24 @@ const nextConfig = {
       ignored: /[\\/](node_modules|\.git|logs|\.next|\.next-cli-build|cli|open-sse\.old|tests|docs)[\\/]/,
     };
     return config;
+  },
+  // #2251: baseline clickjacking / MIME / referrer / embedding CSP on every response.
+  // Omits script-src/style-src — Next inline runtime scripts would break; nonce CSP is out of scope.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+          },
+        ],
+      },
+    ];
   },
   async rewrites() {
     return [

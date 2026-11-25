@@ -29,6 +29,39 @@ const MAX_MODEL_ID_LENGTH = 256;
 
 export const isMediaRouteKind = (kind) => KIND_IDS.has(kind);
 
+/**
+ * The transport that serves each media kind, and the endpoints that run it.
+ *
+ * The registry already describes this per provider: `serviceKinds` names the
+ * kinds a provider serves, and each kind has its own config block
+ * (`ttsConfig`, `sttConfig`, `videoConfig`, …). A provider can run a kind
+ * only when it carries that transport, so the table below is the shared
+ * vocabulary for "can this provider serve this kind on this endpoint".
+ */
+export const MEDIA_KIND_TRANSPORTS = Object.freeze({
+  tts: Object.freeze({ configKey: "ttsConfig", endpoints: Object.freeze(["/v1/audio/speech"]) }),
+  stt: Object.freeze({ configKey: "sttConfig", endpoints: Object.freeze(["/v1/audio/transcriptions", "/v1/audio/translations"]) }),
+  webSearch: Object.freeze({ configKey: "searchConfig", endpoints: Object.freeze(["/v1/search"]) }),
+  webFetch: Object.freeze({ configKey: "fetchConfig", endpoints: Object.freeze(["/v1/web/fetch"]) }),
+  embedding: Object.freeze({ configKey: "embeddingConfig", endpoints: Object.freeze(["/v1/embeddings"]) }),
+  image: Object.freeze({ configKey: "imageConfig", endpoints: Object.freeze(["/v1/images/generations"]) }),
+  video: Object.freeze({ configKey: "videoConfig", endpoints: Object.freeze(["/v1/video/generations", "/v1/videos"]) }),
+  music: Object.freeze({ configKey: "musicConfig", endpoints: Object.freeze(["/v1/music/generations"]) })
+});
+
+/** Endpoint path to the media kind it runs. */
+export const MEDIA_ENDPOINT_KINDS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MEDIA_KIND_TRANSPORTS).flatMap(([kind, meta]) => meta.endpoints.map((path) => [path, kind]))
+  )
+);
+
+/** The media kind an endpoint runs, or null when the path is not a media endpoint. */
+export function mediaKindForEndpoint(path) {
+  if (!isString(path)) return null;
+  return MEDIA_ENDPOINT_KINDS[path] ?? null;
+}
+
 /** True when the request leaves model choice to the endpoint's default route. */
 export function wantsDefaultRoute(model) {
   if (model === undefined || model === null) return true;

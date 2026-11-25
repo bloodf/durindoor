@@ -26,6 +26,18 @@ describe("public documentation entry points", () => {
     expect(links.length).toBeGreaterThan(10);
     expect(links.filter((url) => !docExists(url))).toEqual([]);
   });
+  it("exposes the provider sign-in guide and its method-specific references", () => {
+    const navigation = JSON.parse(read("docs/providers/meta.json"));
+    const guide = read("docs/providers/sign-in-methods.mdx");
+    expect(navigation.pages).toContain("sign-in-methods");
+    expect(read("docs/providers/index.mdx")).toContain("/docs/providers/sign-in-methods");
+    for (const target of ["connecting-accounts", "cursor", "kiro", "web-cookie", "api-key-providers"]) {
+      expect(guide).toContain(`./${target}.mdx`);
+      expect(docExists(`/docs/providers/${target}`)).toBe(true);
+    }
+    expect(guide).toContain("one-use");
+    expect(guide).toContain("separate from the password or OIDC login");
+  });
   it("keeps README documentation and identity links valid", () => {
     const markdown = read("README.md");
     const docs = [

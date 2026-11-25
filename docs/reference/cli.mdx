@@ -3,7 +3,7 @@ title: CLI
 description: Launcher flags, listen defaults, heap settings, tray behavior, and updates.
 ---
 
-The `durindoor` npm package starts the bundled standalone server. It has no subcommands. The package requires Node.js `>=24.22.2 <25`; the repository pins Node.js `24.22.2` (`.nvmrc`) and pnpm `12.18.0`.
+The `durindoor` npm package starts the bundled standalone server. Its `admin` command reads local gateway data. The package requires Node.js `>=24.22.2 <25`; the repository pins Node.js `24.22.2` (`.nvmrc`) and pnpm `12.18.0`.
 
 ```bash
 npm install --global durindoor
@@ -12,18 +12,52 @@ durindoor --host 127.0.0.1
 
 `npx durindoor` runs the same launcher without a global install. The default dashboard URL is `http://localhost:20128/dashboard`; the client base URL is `http://localhost:20128/v1`. Source `npm start` has a separate [startup path](../operations/startup.mdx).
 
+## Runtime and artifact evidence
+
+The engine range is a declared requirement, not a claim that every version or platform in it has been exercised. Use the pinned Node.js `24.22.2` for source work; versions below `24.22.2` and Node 25 or later are outside the declared range. The Docker image supplies its own Node runtime.
+
+| Platform and artifact | Evidence | Limit |
+| --- | --- | --- |
+| Linux x64, Node 24.22.2, source CLI helper | Offline `unit/1143-runtime-compat.test.js` runs launcher-generated heap arguments in real Node child processes. | Covers heap precedence only; it does not start the server or validate a packaged artifact. |
+| Linux x64, Node 24.22.2, staged fixtures | Offline `unit/1143-artifact-compat.test.js` runs copied CLI help/version paths with a machine-ID stub, loads copied standalone sidecars, and checks artifact entry validation. | Run with a minimal Vitest configuration; the linked dependencies could not resolve `vite` from the repository configuration. No built or packed artifact, server startup, database, worker, tray, or web session was exercised. |
+| Source standalone server | `scripts/smoke-installed-artifact.mjs` provides a standalone artifact check. | Availability of a check is not evidence that it passed on a particular platform. |
+| npm package | `scripts/smoke-npm-pack.mjs` provides a packed artifact check. | No packed artifact or installation was validated by the offline test above. |
+| Docker image | The Dockerfile builds a standalone server into an image with a Node runtime. | No image, architecture, or container runtime was tested by the offline test above. |
+| macOS, Windows, other architectures and other Node versions | Platform-specific launcher paths exist. | No execution evidence is claimed here. |
+
+For a runtime change, record the exact Node version, operating system, architecture and artifact, then run the appropriate smoke check on that target. See [Upgrading](../operations/upgrading.mdx) for backup, migration and rollback steps.
+
 ## Flags
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `-p, --port <port>` | `20128` | Listen port. Parses the next argument as an integer; an invalid or zero value falls back to `20128`. |
-| `-H, --host <host>` | `0.0.0.0` | Bind address. `127.0.0.1` restricts access to this machine. |
+| `-p, --port <port>` | `PORT` or `20128` | Listen port, an integer from `1` through `65535`. |
+| `-H, --host <host>` | `0.0.0.0` | Bind address. Requires a value. `127.0.0.1` restricts access to this machine. |
 | `-n, --no-browser` | off | Accepted for compatibility. Startup does not automatically open a browser with either value. |
 | `-l, --log` | off | Show server stdout and stderr. Without it, stdout is hidden and stderr retains a 50-line crash buffer. |
 | `-t, --tray` | off | Start in tray mode and skip the terminal menu. |
+| `--headless` | off | Run without browser, tray or interactive menu; overrides `--tray`. |
 | `--skip-update` | off | Skip the npm registry version check. Without a TTY, this also selects tray mode. |
 | `-h, --help` | | Print usage and exit `0`. |
 | `-v, --version` | | Print the installed package version and exit `0`. |
+
+`--host` and `--port` require a value. Missing values, a next argument beginning
+with `--`, or a port outside the stated range exit with status `2`.
+
+## Admin command
+
+With the gateway running, retrieve a local combo by ID:
+
+```bash
+durindoor admin combos get <id>
+durindoor admin combos get <id> --port 20129
+durindoor admin --help
+```
+
+The command prints the existing combo API response as JSON. It uses loopback HTTP
+and the local management token from the server's `DATA_DIR`; it does not start
+the gateway or contact model providers. Invalid arguments exit `2`; API or
+connection failures exit `1`. Launcher flags such as `--host` are not accepted.
 
 <Callout type="warn">
 The default bind accepts connections on all interfaces. Remote access requires the settings in [Security](../operations/security.mdx).
@@ -40,7 +74,7 @@ The server prefers IPv4 DNS results. The default V8 heap cap is `6144` MB.
 | positive integer | Set the heap cap to that many MB. |
 | other value | Print a warning and use the unset behavior. |
 
-An existing `--max-old-space-size` or `--max_old_space_size` in `NODE_OPTIONS` takes precedence. The launcher leaves `NODE_OPTIONS` intact.
+When the dedicated setting is unset or invalid, an existing `--max-old-space-size` or `--max_old_space_size` in `NODE_OPTIONS` prevents the default flag. A positive dedicated setting supplies a command-line flag that takes precedence over `NODE_OPTIONS`; `0` adds no flag, leaving any `NODE_OPTIONS` setting in effect. The launcher leaves `NODE_OPTIONS` intact.
 
 ```bash
 NINEROUTER_MAX_OLD_SPACE_SIZE=8192 durindoor
@@ -82,6 +116,8 @@ durindoor
 ```
 
 `npm update --global durindoor` is another manual update path.
+
+In the dashboard, manual **Copy & Shutdown** copies the install command and a restart command. When the launcher is in tray mode, the restart command includes `--tray`.
 
 ## Process lifecycle
 

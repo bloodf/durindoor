@@ -1,3 +1,4 @@
+import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { BaseExecutor } from "./base.js";
 import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -6,6 +7,7 @@ import {
   shouldRefreshCredentials } from
 "../services/oauthCredentialManager.js";
 import { normalizeResponsesInput, normalizeStatelessResponseInput } from "../translator/formats/responsesApi.js";
+import { RESPONSES_ITEM, RESPONSES_INCLUDE, ROLE } from "../translator/schema/index.js";
 import { fetchImageAsBase64 } from "../translator/concerns/image.js";
 import { resolveOpenAiEffort } from "../translator/concerns/thinkingUnified.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
@@ -305,7 +307,13 @@ function classifyCodexSseFrame(frame) {
   firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
   if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
 
-  const accountMatch = firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
+  // OmniRoute #19487: only an explicit failed response with a structured error
+  // message routes the overload phrase to the existing account fallback.
+  const failedResponse = [eventName, payloadType, payloadEvent].includes("response.failed");
+  const failedOverload = failedResponse && firstPattern(
+    errorObjects.map((error) => error.message), ["currently overloaded"]
+  );
+  const accountMatch = failedOverload || firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   if (accountMatch) return { userOutput: false, kind: "account", matched: accountMatch, message };
 
   const retryMatch = firstPattern(values, CODEX_SSE_RETRY_PATTERNS);
@@ -366,13 +374,33 @@ function normalizeCodexAssistantHistory(body) {
 
 
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
-function normalizeCodexTools(body) {
+function normalizeCodexTools(body, { dropFreePlanImageGeneration = false } = {}) {
   if (!Array.isArray(body.tools)) return;
+  const explicitImageChoice = isObject(body.tool_choice) && !Array.isArray(body.tool_choice) &&
+    body.tool_choice.type === "image_generation";
+  const requiredImageOnlyChoice = body.tool_choice === "required" &&
+    body.tools.some((tool) => isObject(tool) && !Array.isArray(tool) && tool.type === "image_generation") &&
+    !body.tools.some((tool) => {
+      if (!tool || !isObject(tool) || Array.isArray(tool) || tool.type === "image_generation") return false;
+      const type = isString(tool.type) ? tool.type : "";
+      if (type === "function") {
+        const fn = tool.function && isObject(tool.function) && !Array.isArray(tool.function) ? tool.function : null;
+        return isString(tool.name) && tool.name.trim() !== "" || isString(fn?.name) && fn.name.trim() !== "";
+      }
+      if (type === "namespace") return Array.isArray(tool.tools) && tool.tools.some((subtool) => isString(subtool?.name) && subtool.name.trim() !== "");
+      return CODEX_PASSTHROUGH_TOOL_TYPES.has(type) ||
+        CODEX_HOSTED_TOOL_TYPES.has(type) && !tool.function && !isString(tool.name);
+    });
+  const preserveImageGeneration = explicitImageChoice || requiredImageOnlyChoice;
   const validNames = new Set();
   const tools = [];
   for (let tool of body.tools) {
     if (!tool || !isObject(tool) || Array.isArray(tool)) continue;
     const type = isString(tool.type) ? tool.type : "";
+    // Codex CLI injects this optional hosted declaration into routine text chat.
+    // Keep it when the caller explicitly selects it, or requires tools and it is
+    // the sole executable option, so the choice never loses its declaration.
+    if (dropFreePlanImageGeneration && type === "image_generation" && !preserveImageGeneration) continue;
     if (type === "namespace") {
       if (Array.isArray(tool.tools)) {
         let subtools = tool.tools;
@@ -408,9 +436,12 @@ function normalizeCodexTools(body) {
     // Preserve an explicit strict flag (flat or nested under .function) across the
     // in-place rewrite below; leave it unset when the caller never set one.
     const strict = isBoolean(tool.strict) || tool.strict === null ? tool.strict : fn?.strict;
+    // Responses function declarations preserve only explicit boolean deferred-loading metadata.
+    const deferLoading = isBoolean(tool.defer_loading) ? tool.defer_loading : fn?.defer_loading;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     if (isBoolean(strict) || strict === null) tool.strict = strict;
+    if (isBoolean(deferLoading)) tool.defer_loading = deferLoading;
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters);
@@ -421,8 +452,10 @@ function normalizeCodexTools(body) {
   // Drop tool_choice if it references an unknown function name
   if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
     if (body.tool_choice.type === "function") {
-      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
+      const rawName = body.tool_choice.name ?? body.tool_choice.function?.name;
+      const n = isString(rawName) ? rawName.trim() : "";
       if (!n || !validNames.has(n)) delete body.tool_choice;
+      else body.tool_choice = { type: "function", name: n };
     }
   }
 }
@@ -694,6 +727,7 @@ export class CodexExecutor extends BaseExecutor {
    */
   async prefetchImages(body) {
     if (!Array.isArray(body?.input)) return;
+    body.input = body.input.map((item) => item?.role === "assistant" ? normalizeResponsesImageReplay([item])[0] : item);
     for (const item of body.input) {
       if (!Array.isArray(item.content)) continue;
       const pending = item.content.map(async (c) => {
@@ -713,8 +747,12 @@ export class CodexExecutor extends BaseExecutor {
     const requestBody = cloneRequestBody(args.body) || {};
     const legacyCompact = requestBody?._compact === true;
     delete requestBody._compact;
+    const hasSearchHistory = Array.isArray(requestBody.input) && requestBody.input.some((item) => item?.type === "web_search_call");
+    const clientHeaders = hasSearchHistory && usesResponsesLite(args.requestContext) ?
+      { ...args.requestContext.clientHeaders, [CODEX_RESPONSES_LITE_HEADER]: "false" } : args.requestContext?.clientHeaders;
     const requestContext = Object.freeze({
       ...(args.requestContext || {}),
+      clientHeaders,
       compact: args.requestContext?.compact === true || legacyCompact,
       sessionId: args.requestContext?.sessionId ||
       resolveCacheSessionId(requestBody, args.credentials, args.requestContext)
@@ -924,8 +962,9 @@ export class CodexExecutor extends BaseExecutor {
     if (response.status === 429 && bodyText) {
       try {
         const json = JSON.parse(bodyText);
-        const err = json?.error;
-        if (err?.type === "usage_limit_reached") {
+        // CLIProxyAPI also accepts top-level and nested transport envelopes.
+        for (const err of [json?.error, json, json?.body?.error]) {
+          if (!isString(err?.type) || err.type.trim().toLowerCase() !== "usage_limit_reached") continue;
           const now = Date.now();
           let resetsAtMs = null;
           if (isNumber(err.resets_at) && err.resets_at > 0) {
@@ -948,15 +987,29 @@ export class CodexExecutor extends BaseExecutor {
    * Transform request before sending - inject default instructions if missing.
    * Image fetching is handled separately in prefetchImages() so this stays sync.
    */
-  transformRequest(model, body, stream, credentials, requestContext = null) {
+  transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
     delete body._compact;
     const isCompact = requestContext?.compact === true;
     const responsesLite = usesResponsesLite(requestContext);
+    // Responses Lite normally serializes tool calls; delegation models need
+    // parallel calls to implement their max/ultra variants (OmniRoute 5ffa68e83544).
+    const delegationModel = /^(?:gpt-6\.1-(?:sol|terra)|gpt-5\.6-(?:sol|terra)|gpt-6-(?:astra|sol))(?:-ultra|\(ultra\))$/.test(model) ||
+      /^gpt-5\.6-luna(?:-max|\(max\))$/.test(model);
+    if (responsesLite && !delegationModel) body.parallel_tool_calls = false;
+    else if (!responsesLite && !isCompact) delete body.parallel_tool_calls;
     // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)
     const normalized = normalizeResponsesInput(body.input);
-    if (normalized) body.input = normalized;
+    if (normalized) body.input = normalizeResponsesImageReplay(normalized);
+
+    // Hosted search history requires a declaration and the standard transport.
+    if (Array.isArray(body.input) && body.input.some((item) => item?.type === "web_search_call")) {
+      const prefixTools = body.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []);
+      body.input = body.input.filter((item) => item?.type !== "additional_tools");
+      body.tools = [...(Array.isArray(body.tools) ? body.tools : []), ...prefixTools];
+      if (!body.tools.some((tool) => tool?.type === "web_search")) body.tools.push({ type: "web_search" });
+    }
 
     // A translated Chat system prompt belongs in the cacheable input prefix.
     // Native Responses instructions keep their original semantics.
@@ -985,11 +1038,28 @@ export class CodexExecutor extends BaseExecutor {
     dropForeignReasoningItems(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
     body.input = normalizeStatelessResponseInput(body.input);
+
+    // Codex is stateless: a tool output without a replayed call cannot be resolved.
+    if (Array.isArray(body.input)) {
+      const calls = new Set();
+      for (const item of body.input) {
+        if (item?.type === RESPONSES_ITEM.FUNCTION_CALL && isString(item.call_id)) calls.add(item.call_id);
+        for (const call of Array.isArray(item?.tool_calls) ? item.tool_calls : []) {
+          if (isString(call?.id)) calls.add(call.id);
+        }
+      }
+      body.input = body.input.filter((item) => item?.type !== RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || !isString(item.call_id) || calls.has(item.call_id));
+      if (body.input.length === 0) body.input = [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
+    }
     // Apply Codex OAuth fingerprint identity to body.client_metadata (post-allowlist).
     const bodyIdentity = credentials?.providerSpecificData?.codexClientIdentity;
     if (bodyIdentity) applyCodexClientMetadata(body, bodyIdentity);
-    // Flatten function tools + drop unsupported types
-    normalizeCodexTools(body);
+    // Flatten function tools + drop unsupported types. Match the dedicated
+    // image adapter: chatgptPlanType takes precedence over workspacePlanType.
+    const providerSpecificData = credentials?.providerSpecificData;
+    const rawCodexPlanType = providerSpecificData?.chatgptPlanType || providerSpecificData?.workspacePlanType;
+    const codexPlanType = isString(rawCodexPlanType) ? rawCodexPlanType.trim().toLowerCase() : "";
+    normalizeCodexTools(body, { dropFreePlanImageGeneration: codexPlanType === "free" });
 
     // Ensure streaming is enabled (Codex API requires it); /responses/compact is unary JSON.
     if (isCompact) delete body.stream;else
@@ -1070,12 +1140,22 @@ export class CodexExecutor extends BaseExecutor {
       body.context_management = normalizeSparkContextManagement(body.context_management);
     }
 
-    // Include reasoning encrypted content (required by Codex backend for reasoning models);
-    // compact requests omit the include field entirely.
-    if (!isCompact && body.reasoning && body.reasoning.effort && body.reasoning.effort !== 'none') {
-      body.include = ["reasoning.encrypted_content", ...(body.include?.includes("web_search_call.action.sources") && body.tools?.some(tool => tool.type === "web_search") ? ["web_search_call.action.sources"] : [])];
-    } else if (isCompact) {
+    // ChatGPT's Codex backend accepts a smaller include set than OpenAI Responses.
+    // Fail closed when the endpoint is missing or malformed.
+    let platform = false;
+    try {
+      const endpoint = new URL(targetUrl || this.buildUrl(model, stream, 0, credentials, requestContext));
+      platform = !(endpoint.hostname.toLowerCase().replace(/\.$/, "") === "chatgpt.com" && /^\/backend-api\/codex(?:\/|$)/.test(endpoint.pathname));
+    } catch { /* use the conservative Codex set */ }
+    if (isCompact) {
       delete body.include;
+    } else {
+      const requested = Array.isArray(body.include) ? body.include : [];
+      const optional = [RESPONSES_INCLUDE.WEB_SEARCH_CALL_ACTION_SOURCES, RESPONSES_INCLUDE.WEB_SEARCH_CALL_RESULTS,
+        ...(platform ? [RESPONSES_INCLUDE.FILE_SEARCH_CALL_RESULTS, RESPONSES_INCLUDE.MESSAGE_INPUT_IMAGE_IMAGE_URL,
+          RESPONSES_INCLUDE.COMPUTER_CALL_OUTPUT_OUTPUT_IMAGE_URL, RESPONSES_INCLUDE.CODE_INTERPRETER_CALL_OUTPUTS,
+          RESPONSES_INCLUDE.MESSAGE_OUTPUT_TEXT_LOGPROBS] : []), RESPONSES_INCLUDE.OUTPUT_ENCRYPTED_CONTENT];
+      body.include = [RESPONSES_INCLUDE.REASONING_ENCRYPTED_CONTENT, ...optional.filter((entry) => requested.includes(entry))];
     }
 
     // Remove unsupported parameters for Codex API

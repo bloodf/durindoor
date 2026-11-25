@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { canManageAccessConfig } from "@/dashboardGuard";
-import { deleteCustomModel, deleteProviderConnectionsByProvider, deleteProviderNode, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
-import { isValidProviderIconUrl } from "@/shared/utils/providerIcon";
-import { normalizeSystemoneBaseUrl } from "open-sse/config/systemone.js";
+import { deleteProviderNodeWithConnections, getCustomModels, getProviderConnections, getProviderNodeById, getProviderNodes, updateProviderConnection, updateProviderNode } from "@/models";
 import REGISTRY from "open-sse/providers/registry/index.js";
-
+import { PROVIDER_NODE_INVALID, validateProviderNode } from "@/lib/providerNodes/validateNode";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -15,66 +13,24 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, prefix, apiType, baseUrl, iconUrl } = body;
     const node = await getProviderNodeById(id);
 
     if (!node) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
     }
 
-    if (!name?.trim()) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
-    }
+    const checked = validateProviderNode(body, { type: node.type, strict: true });
+    if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
+    const { name: nodeName, prefix: nodePrefix, apiType, baseUrl: sanitizedBaseUrl, iconUrl } = checked.value;
 
-    if (!prefix?.trim()) {
-      return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
-    }
     if (node.type === "systemone-compatible") {
-      const value = prefix.trim();
       const reserved = REGISTRY.some((provider) =>
-        [provider.id, provider.alias, provider.uiAlias, ...(provider.aliases || [])].includes(value));
-      const duplicate = (await getProviderNodes()).some((candidate) => candidate.id !== id && candidate.prefix === value);
+        [provider.id, provider.alias, provider.uiAlias, ...(provider.aliases || [])].includes(nodePrefix));
+      const duplicate = (await getProviderNodes()).some((candidate) => candidate.id !== id && candidate.prefix === nodePrefix);
       if (reserved || duplicate) return NextResponse.json({ error: "Provider prefix already exists or is reserved" }, { status: 409 });
     }
 
-    if (iconUrl !== undefined && !isValidProviderIconUrl(iconUrl)) {
-      return NextResponse.json({ error: "Invalid icon URL" }, { status: 400 });
-    }
-
-    // Only validate apiType for OpenAI Compatible nodes
-    if (node.type === "openai-compatible" && (!apiType || !["chat", "responses"].includes(apiType))) {
-      return NextResponse.json({ error: "Invalid OpenAI compatible API type" }, { status: 400 });
-    }
-
-    if (!baseUrl?.trim()) {
-      return NextResponse.json({ error: "Base URL is required" }, { status: 400 });
-    }
-
-    let sanitizedBaseUrl = baseUrl.trim();
-
-    // Sanitize Base URL for Anthropic Compatible
-    if (node.type === "anthropic-compatible") {
-      sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/messages")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -9); // remove /messages
-      }
-    }
-
-    // Sanitize Base URL for Custom Embedding (strip trailing slash and /embeddings)
-    if (node.type === "custom-embedding") {
-      sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/$/, "");
-      if (sanitizedBaseUrl.endsWith("/embeddings")) {
-        sanitizedBaseUrl = sanitizedBaseUrl.slice(0, -"/embeddings".length);
-      }
-    }
-
-    if (node.type === "systemone-compatible") {
-      try { sanitizedBaseUrl = normalizeSystemoneBaseUrl(sanitizedBaseUrl); } catch (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-    }
-
-    if (node.type === "systemone-compatible" && prefix.trim() !== node.prefix) {
+    if (node.type === "systemone-compatible" && nodePrefix !== node.prefix) {
       const registered = (await getCustomModels()).some((model) =>
         (model.providerAlias === node.prefix || model.providerAlias === node.id) && (model.kind || model.type) === "systemone");
       if (registered) {
@@ -83,10 +39,10 @@ export async function PUT(request, { params }) {
     }
 
     const updates = {
-      name: name.trim(),
-      prefix: prefix.trim(),
+      name: nodeName,
+      prefix: nodePrefix,
       baseUrl: sanitizedBaseUrl,
-      ...(iconUrl !== undefined ? { iconUrl: iconUrl.trim() } : null)
+      ...(iconUrl !== undefined ? { iconUrl } : null)
     };
 
     if (node.type === "openai-compatible") {
@@ -100,7 +56,7 @@ export async function PUT(request, { params }) {
     updateProviderConnection(connection.id, {
       providerSpecificData: {
         ...(connection.providerSpecificData || {}),
-        prefix: prefix.trim(),
+        prefix: nodePrefix,
         apiType: node.type === "openai-compatible" ? apiType : undefined,
         baseUrl: sanitizedBaseUrl,
         nodeName: updated.name
@@ -110,6 +66,7 @@ export async function PUT(request, { params }) {
 
     return NextResponse.json({ node: updated });
   } catch (error) {
+    if (error?.code === PROVIDER_NODE_INVALID) return NextResponse.json({ error: error.message }, { status: error.status });
     console.log("Error updating provider node:", error);
     return NextResponse.json({ error: "Failed to update provider node" }, { status: 500 });
   }
@@ -129,13 +86,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
     }
 
-    await deleteProviderConnectionsByProvider(id);
-    if (node.type === "systemone-compatible") {
-      const models = (await getCustomModels()).filter((model) =>
-        (model.providerAlias === node.prefix || model.providerAlias === node.id) && (model.kind || model.type) === "systemone");
-      await Promise.all(models.map((model) => deleteCustomModel({ providerAlias: model.providerAlias, id: model.id, type: model.type || model.kind || "systemone" })));
-    }
-    await deleteProviderNode(id);
+    await deleteProviderNodeWithConnections(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

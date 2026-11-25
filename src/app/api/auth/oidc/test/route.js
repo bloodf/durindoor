@@ -7,6 +7,7 @@ import {
   hasValidCliToken,
   isOperatorRequest,
 } from "@/dashboardGuard";
+import { requireSameOrigin } from "@/lib/auth/requireSameOrigin";
 
 /** Map SSRF / URL-shape failures from fetchOidcDiscovery to HTTP 400. */
 function isOidcIssuerUrlError(error) {
@@ -19,16 +20,28 @@ export async function POST(request) {
     // This probe can send the stored client secret to the selected issuer.
     // Never let a sibling login page drive it using ambient dashboard cookies,
     // even when invoked without middleware or with login disabled.
-    if (request.headers.get("origin") && !hasExactRequestOrigin(request) &&
-        !(await hasValidCliToken(request))) {
-      return NextResponse.json({ error: "Cross-origin management request denied" }, { status: 403 });
-    }
+    const originDenied = await requireSameOrigin(request, {
+      isSameOrigin: hasExactRequestOrigin,
+      allowCliToken: hasValidCliToken,
+      message: "Cross-origin management request denied",
+    });
+    if (originDenied) return originDenied;
     if (!(await canAccessManagementApi(request)) || !(await isOperatorRequest(request))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json().catch(() => ({}));
     const settings = await getSettings();
+    // #2196: the stored client secret may only be sent to the saved issuer.
+    // When the body names a different issuer and supplies no secret of its
+    // own, probe without a secret instead of leaking the stored one.
+    const normalizeIssuer = (value) => String(value || "").trim().replace(/\/+$/, "");
+    const savedIssuer = normalizeIssuer(settings.oidcIssuerUrl);
+    const requestedIssuer = normalizeIssuer(body.issuerUrl || savedIssuer);
+    if (!Object.prototype.hasOwnProperty.call(body, "clientSecret") &&
+        (!savedIssuer || requestedIssuer !== savedIssuer)) {
+      body.clientSecret = "";
+    }
 
     const issuerUrl = String(body.issuerUrl || settings.oidcIssuerUrl || "").trim();
     const clientId = String(body.clientId || settings.oidcClientId || "").trim();
@@ -47,7 +60,7 @@ export async function POST(request) {
     }
 
     const discovery = await fetchOidcDiscovery(issuerUrl);
-    const redirectUri = `${getPublicOrigin(request)}/api/auth/oidc/callback`;
+    const redirectUri = `${getPublicOrigin(request)}${request.nextUrl?.basePath || ""}/api/auth/oidc/callback`;
     const secretProbe = await probeOidcClientSecret({
       tokenEndpoint: discovery.token_endpoint,
       clientId,

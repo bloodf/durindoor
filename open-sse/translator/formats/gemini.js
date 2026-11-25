@@ -1,8 +1,10 @@
 // Gemini helper functions for translator
 
 import { safeParseJSON } from "../concerns/json.js";
+import { parseDataUri } from "../concerns/image.js";
 import { DEFAULT_IMAGE_MIME, OPENAI_BLOCK } from "../schema/index.js";
 import { isGemini4Model } from "../../providers/capabilities.js";
+import { normalizeToolSchema } from "../concerns/toolSchema.js";
 
 function remoteImageMimeType(url) {
   let pathname;
@@ -16,7 +18,7 @@ function remoteImageMimeType(url) {
 }
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
-import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 // Basic constraints (not supported by Gemini API)
 "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
@@ -117,6 +119,48 @@ function resolveJsonSchemaRefs(schema) {
   delete schema.definitions;
 }
 
+// Structured output schemas must not silently lose references. Bound both depth and
+// expanded nodes so recursive or exponentially expanding input fails locally.
+function resolveStructuredOutputRefs(root) {
+  let nodes = 0;
+  function fail() {
+    const error = new Error("Invalid or too complex structured output schema");
+    error.statusCode = 400;
+    error.localSchemaError = true;
+    throw error;
+  }
+  function visit(value, active, depth, nameMap = false) {
+    if (++nodes > 10000 || depth > 100) fail();
+    if (!value || !isObject(value)) return value;
+    if (Array.isArray(value)) return value.map((item) => visit(item, active, depth + 1));
+    if (!nameMap && Object.hasOwn(value, "$ref")) {
+      const ref = value.$ref;
+      if (!isString(ref) || !ref.startsWith("#/")) fail();
+      let target = root;
+      for (const part of ref.slice(2).split("/")) {
+        if (/~(?![01])/.test(part)) fail();
+        const key = part.replace(/~1/g, "/").replace(/~0/g, "~");
+        if (!target || !isObject(target) || !Object.hasOwn(target, key)) fail();
+        target = target[key];
+      }
+      if (!target || !isObject(target) || Array.isArray(target) || active.has(target)) fail();
+      const next = new Set(active).add(target);
+      const { $ref, ...siblings } = value;
+      return { ...visit(target, next, depth + 1), ...visit(siblings, active, depth + 1) };
+    }
+    const result = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (nameMap || (key !== "$defs" && key !== "definitions")) {
+        const childIsNameMap = !nameMap && ["properties", "patternProperties", "dependentSchemas"].includes(key);
+        Object.defineProperty(result, key, { value: visit(child, active, depth + 1, childIsNameMap), enumerable: true, configurable: true, writable: true });
+      }
+    }
+    return result;
+  }
+  if (!root || !isObject(root) || Array.isArray(root)) fail();
+  return visit(root, new Set([root]), 0);
+}
+
 // Default safety settings
 export const DEFAULT_SAFETY_SETTINGS = [
 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
@@ -165,6 +209,13 @@ export function convertOpenAIContentToParts(content) {
         parts.push({
           fileData: { fileUri: item.image_url.url, mimeType: remoteImageMimeType(item.image_url.url) }
         });
+      } else if (item.type === OPENAI_BLOCK.IMAGE && item.image) {
+        const parsed = parseDataUri(item.image);
+        if (parsed) {
+          parts.push({
+            inlineData: { mimeType: parsed.mimeType, data: parsed.base64 }
+          });
+        }
       } else if (item.type === OPENAI_BLOCK.INPUT_AUDIO && item.input_audio?.data) {
         const format = item.input_audio.format || "wav";
         const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
@@ -332,26 +383,70 @@ function removeUnsupportedKeywords(obj, keywords, isPropertiesMap = false) {
 }
 
 // Convert const to enum
-function convertConstToEnum(obj) {
+function convertConstToEnum(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
-  if (obj.const !== undefined && !obj.enum) {
+  if (!isPropertiesMap && obj.const !== undefined && !obj.enum) {
     obj.enum = [obj.const];
     delete obj.const;
   }
 
-  for (const value of Object.values(obj)) {
+  for (const [key, value] of Object.entries(obj)) {
     if (value && isObject(value)) {
-      convertConstToEnum(value);
+      convertConstToEnum(value, !isPropertiesMap && key === "properties");
     }
   }
 }
 
+// Gemini's Schema.enum is only valid for Type.STRING (ai.google.dev/api/caching#Schema).
+// String enums are kept and stringified. Numeric/boolean enums keep their declared type
+// and numeric constraints (minimum/maximum); only the unsupported enum list is lifted
+// into the description so the model still sees the allowed values. Client-side
+// validation of the original tool schema is untouched.
+const NON_STRING_ENUM_TYPES = new Set(["integer", "number", "boolean"]);
+
+function enumNodeType(obj) {
+  const types = (Array.isArray(obj.type) ? obj.type : [obj.type]).filter((t) => isString(t) && t !== "null");
+  return types.length === 1 ? types[0] : undefined;
+}
+
+function inferEnumValueType(values) {
+  const present = values.filter((v) => v !== null);
+  if (present.length === 0) return undefined;
+  if (present.every((v) => isBoolean(v))) return "boolean";
+  if (present.every((v) => isNumber(v) && Number.isFinite(v))) {
+    return present.every(Number.isInteger) ? "integer" : "number";
+  }
+  return undefined;
+}
+
+// Lift a numeric/boolean enum off one schema node. Returns true when the node was handled.
+function liftNonStringEnum(obj) {
+  const type = enumNodeType(obj) || (obj.type === undefined ? inferEnumValueType(obj.enum) : undefined);
+  if (!NON_STRING_ENUM_TYPES.has(type)) return false;
+  if (obj.type === undefined) obj.type = type;
+  const hint = `Allowed values: ${obj.enum.filter((v) => v !== null).map((v) => JSON.stringify(v)).join(", ")}.`;
+  obj.description = isString(obj.description) && obj.description ? `${obj.description} ${hint}` : hint;
+  delete obj.enum;
+  return true;
+}
+
+// Apply the numeric/boolean enum contract in place to a schema that is not otherwise
+// cleaned (the direct Claude -> Gemini route). String enums and everything else are untouched.
+export function liftGeminiNonStringEnums(schema, isPropertiesMap = false) {
+  if (!schema || !isObject(schema)) return schema;
+  if (!isPropertiesMap && Array.isArray(schema.enum)) liftNonStringEnum(schema);
+  for (const [key, value] of Object.entries(schema)) {
+    if (value && isObject(value)) liftGeminiNonStringEnums(value, !isPropertiesMap && key === "properties");
+  }
+  return schema;
+}
+
 // Convert enum values to strings (Gemini requires string enum values + explicit type:"string")
-function convertEnumValuesToStrings(obj) {
+function convertEnumValuesToStrings(obj, isPropertiesMap = false) {
   if (!obj || !isObject(obj)) return;
 
-  if (obj.enum && Array.isArray(obj.enum)) {
+  if (!isPropertiesMap && obj.enum && Array.isArray(obj.enum) && !liftNonStringEnum(obj)) {
     obj.enum = obj.enum.map((v) => String(v));
     // Gemini API requires type:"string" when enum is present — without it returns 400
     if (!obj.type) {
@@ -359,9 +454,9 @@ function convertEnumValuesToStrings(obj) {
     }
   }
 
-  for (const value of Object.values(obj)) {
+  for (const [key, value] of Object.entries(obj)) {
     if (value && isObject(value)) {
-      convertEnumValuesToStrings(value);
+      convertEnumValuesToStrings(value, !isPropertiesMap && key === "properties");
     }
   }
 }
@@ -571,7 +666,7 @@ function restoreNullableNodes(hits) {
  * schema property is itself named "properties", the properties-map dictionary would
  * be mistaken for a schema node and gain `type: "object"`, turning one of the
  * property values into the literal string `"object"` and triggering a Gemini 400.
- * Mutates `obj` in place.
+ * Converts string-valued property shorthand to schema objects and mutates `obj` in place.
  *
  * @param {object} obj - JSON Schema node to normalize (mutated in place).
  * @returns {void}
@@ -585,15 +680,40 @@ function ensureObjectType(obj) {
   // be mistaken for a schema node and gain `type: "object"`, turning one of the
   // property values into the literal string "object" -> Gemini 400.
   if (obj.properties && isObject(obj.properties)) {
-    for (const v of Object.values(obj.properties)) if (v && isObject(v)) ensureObjectType(v);
+    for (const [name, value] of Object.entries(obj.properties)) {
+      if (isString(value)) {
+        const type = value.toLowerCase();
+        obj.properties[name] = ["string", "number", "integer", "boolean", "array", "object"].includes(type)
+          ? { type }
+          : { type: "string", description: value };
+      }
+      if (obj.properties[name] && isObject(obj.properties[name])) ensureObjectType(obj.properties[name]);
+    }
   }
   if (obj.items && isObject(obj.items)) ensureObjectType(obj.items);
 }
 
 // Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,
 // and a type:"array" schema without items is rejected with "missing field"
-function convertPrefixItems(obj) {
+function convertPrefixItems(obj, preserveNullable = false) {
   if (!obj || !isObject(obj)) return;
+
+  // Native Gemini Schema requires a single object for items, not a tuple or boolean.
+  if (schemaTypeKey(obj.type) === "array" && Array.isArray(obj.items)) {
+    const nullable = obj.items.some((item) => item?.type === "null");
+    const variants = obj.items.filter((item) => item && isObject(item) && !Array.isArray(item) && item.type !== "null");
+    const types = [...new Set(variants.map((item) => item.type).filter(isString))];
+    obj.items = variants.length > 1 ? { anyOf: variants } : variants[0] ? { ...variants[0] } : { type: "string" };
+    if (nullable || types.length > 1) {
+      const hint = types.length > 1 ? `Accepts: ${[...types, ...(nullable ? ["null"] : [])].join(" | ")}` : "(nullable)";
+      obj.items.description = [obj.items.description, hint].filter(Boolean).join(" ");
+      if (nullable && preserveNullable) obj.items.nullable = true;
+    }
+  } else if (schemaTypeKey(obj.type) === "array" && obj.items === false) {
+    obj.description = [obj.description, Array.isArray(obj.prefixItems) && obj.prefixItems.length ? "No additional items allowed" : "No items allowed"].filter(Boolean).join(" ");
+    if (Array.isArray(obj.prefixItems) && obj.prefixItems.length) delete obj.items;
+    else obj.items = { type: "string" };
+  }
 
   if (Array.isArray(obj.prefixItems) && obj.prefixItems.length > 0) {
     const variants = obj.prefixItems.filter(s => s && s.type !== "null");
@@ -607,7 +727,7 @@ function convertPrefixItems(obj) {
 
   for (const value of Object.values(obj)) {
     if (value && isObject(value)) {
-      convertPrefixItems(value);
+      convertPrefixItems(value, preserveNullable);
     }
   }
 }
@@ -702,18 +822,45 @@ export function normalizeGeminiParameterRoot(raw) {
   return { ...schema, type: "object", properties };
 }
 
-// Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
-export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false } = {}) {
+/**
+ * Compatibility-only property added to an object schema that would otherwise
+ * be empty (Gemini rejects `OBJECT` with no properties). The model fills it, so
+ * response translators remove it again where it was inserted.
+ */
+export const GEMINI_PLACEHOLDER_KEY = "reason";
+export const GEMINI_PLACEHOLDER_DESCRIPTION = "Brief explanation of why you are calling this tool";
+const placeholderProperties = () => ({ [GEMINI_PLACEHOLDER_KEY]: { type: "string", description: GEMINI_PLACEHOLDER_DESCRIPTION } });
+
+/**
+ * Build the parameter schema DurinDoor sends for one client tool on the Gemini
+ * request path: tool-schema validation, bare-map root coercion, then the cleaner.
+ * Shared by the request translators and the response-side placeholder resolver so
+ * both see the same transformation. `options.placeholderPaths` is forwarded to the cleaner.
+ */
+export function buildGeminiToolParameters(raw, name, options) {
+  return cleanJSONSchemaForAntigravity(
+    structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(raw, name)) || { type: "object", properties: {} }),
+    options
+  );
+}
+
+// Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively.
+// `placeholderPaths`, when an array, receives one entry per node that got the placeholder
+// property: a list of `{ property: name }` / `{ items: true }` steps from the schema root.
+export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false, placeholderPaths = null, structuredOutput = false } = {}) {
+  if (structuredOutput && (!schema || !isObject(schema) || Array.isArray(schema))) {
+    return resolveStructuredOutputRefs(schema);
+  }
   if (!schema || !isObject(schema)) return schema;
 
   // Mutate directly (schema is only used once per request)
-  let cleaned = schema;
+  let cleaned = structuredOutput ? resolveStructuredOutputRefs(schema) : schema;
 
   // Phase 0: Resolve $ref pointers BEFORE removing unsupported keywords.
   // This inlines referenced definitions so that the schema is self-contained.
   // Without this, $ref removal leaves empty objects that get placeholder-filled,
   // producing invalid schemas that Google Antigravity rejects (bug #2877/#2884).
-  resolveJsonSchemaRefs(cleaned);
+  if (!structuredOutput) resolveJsonSchemaRefs(cleaned);
 
   convertConstToEnum(cleaned);
   convertEnumValuesToStrings(cleaned);
@@ -721,7 +868,7 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   mergeAllOf(cleaned);
   const nullableNodes = preserveNullable ? new Set() : null;
   if (nullableNodes) collectNullableNodes(cleaned, nullableNodes);
-  convertPrefixItems(cleaned);
+  convertPrefixItems(cleaned, preserveNullable);
   flattenAnyOfOneOf(cleaned);
   flattenTypeArrays(cleaned);
   if (nullableNodes) restoreNullableNodes(nullableNodes);
@@ -764,43 +911,35 @@ export function cleanJSONSchemaForAntigravity(schema, { preserveNullable = false
   // Descend only into real schema nodes — the values of the `properties` map
   // and the `items` schema. The name-map keys under `properties` are
   // user-chosen parameter names, not schema keywords (#2884).
-  function addPlaceholders(obj) {
+  function addPlaceholders(obj, path) {
     if (!obj || !isObject(obj)) return;
 
     // Empty schema {} (no type, no properties) after $ref removal — treat as object with placeholder
     if (Object.keys(obj).length === 0) {
       obj.type = "object";
-      obj.properties = {
-        reason: {
-          type: "string",
-          description: "Brief explanation of why you are calling this tool"
-        }
-      };
-      obj.required = ["reason"];
+      obj.properties = placeholderProperties();
+      obj.required = [GEMINI_PLACEHOLDER_KEY];
+      placeholderPaths?.push(path);
       return;
     }
 
     if (obj.type === "object") {
       if (!obj.properties || Object.keys(obj.properties).length === 0) {
-        obj.properties = {
-          reason: {
-            type: "string",
-            description: "Brief explanation of why you are calling this tool"
-          }
-        };
-        obj.required = ["reason"];
+        obj.properties = placeholderProperties();
+        obj.required = [GEMINI_PLACEHOLDER_KEY];
+        placeholderPaths?.push(path);
       }
     }
 
     if (obj.properties && isObject(obj.properties)) {
-      for (const v of Object.values(obj.properties)) {
-        if (v && isObject(v)) addPlaceholders(v);
+      for (const [name, v] of Object.entries(obj.properties)) {
+        if (v && isObject(v)) addPlaceholders(v, placeholderPaths ? [...path, { property: name }] : path);
       }
     }
-    if (obj.items && isObject(obj.items)) addPlaceholders(obj.items);
+    if (obj.items && isObject(obj.items)) addPlaceholders(obj.items, placeholderPaths ? [...path, { items: true }] : path);
   }
 
-  addPlaceholders(cleaned);
+  addPlaceholders(cleaned, []);
 
   // Phase 6: Enforce Gemini protobuf type predicates (items only on array,
   // properties/required only on object). Runs after placeholders so empty

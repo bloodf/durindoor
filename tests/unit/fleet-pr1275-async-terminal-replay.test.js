@@ -82,7 +82,7 @@ function reply(fixture, id, status, cost = 0.5) {
 function snapshot() {
   return {
     history: rows(), receipts: receipts(),
-    daily: adapter.all("SELECT * FROM usageDaily"), lastSeen: adapter.all("SELECT * FROM usageLastSeen"),
+    daily: adapter.all("SELECT * FROM usageDailyRollups ORDER BY id"), lastSeen: adapter.all("SELECT * FROM usageLastSeen"),
     totals: adapter.all("SELECT * FROM apiKeyUsageTotals"),
     lifetime: adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'"),
     jobs: adapter.all("SELECT * FROM kv WHERE scope = 'mediaJobs'"),
@@ -174,7 +174,7 @@ it.each(cases)("$modality: first terminal wins double poll, durable replay spend
   expect(winningJob).toMatchObject({ ...admission, terminal: { status: "succeeded", cost: 0.5, costStatus: "known", costSource: "provider" } });
   expect(rows()).toHaveLength(1);
   const storedId = JSON.stringify(["billing", epoch, admission.usageEventId]);
-  expect(rows()[0]).toMatchObject({ apiKey: "caller-fixture", provider: fixture.provider, model: fixture.model,
+  expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "caller-id", provider: fixture.provider, model: fixture.model,
     connectionId: `account-${fixture.provider}`, endpoint: admission.endpoint, usageEventId: storedId,
     cost: 0.5, promptTokens: 3, completionTokens: 7, status: "ok" });
   expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: fixture.modality,

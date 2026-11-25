@@ -1,3 +1,5 @@
+import { projectCursorError } from "./cursorErrorProjection.js";
+import { classifyCursorError, sanitizeCursorErrorDetail } from "./cursorErrors.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
 import {
@@ -7,6 +9,8 @@ import {
   PROVIDER_BODY_TIMEOUT_MS } from
 "../config/runtimeConfig.js";
 import {
+  appendBoundedCursorChunk,
+  cursorBodyLimitError,
   generateCursorBody,
   encodeField,
   wrapConnectRPCFrame,
@@ -25,10 +29,12 @@ import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
-import { proxyAwareFetch, shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { shouldUseProxyAwareTransport } from "../utils/proxyFetch.js";
+import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import {
-  runProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
   transferProviderAttemptDispatch } from
 "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -37,7 +43,7 @@ import { createRequire } from "module";
 import crypto from "crypto";
 
 // Detect cloud environment
-const { isFunction, isObject, isString, isUndefined } = require("../../src/shared/utils/typeChecks.cjs");
+const { isFunction, isObject, isString, isUndefined, isNumber } = require("../../src/shared/utils/typeChecks.cjs");
 const isCloudEnv = () => {
   const cachesBinding = "caches" in globalThis ? globalThis.caches : undefined;
   if (!isUndefined(cachesBinding) && isObject(cachesBinding)) return true;
@@ -90,7 +96,6 @@ function concatBuffers(...parts) {
 
 const agentString = (field, value) => encodeField(field, PROTOBUF_LEN, value);
 const agentMessage = (field, value) => encodeField(field, PROTOBUF_LEN, value);
-const agentBool = (field, value) => encodeField(field, PROTOBUF_VARINT, value ? 1 : 0);
 
 function textFromContent(content) {
   if (isString(content)) return content;
@@ -141,7 +146,123 @@ function encodeHistoryMessage(message) {
   return agentMessage(1, agentMessage(1, agentMessage(1, text)));
 }
 
-export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null) {
+// Effort, thinking, and fast picker suffixes can be model parameters. Sending `claude-4.5-opus-high-thinking` as the
+// id makes AgentService accept the RPC and stream an empty turn.
+const CURSOR_EFFORT_SUFFIXES = ["xhigh", "medium", "high", "low", "max", "minimal", "ultra"];
+
+function encodeModelParameter(id, value) {
+  return agentMessage(3, concatBuffers(agentString(1, id), agentString(2, value)));
+}
+
+function normalizeBodyEffort(reasoningEffort) {
+  const bodyEffort = String(reasoningEffort || "").toLowerCase();
+  if (!bodyEffort || bodyEffort === "none") return null;
+  if (bodyEffort === "ultra") return "max";
+  if (bodyEffort === "minimal") return "low";
+  return bodyEffort;
+}
+
+function idHasEffortToken(id) {
+  return CURSOR_EFFORT_SUFFIXES.some((effort) => (
+    id.endsWith(`-${effort}`) || id.includes(`-${effort}-`)
+  ));
+}
+
+/**
+ * Split a Cursor picker id into the base AgentService model_id plus parameters.
+ * Claude/Gemini/Grok/Composer use `effort`; GPT uses `reasoning`. `-thinking`
+ * and Composer/Fable `-fast` become toggles. Opus/GPT/Grok `*-fast` catalog
+ * ids stay intact.
+ *
+ * Catalog rules (live GetUsableModels):
+ * 1. Exact id listed → send verbatim (Cursor often lists effort tiers as full ids).
+ * 2. Else strip suffixes only when the resulting base is listed.
+ * 3. Else keep the original id — inventing a base that is not usable yields an
+ *    empty AgentService turn (seen with gpt-5.6-luna-medium / cursor-grok-*).
+ */
+export function resolveRequestedModel(modelId, reasoningEffort = null, catalogIds = null) {
+  const original = String(modelId || "").trim().split("/").pop() || "";
+  const bodyValue = normalizeBodyEffort(reasoningEffort);
+  let id = original === "auto" ? "default" : original;
+
+  const attachBodyEffort = (model, params) => {
+    if (bodyValue && !idHasEffortToken(model) && !params.some((p) => p.id === "effort" || p.id === "reasoning")) {
+      params.push({ id: /gpt-/i.test(model) ? "reasoning" : "effort", value: bodyValue });
+    }
+    return params;
+  };
+
+  // Exact catalog hit: the account's usable list is authoritative.
+  if (catalogIds instanceof Set && catalogIds.has(id)) {
+    return { modelId: id, parameters: attachBodyEffort(id, []) };
+  }
+
+  const parameters = [];
+  let working = id;
+
+  // Strip -thinking before effort so `…-high-thinking` becomes base + both params.
+  if (working.endsWith("-thinking")) {
+    working = working.slice(0, -"-thinking".length);
+    parameters.push({ id: "thinking", value: "true" });
+  }
+
+  // Composer / Fable `-fast` is a parameter; other families keep catalog `*-fast` ids.
+  if (
+    (working.startsWith("composer-") || /claude-fable/i.test(working))
+    && working.endsWith("-fast")
+  ) {
+    working = working.slice(0, -"-fast".length);
+    parameters.push({ id: "fast", value: "true" });
+  }
+
+  let effortFromId = null;
+  for (const effort of CURSOR_EFFORT_SUFFIXES) {
+    const suffix = `-${effort}`;
+    if (working.length > suffix.length && working.endsWith(suffix)) {
+      working = working.slice(0, -suffix.length);
+      effortFromId = effort === "ultra" ? "max" : effort === "minimal" ? "low" : effort;
+      break;
+    }
+  }
+
+  const stripped = working !== id || parameters.length > 0;
+  // Catalog-aware strip:
+  // - exact id already handled above
+  // - strip only when the resulting base is listed as usable
+  // - empty Set = live fetch failed/empty → keep original (invented bases empty-turn)
+  // - null catalogIds = unit-test / offline path → allow legacy strip
+  if (stripped && catalogIds instanceof Set && (catalogIds.size === 0 || !catalogIds.has(working))) {
+    return { modelId: id, parameters: attachBodyEffort(id, []) };
+  }
+
+  if (effortFromId) {
+    parameters.push({ id: /gpt-/i.test(working) ? "reasoning" : "effort", value: effortFromId });
+  } else {
+    attachBodyEffort(working, parameters);
+  }
+
+  return { modelId: working, parameters };
+}
+
+/** Translate request options that AgentService cannot express on its wire. */
+export function cursorRequestDirectives(body) {
+  const directives = [];
+  const max = body.max_completion_tokens ?? body.max_tokens;
+  if (isNumber(max) && Number.isFinite(max) && max >= 1) directives.push(`Keep the answer within about ${Math.floor(max)} output tokens.`);
+  if (isString(body.stop) && body.stop) directives.push(`Do not include any text at or after this stop sequence: ${body.stop}`);
+  else if (Array.isArray(body.stop)) {
+    const sequences = body.stop.filter((item) => isString(item) && item);
+    if (sequences.length) directives.push(`Stop before any of these sequences: ${sequences.join(", ")}`);
+  }
+  const format = body.response_format;
+  if (format?.type === "json_object") directives.push("Return a single valid JSON object and no surrounding prose or code fences.");
+  if (format?.type === "json_schema") directives.push(`Return only valid JSON (no prose or code fences) matching this schema: ${JSON.stringify(format.json_schema?.schema ?? format.schema ?? format)}`);
+  if (body.tool_choice === "required") directives.push("You MUST call at least one of the available tools now; do not answer without calling a tool.");
+  else if (body.tool_choice?.type === "function" && isString(body.tool_choice.function?.name) && body.tool_choice.function.name) directives.push(`You MUST call the \`${body.tool_choice.function.name}\` tool now and not any other tool.`);
+  return directives.length ? `OUTPUT CONSTRAINTS:\n${directives.map((item) => `- ${item}`).join("\n")}` : "";
+}
+
+export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort = null, catalogIds = null, conversationId = null) {
   // custom_system_prompt (RunRequest field 8) makes AgentService return an
   // empty turn. Fold system text into the current user message instead.
   const system = messages
@@ -176,25 +297,10 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     ...(conversationHistory ? [agentMessage(7, conversationHistory)] : []),
   );
   const conversationAction = agentMessage(1, userAction);
-  const effort = String(reasoningEffort || "").toLowerCase();
-  const effortValue = effort === "ultra" ? "max" : effort === "minimal" ? "low" : effort;
-  const parameter = effortValue && effortValue !== "none"
-    ? agentMessage(3, concatBuffers(
-      agentString(1, /gpt-/i.test(model) ? "reasoning" : "effort"),
-      agentString(2, effortValue),
-    ))
-    : null;
-  const requestedModel = concatBuffers(
-    agentString(1, model), agentBool(7, true),
-    ...(parameter ? [parameter] : []),
-  );
-  // ModelDetails (field 3): thinking variants (Composer, Grok, *-thinking)
-  // return an empty turn when only RequestedModel (field 9) is set.
-  const modelDetails = concatBuffers(
-    agentString(1, model),
-    agentString(3, model),
-    agentString(4, model),
-  );
+  const { modelId, parameters } = resolveRequestedModel(model, reasoningEffort, catalogIds);
+  // RequestedModel field 7 is reserved for Bedrock credentials.
+  const requestedModel = concatBuffers(agentString(1, modelId), ...parameters.map((param) => encodeModelParameter(param.id, param.value)));
+  const modelDetails = concatBuffers(agentString(1, modelId), agentString(3, modelId), agentString(4, modelId));
   const mcpTools = encodeMcpTools(tools);
   const runRequest = concatBuffers(
     // An empty ConversationStateStructure starts a fresh local agent session.
@@ -202,7 +308,10 @@ export function buildAgentRunFrame(messages, model, tools = [], reasoningEffort 
     agentMessage(2, conversationAction),
     agentMessage(3, modelDetails),
     ...(mcpTools.length ? [agentMessage(4, mcpTools)] : []),
+    agentString(5, conversationId || crypto.randomUUID()),
     agentMessage(9, requestedModel),
+    encodeField(12, PROTOBUF_VARINT, 0),
+    ...(conversationId ? [agentString(16, conversationId)] : []),
   );
 
   // agent.v1.AgentClientMessage.run_request.
@@ -226,7 +335,7 @@ function decodeAgentFrames(buffer, onFrame) {
     if (flags & COMPRESS_FLAG.GZIP) {
       payload = zlib.gunzipSync(payload, { maxOutputLength: MAX_PROVIDER_BODY_BYTES });
     }
-    if (!(flags & COMPRESS_FLAG.TRAILER)) onFrame(payload);
+    onFrame(payload, Boolean(flags & COMPRESS_FLAG.TRAILER));
   }
   return pending;
 }
@@ -278,6 +387,48 @@ function encodeKvClientMessage(kvId, resultField, resultPayload, metadata) {
   return wrapConnectRPCFrame(agentMessage(3, concatBuffers(...parts)));
 }
 
+function blobStoreKey(blobId) {
+  return Buffer.from(blobId || []).toString("hex");
+}
+
+/**
+ * Answer an AgentService kv_server_message (field 4 of AgentServerMessage).
+ * Claude/GPT-backed runs write blobs with set_blob_args and read them back with
+ * get_blob_args; a get for a blob this run stored must return that data, not an
+ * empty result. Unknown blobs keep the empty-result ack.
+ *
+ * @param {Map<number, Array<{value: *}>>} kv Decoded kv_server_message.
+ * @param {Map<string, Buffer>} blobStore Per-run blob store, mutated by set.
+ * @returns {Uint8Array|null} Framed kv_client_message, or null when kv carries neither get nor set.
+ */
+export function buildKvServerReply(kv, blobStore) {
+  const kvId = kv.get(1)?.[0]?.value || 0;
+  const metadata = kv.get(4)?.[0]?.value || null;
+  if (kv.has(2)) {
+    const blobId = decodeMessage(kv.get(2)[0].value).get(1)?.[0]?.value;
+    const data = blobId ? blobStore.get(blobStoreKey(blobId)) : null;
+    const result = data?.length ? agentMessage(1, data) : agentMessage(1, new Uint8Array());
+    return encodeKvClientMessage(kvId, 2, result, metadata);
+  }
+  if (kv.has(3)) {
+    const args = decodeMessage(kv.get(3)[0].value);
+    const blobId = args.get(1)?.[0]?.value;
+    const blobData = args.get(2)?.[0]?.value;
+    if (blobId && blobData) blobStore.set(blobStoreKey(blobId), Buffer.from(blobData));
+    return encodeKvClientMessage(kvId, 3, new Uint8Array(), metadata);
+  }
+  return null;
+}
+
+// Cursor's live GetUsableModels catalog has no `claude-fable-*-fast` slugs.
+// `-fast` is a real speed-tier id for Opus / GPT / Grok; sending it as Fable's
+// RequestedModel.model_id yields HTTP 200 and an empty Agent stream.
+export function resolveCursorAgentModel(model) {
+  if (!isString(model)) return model;
+  if (model.includes("claude-fable-") && model.endsWith("-fast")) return model.slice(0, -"-fast".length);
+  return model;
+}
+
 const CURSOR_STREAM_DEBUG = process.env.CURSOR_STREAM_DEBUG === "1";
 const debugLog = (...args) => {
   if (CURSOR_STREAM_DEBUG) console.log(...args);
@@ -288,12 +439,128 @@ function isComposerModel(model) {
   return /^composer(?:-|$)/i.test(modelId);
 }
 
+const COMPOSER_THINK_END = "</think>";
+const COMPOSER_FRAMING_PAIRS = [
+  ["<|final|>", "<|/final|>"],
+  ["<｜final｜>", "<｜/final｜>"],
+];
+
+/**
+ * Stateful bounded extractor for Composer thinking deltas.
+ * Strips only the outer </think> boundary and paired opening/closing framing
+ * markers while keeping interior quoted markers, normal markup, and partial
+ * non-marker tails intact without replay or unbounded buffering.
+ */
+function createComposerThinkingExtractor() {
+  let phase = "thinking";
+  let thinkTail = "";
+  let openPending = "";
+  let expectedClose = null;
+  let closePending = "";
+
+  const pushBody = (chunk) => {
+    if (!chunk) return "";
+    if (!expectedClose) return chunk;
+
+    const combined = closePending + chunk;
+    // A complete closing marker followed only by whitespace may be the real
+    // end-of-stream marker; hold it (with the whitespace) until more content
+    // or finish() decides.
+    const trimmed = combined.trimEnd();
+    if (trimmed.length < combined.length && trimmed.endsWith(expectedClose)) {
+      const start = trimmed.length - expectedClose.length;
+      closePending = combined.slice(start);
+      return combined.slice(0, start);
+    }
+    const maxHold = Math.min(combined.length, expectedClose.length);
+    let holdLen = 0;
+    for (let len = maxHold; len >= 1; len--) {
+      if (combined.endsWith(expectedClose.slice(0, len))) {
+        holdLen = len;
+        break;
+      }
+    }
+    closePending = holdLen > 0 ? combined.slice(combined.length - holdLen) : "";
+    return holdLen > 0 ? combined.slice(0, combined.length - holdLen) : combined;
+  };
+
+  const pushOpening = (chunk) => {
+    const incoming = openPending === "" ? chunk.trimStart() : chunk;
+    if (!incoming) return "";
+    openPending += incoming;
+
+    for (const [open, close] of COMPOSER_FRAMING_PAIRS) {
+      if (openPending.startsWith(open)) {
+        const rest = openPending.slice(open.length);
+        openPending = "";
+        expectedClose = close;
+        phase = "body";
+        return pushBody(rest);
+      }
+    }
+
+    for (const [open] of COMPOSER_FRAMING_PAIRS) {
+      if (open.startsWith(openPending)) {
+        return "";
+      }
+    }
+
+    const literal = openPending;
+    openPending = "";
+    expectedClose = null;
+    phase = "body";
+    return literal;
+  };
+
+  return {
+    push(delta) {
+      if (!delta || phase === "done") return "";
+      if (phase === "thinking") {
+        const combined = thinkTail + delta;
+        const endIdx = combined.lastIndexOf(COMPOSER_THINK_END);
+        if (endIdx < 0) {
+          thinkTail = combined.slice(-(COMPOSER_THINK_END.length - 1));
+          return "";
+        }
+        thinkTail = "";
+        phase = "opening";
+        return pushOpening(combined.slice(endIdx + COMPOSER_THINK_END.length));
+      }
+      if (phase === "opening") {
+        return pushOpening(delta);
+      }
+      return pushBody(delta);
+    },
+    finish() {
+      const currentPhase = phase;
+      const pendingOpen = openPending;
+      const pendingClose = closePending;
+      const closeMarker = expectedClose;
+      phase = "done";
+      thinkTail = "";
+      openPending = "";
+      closePending = "";
+      expectedClose = null;
+
+      if (currentPhase === "opening") return pendingOpen;
+      if (currentPhase === "body" && pendingClose) {
+        // Real closing marker at end of stream: drop it, keep any trailing
+        // whitespace verbatim (same as the unframed/no-marker path does).
+        if (closeMarker && pendingClose.startsWith(closeMarker)
+          && pendingClose.slice(closeMarker.length).trim() === "") {
+          return pendingClose.slice(closeMarker.length);
+        }
+        return pendingClose;
+      }
+      return "";
+    },
+  };
+}
+
 function visibleComposerContentFromThinking(thinking) {
   if (!thinking) return "";
-  const endTag = "</think>";
-  const endIdx = thinking.lastIndexOf(endTag);
-  if (endIdx < 0) return "";
-  return thinking.slice(endIdx + endTag.length).trimStart();
+  const extractor = createComposerThinkingExtractor();
+  return extractor.push(thinking) + extractor.finish();
 }
 
 function decompressPayload(payload, flags, maxOutputLength = MAX_PROVIDER_BODY_BYTES) {
@@ -376,16 +643,17 @@ function createErrorResponse(jsonError) {
   jsonError?.error?.message ||
   "API Error";
 
-  const isRateLimit = jsonError?.error?.code === "resource_exhausted";
+  const details = jsonError?.error?.details?.[0]?.debug?.details;
+  const classified = classifyCursorError([jsonError?.error?.code, jsonError?.error?.message, details?.title, details?.detail].filter(isString).join(" "));
 
   return new Response(JSON.stringify({
     error: {
-      message: errorMsg,
-      type: isRateLimit ? "rate_limit_error" : "api_error",
-      code: jsonError?.error?.details?.[0]?.debug?.error || "unknown"
+      message: sanitizeCursorErrorDetail(errorMsg),
+      type: classified.type,
+      code: "unknown"
     }
   }), {
-    status: isRateLimit ? HTTP_STATUS.RATE_LIMITED : HTTP_STATUS.BAD_REQUEST,
+    status: classified.status,
     headers: { "Content-Type": "application/json" }
   });
 }
@@ -396,6 +664,13 @@ function createCursorStreamErrorResponse(message, status = HTTP_STATUS.BAD_GATEW
   }), {
     status,
     headers: { "Content-Type": "application/json" }
+  });
+}
+
+// A complete protobuf stream with no visible answer or tool call is a failed turn.
+function createEmptyCompletionError() {
+  return new Response(JSON.stringify({ error: { message: "Cursor returned an empty completion", type: "api_error", code: "empty_completion" } }), {
+    status: HTTP_STATUS.BAD_GATEWAY, headers: { "Content-Type": "application/json" }
   });
 }
 
@@ -410,18 +685,6 @@ function withCursorTimeout(promise, ms, message) {
     timer = setTimeout(() => reject(new Error(message)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-function cursorBodyLimitError() {
-  return new Error("Cursor response exceeded the configured body limit");
-}
-
-export function appendBoundedCursorChunk(state, chunk, maxBytes = MAX_PROVIDER_BODY_BYTES) {
-  const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-  const nextTotal = state.total + value.byteLength;
-  if (nextTotal > maxBytes) throw cursorBodyLimitError();
-  state.total = nextTotal;
-  state.chunks.push(value);
 }
 
 function readCursorChunk(reader, combined, signal) {
@@ -531,6 +794,8 @@ function shouldRetryEmptyTurn(messageCount) {
   return messageCount >= CURSOR_TAIL_ONLY_THRESHOLD;
 }
 
+export { appendBoundedCursorChunk };
+
 export class CursorExecutor extends BaseExecutor {
   constructor() {
     super("cursor", PROVIDERS.cursor);
@@ -563,34 +828,34 @@ export class CursorExecutor extends BaseExecutor {
     return generateCursorBody(messages, model, tools, reasoningEffort, forceAgentMode);
   }
 
-  async makeFetchRequest(url, headers, body, signal, proxyOptions = null) {
+  async makeFetchRequest(url, headers, body, signal, proxyOptions = null,
+    sender = createExecutorSender(this, {}, { observePatchedFetch: false })) {
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    const connectController = new AbortController();
-    const timeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
-    const onAbort = () => connectController.abort(cursorAbortError(signal.reason));
-    signal?.addEventListener?.("abort", onAbort, { once: true });
-    const timeout = setTimeout(
-      () => connectController.abort(new Error("Cursor response headers timed out")),
-      timeoutMs
-    );
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+      response = await credentialFetch((target, init) => sender.sendRequest(target, init, proxyOptions), url, {
         method: "POST",
         headers,
         body,
-        signal: connectController.signal
-      }, proxyOptions));
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener?.("abort", onAbort);
+        signal: signal || undefined
+      });
+    } catch (error) {
+      if (signal?.aborted) throw cursorAbortError(signal.reason);
+      if (sender.timeoutReason) throw new Error("Cursor response headers timed out");
+      throw error;
     }
 
-    return {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body: await readCursorResponseBody(response, signal)
-    };
+    try {
+      return {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: await readCursorResponseBody(response, signal),
+        dispatch: response
+      };
+    } catch (error) {
+      await settleProviderAttemptDispatch(response, { reason: signal?.aborted ? "abort" : "transport_error" });
+      throw error;
+    }
   }
 
   makeHttp2Request(url, headers, body, signal) {
@@ -703,13 +968,13 @@ export class CursorExecutor extends BaseExecutor {
    * AgentService (agent.api5.cursor.sh) is HTTP/2-only. Node's fetch/undici speaks
    * HTTP/1.1 and fails with HTTPParserError on the h2 preface — use http2 duplex.
    */
-  openAgentHttp2Stream(url, headers, signal) {
+  async openAgentHttp2Stream(url, headers, signal, proxyOptions = null) {
     if (!http2) {
       throw new Error("HTTP/2 is required for Cursor AgentService (endpoint is h2-only)");
     }
 
     const urlObj = new URL(url);
-    const client = http2.connect(`https://${urlObj.host}`);
+    const client = await connectHttp2(url, { proxyUrl: cursorProxyUrl(url, proxyOptions), timeoutMs: this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS, http2Module: http2, signal });
     const chunkQueue = [];
     let waiting = null;
     let ended = false;
@@ -731,7 +996,9 @@ export class CursorExecutor extends BaseExecutor {
       wake(null);
     };
 
+    let onAbort;
     const close = () => {
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
       try { req?.destroy(); } catch {}
       try { client.close(); } catch {}
     };
@@ -751,13 +1018,18 @@ export class CursorExecutor extends BaseExecutor {
       if (waiting) wake({ value: chunk, done: false });
       else chunkQueue.push(chunk);
     });
+    req.on("aborted", () => fail(new Error("Cursor AgentService stream reset")));
+    req.on("close", () => {
+      if (!ended) fail(new Error("Cursor AgentService stream closed before end"));
+    });
     req.on("end", () => {
+      if (req.rstCode) { fail(new Error("Cursor AgentService stream reset")); return; }
       ended = true;
       wake({ value: undefined, done: true });
     });
 
     if (signal) {
-      const onAbort = () => {
+      onAbort = () => {
         fail(new Error("Request aborted"));
         close();
       };
@@ -819,34 +1091,34 @@ export class CursorExecutor extends BaseExecutor {
     };
   }
 
-  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null }) {
+  async executeAgent({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null,
+    sender = createExecutorSender(this, { attemptStartedAt }, { observePatchedFetch: false }) }) {
     const agentEndpoint = PROVIDER_OAUTH.cursor?.agentEndpoint;
     if (!agentEndpoint) throw new Error("Cursor AgentService endpoint is not configured");
 
     const url = `${agentEndpoint}${AGENT_RUN_PATH}`;
-    // The h2 duplex stream bypasses proxyAwareFetch, so it can never carry a
-    // proxy. Fail closed rather than open a direct socket that would leak the
-    // host IP when any proxy (connection, pool, relay, env) applies.
-    if (shouldUseProxyAwareTransport(url, proxyOptions)) {
-      throw new Error("Cursor AgentService uses HTTP/2 streaming that cannot honor the configured proxy; refusing to connect directly");
-    }
+    cursorProxyUrl(url, proxyOptions);
     const headers = this.buildHeaders(credentials);
     const requestController = new AbortController();
-    if (signal?.addEventListener) {
+    if (signal?.aborted) {
+      requestController.abort(signal.reason);
+    } else if (signal?.addEventListener) {
       signal.addEventListener("abort", () => requestController.abort(signal.reason), { once: true });
     }
 
     // Empty-turn recovery works on the original client history so each retry
     // re-derives its own frame from a clean base (original vs tail-only).
-    const originalMessages = body.messages || [];
+    const directives = cursorRequestDirectives(body);
+    const originalMessages = directives ? [...(body.messages || []), { role: ROLE.SYSTEM, content: directives }] : body.messages || [];
     let workingMessages = originalMessages;
-    const tools = body.tools || [];
+    const tools = body.tool_choice === "none" ? [] : body.tools || [];
     // "Auto (Server Picks)" / "default" is a picker alias, not an AgentService
     // model id — sending it verbatim yields an empty turn. Resolve it to the
     // account's default agent-capable model from the live catalog before Run.
+    const catalog = await resolveCursorModels(credentials, { signal, log, proxyOptions });
+    const catalogIds = new Set((catalog?.models || []).map((entry) => entry.id));
     let runModel = model;
     if (model === "default" || model === "auto") {
-      const catalog = await resolveCursorModels(credentials, { signal, log, proxyOptions });
       const selection = resolveAutoModelSelection(catalog?.models);
       if (selection) {
         log?.info?.("CURSOR", `auto model resolved: ${model} → ${selection.modelId} (${selection.matchedBy})`);
@@ -854,24 +1126,30 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
-    const openAgentSession = (frameMessages) => {
-      const session = this.openAgentHttp2Stream(url, headers, requestController.signal);
-      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort));
+    // The ID is private to this request, including its tail-only retry.
+    const conversationId = crypto.randomUUID();
+    const openAgentSession = async (frameMessages, sendSignal) => {
+      const session = await this.openAgentHttp2Stream(url, headers, sendSignal, proxyOptions);
+      session.write(buildAgentRunFrame(frameMessages, runModel, tools, body.reasoning_effort || body.reasoning?.effort, catalogIds, conversationId));
       return session;
     };
 
     const headersTimeoutMs = this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
     let session;
-    let responseHeaders;
-    try {
-      responseHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-        session = openAgentSession(workingMessages);
+    // Each AgentService run (first turn or tail-only retry) is one physical send.
+    const dispatchAgent = (frameMessages) => sender.sendRequest(url, { signal: requestController.signal }, proxyOptions, {
+      transport: async ({ signal: sendSignal }) => {
+        session = await openAgentSession(frameMessages, sendSignal);
         return withCursorTimeout(
           session.responseHeaders,
           headersTimeoutMs,
           "Cursor AgentService response headers timed out"
         );
-      }));
+      }
+    });
+    let responseHeaders;
+    try {
+      responseHeaders = await dispatchAgent(workingMessages);
     } catch (error) {
       session?.close();
       if (isQuotaDispatchUnavailable(error) || error?.name === "AbortError") throw error;
@@ -880,21 +1158,36 @@ export class CursorExecutor extends BaseExecutor {
 
     const bindDispatch = (result) => {
       transferProviderAttemptDispatch(responseHeaders, result.response);
-      return result;
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
     };
     const status = Number(responseHeaders[":status"] || 0);
     if (status !== 200) {
-      // Do not echo the upstream error body to the client (matches the legacy path).
+      let projected = null;
+      try {
+        const errorBody = { total: 0, chunks: [] };
+        const deadline = Date.now() + PROVIDER_BODY_TIMEOUT_MS;
+        while (true) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0) break;
+          const chunk = await withCursorTimeout(session.read(), remainingMs, "Cursor AgentService error body timed out");
+          if (chunk.done) break;
+          appendBoundedCursorChunk(errorBody, chunk.value, 128 * 1024);
+        }
+        const bytes = Buffer.concat(errorBody.chunks, errorBody.total);
+        projected = projectCursorError(bytes);
+        if (!projected && bytes.length >= 5 && bytes.readUInt32BE(1) <= bytes.length - 5) projected = projectCursorError(bytes.subarray(5, 5 + bytes.readUInt32BE(1)));
+      } catch { /* Preserve the HTTP status if the body cannot be read. */ }
       session.close();
+      const classifiedError = projected ? classifyCursorError(projected) : null;
+      const classified = classifiedError?.kind === "upstream" ? null : classifiedError;
       return bindDispatch({
         response: new Response(JSON.stringify({
-          error: { message: `Cursor upstream returned HTTP ${status}`, type: "invalid_request_error", code: "" },
-        }), { status: status || HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
+          error: { message: classified?.message || `Cursor upstream returned HTTP ${status}`, type: classified?.type || "invalid_request_error", code: "" },
+        }), { status: classified?.status || status || HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
         url,
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -907,14 +1200,27 @@ export class CursorExecutor extends BaseExecutor {
     let pending = Buffer.alloc(0);
     let finished = false;
     let thinkingAcc = "";
-    let emittedVisible = 0;
+    const blobStore = new Map();
+    let composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
+    let emittedNativeText = false;
     let emittedText = false;
 
+    const flushComposerPending = (onEvent) => {
+      if (!composerExtractor || emittedNativeText) return;
+      const tail = composerExtractor.finish();
+      if (tail) {
+        emittedText = true;
+        onEvent({ type: "text", value: tail });
+      }
+    };
+
     const flushThinkingFallback = (onEvent) => {
+      if (composerModel) {
+        flushComposerPending(onEvent);
+        return;
+      }
       if (emittedText || !thinkingAcc) return;
-      const fallback = composerModel
-        ? visibleComposerContentFromThinking(thinkingAcc)
-        : thinkingAcc.trim();
+      const fallback = thinkingAcc.trim();
       if (fallback) {
         emittedText = true;
         onEvent({ type: "text", value: fallback });
@@ -933,10 +1239,18 @@ export class CursorExecutor extends BaseExecutor {
           const { done, value } = await session.read();
           if (done) break;
           pending = Buffer.concat([pending, Buffer.from(value)]);
-          pending = decodeAgentFrames(pending, (payload) => {
+          pending = decodeAgentFrames(pending, (payload, trailer) => {
             // A single read can carry several frames; once the turn is over the
             // rest of the batch must not reach the already-closed controller.
             if (finished) return;
+            // Connect end-stream trailers can carry a JSON error under HTTP 200.
+            const projectedError = projectCursorError(payload);
+            if (projectedError) {
+              finished = true;
+              onEvent({ type: "error", value: projectedError });
+              return;
+            }
+            if (trailer) return;
             const serverMessage = decodeMessage(payload);
 
             // agent.v1.AgentServerMessage.interaction_update
@@ -945,6 +1259,7 @@ export class CursorExecutor extends BaseExecutor {
               if (update.has(1)) {
                 const textDelta = extractAgentString(decodeMessage(update.get(1)[0].value), 1);
                 if (textDelta) {
+                  emittedNativeText = true;
                   emittedText = true;
                   onEvent({ type: "text", value: textDelta });
                 }
@@ -954,15 +1269,16 @@ export class CursorExecutor extends BaseExecutor {
               if (update.has(4)) {
                 const thinkingDelta = extractAgentString(decodeMessage(update.get(4)[0].value), 1);
                 if (thinkingDelta) {
-                  thinkingAcc += thinkingDelta;
                   if (composerModel) {
-                    const visible = visibleComposerContentFromThinking(thinkingAcc);
-                    if (visible.length > emittedVisible) {
-                      const deltaContent = visible.slice(emittedVisible);
-                      emittedVisible = visible.length;
-                      emittedText = true;
-                      onEvent({ type: "text", value: deltaContent });
+                    if (!emittedNativeText && composerExtractor) {
+                      const deltaContent = composerExtractor.push(thinkingDelta);
+                      if (deltaContent) {
+                        emittedText = true;
+                        onEvent({ type: "text", value: deltaContent });
+                      }
                     }
+                  } else {
+                    thinkingAcc += thinkingDelta;
                   }
                 }
               }
@@ -974,14 +1290,8 @@ export class CursorExecutor extends BaseExecutor {
 
             // KvServerMessage (field 4): get/set blob. Ack so the stream proceeds.
             if (serverMessage.has(4)) {
-              const kv = decodeMessage(serverMessage.get(4)[0].value);
-              const kvId = kv.get(1)?.[0]?.value || 0;
-              const metadata = kv.get(4)?.[0]?.value || null;
-              if (kv.has(2)) {
-                session.write(encodeKvClientMessage(kvId, 2, agentMessage(1, new Uint8Array()), metadata));
-              } else if (kv.has(3)) {
-                session.write(encodeKvClientMessage(kvId, 3, new Uint8Array(), metadata));
-              }
+              const reply = buildKvServerReply(decodeMessage(serverMessage.get(4)[0].value), blobStore);
+              if (reply) session.write(reply);
             }
 
             // AgentService requests IDE context before producing a response.
@@ -995,6 +1305,7 @@ export class CursorExecutor extends BaseExecutor {
                 const name = mcp.toolName || mcp.name;
                 if (name) {
                   log?.info?.("CURSOR", `AgentService MCP tool_call ${name}`);
+                  if (composerModel) flushComposerPending(onEvent);
                   finished = true;
                   onEvent({
                     type: "tool_call",
@@ -1027,7 +1338,12 @@ export class CursorExecutor extends BaseExecutor {
             }
           });
         }
-        if (!finished) finishTurn();
+        if (!finished) {
+          if (requestController.signal.aborted) {
+            throw cursorAbortError(requestController.signal.reason);
+          }
+          finishTurn();
+        }
       } finally {
         try { session.end(); } catch {}
         try { session.close(); } catch {}
@@ -1039,8 +1355,10 @@ export class CursorExecutor extends BaseExecutor {
     const runAgentTurn = async (onEvent) => {
       finished = false;
       emittedText = false;
+      emittedNativeText = false;
       thinkingAcc = "";
-      emittedVisible = 0;
+      blobStore.clear();
+      composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
       pending = Buffer.alloc(0);
       await consume(onEvent);
       return { sawContent: emittedText };
@@ -1073,14 +1391,7 @@ export class CursorExecutor extends BaseExecutor {
           workingMessages = tailOnlyCursorMessages(originalMessages);
           let retryHeaders;
           try {
-            retryHeaders = await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(async () => {
-              session = openAgentSession(workingMessages);
-              return withCursorTimeout(
-                session.responseHeaders,
-                headersTimeoutMs,
-                "Cursor AgentService response headers timed out"
-              );
-            }));
+            retryHeaders = await dispatchAgent(workingMessages);
           } catch (error) {
             try { session?.close(); } catch {}
             throw error;
@@ -1120,16 +1431,16 @@ export class CursorExecutor extends BaseExecutor {
         else if (event.type === "done" && event.finishReason) finishReason = event.finishReason;
       });
       if (agentError) {
+        const classified = classifyCursorError(agentError);
         return bindDispatch({
-          response: new Response(JSON.stringify({ error: { message: agentError, type: "api_error" } }), {
-            status: HTTP_STATUS.BAD_REQUEST,
+          response: new Response(JSON.stringify({ error: { message: classified.message, type: classified.type } }), {
+            status: agentError === "Cursor AgentService returned an empty turn" ? HTTP_STATUS.BAD_REQUEST : classified.status,
             headers: { "Content-Type": "application/json" },
           }),
           url,
           headers,
           transformedBody: body,
           responseFormat: FORMATS.OPENAI,
-          attemptStartedAt,
         });
       }
       const message = { role: "assistant", content: content || null };
@@ -1148,7 +1459,6 @@ export class CursorExecutor extends BaseExecutor {
         headers,
         transformedBody: body,
         responseFormat: FORMATS.OPENAI,
-        attemptStartedAt,
       });
     }
 
@@ -1158,7 +1468,11 @@ export class CursorExecutor extends BaseExecutor {
         // Defer terminal SSE until runWithRetry settles. Emitting stop on the
         // first empty upstream turn wedges Cursor before the tail-only retry
         // can recover the session.
+        let streamedOutput = false;
+        let closed = false;
         runWithRetry((event) => {
+          if (closed) return;
+          if (["text", "thinking", "tool_call"].includes(event.type)) streamedOutput = true;
           if (event.type === "text") {
             controller.enqueue(encoder.encode(chatChunkSse({ id: responseId, created, model, delta: { content: event.value } })));
           } else if (event.type === "thinking") {
@@ -1176,13 +1490,16 @@ export class CursorExecutor extends BaseExecutor {
               },
             })));
           } else if (event.type === "error") {
+            closed = true;
             // An SSE error frame, not a content delta: a protocol failure must not
             // be rendered to the user as the assistant's reply, and downstream
             // usage tracking must not record the turn as a success.
-            controller.enqueue(encoder.encode(sseChunk({ error: { message: event.value, type: "api_error" } })));
+            const classified = classifyCursorError(event.value);
+            controller.enqueue(encoder.encode(sseChunk({ error: { message: classified.message, type: classified.type } })));
             controller.enqueue(encoder.encode(SSE_DONE));
             controller.close();
           } else if (event.type === "done") {
+            closed = true;
             controller.enqueue(encoder.encode(chatChunkSse({
               id: responseId, created, model, delta: {},
               finishReason: event.finishReason || "stop",
@@ -1190,7 +1507,16 @@ export class CursorExecutor extends BaseExecutor {
             controller.enqueue(encoder.encode(SSE_DONE));
             controller.close();
           }
-        }).catch((error) => controller.error(error));
+        }).catch((error) => {
+          if (closed) return;
+          try {
+            if (streamedOutput && !requestController.signal.aborted) {
+              controller.enqueue(encoder.encode(sseChunk({ error: { message: sanitizeCursorErrorDetail(error.message), type: "api_error" } })));
+              controller.enqueue(encoder.encode(SSE_DONE));
+              controller.close();
+            } else controller.error(error);
+          } catch {}
+        });
       },
       cancel() {
         requestController.abort();
@@ -1203,35 +1529,34 @@ export class CursorExecutor extends BaseExecutor {
       headers,
       transformedBody: body,
       responseFormat: FORMATS.OPENAI,
-      attemptStartedAt,
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null, attemptStartedAt = null, onProviderAttempt = null } = input;
     if (signal?.aborted) throw cursorAbortError(signal.reason);
-    // The h2 AgentService stream cannot carry a proxy. When any proxy applies,
-    // stay on the legacy ChatService path, which honors it, and never connect directly.
-    const agentUrl = `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`;
-    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body) && !shouldUseProxyAwareTransport(agentUrl, proxyOptions)) {
-      const agentAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-      attemptStartedAt :
-      isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
+    attemptStartedAt :
+    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    const sender = createExecutorSender(this, { ...input, attemptStartedAt: providerAttemptStartedAt }, { observePatchedFetch: false });
+    // AgentService uses the selected CONNECT or SOCKS route for HTTP/2.
+    if (CURSOR_AGENT_SERVICE_ENABLED() && isAgentCapableRequest(body)) {
       try {
-        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: agentAttemptStartedAt });
+        return await this.executeAgent({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt: providerAttemptStartedAt, sender });
       } catch (error) {
         if (isQuotaDispatchUnavailable(error)) throw error;
         if (error?.name === "AbortError") {
-          error.providerAttemptStartedAt = agentAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
         return {
           response: new Response(JSON.stringify({
-            error: { message: error.message, type: "connection_error", code: "" },
+            error: { message: sanitizeCursorErrorDetail(error.message), type: "connection_error", code: "" },
           }), { status: HTTP_STATUS.SERVER_ERROR, headers: { "Content-Type": "application/json" } }),
           url: `${PROVIDER_OAUTH.cursor?.agentEndpoint || ""}${AGENT_RUN_PATH}`,
           headers: {},
           transformedBody: body,
-          attemptStartedAt: agentAttemptStartedAt,
+          attemptStartedAt: sender.attemptStartedAt,
         };
       }
     }
@@ -1239,16 +1564,26 @@ export class CursorExecutor extends BaseExecutor {
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
 
-    const providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-    attemptStartedAt :
-    isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
+    // The upstream object holding this request's quota ticket.
+    let dispatch = null;
+    const carry = (result) => {
+      transferProviderAttemptDispatch(dispatch, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const shouldForceFetch = shouldUseProxyAwareTransport(url, proxyOptions);
-      const response = http2 && !shouldForceFetch ?
-      await runQuotaBearingProviderRequest(() => runProviderAttemptDispatch(
-        () => this.makeHttp2Request(url, headers, transformedBody, signal)
-      )) :
-      await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions);
+      let response;
+      if (http2 && !shouldForceFetch) {
+        // The reply is the whole buffered answer, bounded by makeHttp2Request's own
+        // timer, so the send itself stands in for response headers.
+        dispatch = await sender.sendRequest(url, { signal: signal || undefined }, proxyOptions, {
+          transport: () => ({ reply: this.makeHttp2Request(url, headers, transformedBody, signal) })
+        });
+        response = await dispatch.reply;
+      } else {
+        response = await this.makeFetchRequest(url, headers, transformedBody, signal, proxyOptions, sender);
+        dispatch = response.dispatch;
+      }
 
       if (response.status !== 200) {
         const errorResponse = new Response(JSON.stringify({
@@ -1261,25 +1596,36 @@ export class CursorExecutor extends BaseExecutor {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
-        return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+        return carry({ response: errorResponse, url, headers, transformedBody: body });
+      }
+
+      // A successful upstream response without a body cannot contain Cursor frames.
+      if (!response.body) {
+        return carry({
+          response: new Response(JSON.stringify({ error: { message: "Cursor upstream returned an empty response body", type: "server_error", code: "" } }), {
+            status: 502,
+            headers: { "Content-Type": "application/json" },
+          }),
+          url, headers, transformedBody: body,
+        });
       }
 
       const transformedResponse = stream !== false ?
       this.transformProtobufToSSE(response.body, model, body) :
       this.transformProtobufToJSON(response.body, model, body);
 
-      return {
+      return carry({
         response: transformedResponse,
         url,
         headers,
         transformedBody: body,
-        attemptStartedAt: providerAttemptStartedAt,
         terminalProvenance: "validated"
-      };
+      });
     } catch (error) {
+      await settleProviderAttemptDispatch(dispatch, { reason: error?.name === "AbortError" ? "abort" : "transport_error" });
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (error?.name === "AbortError") {
-        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        error.providerAttemptStartedAt = sender.attemptStartedAt;
         throw error;
       }
       const errorResponse = new Response(JSON.stringify({
@@ -1292,7 +1638,7 @@ export class CursorExecutor extends BaseExecutor {
         status: HTTP_STATUS.SERVER_ERROR,
         headers: { "Content-Type": "application/json" }
       });
-      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: providerAttemptStartedAt };
+      return { response: errorResponse, url, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
     }
   }
 
@@ -1326,7 +1672,7 @@ export class CursorExecutor extends BaseExecutor {
         try {
           const text = payload.toString("utf-8");
           if (text.includes('"error"')) {
-            debugLog(`[CURSOR BUFFER] Error frame: ${text.slice(0, 500)}`);
+            debugLog("[CURSOR BUFFER] Connect error frame");
             return createErrorResponse(JSON.parse(text));
           }
         } catch {}
@@ -1425,6 +1771,8 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
+    if (!finalContent && toolCalls.length === 0) return createEmptyCompletionError();
+
     const message = {
       role: "assistant",
       content: finalContent || null
@@ -1462,8 +1810,8 @@ export class CursorExecutor extends BaseExecutor {
     const chunks = [];
     let offset = 0;
     let totalContent = "";
-    let totalThinking = "";
-    let emittedComposerThinkingContentLength = 0;
+    let emittedNativeText = false;
+    const composerExtractor = isComposerModel(model) ? createComposerThinkingExtractor() : null;
     const toolCalls = [];
     const toolCallsMap = new Map(); // Track streaming tool calls by ID
     const finalizedIds = new Set();
@@ -1581,6 +1929,7 @@ export class CursorExecutor extends BaseExecutor {
       }
 
       if (result.text) {
+        emittedNativeText = true;
         totalContent += result.text;
         chunks.push(chatChunkSse({
           id: responseId, created, model,
@@ -1591,12 +1940,9 @@ export class CursorExecutor extends BaseExecutor {
         }));
       }
 
-      if (isComposerModel(model) && result.thinking) {
-        totalThinking += result.thinking;
-        const visibleContent = visibleComposerContentFromThinking(totalThinking);
-        if (visibleContent.length > emittedComposerThinkingContentLength) {
-          const deltaContent = visibleContent.slice(emittedComposerThinkingContentLength);
-          emittedComposerThinkingContentLength = visibleContent.length;
+      if (composerExtractor && result.thinking && !emittedNativeText) {
+        const deltaContent = composerExtractor.push(result.thinking);
+        if (deltaContent) {
           totalContent += deltaContent;
           chunks.push(chatChunkSse({
             id: responseId, created, model,
@@ -1610,6 +1956,20 @@ export class CursorExecutor extends BaseExecutor {
     }
 
     if (frameCount === 0) return createCursorStreamErrorResponse("Cursor returned an empty protobuf stream");
+
+    if (composerExtractor && !emittedNativeText) {
+      const tail = composerExtractor.finish();
+      if (tail) {
+        totalContent += tail;
+        chunks.push(chatChunkSse({
+          id: responseId, created, model,
+          delta:
+          chunks.length === 0 && toolCalls.length === 0 ?
+          { role: "assistant", content: tail } :
+          { content: tail }
+        }));
+      }
+    }
 
     debugLog(
       `[CURSOR BUFFER SSE] Parsed ${frameCount} frames, toolCallsMap size: ${toolCallsMap.size}, toolCalls array: ${toolCalls.length}`
@@ -1652,9 +2012,7 @@ export class CursorExecutor extends BaseExecutor {
       }
     }
 
-    if (chunks.length === 0 && toolCalls.length === 0) {
-      chunks.push(chatChunkSse({ id: responseId, created, model, delta: { role: "assistant", content: "" } }));
-    }
+    if (!totalContent && toolCalls.length === 0) return createEmptyCompletionError();
 
     const usage = estimateUsage(body, totalContent.length, FORMATS.OPENAI);
 

@@ -99,3 +99,6 @@ storybook-production-proof/
 # Detailed AI documentation is source material, not the product build directory.
 !internal/docs/product/
 !internal/docs/product/**
+
+# Provider cookie capture extension build output
+/extensions/provider-cookie-capture/dist/

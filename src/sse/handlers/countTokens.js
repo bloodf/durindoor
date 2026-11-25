@@ -2,7 +2,8 @@ import { withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { getProviderCredentials, resolveClientApiKey } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
-import { handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTokensCore.js";
+import { deriveCountTokensUrl, handleCountTokensCore, estimateTokens } from "open-sse/handlers/countTokensCore.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
@@ -42,8 +43,6 @@ async function handleCountTokensHandler(request) {
   }
 
   const { provider, model } = modelInfo;
-  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey, { limits: false });
-  if (policyError) return policyError;
   // count_tokens is best-effort: a single credential attempt is enough (the core
   // falls back to the estimate on any failure / no native endpoint).
   const credentials = (await getProviderCredentials(provider, new Set(), model, { apiKeyId: apiKeyAuth.apiKeyId })) || {};
@@ -51,7 +50,18 @@ async function handleCountTokensHandler(request) {
     return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
   }
 
+  const usesNativeCount = provider === "antigravity" || provider === "agy" ||
+    Boolean(deriveCountTokensUrl(credentials.runtimeTransport || PROVIDERS[provider]));
+  const policyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey, { limits: usesNativeCount });
+  if (policyError) return policyError;
+
   const result = await handleCountTokensCore({ body, modelInfo: { provider, model }, credentials, log });
+  if (!result.success) {
+    if (result.status === HTTP_STATUS.RATE_LIMITED) {
+      return Response.json({ input_tokens: estimateTokens(body), approximate: true });
+    }
+    return errorResponse(result.status, result.error);
+  }
   return result.response;
 }
 export const handleCountTokens = withRequestCorrelation(handleCountTokensHandler);

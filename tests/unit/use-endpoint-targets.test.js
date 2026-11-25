@@ -197,4 +197,38 @@ describe("useEndpointTargets", () => {
     expect(latest.loading).toBe(false);
     expect(ids(latest.endpoints)).toEqual(["local"]);
   });
+
+  it("makes fallback targets ready while the HTTP error body is still pending", async () => {
+    const originalUrl = window.location.href;
+    window.happyDOM.setURL(REMOTE.origin);
+    const body = Promise.withResolvers();
+    const json = vi.fn(() => body.promise);
+    global.fetch = vi.fn(async () => ({ ok: false, status: 503, json }));
+
+    try {
+      await mount(20128);
+
+      expect(latest.loading).toBe(false);
+      expect(latest.endpoints.map((target) => target.value)).toEqual([
+        "http://localhost:20128/v1",
+        "https://dash.example.test/v1",
+      ]);
+      expect(json).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => { body.resolve({}); });
+      window.happyDOM.setURL(originalUrl);
+    }
+  });
+
+  it.each([
+    ["a null successful body", async () => null],
+    ["a malformed successful body", async () => { throw new SyntaxError("invalid JSON"); }],
+  ])("falls back to the local endpoint on %s", async (_description, json) => {
+    global.fetch = vi.fn(async () => ({ ok: true, json }));
+
+    await mount(20128);
+
+    expect(latest.loading).toBe(false);
+    expect(ids(latest.endpoints)).toEqual(["local"]);
+  });
 });

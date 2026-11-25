@@ -1,7 +1,9 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES } from "../config/errorConfig.js";
+import { ERROR_RULES, COOLDOWN_MS, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, REQUEST_REPLAY_BUFFER_ERROR, RELAY_GATEWAY_STATUSES, RELAY_TRANSPORT_FAILURES, ACCOUNT_SCOPED_4XX_STATUSES } from "../config/errorConfig.js";
 import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
+import { resolveFallbackModelScope } from "./fallbackScope.js";
+import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
  * Identify Envoy retry-buffer overflow responses that are safe to replay on
@@ -10,11 +12,117 @@ import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/provi
  * @param {unknown} errorText - Upstream error body
  * @returns {boolean} Whether the request should be replayed in place
  */
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isNumber, isString, isObject, isRecord } from "../../src/shared/utils/typeChecks.js";
 export function isRequestReplayBufferError(status, errorText) {
   if (Number(status) !== HTTP_STATUS.INSUFFICIENT_STORAGE) return false;
   const message = isString(errorText) ? errorText : JSON.stringify(errorText || "");
   return message.toLowerCase().includes(REQUEST_REPLAY_BUFFER_ERROR);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Collect request values that providers echo into error text (#2315).
+ * Includes the requested model string, its provider-stripped form, and ids
+ * recovered from common "<id> is not a valid model ID" templates.
+ * @param {string|null|undefined} model
+ * @param {string|null|undefined} provider
+ * @param {string} messageText
+ * @returns {string[]}
+ */
+function collectEchoedRequestValues(model, provider, messageText) {
+  const values = [];
+  const pushModelForms = (raw) => {
+    if (!isString(raw)) return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    values.push(trimmed);
+    const slash = trimmed.indexOf("/");
+    if (slash > 0 && slash < trimmed.length - 1) {
+      values.push(trimmed.slice(slash + 1));
+    }
+    if (isString(provider) && provider && trimmed.toLowerCase().startsWith(`${provider.toLowerCase()}/`)) {
+      values.push(trimmed.slice(provider.length + 1));
+    }
+  };
+  pushModelForms(model);
+  if (isString(messageText) && messageText) {
+    const echoed = messageText.match(
+      /^\s*[`'"]?([^\s`'"]+)[`'"]?\s+is not a valid model(?:\s+id)?\b/i
+    );
+    if (echoed?.[1]) pushModelForms(echoed[1]);
+  }
+  return values;
+}
+
+/**
+ * Remove echoed request values before ERROR_RULES text matching so a
+ * client-chosen model id containing billing/capacity phrases cannot lock
+ * shared accounts (#2315).
+ * @param {string} text
+ * @param {string[]} echoedValues
+ * @returns {string}
+ */
+function stripEchoedRequestValues(text, echoedValues) {
+  if (!isString(text) || !text || !Array.isArray(echoedValues) || echoedValues.length === 0) {
+    return isString(text) ? text : "";
+  }
+  let result = text;
+  const unique = [...new Set(echoedValues.map((value) => value.toLowerCase()).filter(Boolean))]
+    .sort((a, b) => b.length - a.length);
+  for (const value of unique) {
+    result = result.replace(new RegExp(escapeRegExp(value), "gi"), " ");
+  }
+  return result;
+}
+
+/**
+ * Provider-authored error signal for text rules: message + code only.
+ * Full request dumps can echo user-controlled fields (#2315 / #1391).
+ * @param {unknown} structuredError
+ * @param {string|object|null|undefined} errorText
+ * @returns {{ message: string, code: string, text: string }}
+ */
+function extractProviderRuleText(structuredError, errorText) {
+  const message = extractErrorMessage(structuredError, errorText);
+  let body = structuredError;
+  if (!body && isString(errorText)) {
+    try { body = JSON.parse(errorText); } catch { body = null; }
+  }
+  const rawCode = body?.error?.code ?? body?.code;
+  const code = isString(rawCode) ? rawCode : isNumber(rawCode) ? String(rawCode) : "";
+  const text = [code, message].filter(Boolean).join(" ");
+  return { message, code, text: text || (isString(errorText) ? errorText : "") };
+}
+
+const DASHSCOPE_PROVIDERS = new Set([
+  "alibaba",
+  "alibaba-cn",
+  "alicode",
+  "alicode-intl",
+  "bailian-coding-plan",
+  "qwen-cloud",
+  "qwen-cloud-token-plan",
+]);
+const DASHSCOPE_UNPAID_CODES = new Set(["arrearage", "accessdenied.unpurchased"]);
+
+// OmniRoute #19684: DashScope reports unpaid accounts on 400/403 with a vendor
+// code in error.code or at the top level. Messages and parameters can echo user input.
+function isDashScopeDeadAccount(provider, status, errorText, structuredError) {
+  if (!DASHSCOPE_PROVIDERS.has(provider) || (Number(status) !== 400 && Number(status) !== 403)) return false;
+
+  let body = structuredError ?? errorText;
+  if (isString(body)) {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  const code = body?.error?.code ?? body?.code;
+  return isString(code) && DASHSCOPE_UNPAID_CODES.has(code.toLowerCase());
 }
 
 /**
@@ -34,12 +142,17 @@ export function getQuotaCooldown(backoffLevel = 0) {
  * Config-driven: terminal status rules win before text rules, then remaining
  * ERROR_RULES match top-to-bottom. Known account/quota text rules take
  * precedence otherwise; deterministic request-scoped 4xx client failures do not rotate.
- * @param {number} status - HTTP status code
+ * Pass the attempted model in the options object so text rules can ignore
+ * echoed model IDs (#2471). The positional form remains supported.
+ * Set `checkAccountLockScope: false` when the caller only decides whether to
+ * try another model and does not persist account locks.
+ * @param {number|{status: number, errorText: unknown, backoffLevel?: number, provider?: string|null, headers?: Headers|object|null, structuredError?: unknown, model?: string|null, checkAccountLockScope?: boolean}} status - HTTP status code or classifier options
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
+ * @param {string|null} model - Optional requested model id (stripped from text rules; #2315)
  * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, rateLimitEvidence?: object, terminal?: boolean, requestScoped?: boolean }}
  *   `shouldFallback` answers "is the credential at fault?" (account rotation);
  *   `requestScoped` answers "did this member reject the request itself?"
@@ -50,11 +163,30 @@ export function getQuotaCooldown(backoffLevel = 0) {
  *   (billing/credit exhausted) — the account still cools down, but callers
  *   must not advertise a client-facing Retry-After for it.
  */
-export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null) {
+export function checkFallbackError(status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null) {
+  const options = isRecord(status) ? status : {
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  };
+  return classifyFallbackError(options);
+}
+
+function classifyFallbackError({
+  status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null,
+  checkAccountLockScope = true,
+}) {
   const normalizedText = errorText ?
   isString(errorText) ? errorText : JSON.stringify(errorText) :
   "";
   const lowerError = normalizedText.toLowerCase();
+  // Text rules match the provider's own message/code with echoed request
+  // values (the model id) removed, so a client-chosen id containing
+  // billing/capacity phrases cannot bench shared accounts (#2315).
+  const providerSignal = extractProviderRuleText(structuredError, errorText);
+  const echoedValues = collectEchoedRequestValues(model, provider, providerSignal.message);
+  const ruleMatchText = stripEchoedRequestValues(
+    providerSignal.text || normalizedText,
+    echoedValues
+  ).toLowerCase();
 
   if (isRequestReplayBufferError(status, errorText)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
@@ -66,11 +198,15 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   }
 
   // OpenRouter capability and routing preferences describe this request, not
-  // model health. Keep ordinary missing-model 404s on their existing path.
+  // model health. A model OpenRouter removed answers the same 404 on every key,
+  // and its passthrough id collapses to the account-wide lock scope, so cooling
+  // the key down would refuse every other OpenRouter model for the whole window.
+  // Keep other missing-model 404s on their existing path.
   if (Number(status) === 404 && provider === "openrouter" && (
     /\bno endpoints found that support\b/i.test(normalizedText) ||
     /\bno allowed providers\b/i.test(normalizedText) ||
-    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText)
+    /\bno endpoints found\b[^\n]{0,160}\bmatching your data policy\b/i.test(normalizedText) ||
+    /\bno longer available on openrouter\b/i.test(normalizedText)
   )) {
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
@@ -81,9 +217,18 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     return { shouldFallback: false, cooldownMs: 0, newBackoffLevel: backoffLevel, scope: null };
   }
 
+  // Unpaid DashScope account: park the key on the terminal billing cooldown instead of
+  // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
+  if (isDashScopeDeadAccount(provider, status, errorText, structuredError)) {
+    return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
+  }
+
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
-  if (lowerError.includes("provider_port_pending")) {
+  // chatCore flattens the guard body to "[501]: <provider> ... runtime execution is not ported yet",
+  // which drops the provider_port_pending type, so the guard's own wording is matched for 501 too (#2034).
+  if (lowerError.includes("provider_port_pending") ||
+    Number(status) === 501 && /runtime execution is not (?:ported yet|available)/.test(lowerError)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
   }
 
@@ -96,7 +241,11 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   if (Number(status) === 400 && lowerError.includes("invalid_request_error")) {
     // Match only the provider's error message so a quoted billing phrase elsewhere
     // in the body (e.g. echoed user prompt text) cannot lock a healthy account.
-    const billing = checkFallbackErrorByRules(status, extractErrorMessage(structuredError, errorText).toLowerCase(), backoffLevel);
+    const billingText = stripEchoedRequestValues(
+      extractErrorMessage(structuredError, errorText),
+      echoedValues
+    ).toLowerCase();
+    const billing = checkFallbackErrorByRules(status, billingText, backoffLevel);
     if (billing.terminal) return { ...billing, scope: null };
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
@@ -121,12 +270,16 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     provider,
     status,
     headers,
-    resolveRuleMatchBody(provider, structuredError, errorText)
+    resolveRuleMatchBody(provider, structuredError, errorText),
+    errorText
   );
   // The endpoint marker is model capacity, unless the error message also
   // supplies terminal billing or explicit exhausted-quota evidence.
   if (providerRule?.endpointUnavailable) {
-    const message = extractErrorMessage(structuredError, errorText);
+    const message = stripEchoedRequestValues(
+      extractErrorMessage(structuredError, errorText),
+      echoedValues
+    );
     const billing = checkFallbackErrorByRules(status, message.toLowerCase(), backoffLevel, provider);
     if (billing.terminal) return { ...billing, scope: null };
     if (status === 429) {
@@ -139,7 +292,7 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     }
   }
   if (providerRule?.reason === "quota_exhausted") {
-    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, lowerError, backoffLevel);
+    const ruleResult = checkFallbackErrorByRules(HTTP_STATUS.RATE_LIMITED, ruleMatchText, backoffLevel);
     return { ...ruleResult, scope: providerRule.scope ?? null };
   }
   if (providerRule?.cooldownMs) {
@@ -147,8 +300,26 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       shouldFallback: true,
       cooldownMs: providerRule.cooldownMs,
       newBackoffLevel: 0,
-      scope: providerRule.scope ?? null
+      scope: providerRule.scope ?? null,
+      // A provider rule may mark its own state terminal (billing/credit
+      // exhausted, identity verification pending): the account still cools
+      // down, but no client-facing Retry-After may be advertised for it.
+      ...(providerRule.terminal ? { terminal: true } : null),
+      // The denial names the requested model only (Kilo paid-model auth). The
+      // caller must not widen it to an account lock when the id is unbounded.
+      ...(providerRule.modelOnly ? { modelOnly: true } : null)
     };
+  }
+
+  // OmniRoute #21080: Cline's free-tier daily cap names the exact wait ("Try again
+  // in 19h 39m") for the model that ran out. Honor it instead of the 2 s backoff,
+  // scoped to that model so the other free models on the connection keep routing.
+  // Malformed or absent durations fall through to the generic 429 handling below.
+  if (status === 429) {
+    const clineHintMs = parseClineTryAgainInMs(ruleMatchText, provider, MAX_RATE_LIMIT_COOLDOWN_MS);
+    if (clineHintMs !== null) {
+      return { shouldFallback: true, cooldownMs: clineHintMs, newBackoffLevel: 0, scope: "model", retryHintSource: "body" };
+    }
   }
 
   // OmniRoute #6731: an apikey-category 429 whose body explicitly reports an
@@ -179,12 +350,28 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
           scope: null
         };
       }
-      const fallback = checkFallbackErrorByRules(status, lowerError, backoffLevel);
+      const fallback = checkFallbackErrorByRules(status, ruleMatchText, backoffLevel);
       return { ...fallback, rateLimitEvidence: evidence, scope: null };
     }
   }
 
-  const generic = checkFallbackErrorByRules(status, lowerError, backoffLevel, provider);
+  const generic = checkFallbackErrorByRules(status, ruleMatchText, backoffLevel, provider);
+  // #2315: after echo-stripping, a 400 with no provider rule that would only
+  // lock account-wide because the requested id is unknown/passthrough stays
+  // request-scoped. Terminal billing matches (real credit exhaustion) keep
+  // their account-wide lock even on passthrough catalogs.
+  if (
+    checkAccountLockScope &&
+    generic.shouldFallback &&
+    !generic.terminal &&
+    Number(status) === 400 &&
+    !providerRule &&
+    isString(model) &&
+    model &&
+    resolveFallbackModelScope(provider, model) === null
+  ) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
+  }
   return { ...generic, scope: null };
 }
 
@@ -303,8 +490,9 @@ function checkFallbackErrorByRules(status, lowerError, backoffLevel, provider = 
   // their ERROR_RULES status match, so they never reach this fallthrough.
   // `requestScoped` tells combo rotation this member rejected THIS request, so the
   // next member may still serve it (upstream 9router 5cdcddf5, #5057).
-  // Upstream HTTP 408 and 425 use the transient cooldown below.
-  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425) {
+  // Upstream HTTP 408 and 425, and the account-scoped 412/423/428 (#4378), use the
+  // transient cooldown below so the next connection of the provider is tried.
+  if (status >= 400 && status < 500 && Number(status) !== 408 && Number(status) !== 425 && !ACCOUNT_SCOPED_4XX_STATUSES.has(Number(status))) {
     return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 
@@ -414,6 +602,40 @@ export function durableCredentialReauthFields(conn, usedCredential, status, erro
   };
 }
 
+/** Account-wide quota lockouts are independent of manual account enablement. */
+export function isQuotaLockoutActive(connection, now = Date.now()) {
+  const lock = connection?.quotaLockout;
+  if (!lock?.status) return false;
+  const deadline = Date.parse(lock.reactivateAt);
+  return lock.reactivateAt == null || !Number.isFinite(deadline) || deadline > now;
+}
+
+/** Inspect only an upstream error message, never arbitrary response/request fields. */
+export function detectQuotaExhaustion(error, now = Date.now()) {
+  let value = error;
+  if (isString(value) && /^[\s]*[\[{]/.test(value)) {
+    try { value = JSON.parse(value); } catch { return { exhausted: false, resetAtMs: null }; }
+  }
+  const envelope = isObject(value) ? (value.error ?? value) : null;
+  const message = isString(envelope) ? envelope : isString(envelope?.message) ? envelope.message : isString(value) ? value : "";
+  if (!/^(?:your |the |provider )?(?:free usage limit reached|daily free quota exceeded|(?:free )?quota (?:has been |is )?(?:exhausted|exceeded)|quota limit exceeded|usage limit (?:reached|exceeded)|quota resets? at)\b/i.test(message)) return { exhausted: false, resetAtMs: null };
+  const candidates = [];
+  const collectResets = (node, depth = 0) => {
+    if (!node || depth > 6 || (!isObject(node) && !Array.isArray(node))) return;
+    for (const [key, child] of Object.entries(node)) {
+      if (["resetsAtMs", "resetAt", "reset_at", "resets_at", "resetsAt", "resetTime", "reset_time"].includes(key)) candidates.push(child);
+      else if (!["request", "messages", "prompt"].includes(key)) collectResets(child, depth + 1);
+    }
+  };
+  collectResets(envelope);
+  if (isObject(value) && value.error) {
+    for (const key of ["resetsAtMs", "resetAt", "reset_at", "resets_at", "resetsAt"]) candidates.push(value[key]);
+  }
+  candidates.push(message.match(/\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)/)?.[0]);
+  const resetAtMs = candidates.map((v) => isNumber(v) ? v : Date.parse(v)).find((v) => Number.isFinite(v) && v > now) ?? null;
+  return { exhausted: true, resetAtMs };
+}
+
 /**
  * Check if account is currently unavailable (cooldown not expired)
  */
@@ -429,6 +651,24 @@ export function getUnavailableUntil(cooldownMs) {
   return new Date(Date.now() + cooldownMs).toISOString();
 }
 
+const TERMINAL_ACCOUNT_STATES = new Set(["banned", "deactivated", "expired", "credits_exhausted"]);
+
+/**
+ * True for an account whose state is terminal (deactivated, banned, expired
+ * or out of credits) or that was switched off. Such accounts are never
+ * temporary cooldown candidates: no timer on them predicts recovery.
+ * @param {object|null} account
+ * @returns {boolean}
+ */
+export function isTerminalAccount(account) {
+  if (!account) return false;
+  if (account.isActive === false) return true;
+  for (const field of [account.testStatus, account.status]) {
+    if (isString(field) && TERMINAL_ACCOUNT_STATES.has(field.trim().toLowerCase())) return true;
+  }
+  return false;
+}
+
 /**
  * Get the earliest rateLimitedUntil from a list of accounts
  * @param {Array} accounts - Array of account objects with rateLimitedUntil
@@ -438,6 +678,9 @@ export function getEarliestRateLimitedUntil(accounts) {
   let earliest = null;
   const now = Date.now();
   for (const acc of accounts) {
+    // Deactivated accounts do not recover when a timer expires, so their
+    // deadline must never become a sibling's retry hint.
+    if (isTerminalAccount(acc)) continue;
     if (!acc.rateLimitedUntil) continue;
     const until = new Date(acc.rateLimitedUntil).getTime();
     if (until <= now) continue;
@@ -571,12 +814,14 @@ export function buildClearModelLocksUpdate(connection) {
 }
 
 /**
- * Filter available accounts (not in cooldown)
+ * Filter terminal account statuses, quota lockouts and active cooldowns.
  */
 export function filterAvailableAccounts(accounts, excludeId = null) {
   const now = Date.now();
   return accounts.filter((acc) => {
     if (excludeId && acc.id === excludeId) return false;
+    if (isString(acc.status) && TERMINAL_ACCOUNT_STATES.has(acc.status.trim().toLowerCase())) return false;
+    if (isQuotaLockoutActive(acc, now)) return false;
     if (acc.rateLimitedUntil) {
       const until = new Date(acc.rateLimitedUntil).getTime();
       if (until > now) return false;
@@ -610,22 +855,18 @@ export function resetAccountState(account) {
  * @param {string} provider - Optional provider ID for provider-specific rules
  * @param {Headers|object|null} headers - Optional upstream response headers
  * @param {unknown} structuredError - Optional parsed upstream error body
+ * @param {string|null} model - Model attempted by the request
  * @returns {object} Updated account with error state. `providerErrorScope`
  *   is set when a provider rule returned a `scope` (e.g. AgentRouter quota
  *   `connection`) so the lock layer can pick account-wide persistence.
  */
-export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null) {
+export function applyErrorState(account, status, errorText, provider = null, headers = null, structuredError = null, model = null) {
   if (!account) return account;
 
   const backoffLevel = account.backoffLevel || 0;
-  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError(
-    status,
-    errorText,
-    backoffLevel,
-    provider,
-    headers,
-    structuredError
-  );
+  const { cooldownMs, newBackoffLevel, scope } = checkFallbackError({
+    status, errorText, backoffLevel, provider, headers, structuredError, model,
+  });
 
   return {
     ...account,

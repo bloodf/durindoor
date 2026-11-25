@@ -49,3 +49,13 @@ refresh protocol. No direct Suno upstream equivalence, live session validity,
 media output, full CI gate or independent review is claimed. No implementation
 port was justified by the examined upstream contracts; the existing flow is
 preserved.
+
+## Saved-cookie lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-suno-udio-zenmux.test.js`: real database, provider routes, `GET /v1/models/music`, the `/v1/music/generations` submit and poll routes with durable media jobs and a real caller API key, account fallback and the usage route. Credentials are synthetic and fetch is closed unless a test opens it with a canned answer. The pins above are the 2026-11-20 snapshot and were reused, not re-fetched. No first-party Suno page, account, browser or media request was used, so no first-party contract is claimed.
+
+Verified: create without exposing the cookie; discovery under the music kind and absence from the chat model list; submit to the pinned endpoint with the selected cookie; asynchronous `submitted`, `streaming` (still pending) and `complete` states; poll bound to the submitting connection and caller (404 for another caller or connection, no upstream call); terminal replay without an upstream call; usage settled once with clip duration; 401 on submit falls back to a sibling and cools the expired connection; 401 on poll is returned and the job stays bound; re-paste replaces the cookie, clears the cooldown and a later poll uses it.
+
+Gap found and fixed (DurinDoor-original): Validate and Test Connection fell through to the generic registry probe, which sent a GET and then a POST to the music submit endpoint with the saved cookie, starting a generation on the account. `suno` and `udio` are now in `src/lib/providers/conversationProbe.js`, so both checks skip with no outbound request. The usage route answered "Usage not available"; it now reports DurinDoor's 30-day history for the saved session.
+
+Known limits, unchanged: no expiry time or refresh flow is established, a 401 on poll does not cool the connection (only submit does), there is no job timeout, and no attestation is emulated.

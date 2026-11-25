@@ -1,4 +1,7 @@
+import { FORMATS, detectFormatByEndpoint } from "../translator/formats.js";
+import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
+  CLAUDE_ERROR_TYPES,
   ERROR_TYPES,
   DEFAULT_ERROR_MESSAGES,
   MAX_RATE_LIMIT_COOLDOWN_MS } from
@@ -79,19 +82,8 @@ export function errorResponse(statusCode, message, overrides = null, retryAfterS
  * @returns {Response}
  */
 export function authErrorResponse(endpoint, message) {
-  if (endpoint?.includes("/v1/messages")) {
-    return new Response(JSON.stringify({
-      type: "error",
-      error: { type: "authentication_error", message }
-    }), {
-      status: 401,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
-  }
-  return errorResponse(401, message);
+  const format = detectFormatByEndpoint(endpoint || "", null) || FORMATS.OPENAI;
+  return createErrorResult(401, message, undefined, undefined, null, null, 401, format).response;
 }
 
 /**
@@ -217,6 +209,13 @@ function googleErrorInfoReset(root, now, maxDelayMs) {
     const metadata = detail.metadata;
     const reset = absoluteFromIso(metadata?.quotaResetTimeStamp, now, maxDelayMs) ||
       googleQuotaDelayReset(metadata?.quotaResetDelay, now, maxDelayMs);
+    if (reset) return reset;
+  }
+  // google.rpc.RetryInfo.retryDelay ("30s") is the weaker hint: only used when no
+  // ErrorInfo reset exists, so a precise quota window always wins (9router #1716).
+  for (const detail of details.slice(0, 50)) {
+    if (!isString(detail?.["@type"]) || !detail["@type"].includes("RetryInfo")) continue;
+    const reset = googleQuotaDelayReset(detail.retryDelay, now, maxDelayMs);
     if (reset) return reset;
   }
   return null;
@@ -528,8 +527,31 @@ export async function parseUpstreamError(response, executor = null, options = {}
   // Computed from the raw body before the 429 message gets redacted below, so
   // callers can gate provider-specific behavior (e.g. Antigravity's strike
   // breaker) on the real reason code instead of the client-facing message.
-  const antigravityQuotaSignal = effectiveStatus === 429 && hasAntigravityQuotaSignal(bodyText);
+  const antigravityQuotaSignal = (effectiveStatus === 429 || effectiveStatus === 409) && hasAntigravityQuotaSignal(bodyText);
   if (executorParsed) {
+    const claudeOAuth = executor.provider === "claude" && !options.credentials?.apiKey && options.credentials?.accessToken;
+    const sharedQuota = claudeOAuth && effectiveStatus === 429 && claudeUnifiedQuotaRejected(response.headers);
+    if (sharedQuota) {
+      rateLimitEvidence.state = "exhausted";
+      rateLimitEvidence.scope = "connection";
+      const quotaResetAt = claudeUnifiedResetAt(response.headers, options.now ?? Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
+      if (quotaResetAt && quotaResetAt > (rateLimitEvidence.resetAtMs ?? 0)) {
+        rateLimitEvidence.resetAtMs = quotaResetAt;
+        rateLimitEvidence.source = "reset_header";
+      }
+    }
+
+    let claudeErrorBody;
+    if (claudeOAuth && (options.claudeRequestScoped || effectiveStatus === 529)) {
+      try {
+        const error = JSON.parse(bodyText)?.error;
+        if (effectiveStatus !== 429 && isObject(error)) claudeErrorBody = { type: "error", error };
+        // Keep the generic 429 redaction policy for arbitrary upstream text.
+        if (effectiveStatus === 429 && isString(error?.message) && claudeFastCreditsRequired(error.message)) {
+          claudeErrorBody = { type: "error", error: { type: "rate_limit_error", message: "Usage credits are required for fast mode" } };
+        }
+      } catch { /* Plain upstream error text uses the standard fallback. */ }
+    }
     const parsedMessage = executorParsed.message || DEFAULT_ERROR_MESSAGES[effectiveStatus] || `Upstream error: ${effectiveStatus}`;
     // A 429 evidence object is the bounded authority, including an intentional
     // null reset. Falling back on null would resurrect a rejected raw executor
@@ -544,9 +566,10 @@ export async function parseUpstreamError(response, executor = null, options = {}
       // of band for fallback state.
       message: effectiveStatus === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(parsedMessage),
       resetsAtMs: normalizedResetAtMs,
-      errorBody: effectiveStatus === 429 ? undefined : executorParsed.errorBody,
+      errorBody: claudeErrorBody ?? (effectiveStatus === 429 ? undefined : executorParsed.errorBody),
       rateLimitEvidence,
-      antigravityQuotaSignal
+      antigravityQuotaSignal,
+      noQuotaMetadata: executorParsed.noQuotaMetadata === true && !rateLimitEvidence?.resetAtMs && rateLimitEvidence?.state !== "exhausted" && !executorParsed.resetsAtMs && !antigravityQuotaSignal
     };
   }
 
@@ -657,10 +680,11 @@ export function getClientStatusFromError(status, errorText = null) {
  * @param {object} [errorBody] - Structured upstream error response
  * @param {object} [rateLimitEvidence] - Normalized quota evidence
  * @param {object} [credentialSource] - Selected credentials whose values must never be echoed
- * @param {number} [clientStatus] - Optional client-facing status; does not discard structured body
+ * @param {number} [clientStatus] - Optional client-facing status
+ * @param {string} [clientFormat] - Client format for the sanitized error envelope
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null, clientStatus = statusCode) {
+export function createErrorResult(statusCode, message, resetsAtMs, errorBody, rateLimitEvidence = null, credentialSource = null, clientStatus = statusCode, clientFormat = FORMATS.OPENAI) {
   // Preserve provider error type/code/details while rebuilding every nested
   // value. Both sensitive field names and the selected connection's opaque
   // credential values are redacted without mutating the caller-owned object.
@@ -674,23 +698,32 @@ export function createErrorResult(statusCode, message, resetsAtMs, errorBody, ra
   const retryAfterSec = Number.isFinite(resetsAtMs) ?
   Math.max(Math.ceil((resetsAtMs - Date.now()) / 1000), 1) :
   null;
+  const details = isObject(safeBody?.error) ? safeBody.error : safeBody;
+  const defaults = buildErrorBody(clientStatus, safeMessage).error;
+  const rendered = {
+    message: isString(details?.message) ? details.message : safeMessage,
+    type: isString(details?.type) ? details.type : defaults.type,
+    code: isString(details?.code) ? details.code : defaults.code
+  };
+  const body = clientFormat === FORMATS.CLAUDE ? {
+    type: "error",
+    error: {
+      type: clientStatus === 401 ? CLAUDE_ERROR_TYPES[clientStatus] :
+        (isString(details?.type) ? details.type : CLAUDE_ERROR_TYPES[clientStatus] ?? rendered.type),
+      message: rendered.message
+    }
+  } : { ...(isObject(safeBody?.error) ? safeBody : null), error: { ...(isObject(safeBody?.error) ? details : null), ...rendered } };
   return {
-    success: false,
-    status: statusCode,
-    error: safeMessage,
-    resetsAtMs,
+    success: false, status: statusCode, error: safeMessage, resetsAtMs,
     ...(rateLimitEvidence ? { rateLimitEvidence } : null),
     ...(safeBody ? { errorBody: safeBody } : null),
-    response: safeBody ?
-    new Response(JSON.stringify(safeBody), {
+    response: new Response(JSON.stringify(body), {
       status: clientStatus,
       headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json", "Access-Control-Allow-Origin": "*",
         ...(retryAfterSec !== null ? { "Retry-After": String(retryAfterSec) } : null)
       }
-    }) :
-    errorResponse(clientStatus, safeMessage, null, retryAfterSec)
+    })
   };
 }
 

@@ -309,6 +309,10 @@ export const ANTIGRAVITY_QUOTA_MODELS = [
 'gemini-4-argon-high',
 'gemini-4-argon-medium',
 'gemini-4-argon-low',
+'gemini-4-neon-xhigh',
+'gemini-4-neon-high',
+'gemini-4-neon-medium',
+'gemini-4-neon-low',
 'gemini-3.8-flash-high',
 'gemini-3.8-flash-medium',
 'gemini-3.8-flash-low',
@@ -324,10 +328,12 @@ export const ANTIGRAVITY_QUOTA_MODELS = [
 'gemini-3.1-pro-high',
 'gemini-pro-agent',
 'gemini-3.1-pro-low',
+'claude-sonnet-5-5-max',
 'claude-sonnet-5-5-high',
 'claude-sonnet-5-5-medium',
 'claude-sonnet-5-5-low',
 'claude-sonnet-5-5',
+'claude-opus-5-5-max',
 'claude-opus-5-5-high',
 'claude-opus-5-5-medium',
 'claude-opus-5-5-low',
@@ -428,6 +434,8 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
 
     const data = await response.json();
     const quotas = {};
+    // Reconciliation needs the original percentage, before the display clamp.
+    const rawPercentages = new Map();
 
     // `currentTier` is the display label only; upstream's `paidTier.id` is the
     // entitlement signal. Missing paidTier must remain free/unknown rather than
@@ -456,7 +464,12 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         }
 
         const remainingFraction = info.quotaInfo.remainingFraction || 0;
-        const remainingPercentage = remainingFraction * 100;
+        rawPercentages.set(modelKey, remainingFraction * 100);
+        // Keep provider-derived counts intact; only bound the percentage consumed
+        // by the legacy display surface. The grouped parser has its own clamp.
+        const displayFraction = Number.isFinite(remainingFraction) ?
+        Math.max(0, Math.min(1, remainingFraction)) : remainingFraction;
+        const remainingPercentage = displayFraction * 100;
 
         // Convert percentage to used/total for UI compatibility
         const total = 1000; // Normalized base
@@ -496,7 +509,7 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       ];
       for (const [session, models] of families) {
         if (!session || !models.length || !(session.remainingPercentage > 0)) continue;
-        if (!models.every(([, quota]) => (quota.remainingPercentage ?? 0) === 0)) continue;
+        if (!models.every(([id]) => (rawPercentages.get(id) ?? 0) === 0)) continue;
         const reset = models.reduce((latest, [, quota]) =>
           !latest || (quota.resetAt && Date.parse(quota.resetAt) > Date.parse(latest)) ? quota.resetAt : latest, null);
         session.used = session.total;

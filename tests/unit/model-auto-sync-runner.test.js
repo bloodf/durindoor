@@ -213,7 +213,7 @@ describe("syncProviderModels per provider", () => {
       { slug: "gpt-future", minimal_client_version: "999.0.0" }
     ] }) });
     await syncProviderModels("codex", { now: NOW });
-    expect(db.catalogs.codex.models.map((m) => m.id)).toEqual(["gpt-6-sol"]);
+    expect(db.catalogs["codex#codex-1"].models.map((m) => m.id)).toEqual(["gpt-6-sol"]);
   });
 });
 
@@ -336,5 +336,39 @@ describe("runModelAutoSync", () => {
     respond({});
     expect(await modelAutoSyncTick()).toEqual([]);
     expect(routedFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Codex connection refresh", () => {
+  it("bounds a stalled refresh and leaves aliases untouched", async () => {
+    connect("codex", { accessToken: "token", apiKey: undefined });
+    db.aliases = { favorite: "cx/old-model" };
+    let signal;
+    const result = await syncProviderModels("codex", { now: NOW, timeoutMs: 10, fetchModels: (_connection, options) => {
+      signal = options.signal;
+      return new Promise(() => {});
+    } });
+    expect(result.status).toBe("failed");
+    expect(signal.aborted).toBe(true);
+    expect(db.aliases).toEqual({ favorite: "cx/old-model" });
+  });
+
+  it("replaces successful catalogs and retains each account's last good catalog on failure", async () => {
+    connect("codex", { id: "a", accessToken: "token-a", apiKey: undefined, providerSpecificData: { baseUrl: "https://untrusted.example" } });
+    connect("codex", { id: "b", accessToken: "token-b", apiKey: undefined });
+    routedFetch.mockImplementation(async (url, options) => {
+      expect(String(url)).toMatch(/^https:\/\/chatgpt\.com\/backend-api\/codex\/models\?/);
+      expect(options.redirect).toBe("error");
+      return json({ models: [{ slug: options.headers.Authorization === "Bearer token-a" ? "account-a" : "account-b" }] });
+    });
+    await syncProviderModels("codex", { now: NOW });
+    expect(db.catalogs["codex#a"].models.map((m) => m.id)).toEqual(["account-a"]);
+    expect(db.catalogs["codex#b"].models.map((m) => m.id)).toEqual(["account-b"]);
+    routedFetch.mockImplementation(async (_url, options) => options.headers.Authorization === "Bearer token-a" ?
+      json({ models: [{ slug: "replacement" }] }) : json({}, 503));
+    await syncProviderModels("codex", { now: NOW + 1000 });
+    expect(db.catalogs["codex#a"].models.map((m) => m.id)).toEqual(["replacement"]);
+    expect(db.catalogs["codex#b"].models.map((m) => m.id)).toEqual(["account-b"]);
+    expect(db.catalogs.codex.models).toEqual([]);
   });
 });

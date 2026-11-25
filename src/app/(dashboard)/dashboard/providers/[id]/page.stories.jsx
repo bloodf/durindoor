@@ -9,8 +9,8 @@ import { createRoutingFixture } from "@/shared/ui/v5/preservation/routing-fixtur
 
 // Kept aligned with PROVIDER_MODELS_CONFIG by the focused redesign test.
 // This public ID list avoids importing server model-fetch handlers in the browser.
-const REVIEW_MODEL_LIST_PROVIDERS = new Set(["opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic"]);
-const REVIEW_NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor"]);
+const REVIEW_MODEL_LIST_PROVIDERS = new Set(["chatplayground", "cursor-api", "devin-desktop", "workbuddy", "empiriolabs", "opencode-server", "replicate", "commandcode", "claude", "gemini", "gemini-interactions", "qwen", "kimi-web", "codex", "antigravity", "ghe-copilot", "github", "openai", "openference", "openrouter", "anthropic", "alicode", "alicode-intl", "volcengine-ark", "byteplus", "deepseek", "groq", "xai", "mistral", "muse-code", "perplexity", "together", "fireworks", "cerebras", "cohere", "nebius", "novita", "llmtr", "siliconflow", "hyperbolic", "nan", "paraloncloud", "bai", "ollama", "nanobanana", "chutes", "nvidia", "assemblyai", "vercel-ai-gateway", "hcnsec", "dothoosh", "kimchi", "cursor", "kiro", "qoder", "qoder-cn", "gemini-cli", "agy", "ollama-local", "mlx", "typesafe", "venice", "orcarouter", "xiaomi-mimo", "xiaomi-mimo-token-plan", "xiaomi-tokenplan", "devin-cli-agentic", "gisoo"]);
+const REVIEW_NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor", "demonroute"]);
 
 /** Fresh isolated data when navigating from one provider's story to another. */
 function providerFixture(providerId) {
@@ -111,6 +111,22 @@ export default openaiMeta;
 /** Live detail view. Parent scenario reaches ConnectionRow, ModelRow, and shared detail modals through their real triggers. */
 export const OpenAIDetail = {};
 
+/** ZCode provider detail remains configured without a connection until the user opts in. */
+export const ZCodeProvider = {
+  parameters: {
+    storyFixture: {
+      scenario: "default",
+      pathname: "/dashboard/providers/zcode",
+      params: { id: "zcode" },
+      routes: {
+        ...baseRoutes,
+        "GET /api/providers": { body: { connections: [] } },
+        "GET /api/models/disabled": { body: { ids: [] } },
+      },
+    },
+  },
+};
+
 /** DS Retry-delay and Thinking-mode listboxes use real settings handlers; the request shape matches the page's settings fetch. */
 export const SettingsControls = {
   play: async ({ canvasElement }) => {
@@ -167,7 +183,7 @@ export const CompatibleBranch = {
     const body = within(document.body);
     await userEvent.click(await canvas.findByRole("button", { name: "Apply Proxy" }));
     const dialog = await waitFor(() => {
-      const node = body.getByRole("dialog", { name: /apply proxy \(1 connections\)/i });
+      const node = body.getByRole("dialog", { name: /apply proxy \((?:all )?1 connections\)/i });
       expect(node).toBeVisible();
       return node;
     });
@@ -187,7 +203,7 @@ export const CompatibleProxyOpen = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Apply Proxy" }));
-    const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \(1 connections\)/i });
+    const dialog = await within(document.body).findByRole("dialog", { name: /apply proxy \((?:all )?1 connections\)/i });
     const form = within(dialog);
     await waitFor(() => expect(dialog).toBeVisible());
     await waitFor(() => expect(form.getByText("One-to-one (rotate)")).toBeVisible());
@@ -195,3 +211,51 @@ export const CompatibleProxyOpen = {
     await expect(form.getByRole("button", { name: /^cancel$/i })).toBeEnabled();
   },
 };
+
+export const MnnAiConnection = {
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers/mnn-ai", params: { id: "mnn-ai" }, routes: providerFixture("mnn-ai").routes } },
+};
+
+const webSessionStory = (providerId) => ({
+  parameters: { storyFixture: { scenario: "default", pathname: `/dashboard/providers/${providerId}`, params: { id: providerId }, routes: providerFixture(providerId).routes } },
+});
+
+export const ClaudeWebConnection = webSessionStory("claude-web");
+export const GeminiWebConnection = webSessionStory("gemini-web");
+export const DeepseekWebConnection = webSessionStory("deepseek-web");
+export const DoubaoWebConnection = webSessionStory("doubao-web");
+export const ZaiWebConnection = webSessionStory("zai-web");
+export const ChatgptWebCodexConnection = webSessionStory("chatgpt-web-codex");
+
+// Registration batch B (#2034): API-key, web-session and free providers.
+export const HelyxaiConnection = webSessionStory("helyxai");
+export const TabitokenConnection = webSessionStory("tabitoken");
+export const TwinmindConnection = webSessionStory("twinmind");
+export const HyperagentConnection = webSessionStory("hyperagent");
+export const MaxaiConnection = webSessionStory("maxai");
+export const LmarenaConnection = webSessionStory("lmarena");
+export const ChatplaygroundConnection = webSessionStory("chatplayground");
+export const CloudflarePlaygroundConnection = webSessionStory("cloudflare-playground");
+export const PoeConnection = webSessionStory("poe");
+export const G4fGeminiConnection = webSessionStory("g4f-gemini");
+export const G4fNvidiaConnection = webSessionStory("g4f-nvidia");
+export const G4fOllamaConnection = webSessionStory("g4f-ollama");
+export const G4fPollinationsConnection = webSessionStory("g4f-pollinations");
+
+// Registration batch C (#2034): web-session providers.
+export const PromptqlConnection = webSessionStory("promptql");
+export const NotionWebConnection = webSessionStory("notion-web");
+export const NotrackWebConnection = webSessionStory("notrack-web");
+export const TencentAistudioWebConnection = webSessionStory("tencent-aistudio-web");
+export const TinycmsWebConnection = webSessionStory("tinycms-web");
+export const BlackboxWebConnection = webSessionStory("blackbox-web");
+export const ConolWebConnection = webSessionStory("conol-web");
+
+// Registration batch D (#2034): opt-in sign-in providers. Dispatch stays off per connection
+// until providerSpecificData.enableSessionDispatch is true.
+export const CursorApiConnection = webSessionStory("cursor-api");
+export const DevinDesktopConnection = webSessionStory("devin-desktop");
+export const WorkbuddyConnection = webSessionStory("workbuddy");
+export const MinimaxCodeConnection = webSessionStory("minimax-code");
+export const ZedHostedConnection = webSessionStory("zed-hosted");
+export const FreebuffConnection = webSessionStory("freebuff");

@@ -59,7 +59,8 @@ beforeAll(async () => {
   route = await import("@/app/api/providers/[id]/models/route.js");
   db = await import("@/lib/localDb");
   catalog = await import("open-sse/services/antigravityCatalog.js");
-});
+  // The models route pulls in most of the app; a cold import exceeds the 10s default hook timeout under parallel load.
+}, 60_000);
 
 beforeEach(() => {
   providerFetch.mockReset();
@@ -94,6 +95,28 @@ async function getModels(connectionId) {
 }
 
 describe("Antigravity account-scoped catalog discovery", () => {
+  it("binds probes and persisted hints to the account user agent", async () => {
+    providerFetch.mockResolvedValue(catalogResponse({ "gemini-3-flash": {} }));
+    const connection = await addConnection({ email: "custom-ua@example.test", providerSpecificData: { user_agent: " custom-agent/1 " } });
+    expect((await getModels(connection.id)).response.status).toBe(200);
+    expect(lastProbe().headers.get("user-agent")).toBe("custom-agent/1");
+    await db.updateProviderConnection(connection.id, { providerSpecificData: { user_agent: "custom-agent/2" } });
+    providerFetch.mockResolvedValueOnce(catalogResponse({ "gemini-3-flash": {} }));
+    expect((await getModels(connection.id)).response.status).toBe(200);
+    expect(lastProbe().headers.get("user-agent")).toBe("custom-agent/2");
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish a probe after the account is disabled during the request", async () => {
+    const connection = await addConnection({ email: "disabled-during-probe@example.test" });
+    providerFetch.mockImplementationOnce(async () => {
+      await db.updateProviderConnection(connection.id, { isActive: false });
+      return catalogResponse({ "gemini-3-flash": {} });
+    });
+    expect((await getModels(connection.id)).response.status).toBe(409);
+    const current = await db.getProviderConnectionById(connection.id);
+    expect(current.providerSpecificData?.antigravity_capability_hints).toBeUndefined();
+  });
   it("sends each account's own project and bearer to the pinned provider endpoint", async () => {
     providerFetch.mockImplementation(async () => catalogResponse({
       "gemini-3-flash": { displayName: "Flash" }
@@ -114,7 +137,7 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(firstProbe.body).toEqual({ project: "project-two" });
     expect(firstProbe.headers.get("authorization")).toBe("Bearer token-two");
     // The Hub identity travels with the probe.
-    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.24.0 darwin/arm64");
+    expect(firstProbe.headers.get("user-agent")).toBe("antigravity/hub/2.33.0 darwin/arm64");
     expect(firstProbe.headers.get("x-client-name")).toBe("antigravity");
 
     // Each account reads its own catalog, never the other account's project.
@@ -168,7 +191,7 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(auth.response.status).toBe(401);
     expect(auth.body.classification).toBe("auth_error");
     expect(catalog.classifyAntigravityCatalogStatus(401)).toBe("auth_error");
-    expect(catalog.classifyAntigravityCatalogStatus(403)).toBe("auth_error");
+    expect(catalog.classifyAntigravityCatalogStatus(403)).toBe("forbidden");
 
     providerFetch.mockImplementation(async () => new Response("upstream busy", { status: 503 }));
     const transient = await getModels(connection.id);
@@ -176,6 +199,23 @@ describe("Antigravity account-scoped catalog discovery", () => {
     expect(transient.body.classification).toBe("transient");
     expect(catalog.classifyAntigravityCatalogStatus(503)).toBe("transient");
     expect(catalog.classifyAntigravityCatalogStatus(200)).toBe("success");
+  });
+
+  it("backs off a forbidden project across token rotation while isolating other projects", async () => {
+    const { fetchConnectionModels } = await import("@/app/api/providers/[id]/models/fetchConnectionModels.js");
+    const connection = await addConnection({ email: "forbidden@example.test" });
+    providerFetch.mockResolvedValueOnce(new Response("project forbidden", { status: 403 }));
+    const first = await getModels(connection.id);
+    expect(first.response.status).toBe(403);
+    expect(first.body.classification).toBe("forbidden");
+    const rotated = await fetchConnectionModels({ ...connection, accessToken: "rotated" });
+    expect(rotated).toMatchObject({ status: 403, classification: "forbidden" });
+    expect(providerFetch).toHaveBeenCalledTimes(1);
+    providerFetch.mockResolvedValueOnce(catalogResponse({ other: {} }));
+    await db.updateProviderConnection(connection.id, { projectId: "another-project" });
+    const current = await db.getProviderConnectionById(connection.id);
+    Object.assign(connection, current);
+    expect((await fetchConnectionModels({ ...connection, projectId: "another-project" })).models[0].id).toBe("other");
   });
 
   it("reads a malformed catalog as a transient failure instead of an empty catalog", async () => {
@@ -214,8 +254,20 @@ describe("Antigravity account-scoped catalog discovery", () => {
     const fresh = await getModels(connection.id);
     expect(fresh.body.models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
 
-    // A later transient failure must not answer with an empty catalog that
-    // would replace the catalog the dashboard already knows.
+    // After a successful probe the account's capability hints are persisted.
+    // A later GET reuses them instead of replacing a known catalog with a
+    // transient upstream failure.
+    providerFetch.mockImplementation(async () => new Response("upstream busy", { status: 503 }));
+    const reused = await getModels(connection.id);
+    expect(reused.response.status).toBe(200);
+    expect(reused.body.source).toBe("persisted_capability_hints");
+    expect(reused.body.models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
+
+    // Without reusable hints, a later transient failure must not answer with
+    // an empty catalog that would replace the catalog the dashboard already knows.
+    await db.updateProviderConnection(connection.id, {
+      providerSpecificData: { antigravity_capability_hints: null }
+    });
     providerFetch.mockImplementation(async () => new Response("upstream busy", { status: 503 }));
     const failed = await getModels(connection.id);
     expect(failed.response.status).toBe(503);
@@ -241,5 +293,10 @@ describe("Antigravity account-scoped catalog discovery", () => {
     const stored = await getSyncedModelCatalog("antigravity");
     expect(stored.models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
     expect(stored.error).toContain("503");
+    await syncProviderModels("antigravity", {
+      now: Date.now(),
+      fetchModels: async () => ({ error: "project forbidden", status: 403, classification: "forbidden" })
+    });
+    expect((await getSyncedModelCatalog("antigravity")).models.map((model) => model.id)).toEqual(["gemini-3-flash"]);
   });
 });

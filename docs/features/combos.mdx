@@ -64,7 +64,7 @@ Round-robin uses a smooth weighted cycle when member weights differ. A zero-weig
 
 Capacity auto-switch: with capability-aware routing on, a request that carries images, PDF, or audio goes first to a member that supports that input, whatever the strategy. See [Capability ceiling](#capability-ceiling).
 
-Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means use the fetch connect timeout (60s). Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default (0 = off).
+Per-member timeout is `timeoutMs` on the combo strategy. The dashboard field is seconds; 0 means no combo timer. Env `COMBO_MODEL_TIMEOUT_MS` is the process-wide default when a combo omits `timeoutMs` (0 = no combo timer).
 
 Hide-paid-models, when on, drops paid members from dispatch without rewriting the stored `models` array.
 
@@ -106,6 +106,11 @@ disconnects. A timeout, network error, HTTP error, or unreadable body opens a 30
 circuit breaker; after the cooldown one request probes the service again. It fails open: no key, a timeout, an HTTP error, an unparseable body, an
 unknown tier, or a confidence below 0.5 all leave the local heuristic level in
 place, and the combo dispatches exactly as it would without the classifier.
+
+When every combo target is locally blocked by a connection recovery probe, the
+combo returns a generic retryable 503 diagnostic. It does not expose account
+identifiers, model text, provider response bodies, or fabricated quota reset
+times. Other target failures keep their existing fallback classification.
 
 ### Local Laya instead of Jev
 
@@ -160,13 +165,13 @@ Unknown keys and non-positive integers return HTTP 400. Send `null` to clear a s
 
 With capability-aware routing on, a request that carries images, audio, video, or PDF on the current user turn prefers a member that advertises that modality. Unsupported media fields are stripped before translation.
 
-Media returned by a tool on the current turn counts too: images, or PDFs (declared `application/pdf`, a `.pdf` name, or PDF bytes), in Chat `tool` messages, Claude `tool_result` blocks, Responses `function_call_output` and `custom_tool_call_output` items, and Gemini `functionResponse.parts`. Text and CSV files do not require PDF capability. That nested media cannot be stripped, so only members that advertise the modality are tried. Each attempt still applies the API key, connection, and combo allow-list checks, and a denied member never falls back to one that cannot read the output. When no member advertises the modality, the combo returns HTTP 400 with `error.code: "capability_unavailable"`. A model with unknown capabilities counts as unsupported; set the modality in its capability editor under **Dashboard → Providers** to opt in.
+Media returned by a tool on the current turn counts too: images, or PDFs (declared `application/pdf`, a `.pdf` name, or PDF bytes), in Chat `tool` messages, Claude `tool_result` blocks, Responses `function_call_output` and `custom_tool_call_output` items, role-based tool messages in Responses input, and Gemini `functionResponse.parts`. Text and CSV files do not require PDF capability. That nested media cannot be stripped, so only members that advertise the modality are tried. Each attempt still applies the API key, connection, and combo allow-list checks, and a denied member never falls back to one that cannot read the output. When no member advertises the modality, the combo returns HTTP 400 with `error.code: "capability_unavailable"`. A model with unknown capabilities counts as unsupported; set the modality in its capability editor under **Dashboard → Providers** to opt in.
 
 Fusion applies the same capability admission to every panel member and the judge, including top-level media. An explicit judge that cannot consume the input returns HTTP 400 `capability_unavailable` before any panel call; it is never silently replaced. For supported OpenAI Chat tool images and PDF file blocks, fusion keeps the text results paired with their call IDs and moves the attachments into a following user message, after all consecutive tool results. Attachment order and bytes remain intact. Nested panel and explicit-judge combos carry the full original input requirements through every fallback level, including user images, PDFs, video, audio, and lifted tool media. Only concrete models that support every required input can run; denial or failure of a capable model never permits a text-only fallback. If no capable authorized model remains, that participant fails instead of answering with stripped attachments.
 
-Media preservation has unresolved format limits. Claude-to-OpenAI replaces base64 images inside tool results with a text placeholder. CSV-only tool histories still use legacy text flattening for fusion panels, which can replace structured file content with `[object Object]` and discard the call/result IDs; the judge receives the original CSV history. These paths do not preserve tool output end to end. Unsupported Claude tool-document conversions continue to return an explicit error.
+Media preservation has unresolved format limits. Claude-to-OpenAI forwards valid base64 PNG, JPEG, GIF, and WebP images inside tool results as images in a following user message, up to 1 MiB of encoded image data per request; invalid images, other media types, and images past that budget become a text placeholder naming the media type. CSV-only tool histories still use legacy text flattening for fusion panels, which can replace structured file content with `[object Object]` and discard the call/result IDs; the judge receives the original CSV history. These paths do not preserve tool output end to end. Unsupported Claude tool-document conversions continue to return an explicit error.
 
-If all capable panel members are rejected by local API-key/account/combo policy, fusion returns a generic HTTP 403; upstream HTTP 403 failures alone do not imply a local policy denial. This classification follows fusion through nested combo attempts. Ordinary fallback combos retain their existing unavailable-account response. The internal `autoSwitch: false` parameter opts out of capability admission; there is no separate persisted chat dashboard toggle.
+If all capable panel members are rejected by local API-key/account/combo policy, fusion returns a generic HTTP 403; upstream HTTP 403 failures alone do not imply a local policy denial. This classification follows fusion through nested combo attempts. When local policy rejects every candidate for an image returned by a tool, both fallback and fusion return HTTP 403 with the generic message `Access denied` and `error.code: "capability_unavailable"`. The response omits member and account details. Provider failures and temporarily unavailable accounts keep their normal error handling. The internal `autoSwitch: false` parameter opts out of capability admission; there is no separate persisted chat dashboard toggle.
 
 On a single-model request with Vision Bridge enabled, a tool-output image that the model cannot read goes to the Vision Bridge target. If no valid target is configured, or the API key may not use it, the request returns the same HTTP 400 `capability_unavailable` error instead of reaching the text-only model.
 

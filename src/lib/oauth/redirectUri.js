@@ -45,7 +45,8 @@ export function defaultOAuthRedirectUri(provider) {
  * @param {string} provider provider id
  * @returns {string} absolute redirect_uri
  */
-export function buildOAuthRedirectUri(location, provider) {
+export function buildOAuthRedirectUri(location, provider, hosted = false) {
+  if (hosted && provider !== "claude") return `${publicBaseUrl(location)}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/callback`;
   // Fixed-port loopback flows: the CLI these providers pair with listens on a
   // known port, so the redirect is not ours to choose.
   if (provider === "codex") return CODEX_LOOPBACK_REDIRECT_URI;
@@ -55,8 +56,8 @@ export function buildOAuthRedirectUri(location, provider) {
   if (isLoopbackHostname(location?.hostname)) {
     // Other loopback providers use the app's local callback listener.
     const appPort = location.port || (location?.protocol === "https:" ? "443" : "80");
-    return `http://localhost:${appPort}/callback`;
+    return `http://localhost:${appPort}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/callback`;
   }
 
-  return `${publicBaseUrl(location)}/callback`;
+  return `${publicBaseUrl(location)}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/callback`;
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
@@ -125,13 +125,27 @@ function responseCallId({ queueByName }, response) {
   return queue.shift() ?? generatedCallId(response.name);
 }
 
+/**
+ * OpenAI role of a Gemini content. Older clients send `function` or `tool` for tool results
+ * sent as the user's turn, and single-turn requests omit the role: those map to user, with an
+ * omitted role inferred from the parts (functionCall or thought parts mean the model spoke).
+ * Any other explicit role (`model`) stays assistant.
+ */
+function geminiTurnRole(content) {
+  const role = isString(content?.role) ? content.role.trim().toLowerCase() : "";
+  if (role === GEMINI_ROLE.USER || role === "function" || role === "tool") return ROLE.USER;
+  if (role) return ROLE.ASSISTANT;
+  const parts = Array.isArray(content?.parts) ? content.parts : [];
+  return parts.some((part) => part && (part.functionCall || part.thought === true)) ? ROLE.ASSISTANT : ROLE.USER;
+}
+
 // Convert Gemini content to OpenAI message
 function convertGeminiContent(content, ids = { serialByName: new Map(), queueByName: new Map() }) {
   // A reply pairs with the calls of the turn just before it: each model turn with calls starts a fresh pairing queue (the serial stays global so ids are unique across the history).
   if (content?.parts?.some?.((part) => part?.functionCall)) {
     ids.queueByName.clear();
   }
-  const role = content.role === GEMINI_ROLE.USER ? ROLE.USER : ROLE.ASSISTANT;
+  const role = geminiTurnRole(content);
 
   if (!content.parts || !Array.isArray(content.parts)) {
     return null;
@@ -161,6 +175,16 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
       });
     }
 
+    if (isString(part.fileData?.fileUri) && part.fileData.fileUri) {
+      // Translate Gemini fileData URI into an OpenAI image_url part (#2185).
+      parts.push({
+        type: OPENAI_BLOCK.IMAGE_URL,
+        image_url: {
+          url: part.fileData.fileUri
+        }
+      });
+    }
+
     if (part.functionCall) {
       // Gemini lacks a native call id; derive a deterministic one from the name so the
       // matching functionResponse maps to the same tool_call_id (providers require pairing).
@@ -175,10 +199,16 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
     }
 
     if (part.functionResponse) {
+      // Return string response.result directly (avoid double-encoding), JSON-stringify
+      // defined non-string response.result (including 0/false/null), else JSON of response (#2185).
+      const resp = part.functionResponse.response;
+      const toolContent = resp && resp.result !== undefined
+        ? (isString(resp.result) ? resp.result : JSON.stringify(resp.result))
+        : JSON.stringify(resp ?? {});
       toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: responseCallId(ids, part.functionResponse),
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        content: toolContent
       });
     }
   }
@@ -209,8 +239,6 @@ function extractGeminiText(content) {
 }
 
 // Register
-register(FORMATS.GEMINI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
-register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, geminiToOpenAIRequest, null);
 
 // Wrapper for geminiToOpenAIRequest that pre-splits contents containing
 // functionResponse parts co-located with other content (functionCall, text, etc.).

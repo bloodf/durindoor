@@ -56,9 +56,15 @@ kind,
 addBlock)
 {
   pattern.lastIndex = 0;
-  return text.replace(pattern, (match) => {
+  const placeholders = [];
+  const placeholderPattern = /\u0000OMNI_CAVEMAN_[A-Za-z0-9]+_\d+\u0000/g;
+  for (const match of text.matchAll(placeholderPattern)) {
+    placeholders.push([match.index, match.index + match[0].length]);
+  }
+  return text.replace(pattern, (match, ...args) => {
     if (!match) return match;
-    if (match.includes(SENTINEL_PREFIX)) return match;
+    const offset = args.find((arg) => Number.isInteger(arg) && arg >= 0);
+    if (match.includes(SENTINEL_PREFIX) || placeholders.some(([start, end]) => offset < end && offset + match.length > start)) return match;
     return addBlock(match, kind);
   });
 }

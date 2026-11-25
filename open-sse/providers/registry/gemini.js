@@ -36,7 +36,10 @@ export default {
   },
   models: [
     // Gemini 4 Argon (upstream 9router 29fc880e).
+    { id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen" },
     { id: "gemini-4-argon", name: "Gemini 4 Argon" },
+    { id: "gemini-4-carbon", name: "Gemini 4 Carbon", toolCalling: true, supportsVision: true },
+    { id: "gemini-4-neon", name: "Gemini 4 Neon", contextLength: 1048576, maxOutputTokens: 65536, supportsVision: true, toolCalling: true, supportsReasoning: true },
     { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", contextLength: 1048576, maxOutputTokens: 65536, supportsVision: true, toolCalling: true, supportsReasoning: true },
     { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
     { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" },
@@ -50,6 +53,7 @@ export default {
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
     { id: "gemma-4-31b-it", name: "Gemma 4 31B IT" },
     { id: "gemini-embedding-2-preview", name: "Gemini Embedding 2 Preview", kind: "embedding" },
+    { id: "gemini-embedding-2", name: "Gemini Embedding 2", kind: "embedding" },
     { id: "gemini-embedding-001", name: "Gemini Embedding 001", kind: "embedding" },
     { id: "text-embedding-005", name: "Text Embedding 005", kind: "embedding" },
     { id: "text-embedding-004", name: "Text Embedding 004 (Legacy)", kind: "embedding" },

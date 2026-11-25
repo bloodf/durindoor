@@ -88,6 +88,20 @@ export function fmtThink(intent) {
   return null;
 }
 
+/** Format the request summary shared by the gateway and console log tests. */
+export function formatRequestLine({ clientModel, routedModel, format, stream, messages, tools, thinking, account }) {
+  const parts = [
+    `POST ${clientModel} → ${routedModel}`,
+    `FMT: ${format}`,
+    stream ? "STREAM" : "JSON",
+    `${messages} MSG`,
+  ];
+  if (tools) parts.push(`${tools} TOOL`);
+  if (thinking) parts.push(`THINK:${thinking}`);
+  parts.push(`ACC:${account}`);
+  return parts.join(" · ");
+}
+
 function formatData(data) {
   if (!data) return "";
   if (isString(data)) return data;

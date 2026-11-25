@@ -270,4 +270,21 @@ describe("model test route kind routing", () => {
     expect(body.status).toBe(502);
     expect(body.error).toBe("HTTP 502: bad upstream");
   });
+
+  it("returns a sanitized connection failure for an embedding probe and preserves its normal result", async () => {
+    const failure = new TypeError("connection failed for sk-provider-secret");
+    global.fetch = vi.fn().mockRejectedValueOnce(failure);
+
+    const { pingModelByKind } = await import("../../src/app/api/models/test/ping.js");
+    const failed = await pingModelByKind("voyage/voyage-3-large", "embedding", "http://127.0.0.1:20127");
+    expect(failed).toMatchObject({ ok: false, status: 502, error: "Connection failed" });
+    expect(failed.latencyMs).toEqual(expect.any(Number));
+    expect(failed.error).not.toContain("sk-provider-secret");
+
+    global.fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      data: [{ embedding: [0.1, 0.2] }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const normal = await pingModelByKind("voyage/voyage-3-large", "embedding", "http://127.0.0.1:20127");
+    expect(normal).toMatchObject({ ok: true, status: 200, error: null });
+  });
 });

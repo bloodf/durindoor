@@ -1,0 +1,25 @@
+---
+title: Provider sign-in methods
+description: Choose an implemented connection flow and understand its credential boundaries.
+---
+
+Open **Dashboard → Providers**, choose a provider, and use the options on its card. These examples are not available for every provider. A provider connection is separate from the password or OIDC login used to access the DurinDoor dashboard.
+
+| Method | Flow | Examples and details |
+| --- | --- | --- |
+| Browser authorization | Open the provider's consent page, then return a code or callback for DurinDoor to exchange. Claude Code and Codex use PKCE; Google flows have different requirements. | [Connecting accounts](./connecting-accounts.mdx#browser-oauth), [Claude Code](./claude-code.mdx), [Codex](./codex.mdx), [Antigravity](./antigravity.mdx) |
+| Device code | Open the verification URL, enter the displayed code, and approve access while DurinDoor polls. | GitHub Copilot, Qwen, Amazon Q and others; [Kiro](./kiro.mdx) uses Builder ID or Identity Center. [Codex](./codex.mdx) also offers device login. See [device code](./connecting-accounts.mdx#device-code). |
+| Existing token import | Supply a credential issued elsewhere. Some providers can read local credentials on the DurinDoor host; availability and refresh differ. | [Cursor](./cursor.mdx) imports an IDE token and machine ID; [Codex](./codex.mdx#bulk-import) supports bulk import; [Kiro](./kiro.mdx) has its own import options. |
+| API key | Create a provider key and save it on the card. Some providers offer a key alongside another method. | [API key providers](./api-key-providers.mdx), [Kiro](./kiro.mdx), [dual-auth providers](./connecting-accounts.mdx#dual-auth-providers) |
+| Web session | Sign in to the upstream site and supply its required cookie or token. Options vary by site. | [Web cookie providers](./web-cookie.mdx), [Kimi Web](./kimi-web.mdx) |
+| Compatible or local endpoint | Configure the endpoint and any required credential; local servers may need no authentication. | [OpenAI-compatible nodes](./openai-compatible-nodes.mdx), [free and local](./free-and-local.mdx) |
+
+In-dashboard web sign-in is available for Grok Web, Perplexity Web, ChatGPT Web, HuggingChat and Muse Spark Web when the operator configures a separate login origin. Browser extension and dashboard cookie import support only ChatGPT Web, Perplexity Web, Grok Web and Muse Spark Web. Other cards may require manual paste. See [web cookie providers](./web-cookie.mdx) for exact inputs, setup and limitations.
+
+## Security and recovery
+
+Provider tokens, API keys and session cookies grant access to upstream accounts. A client allowed to route through a connection can use that account's quota; protect the dashboard and scope gateway keys appropriately. The database and its encryption master key are sensitive: protect and back up `DATA_DIR` as described in [Security](../operations/security.mdx) and [API key scoping](../operations/api-key-scoping.mdx). Never share authorization codes, tokens, cookies, HAR files or pairing secrets.
+
+Cookie import parses HAR files in the dashboard and filters approved origins and cookie names. Extension pairing is one-use, provider- and target-bound, expires after two minutes, and requires HTTPS except on loopback. A cookie is a login credential, and upstream sign-out or expiry can invalidate it. See the [extension flow](./web-cookie.mdx#import-from-a-browser-extension) for permissions and limits.
+
+Refresh depends on the provider and credential. Cursor has no supported refresh flow and needs a fresh import; an OAuth grant can also be revoked. Reconnect when necessary. A successful sign-in or validation does not establish model entitlement: send a short request using an ID from `GET /v1/models` and check **Usage**. See [connecting accounts](./connecting-accounts.mdx#token-refresh) for refresh and account fallback.

@@ -1,11 +1,20 @@
 "use client";
 
 import { DEFAULT_LOCALE, LOCALE_COOKIE, getLocaleDirection, normalizeLocale } from "./config";
-import { isBrowser, isString, isUndefined } from "../shared/utils/typeChecks.js";
+import { isBrowser, isRecord, isString, isUndefined } from "../shared/utils/typeChecks.js";
 
 let translationMap = {};
+let publishedKeyedLocale = DEFAULT_LOCALE;
+const keyedLocaleCallbacks = new Set();
 let currentLocale = DEFAULT_LOCALE;
 let reloadCallbacks = [];
+let observerHandle = null;
+let initPromise = null;
+let lifecycleVersion = 0;
+let localeVersion = 0;
+let requestVersion = 0;
+let publishedVersion = 0;
+const missingKeys = new Set();
 const textState = new WeakMap();
 
 // Read locale from cookie
@@ -30,20 +39,59 @@ export function syncDocumentLocale(locale) {
   document.documentElement.dir = getLocaleDirection(normalized);
 }
 
-// Load translation map
+function syncLocaleFromCookie() {
+  const locale = getLocaleFromCookie();
+  if (locale !== currentLocale) {
+    localeVersion += 1;
+    missingKeys.clear();
+  }
+  currentLocale = locale;
+  syncDocumentLocale(locale);
+}
+
+// Load into a local value so stale responses cannot change the active map.
 async function loadTranslations(locale) {
   if (locale === "en") {
-    translationMap = {};
-    return;
+    return {};
   }
 
   try {
     const response = await fetch(`/i18n/literals/${locale}.json`);
-    translationMap = await response.json();
-  } catch (err) {
-    console.error("Failed to load translations:", err);
-    translationMap = {};
+    if (response.ok === false) {
+      console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      return null;
+    }
+    try {
+      const translations = await response.json();
+      if (!isRecord(translations)) {
+        console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+        return null;
+      }
+      return translations;
+    } catch {
+      console.warn(`Failed to load translations for locale ${locale} (status ${response.status})`);
+      return null;
+    }
+  } catch {
+    console.warn(`Failed to load translations for locale ${locale} (status unavailable)`);
+    return null;
   }
+}
+
+// A pending refresh leaves earlier results eligible to publish within the same
+// locale and lifecycle. A published result, including a fallback, supersedes them.
+async function refreshTranslations(onPublish) {
+  syncLocaleFromCookie();
+  const lifecycle = lifecycleVersion;
+  const locale = localeVersion;
+  const request = ++requestVersion;
+  const translations = await loadTranslations(currentLocale);
+  if (lifecycle !== lifecycleVersion || locale !== localeVersion || request < publishedVersion) return;
+
+  translationMap = translations || {};
+  publishedVersion = request;
+  publishKeyedLocale(translations === null ? DEFAULT_LOCALE : currentLocale);
+  onPublish();
 }
 
 // Translate text - exported for use in components
@@ -52,12 +100,34 @@ export function translate(text) {
   const trimmed = text.trim();
   if (!trimmed) return text;
   if (currentLocale === "en") return text;
-  return translationMap[trimmed] || text;
+  const translated = translationMap[trimmed];
+  if (!translated && import.meta.env?.DEV) missingKeys.add(trimmed);
+  return translated || text;
+}
+
+/** Return the unique missing source strings encountered for the current development locale. */
+export function getMissingTranslationKeys() {
+  return [...missingKeys];
 }
 
 // Get current locale - exported for use in components
 export function getCurrentLocale() {
   return currentLocale;
+}
+
+/** Locale from the last published result, with English for a failed result. */
+export function getPublishedKeyedLocale() {
+  return publishedKeyedLocale;
+}
+
+export function subscribeToKeyedLocale(callback) {
+  keyedLocaleCallbacks.add(callback);
+  return () => keyedLocaleCallbacks.delete(callback);
+}
+
+function publishKeyedLocale(locale) {
+  publishedKeyedLocale = locale;
+  keyedLocaleCallbacks.forEach((callback) => callback());
 }
 
 // Register callback for locale changes
@@ -135,44 +205,59 @@ function processElement(element) {
 // Initialize runtime i18n
 export async function initRuntimeI18n() {
   if (!isBrowser()) return;
+  if (observerHandle) return;
+  if (initPromise) return initPromise;
 
-  currentLocale = getLocaleFromCookie();
-  syncDocumentLocale(currentLocale);
-  await loadTranslations(currentLocale);
+  const lifecycle = lifecycleVersion;
+  const promise = (async () => {
+    await refreshTranslations(() => processElement(document.body));
+    if (lifecycle !== lifecycleVersion) return;
 
-  // Process existing DOM
-  processElement(document.body);
-
-  // Watch for new nodes
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === "characterData") processTextNode(mutation.target);
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          processElement(node);
-        } else if (node.nodeType === Node.TEXT_NODE) {
-          processTextNode(node);
-        }
+    // Observation belongs to the active lifecycle even if a reload superseded this fetch.
+    observerHandle = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === "characterData") processTextNode(mutation.target);
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            processElement(node);
+          } else if (node.nodeType === Node.TEXT_NODE) {
+            processTextNode(node);
+          }
+        });
       });
     });
-  });
 
-  observer.observe(document.body, {
-    childList: true,
-    characterData: true,
-    subtree: true
-  });
+    observerHandle.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  })();
+  initPromise = promise;
+  try {
+    await promise;
+  } finally {
+    if (initPromise === promise) initPromise = null;
+  }
+}
+
+/** Disconnect runtime observation. Subscribers retain their callbacks until they unsubscribe. */
+export function teardownRuntimeI18n() {
+  lifecycleVersion += 1;
+  observerHandle?.disconnect();
+  observerHandle = null;
+  initPromise = null;
+  missingKeys.clear();
+  if (publishedKeyedLocale !== DEFAULT_LOCALE) publishKeyedLocale(DEFAULT_LOCALE);
 }
 
 // Reload translations when locale changes
 export async function reloadTranslations() {
-  currentLocale = getLocaleFromCookie();
-  syncDocumentLocale(currentLocale);
-  await loadTranslations(currentLocale);
+  await refreshTranslations(() => {
+    // Notify all registered callbacks
+    reloadCallbacks.forEach((callback) => callback());
 
-  // Notify all registered callbacks
-  reloadCallbacks.forEach((callback) => callback());
-
-  // Re-process the current source labels, retaining translations only we wrote.
-  processElement(document.body);
+    // Re-process the current source labels, retaining translations only we wrote.
+    processElement(document.body);
+  });
 }

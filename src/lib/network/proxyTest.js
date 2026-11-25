@@ -1,13 +1,11 @@
+import { createSocksDispatcher, isSocksDispatcherUrl } from "../../../open-sse/utils/socksDispatcher.js";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { sanitizeErrorMessage } from "../../../open-sse/utils/error.js";
-import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { assertOutboundUrlAllowed, assertResolvedAddressAllowed, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 
-// Fixed probe target. Previously this endpoint accepted a caller-supplied
-// `testUrl` from the request body, which turned the proxy-test route into
-// an SSRF amplifier (the user-controlled `dispatcher` was a red herring —
-// the URL itself was the weapon). The test exists to verify that a
-// configured proxy can reach the public internet; the destination does
-// not need to vary per-call.
+// Empty custom destinations retain the existing public probe target.
 export const DEFAULT_TEST_URL = "https://google.com/";
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -30,84 +28,40 @@ function parseProxyUrl(proxyUrl) {
   const normalizedInput = normalizeString(proxyUrl);
   if (!normalizedInput) return null;
 
-  // Handle protocol:// prefix
-  let urlStr = normalizedInput;
-  if (urlStr.includes("://")) {
-    urlStr = urlStr.split("://")[1];
-  }
-
-  // Handle user:pass@ip:port format
-  let username = null;
-  let password = null;
-  let hostPort = urlStr;
-
-  if (urlStr.includes("@")) {
-    const [authPart, hostPortPart] = urlStr.split("@");
-    hostPort = hostPortPart;
-
-    if (authPart.includes(":")) {
-      [username, password] = authPart.split(":");
-    } else {
-      username = authPart;
+  // URL parsing preserves the transport scheme and treats the final @ as the
+  // userinfo/host separator, so @ inside credentials cannot redirect the test.
+  if (normalizedInput.includes("://")) {
+    try {
+      const parsed = new URL(normalizedInput);
+      if (!["http:", "https:", "socks:", "socks4:", "socks4a:", "socks5:", "socks5h:"].includes(parsed.protocol)) return null;
+      if (!parsed.hostname) return null;
+      return parsed.toString();
+    } catch {
+      return null;
     }
   }
 
-  // Handle ip:port:user:pass format (no @)
-  if (hostPort.includes(":") && !hostPort.startsWith("http")) {
-    const parts = hostPort.split(":");
-    if (parts.length === 4) {
-      // ip:port:user:pass format
-      [hostPort, username, password] = parts;
-    } else if (parts.length === 3) {
-      // ip:port:user format (user without password)
-      [hostPort, username] = parts;
-    }
+  // Handle ip:port:user:pass and ip:port:user legacy formats.
+  const parts = normalizedInput.split(":");
+  if (parts.length === 4) {
+    const [host, port, username, ...passwordParts] = parts;
+    const password = passwordParts.join(":");
+    if (!host || !port) return null;
+    return `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
+  }
+  if (parts.length === 3 && /^\d+$/.test(parts[1])) {
+    const [host, port, username] = parts;
+    return `http://${encodeURIComponent(username)}@${host}:${port}`;
   }
 
-  // Parse host and port
-  let host = "";
-  let port = "";
-  let protocol = "http"; // default
-
-  if (hostPort.includes("/")) {
-    // Handle path-like formats
-    const url = new URL(`http://${hostPort}`);
-    host = url.hostname;
-    port = url.port;
-    protocol = url.protocol.replace(":", "");
-  } else if (hostPort.includes(":")) {
-    [host, port] = hostPort.split(":");
-  } else {
-    host = hostPort;
-    port = "";
-  }
-
-  // Validate host
-  if (!host || host === "") {
+  // Bare host:port and user:pass@host:port forms default to HTTP.
+  try {
+    const parsed = new URL(`http://${normalizedInput}`);
+    if (!parsed.hostname) return null;
+    return parsed.toString();
+  } catch {
     return null;
   }
-
-  // Build proxy URL
-  let parsedProxyUrl = "";
-  if (protocol) {
-    parsedProxyUrl += `${protocol}://`;
-  }
-
-  if (username) {
-    if (password) {
-      parsedProxyUrl += `${username}:${password}@`;
-    } else {
-      parsedProxyUrl += `${username}@`;
-    }
-  }
-
-  parsedProxyUrl += host;
-
-  if (port) {
-    parsedProxyUrl += `:${port}`;
-  }
-
-  return parsedProxyUrl;
 }
 
 /**
@@ -157,7 +111,7 @@ function normalizeString(value) {
   return String(value).trim();
 }
 
-export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
+export async function testProxyUrl({ proxyUrl, testUrl: requestedTestUrl, timeoutMs } = {}) {
   const normalizedProxyUrl = normalizeString(proxyUrl);
   if (!normalizedProxyUrl) {
     return { ok: false, status: 400, error: "proxyUrl is required" };
@@ -179,7 +133,9 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
 
   try {
     try {
-      dispatcher = new ProxyAgent({ uri: parsedProxyUrl });
+      dispatcher = isSocksDispatcherUrl(parsedProxyUrl)
+        ? createSocksDispatcher(parsedProxyUrl, { connectTimeout: normalizedTimeoutMs })
+        : new ProxyAgent({ uri: parsedProxyUrl });
     } catch (err) {
       return {
         ok: false,
@@ -188,7 +144,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
       };
     }
 
-    let testUrl = DEFAULT_TEST_URL;
+    let testUrl = normalizeString(requestedTestUrl) || DEFAULT_TEST_URL;
     const startedAt = Date.now();
 
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
@@ -197,7 +153,7 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
       // verify the proxy can reach the public internet; if it cannot
       // fetch https, it cannot proxy real traffic.
       try {
-        assertPublicUrl(testUrl);
+        assertOutboundUrlAllowed(testUrl, "public-only");
       } catch (guardErr) {
         return {
           ok: false,
@@ -215,20 +171,42 @@ export async function testProxyUrl({ proxyUrl, timeoutMs } = {}) {
         return { ok: false, status: 400, error: "URL must use https:" };
       }
 
+      // Resolve locally and send the checked address to the proxy, so the proxy
+      // cannot perform a second DNS lookup after validation. Preserve the TLS
+      // server name and HTTP Host header for the original destination.
+      let requestUrl;
+      try {
+        const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+        const addresses = isIP(hostname)
+          ? [{ address: hostname }]
+          : await lookup(hostname, { all: true, verbatim: true });
+        if (!addresses.length) throw new Error("Empty DNS result");
+        for (const record of addresses) assertResolvedAddressAllowed(record.address, "public-only");
+        requestUrl = new URL(parsed);
+        requestUrl.hostname = isIP(addresses[0].address) === 6 ? `[${addresses[0].address}]` : addresses[0].address;
+        await dispatcher.close();
+        dispatcher = isSocksDispatcherUrl(parsedProxyUrl)
+          ? createSocksDispatcher(parsedProxyUrl, { connectTimeout: normalizedTimeoutMs, targetServername: hostname })
+          : new ProxyAgent({ uri: parsedProxyUrl, requestTls: { servername: hostname } });
+      } catch (err) {
+        return { ok: false, status: 400, error: `URL not allowed: ${sanitizeErrorMessage(err?.message || "blocked")}` };
+      }
+
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), normalizedTimeoutMs);
 
       let res;
       try {
-        res = await undiciFetch(testUrl, {
+        res = await guardedProbeFetch(requestUrl, {
           method: "HEAD",
           dispatcher,
           signal: controller.signal,
           redirect: "manual",
           headers: {
-            "User-Agent": "9Router",
+            "User-Agent": "DurinDoor",
+            Host: parsed.host,
           },
-        });
+        }, "public-only", (url, options) => undiciFetch(url, { ...options, dispatcher }));
       } catch (err) {
         const message =
           err?.name === "AbortError"

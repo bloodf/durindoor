@@ -4,13 +4,33 @@
  * Can be used in both Next.js and Cloudflare Workers
  */
 
+import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import fs from "fs";
 import path from "path";
+import { readUpstreamErrorMessage, responsesTerminalFromChatFinish } from "../translator/concerns/finishReason.js";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
+/** Normalize provider usage before it reaches clients expecting integer token counts. */
+function terminalUsage(raw) {
+  if (!raw || !isObject(raw) || Array.isArray(raw)) return null;
+  const count = (value) => {
+    if (!isNumber(value) && (!isString(value) || !value.trim())) return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.round(number) : undefined;
+  };
+  const keys = ["input_tokens", "prompt_tokens", "output_tokens", "completion_tokens", "total_tokens"];
+  if (!keys.some((key) => count(raw[key]) !== undefined)) return null;
+  const clean = (value) => {
+    if (Array.isArray(value)) return value.map(clean);
+    if (value && isObject(value)) return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clean(v)]).filter(([, v]) => v !== undefined));
+    return count(value);
+  };
+  return toResponsesUsage(clean(raw));
+}
+
 // Create log directory for responses (Node.js only)
-import { isFunction, isObject, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 export function createResponsesLogger(model, logsDir = null) {
   // Skip logging in worker environment (no fs)
   if (!isFunction(fs.mkdirSync)) {
@@ -78,11 +98,16 @@ export function createResponsesApiTransformStream(logger = null) {
     funcItemDone: {},
     funcOutputIndexes: {},
     nextOutputIndex: 0,
-    buffer: "",
     usage: null,
     // Delay completion after finish_reason so a trailing usage-only chunk can enrich it.
     awaitingTrailingUsage: false,
-    completedSent: false
+    completedSent: false,
+    upstreamError: null,
+    finishReason: null,
+    // Completed output items (from response.output_item.done), repeated in
+    // response.completed so clients that build the final result from the
+    // terminal event see the whole turn (decolua/9router#4380).
+    outputItems: []
   };
 
   const encoder = new TextEncoder();
@@ -155,15 +180,17 @@ export function createResponsesApiTransformStream(logger = null) {
         part: { type: "summary_text", text: state.reasoningBuf }
       });
 
+      const reasoningItem = {
+        id: state.reasoningId,
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: state.reasoningBuf }]
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: state.reasoningIndex,
-        item: {
-          id: state.reasoningId,
-          type: "reasoning",
-          summary: [{ type: "summary_text", text: state.reasoningBuf }]
-        }
+        item: reasoningItem
       });
+      state.outputItems.push({ outputIndex: state.reasoningIndex, item: reasoningItem });
     }
   };
 
@@ -191,16 +218,18 @@ export function createResponsesApiTransformStream(logger = null) {
         part: { type: "output_text", annotations: [], logprobs: [], text: fullText }
       });
 
+      const messageItem = {
+        id: msgId,
+        type: "message",
+        content: [{ type: "output_text", annotations: [], logprobs: [], text: fullText }],
+        role: "assistant"
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: outputIndex,
-        item: {
-          id: msgId,
-          type: "message",
-          content: [{ type: "output_text", annotations: [], logprobs: [], text: fullText }],
-          role: "assistant"
-        }
+        item: messageItem
       });
+      state.outputItems.push({ outputIndex, item: messageItem });
     }
   };
 
@@ -217,17 +246,19 @@ export function createResponsesApiTransformStream(logger = null) {
         arguments: args
       });
 
+      const functionCallItem = {
+        id: `fc_${callId}`,
+        type: "function_call",
+        arguments: args,
+        call_id: callId,
+        name: state.funcNames[idx] || ""
+      };
       emit(controller, "response.output_item.done", {
         type: "response.output_item.done",
         output_index: outputIndex,
-        item: {
-          id: `fc_${callId}`,
-          type: "function_call",
-          arguments: args,
-          call_id: callId,
-          name: state.funcNames[idx] || ""
-        }
+        item: functionCallItem
       });
+      state.outputItems.push({ outputIndex, item: functionCallItem });
 
       state.funcItemDone[idx] = true;
       state.funcArgsDone[idx] = true;
@@ -237,18 +268,27 @@ export function createResponsesApiTransformStream(logger = null) {
   const sendCompleted = (controller) => {
     if (!state.completedSent) {
       state.completedSent = true;
-      const usage = toResponsesUsage(state.usage);
+      const usage = terminalUsage(state.usage);
       const response = {
         id: state.responseId,
         object: "response",
         created_at: state.created,
         status: "completed",
         background: false,
-        error: null
+        error: null,
+        output: state.outputItems.slice().sort((a, b) => a.outputIndex - b.outputIndex).map(({ item }) => item)
       };
       if (usage) response.usage = usage;
-      emit(controller, "response.completed", {
-        type: "response.completed",
+      const terminal = responsesTerminalFromChatFinish(
+        state.upstreamError !== null ? "error" : state.finishReason,
+        readUpstreamErrorMessage(state.upstreamError)
+      );
+      const eventType = terminal.event;
+      response.status = eventType.slice("response.".length);
+      response.error = terminal.error;
+      if (terminal.incomplete_details) response.incomplete_details = terminal.incomplete_details;
+      emit(controller, eventType, {
+        type: eventType,
         response
       });
     }
@@ -256,37 +296,33 @@ export function createResponsesApiTransformStream(logger = null) {
 
   /**
    * One decoder must span the stream so split multi-byte UTF-8 sequences remain intact.
-   * Reusing transform during flush also sends a final unterminated SSE event through the normal parser.
+   * Reusing processFrames during flush sends any unterminated trailing SSE frame through the shared reader.
    */
   const decoder = new TextDecoder("utf-8");
-  const messageTerminator = encoder.encode("\n\n");
-  const handlers = {
-    transform(chunk, controller) {
-      const text = decoder.decode(chunk, { stream: true });
-      if (text.trim()) logger?.logInput(text.trim());
-      state.buffer += text;
-
-      const messages = state.buffer.split("\n\n");
-      state.buffer = messages.pop() || "";
-
-      for (const msg of messages) {
-        if (!msg.trim()) continue;
-
-        const dataMatch = msg.match(/^data:\s*(.+)$/m);
-        if (!dataMatch) continue;
-
-        const dataStr = dataMatch[1].trim();
-        if (dataStr === "[DONE]") continue;
+  const reader = createSseFrameReader();
+  const processFrames = (frames, controller) => {
+      for (const frame of frames) {
+        if (!frame.hasData) continue;
 
         let parsed;
         try {
-          parsed = JSON.parse(dataStr);
+          ({ parsed } = parseResponsesSseData(frame));
         } catch {
           continue;
         }
+        if (!isRecord(parsed) || state.completedSent) continue;
 
-        if (parsed.usage && isObject(parsed.usage)) state.usage = parsed.usage;
+        // A later usage object with no readable counts must not replace a good one.
+        if (terminalUsage(parsed.usage)) state.usage = parsed.usage;
+        if (parsed.error) state.upstreamError = parsed.error;
         if (!parsed.choices?.length) {
+          if (state.upstreamError !== null) {
+            for (const i in state.msgItemAdded) closeMessage(controller, i);
+            closeReasoning(controller);
+            for (const i in state.funcCallIds) closeToolCall(controller, i);
+            sendCompleted(controller);
+            continue;
+          }
           // Complete only when usage actually arrived — a bare empty-choices chunk
           // must not trigger the deferred completion early.
           if (state.awaitingTrailingUsage && !state.completedSent && state.usage) sendCompleted(controller);
@@ -334,30 +370,9 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle text content (may contain <think> tags)
         if (delta.content) {
+          // Finish the reasoning item before emitting the assistant's answer.
+          closeReasoning(controller);
           let content = delta.content;
-
-          if (content.includes("<think>")) {
-            state.inThinking = true;
-            content = content.replace("<think>", "");
-            startReasoning(controller, idx);
-          }
-
-          if (content.includes("</think>")) {
-            const parts = content.split("</think>");
-            const thinkPart = parts[0];
-            const textPart = parts.slice(1).join("</think>");
-
-            if (thinkPart) emitReasoningDelta(controller, thinkPart);
-            closeReasoning(controller);
-            state.inThinking = false;
-            content = textPart;
-          }
-
-          if (state.inThinking && content) {
-            emitReasoningDelta(controller, content);
-            // A reasoning chunk can also carry a tool call or finish reason.
-            content = "";
-          }
 
           // Regular text content
           if (content) {
@@ -445,21 +460,31 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle finish_reason
         if (choice.finish_reason) {
+          state.finishReason = choice.finish_reason;
+          if (choice.finish_reason === "error" && state.upstreamError === null) state.upstreamError = { code: "upstream_error" };
           for (const i in state.msgItemAdded) closeMessage(controller, i);
           closeReasoning(controller);
           for (const i in state.funcCallIds) closeToolCall(controller, i);
-          if (state.usage) {
+          if (state.usage || state.upstreamError !== null) {
             sendCompleted(controller);
           } else {
             state.awaitingTrailingUsage = true;
           }
         }
       }
+  };
+
+  const handlers = {
+    transform(chunk, controller) {
+      const text = decoder.decode(chunk, { stream: true });
+      if (text.trim()) logger?.logInput(text.trim());
+      processFrames(reader.push(text), controller);
     },
 
     flush(controller) {
-      state.buffer += decoder.decode();
-      if (state.buffer.trim()) handlers.transform(messageTerminator, controller);
+      const tail = decoder.decode();
+      if (tail.trim()) logger?.logInput(tail.trim());
+      processFrames([...reader.push(tail), ...reader.flush()], controller);
 
       for (const i in state.msgItemAdded) closeMessage(controller, i);
       closeReasoning(controller);

@@ -10,11 +10,13 @@ import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamH
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { ANTHROPIC_PING_FRAME } from "../../utils/earlyStreamKeepalive.js";
 import { createTerminalTracker } from "../../utils/streamTerminal.js";
+import { trackStreamTokenLimit } from "../../utils/streamContentPeek.js";
 import { createEmptyTerminalGuard } from "../../utils/emptyStreamTerminal.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { createErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
+import { createErrorResult as createFormattedErrorResult, credentialErrorSecrets, readBoundedResponseText, sanitizeErrorMessage, sanitizeStructuredErrorBody } from "../../utils/error.js";
 import { attachClientFrameTap, finishTrace } from "./proxyTimeline.js";
 import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
 import { sseChunk } from "../../utils/sse.js";
@@ -42,9 +44,28 @@ function hasOutputTokens(usage) {
 // Match the existing cooldown classification; a previously reported error is
 // already visible to the client and must not be replaced by an empty error.
 function isEmptyCompletion(content, usage, summary) {
-  return !content?.upstreamError && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
+  return !content?.upstreamError && !summary?.hasTokenLimitTerminal && summary?.providerResponse?.stop_reason !== CLAUDE_STOP.REFUSAL &&
     !content?.content?.trim?.() && !content?.hadToolCalls && !content?.hasSnapshotOutput &&
     !content?.thinking?.trim?.() && !hasOutputTokens(usage);
+}
+
+// Missing usage stays null. A measured 0 is the empty-stream path, not this warning.
+function measuredOutputTokens(usage) {
+  if (!isRecord(usage)) return null;
+  const raw = usage.completion_tokens ?? usage.output_tokens ?? usage.candidatesTokenCount;
+  if (raw == null) return null;
+  const count = Number(raw);
+  return Number.isFinite(count) ? count : null;
+}
+
+const LOW_OUTPUT_TOKEN_LIMIT = 50;
+const LOW_OUTPUT_TOOL_FLOOR = 5;
+
+function warnMeasuredLowToolOutput({ provider, model, usage, tools }) {
+  const outTokens = measuredOutputTokens(usage);
+  if (outTokens == null || outTokens <= 0 || outTokens >= LOW_OUTPUT_TOKEN_LIMIT) return;
+  if (!Array.isArray(tools) || tools.length < LOW_OUTPUT_TOOL_FLOOR) return;
+  console.warn(`[WARN] [EMPTY-RESPONSE] ${provider} | ${model} | out=${outTokens} tok but ${tools.length} tools sent — provider may not handle large tool lists. Remove this provider from tool-heavy combos.`);
 }
 
 /** Frame a complete OpenAI response for the normal streaming pipeline. */
@@ -76,8 +97,9 @@ export function completionToStream(completion) {
  *
  * @returns {{stream: TransformStream, emittedFormat: string}}
  */
-export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials }) {
-  const isDroidCLI = userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
+export function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked = false, model, connectionId, body, providerBody, onStreamComplete, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini = false }) {
+  // `\bdroid\b`: a bare substring test also matched "Android" (Dalvik, mobile browsers).
+  const isDroidCLI = /\bdroid\b/i.test(userAgent ?? "") || userAgent?.toLowerCase().includes("codex-cli");
   // Responses-API providers (e.g. codex) emit Responses SSE → translate into client format
   const isResponsesProvider = PROVIDERS[provider]?.format === FORMATS.OPENAI_RESPONSES;
   const needsCodexTranslation = isResponsesProvider && targetFormat === FORMATS.OPENAI_RESPONSES && !isDroidCLI;
@@ -92,8 +114,8 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 
   if (needsTranslation(targetFormat, sourceFormat) || targetFormat === FORMATS.OPENAI && isDeepSeekFamilyModel(providerBody?.model || model, provider)) {
     return {
-      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked),
-      emittedFormat: sourceFormat
+      stream: createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider, reqLogger, toolNameMap, model, connectionId, body, onStreamComplete, apiKey, claudeClassifierCompat, onCoherentTerminal, providerBody, credentials, claudeCloaked, nativeGemini),
+      emittedFormat: nativeGemini ? FORMATS.GEMINI : sourceFormat
     };
   }
 
@@ -108,7 +130,9 @@ export function buildTransformStream({ provider, sourceFormat, targetFormat, use
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, clientRawRequest, reqLogger, toolNameMap, claudeCloaked = false, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, clientRawRequest, reqLogger, toolNameMap, claudeCloaked = false, streamController, onStreamComplete, onStreamAbandoned, onCoherentTerminal, streamDetailId, pxpipe, reqTag, log, claudeClassifierCompat, signal = null, traceId = null, credentials = null }) {
+  const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
+    createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
   const failTimeline = (status) => {
     if (traceId) { try { finishTrace(traceId, { status }); } catch {} }
   };
@@ -185,12 +209,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // `targetFormat` here silently breaks the codex-translation and needsTranslation
   // branches (the provider's format is not what reaches the client in those
   // cases). See upstream PR #3222.
+  const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
   let emptyVerdict = null;
   const observeCompletion = (...args) => {
     emptyVerdict = isEmptyCompletion(args[0], args[1], args[3]);
     onStreamComplete?.(...args);
   };
-  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials });
+  const { stream: transformStream, emittedFormat } = buildTransformStream({ provider, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, claudeCloaked, model, connectionId, body, providerBody: finalBody || translatedBody, onStreamComplete: observeCompletion, onCoherentTerminal, apiKey, claudeClassifierCompat, credentials, nativeGemini });
   const emptyTerminalGuard = [FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.CLAUDE].includes(emittedFormat)
     ? createEmptyTerminalGuard(emittedFormat, () => emptyVerdict, () => transformStream.getEmptyStreamSnapshot?.())
     : null;
@@ -221,10 +246,12 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     ? attachClientFrameTap(traceId, emittedFormat === FORMATS.OLLAMA ? "ndjson" : "sse-lines")
     : null;
   const onClientEnd = () => {
+    reqLogger?.flushStreams?.();
     clientTap?.onClientEnd();
     if (traceId) { try { finishTrace(traceId, { status: "ok" }); } catch {} }
   };
   const onClientAbort = () => {
+    reqLogger?.flushStreams?.();
     clientTap?.onClientAbort();
     if (traceId) { try { finishTrace(traceId, { status: "aborted" }); } catch {} }
   };
@@ -240,7 +267,10 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
   );
 
+  trackStreamTokenLimit(transformedBody, transformStream.hasTokenLimitTerminal);
+
   saveRequestDetail(buildRequestDetail({
+    comboNoLog,
     provider, model, connectionId,
     latency: { ttft: 0, total: Date.now() - requestStartTime },
     tokens: { prompt_tokens: 0, completion_tokens: 0 },
@@ -254,9 +284,13 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     console.error("[RequestDetail] Failed to save streaming request:", err.message);
   });
 
+  const responseHeaders = { ...SSE_HEADERS, ...resolvedModelHeaders(provider, model) };
+  if (nativeGemini) responseHeaders["x-durindoor-internal-gemini-native"] = "1";
   return {
     success: true,
-    response: new Response(transformedBody, { headers: SSE_HEADERS })
+    response: new Response(transformedBody, {
+      headers: responseHeaders
+    })
   };
 }
 
@@ -275,7 +309,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
  * @param {object} [params.credentials] - selected credentials redacted from the persisted stream error.
  * @returns {{onStreamComplete: Function, onStreamAbandoned: Function, streamDetailId: string}}
  */
-export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
+export function buildOnStreamComplete({ provider, model, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log, usageEventId, onRequestSuccess, onEmptyStream, getProviderAttemptStartedAt, terminalProvenance = null, credentials = null }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   let coherentTerminalHandled = false;
   let completed = false;
@@ -322,8 +356,13 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       || (toolCallNames.length ? `[Tool calls: ${toolCallNames.join(", ")}]` : null)
       || (streamError ? `[Streaming failed: ${streamError.message || "unknown error"}]` : "[Empty streaming response]");
     const safeThinking = contentObj?.thinking || null;
+    // An empty stream is not a success: the client gets the in-band error frame
+    // from createEmptyTerminalGuard, so the request detail must say the same
+    // instead of recording a green turn (upstream 9router #5092).
+    const producedNothing = !streamError && isEmptyCompletion(contentObj, usage, summary);
 
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
@@ -332,7 +371,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       providerResponse: summary?.providerResponse ?? safeContent,
       response: { content: safeContent, thinking: safeThinking, tool_calls: toolCallNames, type: "streaming", ...(streamError ? { error: streamError } : null) },
       pxpipe,
-      status: streamError ? "error" : "success"
+      status: streamError || producedNothing ? "error" : "success"
     }, { id: streamDetailId })).catch((err) => {
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
@@ -344,7 +383,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     const sessionId = (finalBody || translatedBody)?.conversationState?.conversationId;
     // The TTFT fallback above keeps request logs readable, but stored usage
     // needs one "not measured" value: 0, as the other handlers write.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
+    saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: ttftAt ? latency : { ...latency, ttft: 0 }, status: streamError ? "error" : null, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model, sessionId }));
 
     // A streamed Claude refusal (stop_reason "refusal") never accumulates delta
@@ -360,6 +399,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     if (
     isFunction(onEmptyStream) &&
     !isStreamedClaudeRefusal &&
+    !summary?.hasTokenLimitTerminal &&
     !isRequestScopedRefusal &&
     !contentObj?.content?.trim?.() &&
     !contentObj?.hadToolCalls &&
@@ -371,6 +411,10 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       try {Promise.resolve(onEmptyStream()).catch(() => console.error("[Stream] empty-stream cooldown failed"));}
       catch {console.error("[Stream] empty-stream cooldown failed");}
     }
+
+    // Completion only. Cancellation has no measured final output to judge,
+    // and a missing usage object is not a low-output measurement.
+    warnMeasuredLowToolOutput({ provider, model, usage, tools: body?.tools });
   };
 
   // Finalize the placeholder row when the stream ends without onStreamComplete
@@ -391,6 +435,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
       total: Date.now() - requestStartTime
     };
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency,
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
@@ -407,7 +452,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     // Partial provider/estimated usage is billable even when client cancellation
     // prevents transform flush. Mark it cancelled so persistence cannot convert
     // chatCore's asynchronously finalized error session back to done.
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
+    saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency, status: "cancelled", label: "STREAM USAGE (cancelled)", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency, provider, model }).replace(/^DONE /, "CANCELLED "));
   };
 

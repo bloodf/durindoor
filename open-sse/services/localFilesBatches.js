@@ -27,6 +27,12 @@ const SAFE_ID = /^(file|batch|msgbatch|req|batchreq)_[0-9a-f]{24}$/;
 const batches = new Map(); // process-lifetime registry
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
+// Expired records are pruned lazily; result files remain managed as files.
+function sweepBatches() {
+  for (const [id, batch] of batches) {
+    if (batch.expires_at <= nowSeconds()) batches.delete(id);
+  }
+}
 const newId = (prefix) => `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
 // New files go under DATA_DIR. Files from the earlier home location stay readable
 // in place: never moved or copied, only removed when their owner deletes them.
@@ -170,6 +176,7 @@ const OPENAI_ALLOWED_URLS = new Set(["/v1/chat/completions", "/v1/messages", "/v
 export function validateOpenAIJsonl(text) {
   const rows = [];
   const errors = [];
+  const ids = new Set();
   const lines = String(text || "").split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -186,6 +193,11 @@ export function validateOpenAIJsonl(text) {
       errors.push({ line: i + 1, error: "custom_id required" });
       continue;
     }
+    if (ids.has(custom_id)) {
+      errors.push({ line: i + 1, custom_id, error: "duplicate custom_id" });
+      continue;
+    }
+    ids.add(custom_id);
     if (method !== "POST") {
       errors.push({ line: i + 1, custom_id, error: "method must be POST" });
       continue;
@@ -207,6 +219,7 @@ export function validateOpenAIJsonl(text) {
 export function validateAnthropicRequests(requests) {
   const rows = [];
   const errors = [];
+  const ids = new Set();
   if (!Array.isArray(requests)) return { rows, errors: [{ error: "requests must be an array" }] };
   for (let i = 0; i < requests.length; i++) {
     const r = requests[i];
@@ -214,6 +227,11 @@ export function validateAnthropicRequests(requests) {
       errors.push({ line: i + 1, error: "custom_id required" });
       continue;
     }
+    if (ids.has(r.custom_id)) {
+      errors.push({ line: i + 1, custom_id: r.custom_id, error: "duplicate custom_id" });
+      continue;
+    }
+    ids.add(r.custom_id);
     if (!r.params || !isObject(r.params)) {
       errors.push({ line: i + 1, custom_id: r.custom_id, error: "params required" });
       continue;
@@ -297,12 +315,10 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
   const outRecords = [];
   const errRecords = [];
   let cursor = 0;
-  let active = 0;
   const inFlight = new Set();
 
   const runOne = async (row, index) => {
     if (b.cancelRequested) return;
-    active++;
     const request_id = newId("req");
     try {
       const res = await executor({ url: row.url, method: row.method, body: row.body, custom_id: row.custom_id });
@@ -323,13 +339,11 @@ async function runBatch(id, { filesRoot, executor, concurrency = 2 } = {}) {
       });
       errRecords.push({ index, line });
       b.request_counts.failed++;
-    } finally {
-      active--;
     }
   };
 
   while (cursor < b.rows.length && !b.cancelRequested) {
-    while (active >= concurrency && !b.cancelRequested) await new Promise((r) => setImmediate(r));
+    while (inFlight.size >= concurrency && !b.cancelRequested) await Promise.race(inFlight);
     if (b.cancelRequested) break;
     const index = cursor;
     const row = b.rows[cursor++];
@@ -390,6 +404,7 @@ function newBatchRecord({ surface, id, endpoint, input_file_id, rows, metadata, 
 }
 
 function startBatch(b, { filesRoot, executor, concurrency }) {
+  sweepBatches();
   batches.set(b.id, b);
   // Defer the runner one microtask so create*Batch returns the validating view
   // before runBatch flips status to in_progress.
@@ -400,6 +415,9 @@ function startBatch(b, { filesRoot, executor, concurrency }) {
     b.failed_at = nowSeconds();
     b.completed_at = nowSeconds();
     b.errors = [{ message: err?.message || String(err) }];
+  }).finally(() => {
+    // Keep IDs for ordered Anthropic results, but release request bodies on every terminal path.
+    b.rows = b.rows.map(({ custom_id }) => ({ custom_id }));
   });
   return b;
 }
@@ -441,6 +459,7 @@ export async function createAnthropicBatch({ requests }, { filesRoot, executor, 
 }
 
 export async function getBatch(id, { filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
+  sweepBatches();
   assertSafeId(id);
   const b = batches.get(id);
   if (!b) return null;
@@ -450,6 +469,7 @@ export async function getBatch(id, { filesRoot, surface, ownerId = null, allowAl
 }
 
 export async function listBatches({ filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
+  sweepBatches();
   const data = [];
   for (const b of batches.values()) {
     if (surface && b.surface !== surface) continue;
@@ -461,6 +481,7 @@ export async function listBatches({ filesRoot, surface, ownerId = null, allowAll
 }
 
 export async function cancelBatch(id, { filesRoot, surface, ownerId = null, allowAllOwners = false } = {}) {
+  sweepBatches();
   assertSafeId(id);
   const b = batches.get(id);
   if (!b) return null;
@@ -482,6 +503,7 @@ export async function cancelBatch(id, { filesRoot, surface, ownerId = null, allo
 
 /** Output/error JSONL text for an OpenAI batch (which = "output" | "error"). */
 export async function getBatchOutputText(id, which = "output", { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
+  sweepBatches();
   assertSafeId(id);
   const b = batches.get(id);
   if (!b || !canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
@@ -498,6 +520,7 @@ export async function getBatchOutputText(id, which = "output", { filesRoot, owne
  *  Throws 409 when the batch exists but has not reached a terminal status yet,
  *  so callers cannot read partial results mid-run (route → 4xx, distinct from 404). */
 export async function getAnthropicResultsJsonl(id, { filesRoot, ownerId = null, allowAllOwners = false } = {}) {
+  sweepBatches();
   assertSafeId(id);
   const b = batches.get(id);
   if (!b || b.surface !== "anthropic" || !canAccessOwner(b.ownerId, ownerId, allowAllOwners)) return null;
@@ -550,3 +573,5 @@ export async function _waitForBatch(id) {
 export function _resetBatches() {
   batches.clear();
 }
+/** Test hook: inspect retained rows. */
+export function _batchRows(id) { return batches.get(id)?.rows; }

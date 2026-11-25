@@ -1,12 +1,13 @@
 import { QUOTA_V7_TABLES } from "./migrations/quota-v7-schema.js";
 import { QUOTA_V8_TABLES } from "./migrations/quota-v8-schema.js";
 import { TOKEN_SAVER_DAILY_TABLES } from "./migrations/token-saver-daily-schema.js";
+import { USAGE_DAILY_ROLLUP_TABLE } from "./helpers/usageDailyRollups.js";
 
 // Latest schema version — bumped when a migration is added in ./migrations/
 // 19 is intentionally skipped: it is reserved for the PostgreSQL-only
 // `pg-cutover-log` migration, and check-postgres-migrations.mjs requires a
 // shared version to carry the same name in both migration sets.
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 38;
 
 export const PRAGMA_SQL = `
 PRAGMA busy_timeout = 5000;
@@ -96,7 +97,8 @@ export const TABLES = {
       isAdmin: "INTEGER NOT NULL DEFAULT 0",
       createdAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+    // No plain index on `key`: its UNIQUE constraint already provides an identical one.
+    indexes: [],
   },
   // Opt-in API-key-to-provider-account restriction. No rows for a key means
   // unrestricted; both parent deletions cascade to preserve referential integrity.
@@ -159,7 +161,6 @@ export const TABLES = {
       updatedAt: "TEXT NOT NULL",
     },
     indexes: [
-      "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
       "CREATE INDEX IF NOT EXISTS idx_combo_name_nocase ON combos(name COLLATE NOCASE)",
     ],
   },
@@ -210,7 +211,6 @@ export const TABLES = {
       createdAt: "TEXT NOT NULL",
     },
     indexes: [
-      "CREATE INDEX IF NOT EXISTS idx_mcp_inst_slug ON mcpInstances(slug)",
       "CREATE INDEX IF NOT EXISTS idx_mcp_inst_enabled ON mcpInstances(enabled)",
     ],
   },
@@ -223,7 +223,8 @@ export const TABLES = {
       isActive: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_mcp_gwkey ON mcpGatewayKeys(key)"],
+    // No plain index on `key`: its UNIQUE constraint already provides an identical one.
+    indexes: [],
   },
   mcpKeyGrants: {
     columns: {
@@ -252,6 +253,8 @@ export const TABLES = {
       connectionId: "TEXT",
       apiKey: "TEXT",
       apiKeyId: "TEXT",
+      usageSessionId: "TEXT",
+      usageProjectId: "TEXT",
       endpoint: "TEXT",
       promptTokens: "INTEGER DEFAULT 0",
       completionTokens: "INTEGER DEFAULT 0",
@@ -291,8 +294,11 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_combo ON usageHistory(comboId) WHERE comboId IS NOT NULL",
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_uh_usage_event ON usageHistory(usageEventId) WHERE usageEventId IS NOT NULL",
       "CREATE INDEX IF NOT EXISTS idx_uh_apikey_ts ON usageHistory(apiKey, timestamp)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_key_session ON usageHistory(apiKeyId, usageSessionId)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_key_project ON usageHistory(apiKeyId, usageProjectId)",
     ],
   },
+  // The apiKey dimension stores an API key ID or a keyed digest of an unknown key.
   usageLastSeen: {
     columns: {
       dateKey: "TEXT NOT NULL",
@@ -306,12 +312,14 @@ export const TABLES = {
     primaryKey: "PRIMARY KEY (dateKey, provider, model, connectionId, apiKey, endpoint)",
     indexes: ["CREATE INDEX IF NOT EXISTS idx_uls_date ON usageLastSeen(dateKey)"],
   },
+  // Staging table for older migrations and legacy JSON imports.
   usageDaily: {
     columns: {
       dateKey: "TEXT PRIMARY KEY",
       data: "TEXT NOT NULL",
     },
   },
+  usageDailyRollups: USAGE_DAILY_ROLLUP_TABLE,
   // Aggregate Token Saver telemetry (port of 9router #2562). One row per
   // persisted logical request; `data` is the normalized event JSON. DB-native
   // autoincrement id — no caller/JS key. `timestamp` (ISO) backs today/24h/all
@@ -381,6 +389,51 @@ export const TABLES = {
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_model_capability_overrides_key ON modelCapabilityOverrides(overrideKey)",
     ],
+  },
+  // Opt-in per-key session capture turns (migration 032). Declared here so
+  // syncSchemaFromTables / the schema verifier / PG mirror all see the same
+  // shape; portable export/import round-trips these rows with the key set.
+  sessionCaptureTurns: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      apiKeyId: "TEXT NOT NULL",
+      sessionId: "TEXT NOT NULL",
+      content: "TEXT NOT NULL",
+      byteSize: "INTEGER NOT NULL CHECK (byteSize BETWEEN 1 AND 16384)",
+      createdAt: "TEXT NOT NULL",
+      expiresAt: "TEXT NOT NULL",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_capture_key_session ON sessionCaptureTurns(apiKeyId, sessionId, createdAt, id)",
+      "CREATE INDEX IF NOT EXISTS idx_capture_expiry ON sessionCaptureTurns(expiresAt)",
+    ],
+  },
+  antigravityRefreshLeases: {
+    columns: {
+      connectionId: "TEXT PRIMARY KEY",
+      generation: "INTEGER NOT NULL",
+      owner: "TEXT",
+      fencingToken: "TEXT",
+      leaseExpiresAt: "INTEGER",
+      attemptState: "TEXT NOT NULL CHECK (attemptState IN ('idle', 'claimed', 'dispatched', 'uncertain', 'reauth'))",
+      attemptId: "TEXT",
+      credentialRevision: "TEXT",
+      subject: "TEXT",
+      recoveryEnabled: "INTEGER NOT NULL DEFAULT 0",
+      consentRecordedAt: "TEXT",
+      errorCategory: "TEXT",
+      retryCount: "INTEGER NOT NULL DEFAULT 0",
+      nextRetryAt: "INTEGER",
+      updatedAt: "INTEGER NOT NULL",
+    },
+  },
+  antigravityRecoveryCredentials: {
+    columns: {
+      connectionId: "TEXT PRIMARY KEY",
+      ciphertext: "TEXT NOT NULL",
+      fieldName: "TEXT NOT NULL",
+      updatedAt: "INTEGER NOT NULL",
+    },
   },
   // ─── Opt-in PostgreSQL engine: cutover event log ──────────────────
   // Records every `cutover` / `rollback` / `test` event. The PG side

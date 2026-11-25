@@ -3,7 +3,11 @@ import { ACCEPT_ENCODING } from "../utils/zstdCompat.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 
 const GROK_CHAT_API = PROVIDERS["grok-web"].baseUrl;
 const GROK_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
@@ -24,6 +28,44 @@ const MODEL_MAP = {
   "grok-4.20": { grokModel: "grok-420", modelMode: "MODEL_MODE_GROK_420", isThinking: false },
   "grok-4.20-beta": { grokModel: "grok-420", modelMode: "MODEL_MODE_GROK_420", isThinking: false }
 };
+
+/**
+ * Build the Cookie header for grok.com from whatever the operator pasted: the bare
+ * `sso` value, `sso=<value>`, or a full DevTools Cookie header (optionally with a
+ * `Cookie:` prefix). A full header is forwarded as pasted, in order, because other
+ * first-party cookies the browser sent with it stay the operator's own; it must
+ * contain an `sso` pair with a value. Returns "" when no usable session is present,
+ * which the executor turns into a local 401 before any request reaches grok.com.
+ */
+export function buildGrokCookieHeader(raw) {
+  const value = stripCookieInputPrefix(isString(raw) ? raw : "");
+  if (!value) return "";
+
+  const parts = value.split(";").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return "";
+
+  // A pair is name=value with a cookie-shaped name. A value that starts with "=" is
+  // base64 padding of a raw token ("tok=="), not a cookie pair.
+  const entries = parts.map((part) => {
+    const separator = part.indexOf("=");
+    if (separator <= 0) return { name: "", value: "" };
+    const name = part.slice(0, separator);
+    if (!/^[A-Za-z0-9_.-]+$/.test(name)) return { name: "", value: "" };
+    return { name, value: part.slice(separator + 1) };
+  });
+
+  // An `sso` name with an empty or blank value is an empty session, not a token:
+  // reject it instead of turning it into the meaningless "sso=sso=".
+  const ssoEntries = entries.filter((entry) => entry.name === "sso");
+  if (ssoEntries.some((entry) => !entry.value.trim() || /\s/.test(entry.value))) return "";
+
+  // A header is a paste that carries at least one name=value pair with a real
+  // value; anything else is a raw token to send as the sso value itself.
+  const isHeader = entries.some((entry) => entry.name && entry.value && !entry.value.startsWith("=") && !/^\s/.test(entry.value));
+  if (!isHeader) return `sso=${value}`;
+
+  return ssoEntries.length ? parts.join("; ") : "";
+}
 
 function randomString(length, alphanumeric = false) {
   const chars = alphanumeric ? "abcdefghijklmnopqrstuvwxyz0123456789" : "abcdefghijklmnopqrstuvwxyz";
@@ -133,9 +175,12 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
     if (resp.llmInfo?.modelHash && !fingerprint) fingerprint = resp.llmInfo.modelHash;
     if (resp.responseId) responseId = resp.responseId;
 
+    if (resp.isThinking === true) thinkOpened = true;
+
     if (resp.modelResponse) {
       const mr = resp.modelResponse;
       const message = mr.message;
+      const messageIsThinking = thinkOpened || resp.isThinking === true;
       if (message != null && !isString(message)) {
         yield { error: "Invalid Grok final message", done: true };
         return;
@@ -144,12 +189,18 @@ async function* extractContent(eventStream, isThinkingModel, signal) {
         if (message) yield { thinking: message };
         thinkOpened = false;
       }
-      if (message) yield { fullMessage: message, fingerprint, responseId };
+      if (message && !messageIsThinking) yield { fullMessage: message, fingerprint, responseId };
       if (mr.metadata?.llm_info?.modelHash) fingerprint = mr.metadata.llm_info.modelHash;
       continue;
     }
 
-    if (resp.token != null) yield { delta: resp.token, fingerprint, responseId };
+    if (resp.token != null) {
+      if (resp.isThinking === true) {
+        if (isThinkingModel) yield { thinking: resp.token, fingerprint, responseId };
+      } else {
+        yield { delta: resp.token, fingerprint, responseId };
+      }
+    }
   }
   yield { done: true, fingerprint, responseId };
 }
@@ -214,7 +265,7 @@ function buildStreamingResponse(eventStream, model, cid, created, isThinkingMode
   });
 }
 
-async function buildNonStreamingResponse(eventStream, model, cid, created, isThinkingModel, signal) {
+async function buildNonStreamingResponse(eventStream, model, cid, created, isThinkingModel, signal, prompt) {
   let fullContent = "";
   let fingerprint = "";
   const thinkingParts = [];
@@ -235,7 +286,7 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, isThi
   const msg = { role: "assistant", content: fullContent };
   if (thinkingParts.length > 0) msg.reasoning_content = thinkingParts.join("\n");
 
-  const promptTokens = Math.ceil(fullContent.length / 4);
+  const promptTokens = Math.ceil(prompt.length / 4);
   const completionTokens = Math.ceil(fullContent.length / 4);
 
   return new Response(JSON.stringify({
@@ -250,11 +301,20 @@ export class GrokWebExecutor extends BaseExecutor {
     super("grok-web", PROVIDERS["grok-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, log, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Missing or empty messages array", type: "invalid_request" }
+      }), { status: 400, headers: { "Content-Type": "application/json" } });
+      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
+    }
+    if (messages.some((message) => message == null)) {
+      const errResp = new Response(JSON.stringify({
+        error: { message: "Messages must not contain null entries", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
       return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
     }
@@ -309,26 +369,36 @@ export class GrokWebExecutor extends BaseExecutor {
       traceparent: `00-${traceId}-${spanId}-00`
     };
 
-    // Strip "sso=" prefix if user pasted it
-    if (credentials.apiKey) {
-      let token = credentials.apiKey;
-      if (token.startsWith("sso=")) token = token.slice(4);
-      headers["Cookie"] = `sso=${token}`;
+    const cookie = buildGrokCookieHeader(credentials?.apiKey);
+    if (!cookie) {
+      // No usable sso session: a missing sso, a blank `sso=` value, or a header
+      // without sso all fail locally, before any request reaches grok.com.
+      const errResp = new Response(JSON.stringify({
+        error: { message: "Grok auth failed — no sso cookie found. An empty sso= value is rejected. Paste the sso cookie value from grok.com, or a Cookie header that contains sso=.", type: "upstream_error", code: "HTTP_401" }
+      }), { status: 401, headers: { "Content-Type": "application/json" } });
+      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: grokPayload };
     }
+    headers["Cookie"] = cookie;
 
     log?.info?.("GROK-WEB", `Query to ${model} (grok=${grokModel}, mode=${modelMode}), len=${message.length}`);
 
     let response;
+    const result = (reply) => {
+      transferProviderAttemptDispatch(response, reply);
+      return { response: reply, url: GROK_CHAT_API, headers, transformedBody: grokPayload, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
-      response = await fetch(GROK_CHAT_API, {
+      response = await sender.sendRequest(GROK_CHAT_API, {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal
-      });
+      }, proxyOptions);
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
+      if (signal?.aborted) throw requestAbortError(signal.reason);
       log?.error?.("GROK-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Grok connection failed: ${err.message || String(err)}`, type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     if (!response.ok) {
@@ -340,14 +410,14 @@ export class GrokWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: errMsg, type: "upstream_error", code: `HTTP_${status}` }
       }), { status, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     if (!response.body) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Grok returned empty response body", type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+      return result(errResp);
     }
 
     const cid = `chatcmpl-grok-${crypto.randomUUID().slice(0, 12)}`;
@@ -361,9 +431,9 @@ export class GrokWebExecutor extends BaseExecutor {
         headers: { ...SSE_HEADERS_NO_BUFFER }
       });
     } else {
-      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal);
+      finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, isThinking, signal, message);
     }
-    return { response: finalResponse, url: GROK_CHAT_API, headers, transformedBody: grokPayload };
+    return result(finalResponse);
   }
 }
 

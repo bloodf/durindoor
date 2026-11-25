@@ -52,7 +52,7 @@ export class PayloadAdmissionError extends Error {
  * Default process-wide byte budget: 64 MB.
  * Env override: MAX_PAYLOAD_ADMISSION_BYTES
  */
-const DEFAULT_MAX_PAYLOAD_BYTES = (() => {
+export const DEFAULT_MAX_PAYLOAD_BYTES = (() => {
   const v = parseInt(process.env.MAX_PAYLOAD_ADMISSION_BYTES, 10);
   return Number.isFinite(v) && v > 0 ? v : 64 * 1024 * 1024;
 })();
@@ -61,7 +61,7 @@ const DEFAULT_MAX_PAYLOAD_BYTES = (() => {
  * Default maximum single request payload: 16 MB.
  * Env override: MAX_SINGLE_PAYLOAD_BYTES
  */
-const DEFAULT_MAX_SINGLE_PAYLOAD_BYTES = (() => {
+export const DEFAULT_MAX_SINGLE_PAYLOAD_BYTES = (() => {
   const v = parseInt(process.env.MAX_SINGLE_PAYLOAD_BYTES, 10);
   return Number.isFinite(v) && v > 0 ? v : 16 * 1024 * 1024;
 })();

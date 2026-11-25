@@ -1,5 +1,7 @@
 # Connection circuit discovery and regression draft for #1108
 
+Canonical acceptance evidence: [the #1108 connection circuit audit](./circuit-1108-audit.md).
+
 Status: recovery fixes and PR #1665 concurrency-timeout marker integrated in source. Runtime checks and final review pending.
 
 `src/lib/routing/connectionRecovery.js` observes persisted fallback deadlines in
@@ -76,11 +78,11 @@ Neither is the smallest coherent local change.
 All local paths below describe the pinned local head, not newer integration work.
 Existing tests were inspected as source only.
 
-The main local evidence is [model/account lock precedence](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/services/accountFallback.js#L384-L422),
-[selection and its mutex](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L562-L583),
-[selection release](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L961-L966),
-[monitor deduplication](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/healthMonitor.js#L250-L289),
-and [manual clear fields](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/app/api/providers/%5Bid%5D/route.js#L328-L331).
+The main local evidence is [model/account lock precedence](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/services/accountFallback.js),
+[selection and its mutex](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js),
+[selection release](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js),
+[monitor deduplication](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/healthMonitor.js),
+and [manual clear fields](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/app/api/providers/%5Bid%5D/route.js).
 
 | Requirement | Existing local behavior | Remaining work |
 | --- | --- | --- |
@@ -98,17 +100,17 @@ does not cover the subsequent provider request. Sequential selection turns can
 therefore admit several callers after expiry while the first request is pending.
 This is a source-derived reproduction hypothesis, not an executed reproduction.
 
-Existing cross-model cleanup also matters: [connectionsRepo.js](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/db/repos/connectionsRepo.js#L633-L637)
-and the [auth compatibility path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js#L1563-L1571)
+Existing cross-model cleanup also matters: [connectionsRepo.js](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/lib/db/repos/connectionsRepo.js)
+and the [auth compatibility path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/services/auth.js)
 can remove an expired failed-model lock when another model succeeds. A future
 per-model recovery claim needs evidence that survives that cleanup, if the
 integration owner adopts the proposed model-specific policy below. This is a
 source-derived gap, not an executed reproduction or an approved storage change.
 
 Coherent refusals are distinct from request errors. The existing [nonstreaming
-native refusal path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/handlers/chatCore/nonStreamingHandler.js#L648-L687)
+native refusal path](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/open-sse/handlers/chatCore/nonStreamingHandler.js)
 accepts a finished turn and reaches the trusted success callback and
-[`clearAccountError()`](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/handlers/chat.js#L1330-L1338).
+[`clearAccountError()`](https://github.com/bloodf/durindoor/blob/f0c21bf6ef2e8c7baaaadeaa96be5491815a9c46/src/sse/handlers/chat.js).
 This draft proposes preserving that success
 lifecycle when it is reached; it does not require every refusal to remain neutral.
 Streaming refusal completion still needs verification against its actual trusted
@@ -262,3 +264,17 @@ lint, applicable documentation checks, commit-range/title validation, and a new
 independent review. Their outcomes are tracked in the PR and private artifacts;
 author checks do not grant independent approval. This draft changes no gate
 policy and records no passing runtime-test count.
+
+## Implemented recovery and reset
+
+Chat selection observes persisted account and bounded model locks, then claims a
+process-local single-flight lease immediately before dispatch. Successful chat
+completion confirms recovery; client rejection, cancellation and local abort
+release the lease without treating the request as a provider failure. Existing
+fallback classification and persisted cooldowns remain authoritative. Unknown
+quota observations remain eligible under the existing quota preflight policy.
+The lease expires if a request never settles, and its generation fences late
+completion after a newer cooldown or explicit reset. Activating a connection
+through provider management clears persisted health state and, after the update
+succeeds, invalidates its in-process recovery leases. Separate server processes
+each maintain their own leases.

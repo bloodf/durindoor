@@ -25,7 +25,7 @@ describe("OmniRoute #7905 — custom tool request normalization (B-3)", () => {
     expect(tool.type).toBe("function");
     expect(tool.function.parameters).toEqual({
       type: "object",
-      properties: { input: { type: "string" } },
+      properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } },
       required: ["input"],
       additionalProperties: false,
     });

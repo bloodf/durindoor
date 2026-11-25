@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { getSettings } from "@/lib/localDb";
 import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy";
 import { isNativeTerminalUsageEvent, nativeUsageAdmission, nativeUsageFromValue, recordNativeUsage } from "@/sse/services/nativeUsage.js";
@@ -10,6 +11,7 @@ import handoff from "open-sse/handlers/nativeRealtimeHandoff.cjs";
 import { NATIVE_WEBSOCKETS } from "@/sse/handlers/nativeProviderConfig.js";
 import { resolveWebSocketProxyRoute } from "open-sse/utils/proxyFetch.js";
 import { isString } from "@/shared/utils/typeChecks.js";
+import { isLocalRequest } from "@/dashboardGuard";
 
 const PATHNAME = "/api/v1/realtime/native";
 const LOCAL_PATHS = { realtime: "/v1/realtime", realtimeTranslation: "/v1/realtime/translations", realtimeTranscription: "/v1/realtime", live: "/v1/live/sessions" };
@@ -36,7 +38,7 @@ export async function POST(request) {
   const authRequest = clientRequest(request);
   const settings = await getSettings();
   const operator = verifyRealtimeOperatorProof({ proof: request.headers.get("x-9r-realtime-operator-proof"), model: modelString, path: body.path, expiresAt: body.operatorExpiresAt });
-  const { apiKey, auth } = await resolveClientApiKey(authRequest, { required: settings.requireApiKey === true });
+  const { apiKey, auth } = await resolveClientApiKey(authRequest, { required: settings.requireApiKey === true || !isLocalRequest(request) });
   if (!auth.ok && !operator) return response(401, "Unauthorized");
   // Bind every turn and close callback to admission, never the current generation.
   const billingEpoch = auth.billingEpoch;
@@ -142,4 +144,8 @@ export async function POST(request) {
     onProviderClose: protocol.geminiLive ? settleGeminiUsage : null
   });
   return Response.json({ handoffId }, { headers: { "Cache-Control": "no-store" } });
+}
+
+export function OPTIONS() {
+  return new Response(null, { headers: corsHeaders(["POST", "OPTIONS"]) });
 }

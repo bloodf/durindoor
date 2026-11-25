@@ -26,24 +26,24 @@ import {
   QODER_QUEUE_MAX_ATTEMPTS,
   computeQoderQueueDelayMs,
   parseQoderQueueInfo,
-  qoderQueueMaxWaitMs } from
-"../shared/qoder/queue.js";
+  parseQoderQueueStatus,
+  qoderQueueStatusUrl,
+  qoderQueueMaxWaitMs,
+} from "../shared/qoder/queue.js";
 import { v4 as uuidv4 } from "uuid";
 import { createHash } from "crypto";
 
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
-import {
-  getCurrentProviderAttemptTimestamp,
-  runQuotaBearingProviderRequest,
-  settleProviderAttemptDispatch } from
-"../services/providerAttemptContext.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import {
   QODER_MODEL_MAP,
   QODER_IDE_VERSION,
@@ -326,15 +326,29 @@ function isBillingBlock(body) {
   try {
     const parsed = JSON.parse(body);
     if (isQoderQuotaExhaustedBody(parsed)) return true;
-    if (!(parsed && isObject(parsed) && !Array.isArray(parsed))) return false;
-    const code = String(parsed.code ?? "");
-    return code === "110" || Object.hasOwn(parsed, "pricingUrl");
+    if (parsed && isObject(parsed) && !Array.isArray(parsed) && Object.hasOwn(parsed, "pricingUrl")) return true;
+    const visit = (value, depth = 0) => {
+      if (depth > 5 || value == null) return false;
+      if (isString(value)) {
+        try { return visit(JSON.parse(value), depth + 1); } catch { return false; }
+      }
+      if (!isObject(value) || Array.isArray(value)) return false;
+      const code = String(value.code ?? "");
+      if (code === "110" || code === "112") return true;
+      return Object.values(value).some((child) => {
+        if (isObject(child)) return visit(child, depth + 1);
+        if (isString(child) && child.trim().startsWith("{")) return visit(child, depth + 1);
+        return false;
+      });
+    };
+    return visit(parsed);
   } catch {
     return false;
   }
 }
 
 const QODER_QUEUE_DELAY_HEADER = "x-qoder-queue-delay-ms";
+const QODER_QUEUE_INFO_HEADER = "x-qoder-queue-info";
 
 /** Sleep that rejects as soon as the caller's signal aborts, so a hang-up releases the request. */
 function sleep(ms, signal) {
@@ -420,6 +434,7 @@ async function peekQoderBillingFrame(reader, timeoutMs) {
           // A real billing signature wins above; otherwise a queue signal is retryable.
           const queue = status !== 200 ? parseQoderQueueInfo(body) : null;
           if (queue) return { chunks, done: false, queue };
+          if (status !== 200) return { chunks, done: false, errorStatus: Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502 };
         } catch {
 
           // Malformed frames remain existing stream-transform failures.
@@ -490,8 +505,7 @@ async function wrapQoderSSE(response, model, options = {}) {
   if (peeked.billing) {
     // First-frame billing block detected — return 403 so chatCore fails this
     // connection and triggers combo fallback instead of leaking error text
-    // into chat. Non-billing first-frame errors intentionally fall through
-    // to the sanitized generic-failure path below (no raw upstream text).
+    // into chat.
     await cancelAndReleaseReader(reader, "Qoder billing block");
     return Response.json(
       { error: { message: peeked.billing.body, code: HTTP_STATUS.FORBIDDEN } },
@@ -506,7 +520,22 @@ async function wrapQoderSSE(response, model, options = {}) {
     await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
     return Response.json(
       { error: { message: "qoder model is queued; retry shortly", code: "qoder_model_queued", type: "rate_limit_error" } },
-      { status: HTTP_STATUS.SERVICE_UNAVAILABLE, headers: { [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)) } }
+      {
+        status: HTTP_STATUS.SERVICE_UNAVAILABLE,
+        headers: {
+          [QODER_QUEUE_DELAY_HEADER]: String(computeQoderQueueDelayMs(peeked.queue)),
+          [QODER_QUEUE_INFO_HEADER]: JSON.stringify(peeked.queue),
+        },
+      }
+    );
+  }
+  // Promote first-frame errors so account and combo fallback can run. Do not
+  // expose the upstream body, which can contain sensitive provider details.
+  if (peeked.errorStatus) {
+    await cancelAndReleaseReader(reader, "Qoder upstream error");
+    return Response.json(
+      { error: { message: "Qoder upstream request failed", type: "upstream_error" } },
+      { status: peeked.errorStatus }
     );
   }
   const body = replayQoderBody(reader, peeked.chunks, peeked.done);
@@ -643,8 +672,8 @@ export function isQoderPat(token) {
   return isString(token) && token.startsWith(PAT_PREFIX);
 }
 
-async function exchangeJobToken(pat, proxyOptions = null, signal = null, region = "intl") {
-  const res = await proxyAwareFetch(
+async function exchangeJobToken(pat, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
+  const res = await send(
     qoderJobTokenExchangeUrl(region),
     {
       method: "POST",
@@ -676,9 +705,9 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null, region 
   return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
 }
 
-async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null, region = "intl") {
+async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
   try {
-    const res = await proxyAwareFetch(
+    const res = await send(
       qoderUserInfoUrl(region),
       {
         method: "GET",
@@ -703,7 +732,7 @@ async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = nu
  * Exchange a PAT for a job token + userId, caching until near-expiry so repeat
  * chat requests don't re-exchange. Returns { accessToken, userId }.
  */
-async function resolvePatCredential(pat, proxyOptions = null, signal = null, region = "intl") {
+async function resolvePatCredential(pat, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
   // Cache key includes region so the same PAT on both sites (unlikely, but
   // possible if a user copies a token) doesn't cross-exchange a job token
   // signed against the wrong gateway.
@@ -712,8 +741,8 @@ async function resolvePatCredential(pat, proxyOptions = null, signal = null, reg
   if (cached && cached.expiresAt - Date.now() > PAT_REFRESH_BUFFER_MS) {
     return cached;
   }
-  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal, region);
-  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal, region);
+  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal, region, send);
+  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal, region, send);
   if (!userId) throw new Error("qoder PAT exchange could not resolve user identity");
   const entry = { accessToken: jobToken, userId, expiresAt };
   patJobCache.set(cacheKey, entry);
@@ -735,7 +764,15 @@ export class QoderExecutor extends BaseExecutor {
   //   - body encoded with QoderEncodeBody before signing
   //   - COSY headers built from the *encoded* body bytes
   //   - response stream re-wrapped from {statusCodeValue, body} to OpenAI SSE
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }, sender, billed) {
+    // PAT exchange and queue status are not charged; each inference send is quota-bearing.
+    const setup = (target, init) => sender.sendRequest(target, init, proxyOptions, { quotaBearing: false });
     // Clamp OpenAI-shape token fields before the qoder payload derives maxTokens.
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl();
@@ -746,7 +783,7 @@ export class QoderExecutor extends BaseExecutor {
     const rawToken = credentials?.apiKey || credentials?.accessToken;
     if (isQoderPat(rawToken)) {
       try {
-        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal, this.region);
+        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal, this.region, setup);
         credentials = {
           ...credentials,
           accessToken: resolved.accessToken,
@@ -847,16 +884,11 @@ export class QoderExecutor extends BaseExecutor {
         ...cosyHeaders
       };
 
-      // Abort if upstream doesn't return response headers within connect timeout.
-      const connectCtrl = new AbortController();
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-
       let response;
       try {
-        response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
+        response = billed(await sender.sendRequest(
           url,
-          { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
+          { method: "POST", headers, body: encodedBodyBuf, signal },
           // A failed proxy request may already have reached Qoder. Replaying
           // the same COSY signature directly (fallback-to-direct) reuses its
           // requestId and returns 403/code 103 "Duplicate request". Force a
@@ -866,10 +898,8 @@ export class QoderExecutor extends BaseExecutor {
         ));
       } catch (err) {
         // strictProxy wraps transport errors; retain caller cancellation semantics.
-        if (mergedSignal.aborted) throw mergedSignal.reason;
-        throw err;
-      } finally {
-        clearTimeout(connectTimer);
+        if (signal?.aborted) throw signal.reason;
+        throw sender.timeoutReason ?? err;
       }
 
       if (!response.ok) {
@@ -882,28 +912,91 @@ export class QoderExecutor extends BaseExecutor {
         url,
         headers,
         transformedBody: payload,
-        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
         terminalProvenance: "validated"
       };
     };
 
-    // 10605 (model queue) is transient: replay after the server's hint, bounded by
-    // both an attempt cap and a wall-clock budget, then return a retryable 503.
+    // 10605 (model queue) is transient: poll queue-status and replay as soon as
+    // it clears, falling back to the server's delay when status is unusable.
+    // Bounded by both an attempt cap and a wall-clock budget, then a retryable 503.
     const maxWaitMs = qoderQueueMaxWaitMs();
     const startedAt = Date.now();
-    for (let attempt = 1;; attempt += 1) {
+    const fetchQueueStatus = async (queueInfo) => {
+      const statusUrl = qoderQueueStatusUrl(new URL(url).origin, {
+        requestSetId: payload.request_set_id,
+        modelKey: queueInfo.modelKey || qoderKey,
+        queueType: queueInfo.queueType,
+      });
+      try {
+        const signedHeaders = buildCosyHeaders(Buffer.alloc(0), statusUrl, {
+          userId: psd.userId,
+          authToken: credentials.accessToken,
+          name: credentials.displayName || "",
+          email: credentials.email || "",
+          machineId: psd.machineId || deriveMachineId(psd.userId),
+        });
+        const response = await credentialFetch(
+          setup,
+          statusUrl,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              "Accept-Encoding": "identity",
+              "X-Request-ID": payload.request_id,
+              "X-Session-ID": payload.session_id || "",
+              ...signedHeaders,
+            },
+            signal,
+          }
+        );
+        if (!response.ok) return null;
+        return parseQoderQueueStatus(await response.text());
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        return null;
+      }
+    };
+    for (let attempt = 1; ; attempt += 1) {
       const result = await sendOnce();
       const delayHeader = result.response.headers.get(QODER_QUEUE_DELAY_HEADER);
       if (delayHeader === null) return result;
 
-      const delayMs = Number(delayHeader);
+      let delayMs = Number(delayHeader);
       const elapsedMs = Date.now() - startedAt;
       if (attempt >= QODER_QUEUE_MAX_ATTEMPTS || elapsedMs + delayMs > maxWaitMs) {
         log?.warn?.("QODER", `model queue still busy after ${attempt} attempt(s) / ${Math.round(elapsedMs / 1000)}s for ${this.provider}/${qoderKey}`);
         return { ...result, response: Response.json(await result.response.json(), { status: HTTP_STATUS.SERVICE_UNAVAILABLE }) };
       }
       log?.info?.("QODER", `model queued; replaying ${this.provider}/${qoderKey} in ${Math.round(delayMs / 1000)}s (attempt ${attempt}/${QODER_QUEUE_MAX_ATTEMPTS})`);
-      await sleep(delayMs, signal);
+      let queueInfo;
+      try {
+        queueInfo = JSON.parse(result.response.headers.get(QODER_QUEUE_INFO_HEADER) || "null");
+      } catch {
+        queueInfo = null;
+      }
+      let status = queueInfo ? await fetchQueueStatus(queueInfo) : null;
+      if (status?.isQueued === false) {
+        delayMs = 0;
+      } else if (status?.isQueued === true) {
+        // Keep polling while the same request remains in Qoder's queue. A
+        // failed/unknown status response falls back to the original retry delay.
+        while (status?.isQueued === true) {
+          const pollDelay = computeQoderQueueDelayMs(status, { fromStatus: true });
+          const elapsed = Date.now() - startedAt;
+          if (elapsed + pollDelay > maxWaitMs) {
+            log?.warn?.("QODER", `model queue wait budget exhausted while polling ${this.provider}/${qoderKey}`);
+            return {
+              ...result,
+              response: Response.json(await result.response.clone().json(), { status: HTTP_STATUS.SERVICE_UNAVAILABLE }),
+            };
+          }
+          await sleep(pollDelay, signal);
+          status = await fetchQueueStatus(queueInfo);
+        }
+        if (status?.isQueued === false) delayMs = 0;
+      }
+      if (delayMs > 0) await sleep(delayMs, signal);
     }
   }
 

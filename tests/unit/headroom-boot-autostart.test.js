@@ -22,8 +22,33 @@ vi.mock("../../open-sse/services/operationalMetrics.js", () => ({
   startOperationalMetricsRuntime: mocks.startOperationalMetricsRuntime,
 }));
 
-// register(nodejs) also starts the real Kimchi updater. Isolate its release
-// transport here; dedicated Kimchi bootstrap tests assert its lifecycle.
+// The Node bootstrap starts four more services next to Headroom. None of
+// them belongs to the Headroom path and each owns I/O that outlives the test
+// that triggered it: the exposure guard reads the settings database, the
+// retention and model auto-sync schedulers import the database driver and
+// install timers, and the Kimchi updater fetches a release and installs a
+// four-hour timer. Their lifecycle is asserted by their own suites (see
+// unit/kimchi-updater-bootstrap.test.js); here they are stubbed, so no boot
+// service can write to the console after this file's scope is gone. The real
+// instrumentation hook, the real Node bootstrap and the real Headroom boot
+// path stay under test.
+vi.mock("@/lib/startup/nonLoopbackApiKeyGuard.js", () => ({
+  warnIfInferenceServerExposed: vi.fn(),
+}));
+vi.mock("@/lib/dataRetention/scheduler.js", () => ({
+  startDataRetentionScheduler: vi.fn(),
+}));
+vi.mock("@/lib/modelAutoSync/scheduler.js", () => ({
+  startModelAutoSyncScheduler: vi.fn(),
+}));
+vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
+  startKimchiUserAgentUpdater: vi.fn(),
+  getKimchiUserAgent: () => "kimchi/0.1.01",
+  updateKimchiUserAgent: vi.fn(async () => "kimchi/0.1.01"),
+}));
+
+// Transport backstop: no boot service in this file may reach the network,
+// whatever the stubs above end up doing.
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(async () => ({
     ok: true, status: 200, statusText: "OK",
@@ -53,6 +78,9 @@ describe("headroom proxy autostart at gateway boot", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    // Drop any per-test settings implementation, so a deferred fixture from
+    // one test cannot outlive the test that created it.
+    mocks.getSettings.mockReset();
     mocks.getManagedPid.mockReturnValue(null);
     mocks.isLoopbackHeadroomUrl.mockReturnValue(true);
     mocks.startHeadroomProxy.mockResolvedValue({ pid: 4242, alreadyRunning: false });
@@ -106,8 +134,18 @@ describe("headroom proxy autostart at gateway boot", () => {
   });
 
   it("register() renames the process and never throws or blocks when the proxy fails", async () => {
-    mocks.getSettings.mockRejectedValue(new Error("database unavailable"));
     vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    // The Headroom boot path reads the settings row before it can decide to
+    // start a proxy. This test owns that read, so it can settle the failure
+    // here: the boot path's fail-open catch then runs while this scope is
+    // still alive instead of logging after Vitest tore the environment down.
+    let rejectSettings;
+    const settingsRequested = new Promise((resolve) => {
+      mocks.getSettings.mockImplementation(() => {
+        resolve();
+        return new Promise((_, reject) => { rejectSettings = reject; });
+      });
+    });
     const { register } = await loadHook();
     const original = process.title;
     process.title = "next-server (v16)";
@@ -117,8 +155,13 @@ describe("headroom proxy autostart at gateway boot", () => {
       // The node boot module loads through a dynamic import; wait for it.
       await vi.waitFor(() => expect(process.title).toBe("9router (v16)"));
       await vi.waitFor(() => expect(mocks.startOperationalMetricsRuntime).toHaveBeenCalledTimes(1));
+      await vi.dynamicImportSettled();
       // register() must not await the 8s startup probe; the rejection is
       // swallowed asynchronously without surfacing an unhandled rejection.
+      await settingsRequested;
+      rejectSettings(new Error("database unavailable"));
+      // The boot path still owns that rejection: let its fail-open catch run
+      // before this test restores the process title and the environment.
       await new Promise((resolve) => setImmediate(resolve));
       expect(mocks.startHeadroomProxy).not.toHaveBeenCalled();
     } finally {
@@ -132,6 +175,8 @@ describe("edge-runtime safety of the instrumentation hook", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    // The edge scope inherits no settings fixture from the Node scope.
+    mocks.getSettings.mockReset();
   });
 
   it("register() is a no-op outside the nodejs runtime", async () => {

@@ -136,6 +136,13 @@ function stripResponses(body, caps) {
   if (!Array.isArray(body.input)) return;
   const last = body.input.length - 1;
   body.input.forEach((item, i) => {
+    // Tool outputs follow the same vision policy as message content.
+    if ((item?.type === "function_call_output" || item?.type === "custom_tool_call_output") && Array.isArray(item.output)) {
+      if (caps.vision !== false) return;
+      const kept = item.output.filter((b) => b?.type !== "input_image");
+      if (kept.length !== item.output.length) item.output = [...kept, { type: "input_text", text: ph("vision", i === last) }];
+      return;
+    }
     if (!Array.isArray(item.content)) return;
     const removed = new Set();
     item.content = item.content.filter((b) => {

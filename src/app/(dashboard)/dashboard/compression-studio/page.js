@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -16,6 +18,7 @@ import ModelSelectModal from "@/shared/components/ModelSelectModal";
 import { filterActiveConnections } from "@/shared/utils/connectionStatus";
 import { ENGINE_IDS, isEngineAvailable, engineMeta } from "open-sse/services/compression/engineCatalog.js";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
+import { get } from "@/shared/utils/api.js";
 
 const PRESETS = [
   { label: "Simple chat", icon: "chat_bubble", value: { model: "openai/gpt-4o", messages: [{ role: "user", content: "hello" }] } },
@@ -34,6 +37,7 @@ function RawOutput({ id, raw }) {
 }
 
 export default function CompressionStudioPage() {
+  const v5 = useUiV5();
   const [model, setModel] = useState("");
   const [inputText, setInputText] = useState("");
   const [advancedJSON, setAdvancedJSON] = useState("");
@@ -54,7 +58,7 @@ export default function CompressionStudioPage() {
   const parsedJSON = useMemo(() => { if (!useAdvanced || !advancedJSON.trim()) return null; try { return JSON.parse(advancedJSON); } catch { return null; } }, [useAdvanced, advancedJSON]);
   const isPayloadValid = useMemo(() => useAdvanced ? parsedJSON !== null && isObject(parsedJSON) && !Array.isArray(parsedJSON) : model.trim() !== "" || inputText.trim() !== "", [useAdvanced, parsedJSON, model, inputText]);
 
-  useEffect(() => { fetch("/api/providers").then((response) => response.ok ? response.json() : Promise.reject(new Error("failed"))).then((data) => { setActiveProviders(filterActiveConnections(data.connections)); setActiveProvidersError(false); }).catch(() => setActiveProvidersError(true)); }, []);
+  useEffect(() => { get("/api/providers", { skipErrorBody: true }).then((data) => { setActiveProviders(filterActiveConnections(data.connections)); setActiveProvidersError(false); }).catch(() => setActiveProvidersError(true)); }, []);
   useEffect(() => { if (!useAdvanced) return; try { const parsed = JSON.parse(advancedJSON || "{}"); setModel(isString(parsed.model) ? parsed.model : ""); } catch { /* Keep model while JSON is invalid. */ } }, [advancedJSON, useAdvanced]);
 
   const handlePresetChange = (label) => { setSelectedPreset(label); const preset = PRESETS.find((item) => item.label === label); if (!preset) return; setAdvancedJSON(JSON.stringify(preset.value, null, 2)); setUseAdvanced(true); };
@@ -87,11 +91,11 @@ export default function CompressionStudioPage() {
   ];
   const rows = engines.map((id) => { const result = results?.[id] || {}; return { id, compressed: result.compressed, savingsPercent: result.savingsPercent, unavailable: result.status === "unavailable", errored: result.status === "error", raw: result.raw ?? result.compressedBody }; });
 
-  return <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+  return <div className={`mx-auto flex w-full max-w-7xl flex-col gap-6${v5 ? " min-w-0 text-dd-text" : ""}`}>
     <PageHeader icon="science" title="Test Savers" subtitle="Preview how each compression engine would transform a request body." />
     <div className="grid gap-6 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
       <Card padding={false} className="self-start"><CardHeader icon="tune" title="Preview request" subtitle="No request is sent to a provider." /><CardContent className="space-y-4">
-        <Field label="Engine" hint="Choose one engine or run all available engines."><Select aria-label="Engine" value={engineId} onChange={setEngineId} options={engineOptions} /></Field>
+        <Field label="Engine" hint="Choose one engine or run all available engines.">{v5 ? <V5NativeSelect aria-label="Engine" value={engineId} onChange={(event) => setEngineId(event.target.value)}>{engineOptions.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.disabled ? `${option.label} — not included in this build` : option.label}</option>)}</V5NativeSelect> : <Select aria-label="Engine" value={engineId} onChange={setEngineId} options={engineOptions} />}</Field>
         <Field label="Example preset" hint="Pick a sample request to prefill the form."><Select aria-label="Example preset" value={selectedPreset} onChange={handlePresetChange} options={presetOptions} placeholder="Select a preset" /></Field>
         <div className="flex flex-wrap items-center gap-2"><Button variant="secondary" size="sm" onClick={() => setModalOpen(true)} icon="swap_horiz">{model ? `Model: ${model}` : "Select model"}</Button>{activeProvidersError ? <span className="text-xs text-dd-danger" role="alert">Could not load providers</span> : null}</div>
         <Toggle checked={useAdvanced} onChange={setUseAdvanced} label="Advanced JSON mode" description="Edit the raw request JSON directly." />

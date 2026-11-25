@@ -2,6 +2,7 @@ import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { mediaAccounting } from "./mediaAccounting.js";
+import { getVideoConfig } from "./videoCore.js";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 
 /** Providers /v1/video/generations can run (async job APIs use /v1/videos). */
@@ -11,7 +12,10 @@ export const supportsVideoGeneration = (provider) => provider === "veoaifree-web
 export async function handleVideoGenerationCore({ provider, model, body, credentials, signal }) {
   if (!body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
   if (!supportsVideoGeneration(provider)) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support video generation`);
+    // The provider may still serve video through the async job API, so name
+    // the endpoint that can run it instead of denying video altogether.
+    const hint = getVideoConfig(provider) ? " Use /v1/videos for asynchronous video jobs." : "";
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support synchronous video generation on /v1/video/generations.${hint}`);
   }
   try {
     const proxyOptions = {

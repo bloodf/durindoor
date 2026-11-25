@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DurinDoor Cookie Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1>DurinDoor cookie capture</h1>
+    <p class="lede">Send this tab's signed-in provider session to your own DurinDoor dashboard. Nothing is read until you confirm.</p>
+
+    <section id="step-input">
+      <label for="pairing">Pairing from the dashboard</label>
+      <textarea id="pairing" rows="5" spellcheck="false" autocomplete="off" placeholder='{"pairing":{...}}'></textarea>
+      <button id="review" type="button">Review</button>
+    </section>
+
+    <section id="step-review" hidden>
+      <dl>
+        <dt>Provider</dt><dd id="out-provider"></dd>
+        <dt>Provider site</dt><dd id="out-origin"></dd>
+        <dt>Dashboard</dt><dd id="out-dashboard"></dd>
+        <dt>Target</dt><dd id="out-target"></dd>
+        <dt>Cookie names</dt><dd id="out-cookies"></dd>
+      </dl>
+      <label class="check"><input type="checkbox" id="confirm"><span id="confirm-text"></span></label>
+      <div class="row">
+        <button id="send" type="button" disabled>Send cookies</button>
+        <button id="cancel" type="button" class="secondary">Cancel</button>
+      </div>
+    </section>
+
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

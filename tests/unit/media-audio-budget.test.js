@@ -105,7 +105,7 @@ describe("stt priced seconds drive the next request's dollar decision", () => {
     const response = await handleStt(sttRequest());
     expect(response.status).toBe(200);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "audio-secret", provider: "openai", model: "whisper-1", connectionId: "account-a", endpoint: "/v1/audio/transcriptions", cost: 0.006 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key", provider: "openai", model: "whisper-1", connectionId: "account-a", endpoint: "/v1/audio/transcriptions", cost: 0.006 });
     expect(metadata(rows()[0])).toMatchObject({ modality: "stt", nativeUnits: { audioSeconds: 60 }, costStatus: "estimated" });
     fetch.mockClear();
     fetch.mockResolvedValue(json({ text: "hello", duration: 60 }));
@@ -139,7 +139,7 @@ describe("tts receipts drive the next request's dollar decision", () => {
     const response = await handleTts(ttsRequest("openrouter/openai/gpt-4o-mini-tts/alloy"));
     expect(response.status).toBe(200);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "audio-secret", provider: "openrouter", connectionId: "account-a", endpoint: "/v1/audio/speech", cost: 0.006, promptTokens: 3, completionTokens: 5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key", provider: "openrouter", connectionId: "account-a", endpoint: "/v1/audio/speech", cost: 0.006, promptTokens: 3, completionTokens: 5 });
     expect(metadata(rows()[0])).toMatchObject({ modality: "tts", costStatus: "known", costSource: "provider:openrouter" });
     fetch.mockClear();
     const denied = await handleTts(ttsRequest("openrouter/openai/gpt-4o-mini-tts/alloy"));

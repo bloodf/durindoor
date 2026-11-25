@@ -26,6 +26,28 @@ afterAll(async () => {
 });
 
 describe("DB SQLite layer — public API parity", () => {
+  it("keeps selected Codex workspaces distinct and rejects identity-changing updates", async () => {
+    const token = (id) => `e30.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: id } })).toString("base64url")}.sig`;
+    const create = (id) => sqliteDb.createProviderConnection({
+      provider: "codex", authType: "oauth", email: "workspace-test@example.com",
+      accessToken: `access-${id}`, idToken: token(id),
+      providerSpecificData: { chatgptAccountId: id, codexSelectedWorkspaceId: id, proxyMode: "direct" }
+    });
+    const legacy = await sqliteDb.createProviderConnection({ provider: "codex", authType: "oauth", email: "workspace-test@example.com", accessToken: "legacy" });
+    const first = await create("workspace-a");
+    const second = await create("workspace-b");
+    expect(new Set([legacy.id, first.id, second.id]).size).toBe(3);
+    expect((await create("workspace-a")).id).toBe(first.id);
+    await sqliteDb.updateProviderConnection(first.id, { providerSpecificData: { proxyMode: "inherit" } });
+    await sqliteDb.updateProviderConnection(first.id, { refreshToken: "rotated-refresh", idToken: token("workspace-a") });
+    expect((await sqliteDb.getProviderConnectionById(first.id)).providerSpecificData).toMatchObject({ codexSelectedWorkspaceId: "workspace-a", chatgptAccountId: "workspace-a" });
+    expect((await sqliteDb.getProviderConnectionById(first.id)).refreshToken).toBe("rotated-refresh");
+    await expect(sqliteDb.updateProviderConnection(first.id, { idToken: token("workspace-b") })).rejects.toMatchObject({ code: "PROVIDER_IDENTITY_IMMUTABLE" });
+    await expect(sqliteDb.updateProviderConnection(first.id, { providerSpecificData: { chatgptAccountId: "workspace-b" } })).rejects.toMatchObject({ code: "PROVIDER_IDENTITY_IMMUTABLE" });
+    expect((await sqliteDb.getProviderConnectionById(first.id)).accessToken).toBe("access-workspace-a");
+    await Promise.all([legacy, first, second].map((connection) => sqliteDb.deleteProviderConnection(connection.id)));
+  });
+
   it("settings: get → defaults; update → merge", async () => {
     const s = await sqliteDb.getSettings();
     expect(s).toBeDefined();
@@ -768,7 +790,8 @@ describe("DB SQLite layer — public API parity", () => {
     await sqliteDb.setModelAlias("marker", "before");
     const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await sqliteDb.createApiKey("roundtrip-key", "machine-abc", [], null, future);
-    const snap = await sqliteDb.exportDb();
+    // SEC-B-02 / #2208: scrubbed exports omit apiKeys[].key; round-trip needs secrets.
+    const snap = await sqliteDb.exportDb({ includeSecrets: true });
 
     await sqliteDb.setModelAlias("marker", "after");
     expect((await sqliteDb.getModelAliases()).marker).toBe("after");

@@ -1,5 +1,32 @@
 # Antigravity contract comparison for #2034
 
+## CLIProxyAPI request envelope comparison at 6eb8554
+
+Compared [CLIProxyAPI 6960763455c4..6eb8554f0ede](https://github.com/router-for-me/CLIProxyAPI/compare/6960763455c4...6eb8554f0ede).
+Catalog probes use a per-connection `providerSpecificData.user_agent` (or
+`attributes.user_agent`) and bind persisted hints to that user agent. Catalog
+publication checks the connection snapshot and abort signal under the database
+write lock; disabled or changed connections cannot publish a stale probe. The
+catalog already omitted an empty project and sign-in already rejects a missing
+project.
+
+The executor emits signed FNV-1a session IDs scoped to the connection and child
+identity, preserves anonymous incoming IDs, normalizes media aliases in content,
+system and function-response parts, preserves Claude tool mode `NONE`, emits
+uppercase thinking levels and removes invalid Claude budgets without leaving
+`includeThoughts`. Supported search-only OpenAI chat requests use a separate
+native search envelope; function tools take precedence in mixed requests. The
+reverted `X-Goog-User-Project` header is not added.
+
+DurinDoor now sends Antigravity connections to the native `v1internal:countTokens`
+endpoint, using the chat executor's project, credential, user-agent and session
+scoping helpers. The request populates `request.model`, removes streaming-only
+and unsupported fields, and sanitizes tool schemas. Successful counts are
+authoritative; 429s feed the selected connection's cooldown, authentication
+errors remain credential errors, and other unavailable responses use the local
+estimate marked approximate. Closed synthetic outbound tests exercise this
+envelope and connection isolation; they do not prove live provider acceptance.
+
 Compared on 2026-11-20, without provider credentials or account traffic. These are source comparisons, not evidence that Google currently accepts any particular client, model, or account.
 
 ## Revisions
@@ -129,21 +156,22 @@ The endpoint stays on the daily host that the existing catalog contract and the 
 - The existing fallback rules are untouched: the auto-sync runner keeps the previous catalog on a failed attempt and on an empty list, and the dashboard keeps the static registry catalog when no live catalog is available.
 - The Antigravity deprecation decision is untouched.
 
-### Capability-hint persistence: not applicable in this base
+### Capability-hint persistence and route fingerprint (ported)
 
-Upstream persists the probed model ids per account in credential metadata under `antigravity_capability_hints`, bound to the project id and the sanitized endpoint, and refuses to persist an unknown catalog. DurinDoor does not, and this change does not add it, because no existing durable per-connection store can hold the hints as they are shaped:
+Upstream persists the probed model ids per account in credential metadata under `antigravity_capability_hints`, bound to the project id and the sanitized endpoint, together with a credential-free route fingerprint (SHA-256 of proxy URL + User-Agent), and refuses to persist an unknown catalog as an authoritative empty set. Re-checked at CLIProxyAPI `6960763455c4` (`sdk/auth/antigravity_models.go`) and OmniRoute `5ffa68e83544`.
 
-- The only durable per-connection store is `providerSpecificData` on the connection row. Its transfer contract (`TRANSFER_SAFE_PSD_FIELDS` and the scalar check in `src/lib/db/index.js`) rejects a nested hints object, so storing one would change the provider transfer surface, not just add a field.
-- The synced model catalog (`src/lib/db/repos/syncedModelsRepo.js`) is keyed by provider id, not by connection. Reusing it for per-account hints would let one account's catalog be served to another.
-- There is no reader for restored hints. The runtime catalog comes from the provider registry and the provider-level synced catalog, and the dashboard reads live catalogs per connection.
+DurinDoor now stores the same shape on the connection's `providerSpecificData.antigravity_capability_hints`:
 
-Adding a durable store for hints would therefore be a schema and transfer change with a new write path next to the credential refresh, which is where the stale-credentials write race the work order names would appear. That is out of scope here and is recorded as a limitation rather than attempted.
+- Nested hints are written only through `updateProviderConnection` after a successful probe (`open-sse/services/antigravityCatalog.js`, `src/app/api/providers/[id]/models/fetchConnectionModels.js`). Tokens are not patched; PSD deep-merge leaves credentials alone.
+- The selective-transfer contract still drops the nested object (`TRANSFER_SAFE_PSD_FIELDS` and the scalar check), so hints stay local and credential-free. Proxy userinfo is stripped from the persisted endpoint; the fingerprint never contains tokens.
+- A later catalog GET for the same connection, project, sanitized endpoint and route fingerprint reuses the persisted model ids without another Cloud Code call. A different connection, project or egress contract probes again.
+- `tests/unit/antigravity-capability-hints.test.js` covers persistence, reuse, isolation and fingerprint application with synthetic fixtures.
 
 ### HTTP/1.1 without ALPN: recorded, not changed
 
 Upstream pins its probe transport to HTTP/1.1 with no ALPN extension (`configureAntigravityHTTP11Transport` clears `Protocols` and `ForceAttemptHTTP2`, wipes `TLSNextProto` and sets `NextProtos` to nil) because the native Antigravity client sends no ALPN extension.
 
-DurinDoor's probe goes through the shared `proxyAwareFetch` transport, which is an undici agent shared by every provider request. Undici negotiates HTTP/1.1, but it does send an ALPN extension, so the wire shape differs from upstream's. The shared transport was left intact: no closed runtime fixture showed a local compatibility failure caused by protocol selection, and changing a shared transport would put the proxy and quota boundaries of every provider at risk for a difference that has not been shown to matter against the vendor. The delta is recorded here so a future provider-specific transport can be justified by evidence rather than by this note.
+DurinDoor's probe goes through shared `proxyAwareFetch` and does not set protocol options. `tests/unit/antigravity-probe-tls-contract.test.js` calls the direct fetch path with a fixture dispatcher built from the same options as the shared pool against a loopback-only HTTPS fixture on Node 24.22.2. Its ALPN callback records `http/1.1` in the ClientHello offer list, selects `http/1.1`, and serves a synthetic account-catalog request; the fixture prefers `h2` if the client offers it. The test's dispatcher trusts only the checked-in synthetic fixture CA and keeps `rejectUnauthorized: true`, so certificate and hostname validation remain active. This is evidence for the current runtime's direct transport default, not a guarantee across runtimes or custom/proxy dispatchers, and it does not establish whether an ALPN-free remote server accepts the request. No vendor connection, account, or credential is used. The shared transport is left intact; the ALPN wire-shape difference from upstream remains recorded pending vendor-independent interoperability evidence.
 
 ### Validation scope
 
@@ -151,3 +179,40 @@ DurinDoor's probe goes through the shared `proxyAwareFetch` transport, which is 
 
 These are local wiring tests. They do not establish that Google accepts this body for a given account, that the account's project is the one Google would use, that the daily host answers for every account, or that the catalog is the complete set of usable models.
 
+
+## CLIProxyAPI delta through 6960763 (#2034)
+
+Compared `f5c5681a8361c9da53e93c60b6507816eee7468b..6960763455c4ac3d4828fb1736aa5de2183ccecf` in `router-for-me/CLIProxyAPI`, including `internal/auth/antigravity/auth.go`, `internal/runtime/executor/antigravity_executor*.go`, `sdk/auth/antigravity_models.go`, `sdk/cliproxy/antigravity_models.go`, and `internal/translator/antigravity/`. This is a source comparison with synthetic HTTP only.
+
+- Auth reads: upstream caps successful project responses at 1 MiB and bounds error bodies. The sign-in path now bounds successful load and onboarding JSON to 1 MiB and 30 seconds. It already rejects non-success project responses without reading their bodies. User info and token exchange retain their existing read behavior; this change does not claim a bound on those calls.
+- Onboarding: both implementations poll and fail when no project is returned. The existing `antigravity-flow.test.js` covers successful polling, exhaustion, and failure without saving. Upstream also propagates cancellation into its request and poll delay; that delta is ported. The OAuth route forwards the incoming request signal through `exchangeAndSaveAuthorizationCode` and `exchangeTokens` as a trailing argument to `provider.postExchange` (other providers ignore it). Antigravity passes it to the user-info, project-lookup and onboarding requests and makes the poll delay abortable. An abort stops immediately, sends no further request, saves nothing and rejects with `OAUTH_CANCELLED` (HTTP 499), which is distinct from a project failure. `tests/unit/antigravity-oauth-cancellation.test.js` covers abort before the exchange, during the onboarding request, during a poll delay, and unchanged completion with synthetic fixtures.
+- Refresh and validation: Antigravity reloads the selected connection inside a per-connection refresh flight, shares its result, and persists with the existing credential compare-and-swap guard. A newer stored credential supersedes the request snapshot. Project discovery HTTP and missing-project failures are classified for the selected connection; transport failures remain transient. Project cache entries are bound to the presented credential. `antigravity-refresh-serialization.test.js` covers concurrency, stale snapshots, account isolation, project validation, and redirect rejection. This coordination is process-local.
+- Retry-After: `AntigravityExecutor.computeRetryDelay` handles short retries. Routing persists per-connection model cooldowns using upstream reset evidence when available, with Antigravity defaults for rate limits and exhausted quota. Exhausted credits cool the connection across models and are not reduced to a locally synthesized short delay. `antigravity-refresh-serialization.test.js` exercises account selection and recovery with fake timers. Other providers retain their existing policy.
+- Catalog: account project scoping, auth/transient classification and unknown catalog handling are documented above and covered by `antigravity-project-catalog.test.js`. Persisted capability hints and the credential-free route fingerprint are ported as above (`antigravity-capability-hints.test.js`). Catalog identities and shared routing were not changed. The shared undici probe transport still negotiates with an ALPN extension; that wire-shape delta remains recorded under "HTTP/1.1 without ALPN" and was not changed here.
+
+- CLIProxyAPI `6960763..6eb8554` state fixes: Cloud Code JSON error envelopes under HTTP 200 are treated as failures before translation, using their numeric RPC code when it is an HTTP error status and 502 otherwise. HTTP and in-band 401/403 responses retire the actual shared undici dispatcher that served the request; active requests drain, and a late failure cannot retire a replacement. The DNS-bypass path uses no pooled agent. Eager post-refresh project discovery remains opt-in and now skips disabled Antigravity connections. Dashboard sign-in already rejects missing projects, including onboarding failure.
+- Following [CLIProxyAPI's onboarding operation classification](https://github.com/router-for-me/CLIProxyAPI/blob/6eb8554f0ede/internal/auth/antigravity/auth.go), a terminal onboarding error stops polling and fails sign-in before saving. The OAuth response retains the upstream code, status and message in its error text, distinct from a missing project or cancellation; its HTTP status remains the OAuth upstream-failure status (502). Route-level fixtures cover errors on the first poll and after a pending poll.
+- CLIProxyAPI's optional credits retry/balance/refresh machinery and its reasoning replay item store are absent here; their parsing, session metadata, key, commit-order and cancellation fixes therefore have no corresponding execution path to port. DurinDoor's separate tool-signature caches are not that replay store. Existing Antigravity wire sessions are scoped by connection and subagent. `antigravity-cpa-credential-state.test.js`, `project-id-proxy-routing.test.js`, and `antigravity-flow.test.js` use synthetic fixtures to exercise the applicable response, transport, discovery, session and sign-in behavior.
+- SSE and signatures: existing terminal tests cover completion without EOF, late usage and bounded draining; `antigravity-thought-signature-family.test.js` covers signature family isolation. The Gemini-native route returns Antigravity response envelopes directly after restoring `cpaUsageMetadata` to `usageMetadata`, tool names on every candidate, and missing candidate finish reasons. Synthetic JSON and SSE coverage is in `antigravity-gemini-native-response.test.js`; OpenAI and Anthropic routes retain their existing translation. This follows [CLIProxyAPI's Gemini response translator](https://github.com/router-for-me/CLIProxyAPI/blob/6eb8554f0ede/internal/translator/antigravity/gemini/antigravity_gemini_response.go) (MIT).
+
+## Pinned Antigravity parity pass
+
+Sources are CLIProxyAPI [`6eb8554f0ede`](https://github.com/router-for-me/CLIProxyAPI/tree/6eb8554f0ede597b2aa3e508ffb3f111d3c2b9e6) (CPA) and OmniRoute [`5ffa68e83544`](https://github.com/cheaper-inference/OmniRoute/tree/5ffa68e835442a12ed1204a2eebf4076c298aecb) (OR). The behavior changes below use closed fixtures in `tests/unit/antigravity-parity-pass.test.js`.
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Authorization URL and offline consent | CPA `auth.go:BuildAuthURL`, OR `providers/antigravity.ts:buildAntigravityAuthUrl` | Already matched for the dashboard authorization-code flow. |
+| OAuth client and scopes | CPA `internal/auth/antigravity/constants.go`, OR `providers/antigravity.ts:createAntigravityOAuthProvider` | Intentionally different. The deployment supplies its OAuth client and uses the existing narrower scope set. Embedded clients, client profiles and refresh-token import are outside the dashboard sign-in flow. |
+| Authorization-code exchange | CPA `auth.go:ExchangeCodeForTokens`, `sdk/auth/antigravity.go` | Ported here. Validate the access token, propagate cancellation into the exchange, and bound request and body reads. HTTP failures report the status and malformed JSON is reported without echoing the token response. |
+| User info | CPA `auth.go:FetchUserInfo`, OR `providers/antigravity.ts:postExchangeAntigravity` | Ported here from CPA. Sign-in requires a usable email for account identity. DurinDoor retains v1 user info and uses a bounded read. |
+| loadCodeAssist project and tier | CPA `auth.go:extractCloudaicompanionProject`, `defaultAntigravityTierID` | Ported here for dashboard and runtime discovery. Accept project aliases and choose the first valid default tier, the current tier, or `free-tier`. |
+| Provisioning headers and endpoint | CPA `auth.go:FetchProjectID`, `OnboardUser`, OR `providers/antigravity.ts:getPostExchangeHeaders` | Intentionally different. DurinDoor retains its production endpoint and existing provisioning metadata and headers, which are tied to its deployed OAuth client. |
+| Onboarding request and polling | CPA `auth.go:OnboardUser`, OR `providers/antigravity.ts:onboardAntigravityUser` | Ported here. Send `tier_id`, bound each dashboard request, and avoid waiting after the last runtime poll. Existing dashboard and runtime poll limits remain separately tunable. Runtime transport retries retain their existing spacing. |
+| Onboarding HTTP and operation errors | CPA `auth.go:OnboardUser`, `onboardOperationError`, `onboardOperationHTTPStatus` | Ported here. Ignore empty error maps and blank error strings. A real terminal error wins over a project in the same payload. Runtime lookup classifies 401, 403 and 429 as credential-scoped. Dashboard OAuth keeps its 502 upstream-failure contract and 499 cancellation. |
+| Missing project and post-onboard rediscovery | CPA `auth.go:FetchProjectID`, OR `providers/antigravity.ts:postExchangeAntigravity` | Already matched with CPA's fail-closed flow. Intentionally different from OR's extra discovery and background onboarding. The dashboard requires a project from either the initial lookup or the completed operation. |
+| Refresh classification and token rotation | CPA `antigravity_executor_auth.go:refreshTokenWithOptions`, OR `antigravity.ts:refreshCredentials` | Ported here in the executor fallback. A structured `invalid_grant` reaches the existing reauthorization path, unusable success responses fail, and omitted replacement tokens preserve the stored refresh token. Existing coordinator serialization and guarded persistence already cover connection ownership. |
+| Request envelope and countTokens | CPA `antigravity_executor_request.go`, `antigravity_executor_tokens.go`, OR `antigravity.ts:transformRequest` | Already matched for the project envelope, scoped sessions, schema cleanup, Claude tool mode and native count routing described above. Intentionally different for generation defaults and output limits, which use DurinDoor's existing provider rules. |
+| Inference transport and headers | CPA `antigravity_executor_request.go:resolveUserAgent`, OR `antigravity.ts:buildUrl`, `buildHeaders` | Ported here. Chat and countTokens honor the selected connection’s user-agent override using the existing catalog identity resolver. DurinDoor intentionally retains its proxy transport and streaming or JSON endpoint selection. OR always uses SSE upstream. |
+| Retry, quota and cooldown | CPA `antigravity_executor_credits.go`, OR `antigravity.ts:resolveAntigravityBodyRetryHint`, `open-sse/services/antigravity429Engine.ts` | Already matched for reset-hint parsing, bounded short retries and selected-connection cooldown. Intentionally different for retry ceilings and paid-credit balance and replay machinery. Each router owns its routing and accounting policy. |
+| Model list | CPA `sdk/auth/antigravity_models.go`, OR `open-sse/services/usage/antigravity.ts` | Already matched for project-scoped probes and account-bound hints. Intentionally different for pinned public aliases and catalog publication policy. |
+| Responses and error classification | CPA `antigravity_executor_execute.go`, `antigravity_executor_stream.go`, OR `antigravityUpstreamError.ts` | Already matched for root JSON error codes and transport retirement on the covered auth failures, as documented above. Intentionally different for response translation, usage accounting and the format of provider diagnostics. |

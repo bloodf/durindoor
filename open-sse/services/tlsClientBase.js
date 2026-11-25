@@ -32,8 +32,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // ---------------------------------------------------------------------------
 // Proxy resolution — every provider file imports both of these
 // ---------------------------------------------------------------------------
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { resolveTlsClientProxyUrl } from "./tlsClientProxy.js";
+import { carriesCredential } from "../executors/sendRequest.js";
 import { buildNativeTlsClientOptions } from "./tlsClientDownloadDir.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -84,12 +85,17 @@ export function toHeaders(raw) {
 export async function raceWithTimeout(promise, timeoutMs, signal) {
   // If no signal, just race with a simple timeout.
   if (!signal) {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new TlsClientHangError()), timeoutMs);
-      }),
-    ]);
+    let timer;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new TlsClientHangError()), timeoutMs);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // With signal, race against both timeout and abort.
@@ -504,18 +510,22 @@ function tailFileVariantB2(path, eofSymbol, done, signal = null, cleanupPath) {
  */
 export function createGetClient(config) {
   let clientPromise = null;
+  let activeClient = null;
   let exitHookInstalled = false;
 
-  const installExitHook = (client) => {
-    if (!exitHookInstalled) {
-      exitHookInstalled = true;
-      process.on("exit", () => {
-        void client.stop();
-      });
-    }
+  const installExitHook = () => {
+    if (exitHookInstalled) return;
+    exitHookInstalled = true;
+    process.on("exit", () => {
+      try {
+        void activeClient?.stop?.();
+      } catch {
+        /* ignore */
+      }
+    });
   };
 
-  return async function getClient() {
+  async function getClient() {
     if (!clientPromise) {
       clientPromise = (async () => {
         let TLSClientCtor;
@@ -538,15 +548,43 @@ export function createGetClient(config) {
           tlsOptions.clientIdentifier = config.tlsProfile;
         }
         const client = new TLSClientCtor(tlsOptions);
-        // Start the native TLS client binding
-        await client.start();
-        installExitHook(client);
-
+        try {
+          // Start the native TLS client binding
+          await client.start();
+        } catch (err) {
+          try {
+            void client.stop?.();
+          } catch {
+            /* ignore */
+          }
+          throw err;
+        }
+        activeClient = client;
+        installExitHook();
         return client;
-      })();
+      })().catch((err) => {
+        // Clear the cached rejection so the next getClient() retries.
+        clientPromise = null;
+        throw err;
+      });
     }
     return clientPromise;
+  }
+
+  getClient.resetClientCache = function resetClientCache() {
+    const previous = activeClient;
+    activeClient = null;
+    clientPromise = null;
+    if (previous) {
+      try {
+        void previous.stop();
+      } catch {
+        /* ignore */
+      }
+    }
   };
+
+  return getClient;
 }
 
 // The connection's proxy options for the request in flight. Executors wrap
@@ -567,11 +605,12 @@ export function runWithTlsProxyOptions(proxyOptions, fn) {
 
 /**
  * Resolve the proxy URL for a tls-client request. Per-call value wins; then
- * the connection proxy, then the HTTP(S)_PROXY environment.
+ * the same CONNECT resolution as proxyAwareFetch (relay / connection / env),
+ * failing closed under strictProxy when no usable CONNECT route exists.
  */
 export function resolveProxyUrl(domain, perCall) {
   return resolveTlsClientProxyUrl(domain, perCall, (target) =>
-    resolveProxyForRequest(target, tlsProxyOptionsStorage.getStore())
+    resolveConnectProxyForRequest(target, tlsProxyOptionsStorage.getStore())
   );
 }
 
@@ -616,18 +655,9 @@ export function createTlsClientModule(config) {
   const getClient = createGetClient({ providerName, tlsProfile });
 
   function resetClientCache() {
-    // The getClient closure holds clientPromise — by design the only
-    // reference is inside getClient's closure. After a hang we need
-    // the next call to spawn a fresh binding. We achieve this by
-    // clearing the local reference; the module-level tlsFetch will
-    // re-read via getClient which recreates it.
-    // Since getClient's clientPromise is a closure variable, we
-    // re-create getClient itself:
-    Object.assign(localState, {
-      getClient: createGetClient({ providerName, tlsProfile }),
-    });
-    // Note: this is safe because only tlsFetch calls getClient.
-    // A concurrent in-flight call holds its own reference.
+    // Stop the hung native binding and clear the cached promise inside the
+    // same getClient closure so we keep a single process "exit" listener.
+    localState.getClient.resetClientCache?.();
   }
 
   const localState = { getClient };
@@ -738,7 +768,7 @@ export function createTlsClientModule(config) {
     return { status: 200, headers, text: null, body: stream };
   }
 
-  async function tlsFetch(url, options = {}) {
+  async function tlsFetchOnce(url, options = {}) {
     // Resolve proxyUrl early so test overrides and the real path both see it.
     const resolvedProxyUrl = resolveProxyUrl(proxyDomainOverride ?? domain, options.proxyUrl);
     if (testOverride) return testOverride(url, { ...options, proxyUrl: resolvedProxyUrl });
@@ -757,7 +787,7 @@ export function createTlsClientModule(config) {
       body: options.body,
       tlsClientIdentifier: tlsProfile,
       timeoutMilliseconds: options.timeoutMs ?? defaultTimeoutMs,
-      followRedirects: true,
+      followRedirects: options.sameOriginRedirects !== true,
       withRandomTLSExtensionOrder: true,
       proxyUrl: resolvedProxyUrl,
     };
@@ -798,6 +828,40 @@ export function createTlsClientModule(config) {
       text: tlsResponse.body,
       body: null,
     };
+  }
+
+  /**
+   * A send with a credential keeps redirects on the request origin. Callers can
+   * force the guard on, or opt out, with sameOriginRedirects.
+   */
+  async function tlsFetch(url, options = {}) {
+    if (!(options.sameOriginRedirects ?? carriesCredential(String(url), options.headers))) {
+      return tlsFetchOnce(url, options);
+    }
+    let current = String(url);
+    // Redirect following stays disabled at the TLS layer, including for streams.
+    // A response with no streamed bytes exposes its status before any next hop.
+    let request = { ...options, sameOriginRedirects: true, redirect: "manual" };
+    for (let count = 0; count <= 20; count++) {
+      const result = await tlsFetchOnce(current, request);
+      if (result.status < 300 || result.status >= 400) return result;
+      const location = result.headers?.get("location");
+      if (!location && ![301, 302, 303, 307, 308].includes(result.status)) return result;
+      let next;
+      try { next = new URL(location, current); } catch { next = null; }
+      if (!location || !next || next.origin !== new URL(current).origin || count === 20) {
+        await result.body?.cancel?.();
+        return { status: 401, headers: new Headers(), text: "Session credential redirect rejected", body: null };
+      }
+      await result.body?.cancel?.();
+      if (result.status === 303 || ((result.status === 301 || result.status === 302) && request.method?.toUpperCase() === "POST")) {
+        const headers = new Headers(request.headers);
+        headers.delete("content-type");
+        headers.delete("content-length");
+        request = { ...request, method: "GET", body: undefined, headers: Object.fromEntries(headers) };
+      }
+      current = next.href;
+    }
   }
 
   const module = {

@@ -1,3 +1,4 @@
+import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import crypto from "node:crypto";
 import { resolveLayaHost } from "../config/laya.js";
 import { createErrorResult, parseUpstreamError, readBoundedResponseText, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
@@ -40,6 +41,7 @@ function generateOpencodeSessionId() {
 export async function handleSystemoneCore({
   body,
   modelInfo,
+  routingPolicy,
   credentials = null,
   log = null,
   onRequestSuccess = null,
@@ -88,7 +90,11 @@ export async function handleSystemoneCore({
   if (isRecord(cfg?.headers)) Object.assign(headers, cfg.headers);
   // This header is OpenCode-native protocol metadata, never generic System One.
   if (provider === "opencode" || provider === "opencode-zen") headers["x-opencode-session"] = generateOpencodeSessionId();
-  const requestBody = { ...body, model };
+  let requestBody = { ...body, model };
+  if (provider === "openrouter") {
+    try { requestBody = applyOpenRouterRouting(requestBody, routingPolicy, "systemone"); }
+    catch (error) { return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message); }
+  }
 
   log?.debug?.("SYSTEMONE", `${provider} | ${model} | ${baseUrl}`);
 

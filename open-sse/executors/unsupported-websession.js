@@ -1,6 +1,9 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 
+// Fail-closed stub. It never routes anywhere: a blocked provider that has a real executor is
+// registered through session-dispatch-gate.js instead.
+
 export const BLOCKED_OMNIROUTE_PROVIDERS = {
   // OmniRoute #6894: Devin is a cloud-agent provider with transport:null — it
   // has no chat/completions upstream. Without this fail-closed entry,
@@ -28,9 +31,8 @@ export const BLOCKED_OMNIROUTE_PROVIDERS = {
   "muse-spark-web": {
     aliases: ["ms-web"],
     source: [
-      "open-sse/executors/muse-spark-web.ts",
-      "open-sse/executors/muse-spark-web/response-parser.ts",
-      "tests/unit/muse-spark-web-continuation.test.ts",
+      "open-sse/executors/muse-spark-web.js",
+      "open-sse/executors/muse-spark-web/response-parser.js",
     ],
     reason: "requires Meta/Muse GraphQL request construction, continuation cache, and response parser",
   },

@@ -38,9 +38,9 @@ async function expectPortReusable(port) {
   await new Promise((resolve, reject) => rebound.server.close((error) => error ? reject(error) : resolve()));
 }
 
-async function startXaiAttempt() {
-  const attempt = new XaiService().connect();
-  await vi.waitFor(() => expect(mocks.open).toHaveBeenCalledOnce());
+async function startXaiAttempt(service = new XaiService()) {
+  const attempt = service.connect();
+  await Promise.race([attempt, vi.waitFor(() => expect(mocks.open).toHaveBeenCalledOnce())]);
   return { attempt };
 }
 
@@ -71,36 +71,40 @@ describe("OAuth callback listener cleanup", () => {
     const flow = await new OAuthService({}).startAuthFlow(null, "test provider");
     const waiting = flow.waitForCallback();
 
-    await callbackRequest(flow.port, "/callback?error=access_denied");
-
-    await expect(waiting).rejects.toThrow("access_denied");
+    await Promise.all([
+      expect(waiting).rejects.toThrow("access_denied"),
+      callbackRequest(flow.port, "/callback?error=access_denied"),
+    ]);
     await expectPortReusable(flow.port);
   });
 
   it.sequential("releases the fixed listener after an error callback", async () => {
     const { attempt } = await startXaiAttempt();
 
-    await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?error=access_denied`);
-
-    await expect(attempt).rejects.toThrow("access_denied");
+    await Promise.all([
+      expect(attempt).rejects.toThrow("access_denied"),
+      callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?error=access_denied`),
+    ]);
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
   it.sequential("releases the fixed listener when callback code is missing", async () => {
     const { attempt } = await startXaiAttempt();
 
-    await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?state=state-only`);
-
-    await expect(attempt).rejects.toThrow("No authorization code received");
+    await Promise.all([
+      expect(attempt).rejects.toThrow("No authorization code received"),
+      callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?state=state-only`),
+    ]);
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
   it.sequential("releases the fixed listener when callback state is missing", async () => {
     const { attempt } = await startXaiAttempt();
 
-    await callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?code=oauth-code`);
-
-    await expect(attempt).rejects.toThrow("Invalid state parameter");
+    await Promise.all([
+      expect(attempt).rejects.toThrow("Invalid state parameter"),
+      callbackRequest(XAI_CONFIG.loopbackPort, `${XAI_CONFIG.callbackPath}?code=oauth-code`),
+    ]);
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
@@ -109,12 +113,13 @@ describe("OAuth callback listener cleanup", () => {
     fetch.mockResolvedValueOnce({ ok: false, text: async () => "exchange rejected" });
     const state = new URL(mocks.open.mock.calls[0][0]).searchParams.get("state");
 
-    await callbackRequest(
-      XAI_CONFIG.loopbackPort,
-      `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
-    );
-
-    await expect(attempt).rejects.toThrow("xAI token exchange failed: exchange rejected");
+    await Promise.all([
+      expect(attempt).rejects.toThrow("xAI token exchange failed: exchange rejected"),
+      callbackRequest(
+        XAI_CONFIG.loopbackPort,
+        `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
+      ),
+    ]);
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
@@ -124,28 +129,40 @@ describe("OAuth callback listener cleanup", () => {
     vi.spyOn(service, "exchangeXaiCode").mockImplementationOnce(async () => {
       await saveTokens();
     });
-    const attempt = service.connect();
-    await vi.waitFor(() => expect(mocks.open).toHaveBeenCalledOnce());
+    const { attempt } = await startXaiAttempt(service);
     const state = new URL(mocks.open.mock.calls[0][0]).searchParams.get("state");
 
-    await callbackRequest(
-      XAI_CONFIG.loopbackPort,
-      `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
-    );
-
-    await expect(attempt).rejects.toThrow("save rejected");
+    await Promise.all([
+      expect(attempt).rejects.toThrow("save rejected"),
+      callbackRequest(
+        XAI_CONFIG.loopbackPort,
+        `${XAI_CONFIG.callbackPath}?code=oauth-code&state=${encodeURIComponent(state)}`,
+      ),
+    ]);
     expect(saveTokens).toHaveBeenCalledOnce();
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });
 
   it.sequential("releases the fixed listener after callback timeout", async () => {
-    vi.useFakeTimers();
+    // Keep listener startup on real time and hold the browser launch until
+    // the fake clock is ready to measure the full callback deadline.
+    const browserLaunch = Promise.withResolvers();
+    mocks.open.mockReturnValueOnce(browserLaunch.promise);
     const { attempt } = await startXaiAttempt();
+    vi.useFakeTimers();
     const rejected = expect(attempt).rejects.toThrow("Authentication timeout (5 minutes)");
+    browserLaunch.resolve();
+    // Let connect() register the callback timers after its await of open().
+    await Promise.resolve();
 
-    await vi.advanceTimersByTimeAsync(300_000);
+    // A synchronous advance avoids a real event-loop turn for each poll.
+    vi.advanceTimersByTime(299_999);
+    const timersBeforeDeadline = vi.getTimerCount();
+    vi.advanceTimersByTime(1);
 
     await rejected;
+    expect(timersBeforeDeadline).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
     await expectPortReusable(XAI_CONFIG.loopbackPort);
   });

@@ -120,8 +120,9 @@ describe("stream success lifecycle", () => {
     await Promise.resolve();
 
     const detail = saveRequestDetail.mock.calls.at(-1)[0];
-    expect(detail.response.content).toBe("[Empty streaming response]");
-    expect(detail.tokens).toEqual({ prompt_tokens: 0, completion_tokens: 0 });
+    // OmniRoute #20279: EOF tail text belongs to completion bookkeeping.
+    expect(detail.response.content).toBe("tail");
+    expect(detail.tokens).toMatchObject({ completion_tokens: 1, estimated: true });
     expect(detail.providerResponse.candidates[0].content.parts[0].text).toBe("tail");
   });
 });

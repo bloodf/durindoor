@@ -1,0 +1,12 @@
+---
+title: Poe
+description: Connect Poe with an API key, the live bot catalog, and the Anthropic-compatible route for Claude bots.
+---
+
+Poe provides an OpenAI-compatible API-key endpoint at `https://api.poe.com/v1/chat/completions` and a live model list at `https://api.poe.com/v1/models`. Claude models can use Poe's Anthropic-compatible `https://api.poe.com/v1/messages` endpoint.
+
+## Setup
+
+Create a key at [poe.com/api/keys](https://poe.com/api/keys), then add it as the connection API key. Model discovery uses the saved key. Poe's bot catalog and point balance depend on the account; private bots are not supported by the chat-completions API. Chat Completions supports JSON and server-sent-event streaming. Poe recommends non-streaming requests for image, video, and audio bots.
+
+Sources: [Poe API overview](https://creator.poe.com/api-reference/overview), [Chat Completions reference](https://creator.poe.com/api-reference/createChatCompletion).

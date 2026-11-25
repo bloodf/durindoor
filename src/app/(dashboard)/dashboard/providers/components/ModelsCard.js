@@ -4,10 +4,12 @@ import { useState, useCallback, useEffect, useId, useMemo, useRef } from "react"
 import PropTypes from "prop-types";
 import { Card, Button, Modal, ConfirmModal } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
-import { getProviderAlias } from "@/shared/constants/providers";
+import { getProviderAlias, getProviderModelsFetcher } from "@/shared/constants/providers";
+import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
+import { createBatchResultCollector, loadModelTestResults, modelTestResultKey, persistModelTestResults } from "@/shared/utils/modelTestResults.js";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, checkbox }) {
@@ -152,6 +154,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     return () => { abortControllerRef.current?.abort(); };
   }, []);
 
+  const [suggestedModels, setSuggestedModels] = useState([]);
+
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
 
@@ -172,6 +176,32 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   }, [providerId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSuggestedModels([]);
+    const fetcher = getProviderModelsFetcher(providerId, effectiveType);
+    if (fetcher) fetchSuggestedModels(fetcher).then((models) => { if (!cancelled) setSuggestedModels(models); });
+    return () => { cancelled = true; };
+  }, [providerId, effectiveType]);
+
+  const activeConnectionId = connections.find((connection) => connection.isActive !== false)?.id;
+
+  // Restore the last persisted status for this provider's models on the active
+  // connection. Live results from this session win over stored ones.
+  useEffect(() => {
+    let cancelled = false;
+    const prefix = `${providerAlias}/`;
+    loadModelTestResults(activeConnectionId).then((stored) => {
+      if (cancelled) return;
+      const restored = {};
+      for (const [fullModel, value] of Object.entries(stored)) {
+        if (fullModel.startsWith(prefix)) restored[fullModel.slice(prefix.length)] = value.state;
+      }
+      if (Object.keys(restored).length > 0) setModelTestResults((prev) => ({ ...restored, ...prev }));
+    });
+    return () => { cancelled = true; };
+  }, [providerAlias, activeConnectionId]);
 
   const handleSetAlias = async (modelId, alias) => {
     const fullModel = `${providerAlias}/${modelId}`;
@@ -221,7 +251,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     if (testingModelId) return;
     setTestingModelId(modelId);
     try {
-      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
+      const connectionId = activeConnectionId;
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,6 +261,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setTestError(outcome === "error" ? (data.error || "Model not reachable") : "");
+      persistModelTestResults({
+        [modelTestResultKey(`${providerAlias}/${modelId}`, connectionId)]: { state: outcome, error: data.error || null },
+      });
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
       setTestError("Network error");
@@ -254,6 +287,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   );
 
   const displayModels = builtInModels;
+  const suggestedNotAdded = suggestedModels.filter((model) =>
+    !builtInModels.some((item) => item.id === model.id) && !myCustomModels.some((item) => item.id === model.id)
+  );
 
   const keyedCustomModels = useMemo(() =>
     myCustomModels.map(m => ({ ...m, _key: `${m.providerAlias}:${m.id}:${m.type}` })),
@@ -371,6 +407,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     setTestingBulk(true);
     const abortCtrl = new AbortController();
     abortControllerRef.current = abortCtrl;
+    const connectionId = activeConnectionId;
+    const collector = createBatchResultCollector(abortCtrl.signal, connectionId);
 
     setModelTestResults(prev => {
       const updated = { ...prev };
@@ -379,7 +417,6 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     });
 
     try {
-      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const models = currentSelected.map(model => ({
         model: `${model.providerAlias}/${model.id}`,
         kind: model.type || "llm",
@@ -405,8 +442,10 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
       await readSSEStream(res, (result) => {
         if (result.model) {
-          const modelId = result.model.substring(result.model.lastIndexOf("/") + 1);
           const status = probeOutcome(result);
+          // Drop events that arrive after Stop so a cancelled run cannot write.
+          if (!collector.accept(result.model, status, result.error)) return;
+          const modelId = result.model.substring(result.model.lastIndexOf("/") + 1);
           setModelTestResults(prev => ({ ...prev, [modelId]: status }));
         } else if (result.error) {
           console.error("Batch test server error:", result.error);
@@ -431,6 +470,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         return updated;
       });
     } finally {
+      persistModelTestResults(collector.results());
       setTestingBulk(false);
       abortControllerRef.current = null;
     }
@@ -538,6 +578,18 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             Add Model
           </button>
         </div>
+        {suggestedNotAdded.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs text-dd-muted">Suggested models from provider:</p>
+            <div className="flex flex-wrap gap-2">
+              {suggestedNotAdded.map((model) => (
+                <button key={model.id} type="button" onClick={() => handleAddCustomModel(model.id)}
+                  className="rounded-lg border border-dd-border px-3 py-2 text-xs text-dd-muted hover:border-dd-accent hover:text-dd-accent"
+                  title={model.name}>{model.id}</button>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       <AddCustomModelModal

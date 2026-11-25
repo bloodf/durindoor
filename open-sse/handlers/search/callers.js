@@ -506,9 +506,64 @@ function buildGlmSearchRequest(config, params) {
   };
 }
 
+// ── Keenable (keyless public tier) ──────────────────────────────────────
+// POST https://api.keenable.ai/v1/search/public
+//   { query, max_results, site?, exclude_domains?, published_after? (YYYY-MM-DD) }
+// Response: { results: [{ title, url, description, snippet, published_at }] }
+// The endpoint is fixed: provider_options.baseUrl and stored connection URLs are
+// not used, and `mode`, `objective`, `query_time` and the other API options are
+// never sent. Filters the public tier cannot honor fail instead of being dropped.
+const KEENABLE_SEARCH_URL = "https://api.keenable.ai/v1/search/public";
+const KEENABLE_MAX_EXCLUDES = 1000;
+const KEENABLE_TIME_RANGES = new Set(["any", "day", "week", "month", "year"]);
+const KEENABLE_HOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
+
+function keenableHost(entry) {
+  const host = isString(entry) ? entry.trim().toLowerCase() : "";
+  if (!KEENABLE_HOST_RE.test(host)) throw new Error("Keenable domain filters accept hosts only");
+  return host;
+}
+
+function buildKeenableRequest(config, params) {
+  if (params.searchType && params.searchType !== "web") {
+    throw new Error("Unsupported Keenable search type");
+  }
+  if (!Number.isInteger(params.maxResults) || params.maxResults < 1 || params.maxResults > 50) {
+    throw new Error("Keenable max_results must be an integer from 1 to 50");
+  }
+  if (Number.isInteger(params.offset) && params.offset > 0) {
+    throw new Error("Keenable search does not support offset");
+  }
+  if (params.timeRange && !KEENABLE_TIME_RANGES.has(params.timeRange)) {
+    throw new Error("Unsupported Keenable time_range");
+  }
+  if (params.domainFilter && (!Array.isArray(params.domainFilter) || params.domainFilter.some((d) => !isString(d)))) {
+    throw new Error("Keenable domain_filter must be a list of strings");
+  }
+  const { includes, excludes } = parseDomainFilter(params.domainFilter);
+  if (includes.length > 1) throw new Error("Keenable search accepts one include domain");
+  if (excludes.length > KEENABLE_MAX_EXCLUDES) {
+    throw new Error(`Keenable search accepts at most ${KEENABLE_MAX_EXCLUDES} excluded domains`);
+  }
+  const body = { query: params.query, max_results: params.maxResults };
+  if (includes.length === 1) body.site = keenableHost(includes[0]);
+  if (excludes.length) body.exclude_domains = excludes.map(keenableHost);
+  const publishedAfter = parallelAfterDate(params.timeRange);
+  if (publishedAfter) body.published_after = publishedAfter;
+  return {
+    url: KEENABLE_SEARCH_URL,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "X-Keenable-Title": "durindoor" },
+      body: JSON.stringify(body)
+    }
+  };
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────────
 
 const BUILDERS = {
+  "keenable": buildKeenableRequest,
   "glm": buildGlmSearchRequest,
   "serper": buildSerperRequest,
   "brave-search": buildBraveRequest,

@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 350 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 398 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -11,9 +11,9 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | 9router | `9router` | apikey | 1 | [site](https://www.npmjs.com/package/9router) |
 | Adapta Web | `adapta-web` | cookie | 7 | [site](https://agent.adapta.one) |
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
-| Agnes | `agnes` | apikey | 3 |  |
+| Agnes | `agnes` | apikey | 4 |  |
 | Agnes (China) | `agnes-cn` | apikey | 3 |  |
-| Antigravity CLI | `agy` | oauth | 43 | [site](https://antigravity.google) |
+| Antigravity CLI | `agy` | oauth | 52 | [site](https://antigravity.google) |
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
 | AI Horde | `aihorde` | apikey | 0 | [site](https://aihorde.net) |
 | AI/ML API | `aimlapi` | apikey | 6 | [site](https://aimlapi.com) |
@@ -24,11 +24,11 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Alibaba DashScope CN | `alibaba-cn` | apikey | 12 | [site](https://dashscope.aliyuncs.com) |
 | Alibaba | `alicode` | apikey | 8 | [site](https://bailian.console.aliyun.com) |
 | Alibaba Intl | `alicode-intl` | apikey | 7 | [site](https://modelstudio.console.alibabacloud.com) |
-| Alibaba Token Plan | `alitp-intl` | apikey | 6 | [site](https://www.alibabacloud.com/campaign/ai-landing-page-token) |
+| Alibaba Token Plan | `alitp-intl` | apikey | 16 | [site](https://www.alibabacloud.com/campaign/ai-landing-page-token) |
 | Amazon Q | `amazon-q` | oauth | 47 | [site](https://aws.amazon.com/q/developer/) |
 | Ant Ling / Ring (inclusionAI) | `ant-ling` | apikey | 3 | [site](https://developer.ant-ling.com/en/docs/) |
 | Anthropic | `anthropic` | apikey | 20 | [site](https://console.anthropic.com) |
-| Antigravity | `antigravity` | oauth | 43 | [site](https://antigravity.google) |
+| Antigravity | `antigravity` | oauth | 52 | [site](https://antigravity.google) |
 | AnyAPI | `anyapi` | apikey | 0 |  |
 | AnySearch | `anysearch` | apikey | 0 | [site](https://anysearch.com) |
 | Api.airforce | `api-airforce` | apikey | 7 | [site](https://api.airforce) |
@@ -56,46 +56,55 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | BigModel | `bigmodel` | apikey | 2 | [site](https://open.bigmodel.cn) |
 | Black Forest Labs | `black-forest-labs` | apikey | 7 | [site](https://blackforestlabs.ai) |
 | Blackbox AI | `blackbox` | apikey | 10 | [site](https://blackbox.ai) |
+| Blackbox Web | `blackbox-web` | cookie | 6 | [site](https://app.blackbox.ai) |
 | BluesMinds | `bluesminds` | apikey | 22 | [site](https://www.bluesminds.com) |
 | Brave Search | `brave-search` | apikey | 0 | [site](https://brave.com/search/api) |
 | BytePlus ModelArk | `byteplus` | freeTier | 7 | [site](https://console.byteplus.com/ark) |
 | Bytez | `bytez` | apikey | 3 | [site](https://bytez.com) |
 | CablyAI | `cablyai` | apikey | 0 | [site](https://cablyai.com) |
+| CanopyWave | `canopywave` | apikey | 5 | [site](https://canopywave.com) |
 | Cartesia | `cartesia` | apikey | 2 | [site](https://cartesia.ai) |
 | Cerebras | `cerebras` | apikey | 7 | [site](https://www.cerebras.ai) |
 | Cerebrium | `cerebrium` | apikey | 0 | [site](https://cerebrium.ai) |
 | Charm Hyper | `charm-hyper` | apikey | 20 | [site](https://hyper.charm.land) |
 | ChatAnywhere | `chatanywhere` | apikey | 0 |  |
+| ChatGPT Plan (owner-operated) | `chatgpt-plan` | oauth | 0 | [site](https://chatgpt.com) |
 | ChatGPT Web | `chatgpt-web` | cookie | 11 | [site](https://chatgpt.com) |
+| ChatGPT Web Codex | `chatgpt-web-codex` | cookie | 7 | [site](https://chatgpt.com) |
+| ChatPlayground | `chatplayground` | cookie | 0 | [site](https://app.chatplayground.ai) |
 | Cheaper Inference | `cheaperinference` | apikey | 39 | [site](https://cheaperinference.com) |
 | Chenzk API | `chenzk` | apikey | 16 | [site](https://chenzk.top) |
 | Chipotle Pepper | `chipotle` | none | 1 | [site](https://amelia.chipotle.com) |
-| Chutes AI | `chutes` |  | 0 | [site](https://chutes.ai) |
+| Chutes AI | `chutes` | apikey | 0 | [site](https://chutes.ai) |
 | Clarifai | `clarifai` | apikey | 0 | [site](https://docs.clarifai.com) |
-| Claude Code | `claude` | oauth | 11 | [site](https://claude.ai) |
+| Claude Code | `claude` | oauth | 15 | [site](https://claude.ai) |
+| Claude Web | `claude-web` | cookie | 10 | [site](https://claude.ai) |
 | Cline | `cline` | oauth, apikey | 14 | [site](https://cline.bot) |
 | ClinePass | `clinepass` | apikey, oauth | 10 | [site](https://cline.bot) |
 | CLIProxyAPI | `cliproxyapi` | apikey | 0 | [site](https://github.com/router-for-me/CLIProxyAPI) |
 | CloudCode.ONE | `cloudcode-one` | apikey | 2 | [site](https://cloudcode.one) |
-| Cloudflare | `cloudflare-ai` | apikey | 41 | [site](https://developers.cloudflare.com/workers-ai/) |
+| Cloudflare | `cloudflare-ai` | apikey | 40 | [site](https://developers.cloudflare.com/workers-ai/) |
+| Cloudflare AI Playground | `cloudflare-playground` | none | 20 | [site](https://playground.ai.cloudflare.com) |
 | Naver CLOVA Studio | `clova-studio` | apikey | 3 | [site](https://api.ncloud-docs.com/docs/en/ai-naver-clovastudio-summary) |
-| CodeBuddy CN | `codebuddy-cn` | oauth, apikey | 11 | [site](https://copilot.tencent.com) |
+| CodeBuddy CN | `codebuddy-cn` | oauth, apikey, auth_token | 11 | [site](https://copilot.tencent.com) |
 | CodeBuddy International | `codebuddy-intl` | apikey | 6 | [site](https://www.codebuddy.ai) |
 | Codestral | `codestral` | apikey | 2 | [site](https://mistral.ai) |
-| OpenAI Codex | `codex` | oauth | 42 | [site](https://chatgpt.com/codex) |
-| OpenAI Codex (App-Server, unverified) | `codex-app-server` | none | 30 | [site](https://learn.chatgpt.com/docs/app-server) |
+| OpenAI Codex | `codex` | oauth | 56 | [site](https://chatgpt.com/codex) |
+| OpenAI Codex (App-Server, unverified) | `codex-app-server` | none | 44 | [site](https://learn.chatgpt.com/docs/app-server) |
 | Codex Cloud | `codex-cloud` | apikey | 0 | [site](https://openai.com/codex) |
 | Cohere | `cohere` | apikey | 24 | [site](https://cohere.com) |
 | ComfyUI | `comfyui` | apikey | 2 | [site](https://github.com/comfyanonymous/ComfyUI) |
 | Command Code | `command-code` | apikey | 18 | [site](https://commandcode.ai) |
 | Command Code | `commandcode` | apikey | 28 | [site](https://commandcode.ai) |
+| Conol Web | `conol-web` | cookie | 28 | [site](https://conol.ai) |
 | Context7 | `context7` | apikey | 0 | [site](https://context7.com) |
-| Microsoft 365 Copilot Web | `copilot-m365-web` | cookie | 1 | [site](https://m365.cloud.microsoft/chat) |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | cookie | 2 | [site](https://m365.cloud.microsoft/chat) |
 | Copilot Web | `copilot-web` | cookie | 3 | [site](https://copilot.microsoft.com) |
 | Coqui TTS | `coqui` | none | 1 | [site](https://github.com/coqui-ai/TTS) |
 | Coze | `coze` | apikey | 1 | [site](https://coze.com) |
 | Crof AI | `crof` | apikey | 19 | [site](https://crof.ai) |
 | Cursor IDE | `cursor` | oauth | 14 | [site](https://cursor.com) |
+| Cursor API (key exchange, unverified) | `cursor-api` | apikey | 14 | [site](https://cursor.com/dashboard/api) |
 | Dahl | `dahl` | apikey | 0 |  |
 | DaoXE | `daoxe` | apikey | 9 | [site](https://daoxe.com) |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
@@ -103,10 +112,14 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
 | DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
+| DeepRelay | `deeprelay` | apikey | 17 | [site](https://deeprelay.ai) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |
+| DeepSeek Web | `deepseek-web` | apikey | 14 | [site](https://chat.deepseek.com) |
+| DemonRoute | `demonroute` | apikey | 7 | [site](https://demonroute.com) |
 | Devin | `devin` | apikey | 1 | [site](https://devin.ai) |
 | Devin CLI | `devin-cli` | oauth | 0 | [site](https://cli.devin.ai) |
 | Devin CLI (Agentic) | `devin-cli-agentic` | none | 2 | [site](https://docs.devin.ai/cli) |
+| Devin Desktop | `devin-desktop` | oauth | 110 | [site](https://devin.ai) |
 | DGrid AI | `dgrid` | apikey | 1 | [site](https://dgrid.ai) |
 | Dify | `dify` | apikey | 1 | [site](https://dify.ai) |
 | DigitalOcean | `digitalocean` | apikey | 14 | [site](https://docs.digitalocean.com/products/ai-platform/) |
@@ -114,11 +127,13 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Docker Model Runner | `docker-model-runner` | apikey | 0 | [site](https://docs.docker.com/ai/model-runner/) |
 | DotHoosh | `dothoosh` | apikey | 0 | [site](https://gateway.dothoosh.com) |
 | Doubao | `doubao` | apikey | 9 | [site](https://www.volcengine.com/product/doubao) |
+| Doubao Web | `doubao-web` | cookie | 2 | [site](https://www.dola.com) |
 | DuckDuckGo AI Chat | `duckduckgo-web` | none | 6 | [site](https://duckduckgo.com/aichat) |
 | DXNT | `dxnt` | apikey | 0 |  |
 | Edge TTS | `edge-tts` | none | 11 |  |
 | Electron Hub | `electronhub` | apikey | 0 |  |
 | ElevenLabs | `elevenlabs` | apikey | 6 | [site](https://elevenlabs.io) |
+| EmpirioLabs AI | `empiriolabs` | apikey | 7 | [site](https://empiriolabs.ai) |
 | Empower | `empower` | apikey | 0 | [site](https://docs.empower.dev) |
 | EUrouter | `eurouter` | apikey | 0 |  |
 | Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
@@ -133,17 +148,24 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Fish Audio | `fish-audio` | apikey | 4 | [site](https://fish.audio) |
 | Free.ai | `free-ai` | apikey | 0 | [site](https://free.ai) |
 | FreeAIAPIKey | `freeaiapikey` | apikey | 7 | [site](https://freeaiapikey.com) |
+| Freebuff (session, opt-in) | `freebuff` | oauth, apikey | 9 | [site](https://freebuff.com) |
 | FreeInference | `freeinference` | apikey | 0 |  |
 | FreeModel.dev | `freemodel-dev` | apikey | 4 | [site](https://freemodel.dev) |
 | FreeTheAi | `freetheai` | apikey | 0 |  |
 | FriendliAI | `friendliai` | apikey | 2 | [site](https://friendli.ai) |
+| g4f Gemini | `g4f-gemini` | apikey | 2 | [site](https://g4f.dev) |
+| g4f NVIDIA | `g4f-nvidia` | apikey | 3 | [site](https://g4f.dev) |
+| g4f Ollama | `g4f-ollama` | apikey | 1 | [site](https://g4f.dev) |
+| g4f Pollinations | `g4f-pollinations` | apikey | 2 | [site](https://g4f.dev) |
 | Galadriel | `galadriel` | apikey | 1 | [site](https://galadriel.ai) |
-| Gemini | `gemini` | freeTier | 31 | [site](https://ai.google.dev) |
+| Gemini | `gemini` | freeTier | 34 | [site](https://ai.google.dev) |
 | Gemini CLI | `gemini-cli` | oauth | 7 | [site](https://github.com/google-gemini/gemini-cli) |
 | Gemini Interactions | `gemini-interactions` | apikey | 3 | [site](https://aistudio.google.com/docs/interactions-overview) |
+| Gemini Web (Subscription) | `gemini-web` | cookie | 3 | [site](https://gemini.google.com) |
 | GoAPI | `getgoapi` | apikey | 0 | [site](https://api.getgoapi.com) |
 | GitHub Enterprise Copilot | `ghe-copilot` | oauth | 40 | [site](https://docs.github.com/en/enterprise-cloud@latest/copilot) |
 | GigaChat | `gigachat` | apikey | 3 | [site](https://developers.sber.ru/portal/products/gigachat-api) |
+| Gisoo | `gisoo` | apikey | 9 | [site](https://gisoo.pro) |
 | GitHub Copilot | `github` | oauth | 42 | [site](https://github.com/features/copilot) |
 | GitHub Models | `github-models` | apikey | 12 | [site](https://github.com/marketplace/models) |
 | GitLab Duo | `gitlab` | oauth | 0 | [site](https://gitlab.com) |
@@ -159,15 +181,18 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | GreenPT | `greenpt` | apikey | 0 |  |
 | Grok CLI (Grok Build) | `grok-cli` | oauth | 18 | [site](https://x.ai) |
 | Grok Web (Subscription) | `grok-web` | cookie | 12 | [site](https://grok.com) |
+| Grokified | `grokified` | apikey | 7 | [site](https://grokified.com) |
 | Groq | `groq` | apikey | 14 | [site](https://groq.com) |
 | Hack Club AI | `hackclub` | apikey | 3 | [site](https://ai.hackclub.com) |
 | Haiper | `haiper` | apikey | 0 | [site](https://haiper.ai) |
 | Huancheng Public API | `hcnsec` | apikey | 0 | [site](https://api.hcnsec.cn) |
 | HelixMind | `helixmind` | apikey | 0 |  |
+| Helyx AI | `helyxai` | apikey | 12 | [site](https://helyxai.space) |
 | Heroku Inference | `heroku` | apikey | 12 | [site](https://www.heroku.com/ai) |
 | Hetzner Inference | `hetzner` | apikey | 0 | [site](https://www.hetzner.com) |
 | HuggingChat | `huggingchat` | cookie | 24 | [site](https://huggingface.co/chat) |
 | HuggingFace | `huggingface` | apikey | 25 | [site](https://huggingface.co) |
+| HyperAgent | `hyperagent` | cookie | 6 | [site](https://hyperagent.com) |
 | Hyperbolic | `hyperbolic` | apikey | 8 | [site](https://hyperbolic.xyz) |
 | Ideogram | `ideogram` | apikey | 2 | [site](https://ideogram.ai) |
 | iFlow AI | `iflow` | oauth | 15 | [site](https://iflow.cn) |
@@ -180,6 +205,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | JembatanAI | `jembatanai` | apikey | 5 | [site](https://jembatanai.com) |
 | Jina AI | `jina-ai` | apikey | 3 | [site](https://jina.ai) |
 | Jina Reader | `jina-reader` | apikey | 0 | [site](https://jina.ai/reader) |
+| Keenable | `keenable` | none | 0 | [site](https://keenable.ai) |
 | Kenari | `kenari` | apikey | 0 | [site](https://kenari.id) |
 | Kie.ai | `kie` | apikey | 11 | [site](https://kie.ai) |
 | Kilo Gateway | `kilo-gateway` | optional | 6 | [site](https://kilo.ai) |
@@ -207,6 +233,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | LLM Gateway | `llmgateway` | apikey | 0 | [site](https://llmgateway.io) |
 | LLMTR | `llmtr` | apikey | 1 | [site](https://llmtr.com) |
 | LM Studio | `lm-studio` | apikey | 0 | [site](https://lmstudio.ai) |
+| Arena | `lmarena` | cookie | 7 | [site](https://arena.ai) |
 | Local Device | `local-device` | none | 1 |  |
 | Local Whisper | `local-whisper` | none | 1 | [site](https://github.com/openai/whisper) |
 | Logfare | `logfare` | apikey | 0 | [site](https://logfare.ai) |
@@ -214,20 +241,24 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Lyceum | `lyceum` | apikey | 0 |  |
 | Magnific | `magnific` | apikey | 6 | [site](https://magnific.com) |
 | MariTalk | `maritalk` | apikey | 4 | [site](https://www.maritaca.ai) |
+| MaxAI | `maxai` | cookie | 13 | [site](https://www.maxai.co) |
+| MegaBrain | `megabrain` | apikey | 0 | [site](https://getmegabrain.com) |
 | MegaNova AI | `meganova-ai` | apikey | 0 |  |
 | Meta Llama | `meta-llama` | apikey | 4 | [site](https://www.llama.com) |
 | MiMo Code Free | `mimo-free` | none | 1 |  |
 | MiMoCode | `mimocode` | none | 1 | [site](https://github.com/XiaomiMiMo/MiMo-Code) |
 | MiniMax | `minimax` | apikey | 27 | [site](https://www.minimax.io) |
 | MiniMax (China) | `minimax-cn` | apikey | 27 | [site](https://www.minimax.cn) |
+| MiniMax Code (account sign-in, guarded) | `minimax-code` | oauth | 2 | [site](https://github.com/MiniMax-AI/minimax-code) |
 | Mistral | `mistral` | apikey | 4 | [site](https://mistral.ai) |
 | Mixlayer | `mixlayer` | apikey | 1 |  |
 | MLX | `mlx` | apikey | 0 | [site](https://github.com/ml-explore/mlx-lm) |
 | MMF | `mmf` | apikey | 1 |  |
+| MNN AI | `mnn-ai` | apikey | 0 | [site](https://mnnai.ru) |
 | Modal | `modal` | apikey | 1 | [site](https://modal.com/docs) |
 | ModelScope | `modelscope` | apikey | 0 | [site](https://modelscope.cn) |
-| Morph | `morph` | apikey | 6 | [site](https://morphllm.com) |
-| Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://ai.developer.meta.com/docs/muse-code/auth) |
+| Morph | `morph` | apikey | 8 | [site](https://morphllm.com) |
+| Muse Code (Meta) | `muse-code` | oauth, apikey | 13 | [site](https://dev.meta.ai/docs/muse-code/auth) |
 | Muse Spark Web | `muse-spark-web` | cookie | 3 | [site](https://www.meta.ai) |
 | Naga.ac | `naga-ac` | optional | 0 | [site](https://docs.naga.ac) |
 | NaN | `nan` | apikey | 14 | [site](https://nan.builders) |
@@ -239,11 +270,14 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Nimble | `nimble` | apikey | 0 | [site](https://docs.nimbleway.com/nimble-sdk/web-tools/search) |
 | NLP Cloud | `nlpcloud` | apikey | 6 | [site](https://nlpcloud.com) |
 | Nomic | `nomic` | hidden | 0 | [site](https://nomic.ai) |
+| Notion AI Web | `notion-web` | cookie | 1 | [site](https://www.notion.so) |
+| NoTrack | `notrack` | apikey | 1 | [site](https://notrack.ai) |
+| NoTrack Web | `notrack-web` | cookie | 1 | [site](https://notrack.ai) |
 | Nous Research | `nous-research` | apikey | 2 | [site](https://portal.nousresearch.com/help) |
 | Novita AI | `novita` | apikey | 4 | [site](https://novita.ai) |
 | nScale | `nscale` | apikey | 6 | [site](https://nscale.com) |
 | Nube.sh | `nube` | apikey | 8 | [site](https://nube.sh) |
-| NVIDIA NIM | `nvidia` | freeTier | 65 | [site](https://developer.nvidia.com/nim) |
+| NVIDIA NIM | `nvidia` | freeTier | 69 | [site](https://developer.nvidia.com/nim) |
 | OCI Generative AI | `oci` | apikey | 0 | [site](https://www.oracle.com/artificial-intelligence/generative-ai) |
 | OfoxAI | `ofoxai` | apikey | 0 |  |
 | Ollama Cloud | `ollama` | apikey | 7 | [site](https://ollama.com) |
@@ -252,11 +286,12 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Onomeo | `onomeo` | apikey | 0 |  |
 | oobabooga | `oobabooga` | apikey | 0 | [site](https://github.com/oobabooga/text-generation-webui) |
 | OpenAdapter | `openadapter` | apikey | 1 | [site](https://docs.openadapter.dev) |
-| OpenAI | `openai` | apikey | 103 | [site](https://platform.openai.com) |
+| OpenAI | `openai` | apikey | 96 | [site](https://platform.openai.com) |
 | OpenCode Free | `opencode` | none | 3 |  |
 | OpenCode Go | `opencode-go` | apikey | 20 | [site](https://opencode.ai/auth) |
 | OpenCode Server | `opencode-server` | apikey | 0 | [site](https://opencode.ai/docs/api) |
 | OpenCode Zen | `opencode-zen` | apikey | 82 | [site](https://opencode.ai/zen) |
+| OpenDesign Go | `opendesign-go` | apikey | 33 | [site](https://go.open-design.ai) |
 | Openference | `openference` | oauth | 0 | [site](https://openference.com) |
 | Openference (API key) | `openference-api` | apikey | 0 | [site](https://openference.com) |
 | OpenRouter | `openrouter` | freeTier | 19 | [site](https://openrouter.ai) |
@@ -273,19 +308,21 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Pioneer (Fastino) | `pioneer` | apikey | 3 | [site](https://docs.fastino.ai) |
 | PLaMo | `plamo` | apikey | 1 | [site](https://plamo.preferredai.jp/api) |
 | PlayHT | `playht` | apikey | 2 | [site](https://play.ht) |
-| Poe | `poe` | apikey | 0 | [site](https://creator.poe.com/api-reference) |
+| Poe | `poe` | apikey | 3 | [site](https://creator.poe.com/api-reference) |
 | Poixe AI | `poixe-ai` | apikey | 0 |  |
 | Pollinations | `pollinations` | apikey | 31 | [site](https://pollinations.ai) |
 | Poolside | `poolside` | apikey | 3 | [site](https://poolside.ai) |
+| PromptQL (Experimental) | `promptql` | cookie | 6 | [site](https://prompt.ql.app) |
 | PublicAI | `publicai` | apikey | 7 |  |
 | Puter | `puter` | apikey | 34 | [site](https://puter.com) |
 | Baidu Qianfan | `qianfan` | apikey | 3 | [site](https://cloud.baidu.com/product/wenxinworkshop) |
 | Qiniu | `qiniu` | apikey | 0 | [site](https://www.qiniu.com) |
-| Qoder | `qoder` | oauth, apikey | 16 | [site](https://qoder.com) |
+| Qoder | `qoder` | oauth, apikey | 18 | [site](https://qoder.com) |
 | Qoder CN | `qoder-cn` | oauth, apikey | 16 | [site](https://qoder.com.cn) |
 | Qwen Code | `qwen` | oauth | 4 | [site](https://chat.qwen.ai) |
 | Qwen Cloud | `qwen-cloud` | apikey | 14 | [site](https://www.qwencloud.com/) |
 | Qwen Cloud Token Plan | `qwen-cloud-token-plan` | apikey | 7 | [site](https://www.qwencloud.com/pricing/token-plan) |
+| QwenCloud | `qwencloud` | apikey | 15 | [site](https://www.qwencloud.com) |
 | Recraft | `recraft` | apikey | 2 | [site](https://recraft.ai) |
 | Regolo | `regolo` | apikey | 0 |  |
 | Reka | `reka` | freeTier | 3 | [site](https://docs.reka.ai/chat/overview) |
@@ -305,7 +342,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | SenseNova | `sensenova` | freeTier | 5 | [site](https://platform.sensenova.cn) |
 | SenseNova (Intl) | `sensenova-intl` | apikey | 5 | [site](https://platform.sensenova.ai) |
 | Serper | `serper` | apikey | 0 | [site](https://serper.dev) |
-| SiliconFlow | `siliconflow` | apikey | 20 | [site](https://cloud.siliconflow.com) |
+| SiliconFlow | `siliconflow` | apikey | 24 | [site](https://cloud.siliconflow.com) |
 | Snowflake Cortex | `snowflake` | apikey | 4 | [site](https://www.snowflake.com) |
 | SparkDesk | `sparkdesk` | freeTier | 4 | [site](https://xinghuo.xfyun.cn) |
 | Speka AI | `speka` | apikey | 0 | [site](https://speka.me) |
@@ -314,12 +351,16 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | SubQ (Decisions API) | `subq` | apikey | 1 | [site](https://subq.ai) |
 | SumoPod | `sumopod` | apikey | 0 | [site](https://ai.sumopod.com) |
 | Suno | `suno` | cookie | 4 | [site](https://suno.ai) |
+| SwiftRouter | `swiftrouter` | apikey | 16 | [site](https://swiftrouter.com) |
 | Synthetic | `synthetic` | apikey | 13 | [site](https://synthetic.new) |
 | T3 Chat Web | `t3-web` | cookie | 23 | [site](https://t3.chat) |
+| TabiToken | `tabitoken` | apikey | 4 | [site](https://tabitoken.com) |
 | Tavily | `tavily` | apikey | 0 | [site](https://tavily.com) |
 | Tencent Hunyuan | `tencent` | freeTier | 6 | [site](https://hunyuan.tencent.com) |
+| Tencent AI Studio Web | `tencent-aistudio-web` | cookie | 3 | [site](https://aistudio.tencent.ai) |
 | TheB.AI | `thebai` | apikey | 0 | [site](https://theb.ai) |
 | The Old LLM | `theoldllm` | none | 26 | [site](https://theoldllm.vercel.app) |
+| TinyCMS Web | `tinycms-web` | apikey | 22 | [site](https://site.tinycms.xyz) |
 | TinyFish Fetch | `tinyfish` | apikey | 0 | [site](https://docs.tinyfish.ai/fetch-api) |
 | Together AI | `together` | apikey | 83 | [site](https://www.together.ai) |
 | Token Kiosk | `token-kiosk` | apikey | 0 |  |
@@ -331,6 +372,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Tortoise TTS | `tortoise` | none | 1 | [site](https://github.com/neonbjb/tortoise-tts) |
 | Trae | `trae` | oauth | 9 | [site](https://trae.ai) |
 | NVIDIA Triton | `triton` | apikey | 0 | [site](https://developer.nvidia.com/triton-inference-server) |
+| TwinMind | `twinmind` | apikey | 13 | [site](https://twinmind.com) |
 | TypeSafe (Jev) | `typesafe` | apikey | 3 | [site](https://typesafe.ai) |
 | Typhoon | `typhoon` | apikey | 1 | [site](https://docs.opentyphoon.ai) |
 | UberLLM | `uberllm` | apikey | 10 | [site](https://uberllm.dev) |
@@ -357,6 +399,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Weights & Biases Inference | `wandb` | apikey | 3 | [site](https://wandb.ai) |
 | IBM watsonx.ai Gateway | `watsonx` | apikey | 0 | [site](https://www.ibm.com/products/watsonx-ai) |
 | Windsurf | `windsurf` | oauth | 0 | [site](https://windsurf.com) |
+| WorkBuddy | `workbuddy` | oauth | 0 | [site](https://www.workbuddy.ai) |
 | Writer | `writer` | apikey | 2 | [site](https://dev.writer.com) |
 | X5Lab | `x5lab` | apikey | 0 | [site](https://x5lab.dev) |
 | xAI (Grok) | `xai` | oauth, apikey | 20 | [site](https://x.ai) |
@@ -365,12 +408,16 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Xiaomi MiMo (Token Plan) | `xiaomi-tokenplan` | apikey | 12 | [site](https://mimo.xiaomi.com) |
 | XInference | `xinference` | apikey | 0 | [site](https://inference.readthedocs.io) |
 | X-Kiro | `xkiro` | apikey | 0 | [site](https://xkiro.com) |
+| Y-API | `y-api` | apikey | 0 | [site](https://y-api.bestvirtualgoods.com) |
 | Yi (01.AI) | `yi` | apikey | 1 | [site](https://01.ai) |
 | Yolo-Auto | `yolo-auto` | apikey | 1 |  |
 | You.com Search | `youcom` | apikey | 0 | [site](https://you.com) |
 | Tencent Yuanbao Web | `yuanbao-web` | cookie | 8 | [site](https://yuanbao.tencent.com) |
 | Z.AI | `zai` | apikey | 14 | [site](https://open.bigmodel.cn) |
+| Z.ai Web | `zai-web` | cookie | 3 | [site](https://chat.z.ai) |
+| ZCode (local app-server, unverified) | `zcode` | none | 2 | [site](https://github.com/zai-org/ZCode) |
 | Zed IDE | `zed` | oauth | 0 | [site](https://zed.dev) |
+| Zed Hosted Models (opt-in) | `zed-hosted` | oauth | 0 | [site](https://zed.dev) |
 | ZenMux | `zenmux` | freeTier | 9 | [site](https://zenmux.ai) |
 | ZenMux Free | `zenmux-free` | cookie | 11 | [site](https://zenmux.ai) |
 | ZeroLimit AI | `zerolimitai` | apikey | 1 | [site](https://www.zerolimitai.com) |

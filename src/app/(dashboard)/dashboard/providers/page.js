@@ -1,7 +1,10 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import {
   Card,
   CardSkeleton,
@@ -27,11 +30,13 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import LanDiscoveryPanel from "./components/LanDiscoveryPanel";
 import { getProviderStatus, getFreeAuthTypes, matchesProviderSearch, matchesProviderStatus, OAUTH_AUTH_TYPES, OAUTH_STATUS_AUTH_TYPES } from "./providerFilters";
 import { testSummaryToast } from "./testSummaryToast";
+import { resolveProviderNodeIcon } from "@/shared/utils/providerNodeIcon.js";
 
 import { requestJSON, requestCollection, updateProviderConnections } from "./workflowRequests.js";
 
@@ -105,6 +110,8 @@ function getConnectionErrorTag(connection) {
 const APIKEY_INITIAL_VISIBLE = 20;
 
 export default function ProvidersPage() {
+  // V5 uses the root presentation tokens while retaining the provider workflows.
+  const v5 = useUiV5();
   const [loadError, setLoadError] = useState("");
   const [toggleError, setToggleError] = useState(null);
   const pendingProviders = useRef(new Set());
@@ -131,7 +138,8 @@ export default function ProvidersPage() {
     return () => unregisterSearch();
   }, [registerSearch, unregisterSearch]);
 
-  const matchSearch = (name) => matchesProviderSearch(name, searchQuery);
+  const matchSearch = (name, providerId) =>
+  matchesProviderSearch(name, searchQuery, providerId, providerId ? getModelsByProviderId(providerId) : []);
 
   const sortByPriority = (entries, authType) =>
   [...entries].sort(([ka, a], [kb, b]) => {
@@ -165,7 +173,7 @@ export default function ProvidersPage() {
       const [loadedConnections, nodes, settings] = await Promise.all([
         requestCollection("/api/providers", "connections"),
         requestCollection("/api/provider-nodes", "nodes"),
-        requestJSON("/api/settings"),
+        requestSettings().then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Failed to load settings"); return body; }),
       ]);
       setConnections(loadedConnections);
       setProviderNodes(nodes);
@@ -252,7 +260,7 @@ export default function ProvidersPage() {
 
     setDisabledFreeProviders(next);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabledFreeProviders: next })
@@ -320,29 +328,27 @@ export default function ProvidersPage() {
   map((node) => ({
     id: node.id,
     name: node.name || "OpenAI Compatible",
-    color: "#10A37F",
-    textIcon: "OC",
+    ...resolveProviderNodeIcon(node),
     apiType: node.apiType,
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
-  filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
+  filter((p) => matchSearch(p.name, p.id) && matchStatus(p.id, "apikey"));
 
   const anthropicCompatibleProviders = providerNodes.
   filter((node) => node.type === "anthropic-compatible").
   map((node) => ({
     id: node.id,
     name: node.name || "Anthropic Compatible",
-    color: "#D97757",
-    textIcon: "AC",
+    ...resolveProviderNodeIcon(node),
     ...(node.iconUrl ? { iconUrl: node.iconUrl } : null)
   })).
-  filter((p) => matchSearch(p.name) && matchStatus(p.id, "apikey"));
+  filter((p) => matchSearch(p.name, p.id) && matchStatus(p.id, "apikey"));
 
   const oauthEntries = sortByPriority(
     Object.entries(OAUTH_PROVIDERS).filter(
       ([key, info]) =>
       !info.hidden &&
-      matchSearch(info.name) &&
+      matchSearch(info.name, key) &&
       matchStatus(key, OAUTH_STATUS_AUTH_TYPES, info.noAuth)
     ),
     "oauth"
@@ -351,7 +357,7 @@ export default function ProvidersPage() {
   filter(
     ([key, info]) =>
     !info.hidden &&
-    matchSearch(info.name) &&
+    matchSearch(info.name, key) &&
     matchStatus(key, getFreeAuthTypes(key, info), info.noAuth)
   ).
   sort(([, a], [, b]) => (b.noAuth ? 1 : 0) - (a.noAuth ? 1 : 0));
@@ -359,7 +365,7 @@ export default function ProvidersPage() {
     Object.entries(FREE_TIER_PROVIDERS).filter(
       ([key, info]) =>
       !info.hidden &&
-      matchSearch(info.name) &&
+      matchSearch(info.name, key) &&
       (info.serviceKinds ?? ["llm"]).includes("llm") &&
       matchStatus(key, info.authType ?? "apikey", info.noAuth)
     ),
@@ -368,7 +374,7 @@ export default function ProvidersPage() {
   // Web Cookie Providers: filter with search and sort by priority
   const webCookieEntries = sortByPriority(
     Object.entries(WEB_COOKIE_PROVIDERS).filter(
-      ([key, info]) => !info.hidden && matchSearch(info.name) && matchStatus(key, "cookie", info.noAuth)
+      ([key, info]) => !info.hidden && matchSearch(info.name, key) && matchStatus(key, "cookie", info.noAuth)
     ),
     "cookie"
   );
@@ -387,7 +393,7 @@ export default function ProvidersPage() {
     !info.hidden && (
     (info.serviceKinds ?? ["llm"]).includes("llm") ||
     getProviderStats(key, "apikey").total > 0) &&
-    matchSearch(info.name) &&
+    matchSearch(info.name, key) &&
     matchStatus(key, "apikey")
   ).
   sort(([ka, a], [kb, b]) => {
@@ -423,10 +429,11 @@ export default function ProvidersPage() {
   webCookieEntries.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className={`flex min-w-0 flex-col gap-6 px-1 sm:px-0${v5 ? " text-dd-text" : ""}`}>
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={fetchData}>Retry</Button></div>}
       {toggleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       <PageHeader icon="dns" title="Providers" subtitle="Manage provider connections and routing availability." />
+      <p className="text-sm text-dd-muted">Connection status and catalog listings do not establish live inference. Open a provider for local readiness evidence and modality limits.</p>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Select
           label="Provider status"
@@ -755,6 +762,9 @@ function ProviderCard({
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
   const freeClass = classifyFreeProvider(providerId);
+  // V5 dims only the icon: whole-card opacity pushes the name and badges under WCAG AA contrast.
+  const v5 = useUiV5();
+  const dimmed = allDisabled || (isNoAuth && !noAuthEnabled);
 
   const dotColors = {
     free: "bg-dd-success",
@@ -774,10 +784,10 @@ function ProviderCard({
       <Link href={`/dashboard/providers/${providerId}`} className="block min-w-0">
         <Card
           padding="xs"
-          className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled || isNoAuth && !noAuthEnabled ? "opacity-50" : ""}`}>
+          className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${dimmed && !v5 ? "opacity-50" : ""}`}>
           
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2">
+            <div className={`flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2${dimmed && v5 ? " opacity-50" : ""}`}>
               {provider.iconUrl ? (
                 <ProviderIcon
                   src={provider.iconUrl}
@@ -818,7 +828,7 @@ function ProviderCard({
                     </span>
                   </Badge> :
                 isNoAuth ?
-                <Badge variant="success" size="sm" dot>Ready</Badge> :
+                <Badge variant="default" size="sm" dot>Enabled</Badge> :
 
                 <>
                     {getStatusDisplay(connected, error, errorCode)}
@@ -838,7 +848,7 @@ function ProviderCard({
           size="sm"
           checked={noAuthEnabled}
           onChange={() => onToggleNoAuth(!noAuthEnabled)}
-          ariaLabel={noAuthEnabled ? `Disable ${provider.name}` : `Enable ${provider.name}`}
+          aria-label={noAuthEnabled ? `Disable ${provider.name}` : `Enable ${provider.name}`}
           disabled={savingNoAuth} />
         
         </div> :
@@ -855,7 +865,7 @@ function ProviderCard({
             checked={!allDisabled}
             disabled={saving}
             onChange={() => onToggle(!allDisabled ? false : true)}
-            ariaLabel={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`} />
+            aria-label={allDisabled ? `Enable ${provider.name}` : `Disable ${provider.name}`} />
           
           </div>
         </div>
@@ -900,6 +910,7 @@ function ApiKeyProviderCard({
     ANTHROPIC_COMPATIBLE_PREFIX
   );
   const freeClass = classifyFreeProvider(providerId);
+  const v5 = useUiV5();
 
   const dotColors = {
     free: "bg-dd-success",
@@ -922,11 +933,11 @@ function ApiKeyProviderCard({
     <Link href={`/dashboard/providers/${providerId}`} className="group min-w-0">
       <Card
         padding="xs"
-        className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled ? "opacity-50" : ""}`}>
+        className={`h-full hover:bg-dd-surface-2/[0.01] dark:hover:bg-dd-surface-2/[0.01] transition-colors cursor-pointer ${allDisabled && !v5 ? "opacity-50" : ""}`}>
         
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2">
+            <div className={`flex size-8 shrink-0 items-center justify-center rounded-dd bg-dd-surface-2${allDisabled && v5 ? " opacity-50" : ""}`}>
               {provider.iconUrl ? (
                 <ProviderIcon
                   src={getIconPath()}

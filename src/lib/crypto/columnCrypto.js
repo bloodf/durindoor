@@ -5,9 +5,8 @@
 // The master key is NEVER logged, NEVER exported, NEVER included in db dumps.
 //
 // Wire format per encrypted field:
-//   { v: 1, iv: <base64 12B>, ct: <base64 ciphertext+tag> }
-// Callers supply the row id as Additional Authenticated Data so a ciphertext
-// cannot be replayed into a different row.
+//   { v: 1|2, iv: <base64 12B>, ct: <base64 ciphertext+tag> }
+// Version 2 callers use a purpose-specific Additional Authenticated Data value.
 //
 // Implementation note: uses Node's synchronous `crypto.createCipheriv` /
 // `createDecipheriv` (AES-256-GCM). The synchronous API is required because
@@ -47,11 +46,11 @@ function chmodQuiet(target, mode) {
   }
 }
 
-function loadMasterKey() {
-  if (cachedKey) return cachedKey;
-  if (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR) {
+function loadMasterKey({ allowDefault = false } = {}) {
+  if (!allowDefault && (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR)) {
     throw new Error("columnCrypto: DATA_DIR required to load master key");
   }
+  if (cachedKey) return cachedKey;
   const dataDir = getDataDir();
   fs.mkdirSync(dataDir, { recursive: true, mode: DATA_DIR_MODE });
   const keyPath = path.join(dataDir, MASTER_KEY_BASENAME);
@@ -96,6 +95,23 @@ function loadMasterKey() {
   }
 }
 
+/** True only when a master key file is already present. Does not mint one. */
+export function masterKeyPresent() {
+  if (cachedKey) return true;
+  if (!isString(process.env.DATA_DIR) || !process.env.DATA_DIR) return false;
+  try {
+    const raw = fs.readFileSync(path.join(getDataDir(), MASTER_KEY_BASENAME));
+    return raw.length === MASTER_KEY_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+/** Derive an installation-scoped usage identity without exporting the master key. */
+export function usageKeyDigest(secret) {
+  return crypto.createHmac("sha256", loadMasterKey({ allowDefault: true })).update(secret).digest("hex");
+}
+
 function validateKey(raw, keyPath) {
   if (raw.length !== MASTER_KEY_BYTES) {
     throw new Error(
@@ -117,7 +133,7 @@ function encodeAad(aad) {
  * @param {string|number|null} aad - Additional Authenticated Data (e.g. row id).
  * @returns {{v:number, iv:string, ct:string}}
  */
-export function encryptField(plaintext, aad = null) {
+export function encryptField(plaintext, aad = null, version = FORMAT_VERSION) {
   if (!isString(plaintext)) {
     throw new TypeError("columnCrypto.encryptField: plaintext must be a string");
   }
@@ -136,7 +152,7 @@ export function encryptField(plaintext, aad = null) {
   // Pack ct+tag so the blob is self-contained.
   const packed = Buffer.concat([ciphertext, tag]);
   return {
-    v: FORMAT_VERSION,
+    v: version,
     iv: iv.toString("base64"),
     ct: packed.toString("base64")
   };
@@ -153,7 +169,7 @@ export function decryptField(blob, aad = null) {
   if (!blob || !isObject(blob)) {
     throw new TypeError("columnCrypto.decryptField: blob must be an object");
   }
-  if (blob.v !== FORMAT_VERSION) {
+  if (blob.v !== FORMAT_VERSION && blob.v !== 2) {
     throw new Error(`columnCrypto: unsupported blob version ${blob.v}`);
   }
   if (!isString(blob.iv) || !isString(blob.ct)) {
@@ -187,7 +203,7 @@ export function isEncryptedBlob(value) {
   return (
     !!value && isObject(
       value) &&
-    value.v === FORMAT_VERSION && isString(
+    (value.v === FORMAT_VERSION || value.v === 2) && isString(
       value.iv) && isString(
       value.ct));
 

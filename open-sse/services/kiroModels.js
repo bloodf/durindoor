@@ -27,6 +27,7 @@ import { join } from "path";
 // Runtime user profiles are not standalone assets; avoid recursive NFT globs.
 const runtimeJoin = join.bind(null);
 import { refreshKiroToken } from "./tokenRefresh.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -248,9 +249,6 @@ function normalizeKiroSsoScope(scopes) {
   return isString(scopes) ? scopes.trim() : "";
 }
 
-/** @type {Map<string, { expiresAt: number, models: any[] }>} */
-const catalogCache = new Map();
-
 /**
  * Strip the `-agentic` and/or `-thinking` suffixes from a synthetic id, if
  * any. The implementation lives in `providers/models/kiroVariants.js` next to
@@ -299,6 +297,19 @@ function formatDisplayName(modelName, modelId, rateMultiplier) {
   // Locale-independent decimal formatting.
   const rateStr = rate.toFixed(1).replace(",", ".");
   return `Kiro ${base} (${rateStr}x credit)`;
+}
+
+/**
+ * Kiro answers an expired bearer token on ListAvailableModels with either 401
+ * or 403 "The bearer token included in the request is invalid" (9router PR
+ * #1823). Both mean "refresh and retry"; any other 403 is a real denial.
+ */
+export function isRefreshableKiroAuthError(err) {
+  if (!err) return false;
+  if (err.status === 401) return true;
+  if (err.status !== 403) return false;
+  const body = String(err.body || err.message || "").toLowerCase();
+  return body.includes("bearer token") && body.includes("invalid");
 }
 
 /**
@@ -374,6 +385,8 @@ function cacheKey(credentials) {
   return createHash("sha256").update(`kiro:${seed}`).digest("hex");
 }
 
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, keyFn: cacheKey });
+
 /**
  * Resolve the live Kiro model catalog for a credential and expand each entry
  * into 9router variants (`-thinking`, `-agentic`, `-thinking-agentic`). Each
@@ -400,21 +413,33 @@ export async function resolveKiroModels(credentials, options = {}) {
     return null;
   }
 
-  const key = cacheKey(credentials);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) {
-      return { models: cached.models, rawModels: cached.rawModels };
-    }
-  }
+  const key = catalogCache.keyFor(credentials);
+  const catalog = await catalogCache.load(key, () => loadKiroCatalog(credentials, options), {
+    force: Boolean(options.forceRefresh),
+    ageFromStart: true,
+    // Accounts can share a cache key, so only an identical request is shared: same
+    // tokens, egress route and token persistence. An abortable caller stays alone.
+    flightKey: options.signal ? null : JSON.stringify([
+      key,
+      credentials.accessToken,
+      credentials.refreshToken,
+      credentials.providerSpecificData,
+      options.proxyOptions || null,
+      Boolean(options.onCredentialsRefreshed)
+    ])
+  });
 
+  return catalog ? { models: catalog.models, rawModels: catalog.rawModels } : null;
+}
+
+/** One uncached Kiro catalog load, including the refresh-and-retry path. */
+async function loadKiroCatalog(credentials, options) {
   let raw;
   try {
     raw = await fetchKiroCatalogRaw(credentials, options.signal, options.proxyOptions);
   } catch (err) {
-    if (err && err.status === 401 && credentials.refreshToken) {
-      options.log?.info?.("KIRO_MODELS", "Got 401 from Kiro; refreshing token");
+    if (isRefreshableKiroAuthError(err) && credentials.refreshToken) {
+      options.log?.info?.("KIRO_MODELS", `Got ${err.status} auth failure from Kiro; refreshing token`);
       // Re-associate the stored refresh token with its SSO cache entry so an
       // imported external_idp/IDC connection missing clientId/clientSecret/
       // tokenEndpoint can still refresh (9router PR #2615).
@@ -484,12 +509,6 @@ export async function resolveKiroModels(credentials, options = {}) {
     }
   }
 
-  catalogCache.set(key, {
-    expiresAt: now + CACHE_TTL_MS,
-    models: expanded,
-    rawModels: raw
-  });
-
   return { models: expanded, rawModels: raw };
 }
 
@@ -499,7 +518,7 @@ export async function resolveKiroModels(credentials, options = {}) {
  */
 export function invalidateKiroModelCache(credentials) {
   if (!credentials) return;
-  catalogCache.delete(cacheKey(credentials));
+  catalogCache.delete(catalogCache.keyFor(credentials));
 }
 
 /**

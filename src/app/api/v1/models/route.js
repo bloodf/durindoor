@@ -1,8 +1,10 @@
+import { addAutoModelSelectors } from "@/shared/utils/autoModelSelectors.js";
+import { corsHeaders } from "@/lib/http/cors.js";
 import { LLM_KIND, buildModelsList } from "./buildModelsList.js";
 import { buildModelsResponse } from "./_shared.js";
 import { headOkResponse } from "open-sse/translator/validate.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
-import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
+import { filterModelsForRequest, getRequestModelDiscoveryOptions } from "@/sse/services/modelAccess.js";
 
 /**
  * Handle CORS preflight
@@ -10,9 +12,7 @@ import { filterModelsForRequest } from "@/sse/services/modelAccess.js";
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
+      ...corsHeaders(["GET", "HEAD", "OPTIONS"]),
     },
   });
 }
@@ -29,7 +29,8 @@ export async function GET(request) {
     // (e.g. LM Studio) list models under the default settings while
     // cloud-metadata endpoints stay blocked. See buildModelsList.js JSDoc.
     // Keys with a model access rule only see the models they may call.
-    const data = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard()));
+    const models = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
+    const data = await filterModelsForRequest(request, addAutoModelSelectors(models, LLM_KIND));
     return buildModelsResponse(request, data);
   } catch (error) {
     console.log("Error fetching models:", error);

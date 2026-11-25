@@ -7,7 +7,7 @@ import Header from "./Header";
 import Sidebar from "./Sidebar";
 
 const meta = {
-  title: "Durin DS/Shell",
+  title: "Previews/Durin DS/Shell",
   parameters: { layout: "fullscreen" },
 };
 

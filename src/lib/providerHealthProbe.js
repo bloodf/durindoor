@@ -40,6 +40,7 @@ import {
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { BEDROCK_CREDENTIAL_MODE } from "open-sse/config/bedrock.js";
 import { detectBedrockCredentialMode } from "open-sse/shared/awsCredentials.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 
 const PROBE_TIMEOUT_MS = 5000;
 const AUTH_FAILURE_STATUSES = new Set([401, 403]);
@@ -50,9 +51,8 @@ const usesSignedAwsAuth = (connection) =>
   detectBedrockCredentialMode(connection) !== BEDROCK_CREDENTIAL_MODE.API_KEY;
 
 /**
- * Fetch through the DNS-pinned guard on every route. Saved proxies and relays
- * fail closed because their remote DNS cannot compose with this dispatcher;
- * direct probes retain injected fetchers and the existing option contract.
+ * Guard provider targets before dispatch. Direct probes use the DNS-pinned
+ * guard; saved proxies and relays resolve the provider at their egress hop.
  */
 async function proxyAware(url, options, effectiveProxy, fetcher) {
   const opts = { ...options, redirect: "manual" };
@@ -69,6 +69,17 @@ async function proxyAware(url, options, effectiveProxy, fetcher) {
       connectionProxyUrl: effectiveProxy.connectionProxyUrl,
       connectionNoProxy: effectiveProxy.connectionNoProxy || "",
     });
+  }
+  // A real configured proxy resolves the provider host at its egress hop, so
+  // the local DNS-pinning dispatcher cannot be attached to that request.
+  // Keep the URL policy check above each probe, then let proxyAwareFetch route
+  // it. Injected fetchers remain guarded for deterministic tests and callers.
+  const hasConfiguredProxy = Boolean(
+    effectiveProxy?.vercelRelayUrl ||
+    effectiveProxy?.connectionProxyEnabled && effectiveProxy?.connectionProxyUrl
+  );
+  if (hasConfiguredProxy && routedFetcher === fetch && (!fetcher || fetcher === fetch)) {
+    return routedFetcher(url, opts);
   }
   return guardedProbeFetch(url, opts, getProviderValidationGuard(), routedFetcher);
 }
@@ -101,7 +112,7 @@ async function probeAnthropicCompatible(connection, effectiveProxy, fetcher) {
   if (baseUrl.endsWith("/messages")) baseUrl = baseUrl.slice(0, -9);
   if (baseUrl.endsWith("/v1")) baseUrl = baseUrl.slice(0, -3);
   const url = `${baseUrl}/v1/messages`;
-  const model = connection.defaultModel || "claude-3-haiku-20240307";
+  const model = connection.defaultModel || ANTHROPIC_VALIDATION_MODEL;
   // Keyless LAN nodes get no x-api-key or Authorization header at all.
   const headers = { "anthropic-version": "2023-06-01", "content-type": "application/json" };
   if (connection.apiKey) {

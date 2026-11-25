@@ -79,6 +79,7 @@ export function callerSearchBaseUrl(params) {
  * registry default (`config.baseUrl`) stays administrator-controlled and may
  * intentionally target an internal service (a SearXNG container); it is not
  * validated here, exactly as before this port.
+ * Fixed destinations ignore both override sources without validating them.
  *
  * @param {{id?: string, baseUrl?: string}} config Provider search config.
  * @param {object} params Search request params (providerOptions/providerSpecificData/token).
@@ -87,6 +88,9 @@ export function callerSearchBaseUrl(params) {
  *   configured destination is invalid or targets a private address.
  */
 export function resolveSearchBaseUrl(config, params) {
+  if (config?.fixedBaseUrl) {
+    return { baseUrl: trimTrailingSlash(config.baseUrl), source: "registry" };
+  }
   const operatorBaseUrl = operatorSearchBaseUrl(params);
   if (operatorBaseUrl) {
     assertOutboundUrlAllowed(operatorBaseUrl, "public-only");

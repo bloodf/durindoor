@@ -1,6 +1,7 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
+import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { GEMINI_ROLE, OPENAI_FINISH, GEMINI_FINISH } from "../schema/index.js";
 
 // Convert OpenAI SSE chunk to Antigravity SSE format
@@ -12,10 +13,11 @@ export function openaiToAntigravityResponse(chunk, state) {
 
   const choice = chunk.choices?.[0];
   if (!choice) {
-    if (chunk.usage) {
-      state._usage = chunk.usage;
-    }
-    return null;
+    // A usage-only chunk (`choices: []`) is the trailing frame an OpenAI upstream
+    // sends when `stream_options.include_usage` is on. Before the finish chunk it
+    // is stashed for that chunk; after it, the frame is forwarded as usage
+    // metadata of its own instead of being dropped (OmniRoute #18643).
+    return chunk.usage ? usageOnlyChunkResponse(chunk.usage, state) : null;
   }
 
   const delta = choice.delta || {};
@@ -121,6 +123,8 @@ export function openaiToAntigravityResponse(chunk, state) {
         }
       });
     }
+    // The calls are out; a repeated finish chunk must not emit them again.
+    state._toolCallAccum = {};
   }
 
   // Skip empty non-finish chunks
@@ -136,6 +140,9 @@ export function openaiToAntigravityResponse(chunk, state) {
 
   // Finish reason mapping
   if (finishReason) {
+    // The terminal candidate is out from here: a later usage-only chunk must be
+    // forwarded as usage metadata and must not reopen or repeat this candidate.
+    state._finishSent = true;
     const reasonMap = {
       [OPENAI_FINISH.STOP]: GEMINI_FINISH.STOP,
       [OPENAI_FINISH.LENGTH]: GEMINI_FINISH.MAX_TOKENS,
@@ -156,26 +163,35 @@ export function openaiToAntigravityResponse(chunk, state) {
   // Usage metadata
   const usage = chunk.usage || state._usage;
   if (usage) {
-    response.usageMetadata = {
-      promptTokenCount: usage.prompt_tokens || 0,
-      candidatesTokenCount: usage.completion_tokens || 0,
-      totalTokenCount: usage.total_tokens || 0
-    };
-    if (usage.completion_tokens_details?.reasoning_tokens) {
-      response.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
-      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
-      // The non-streaming projector (nonStreamingHandler) already subtracts them, so
-      // without this clamp the stream path double counts reasoning and breaks
-      // prompt + candidates + thoughts === total.
-      response.usageMetadata.candidatesTokenCount = Math.max(0,
-        response.usageMetadata.candidatesTokenCount - response.usageMetadata.thoughtsTokenCount);
-    }
-    if (usage.prompt_tokens_details?.cached_tokens) {
-      response.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
-    }
+    response.usageMetadata = buildGeminiUsageMetadata(usage);
+    // Usage already went out on this frame: a later trailing usage-only chunk
+    // must not repeat it.
+    state._usageSent = true;
   }
 
   return { response };
+}
+
+// OpenAI upstreams called with `stream_options.include_usage` send the usage in
+// a separate final chunk with `choices: []`, after the finish chunk. The finish
+// chunk is already out by then, so forward the usage as its own frame (an empty
+// text part, no finishReason) unless usage already went out. Usage seen before
+// the finish chunk stays stashed for it (see openaiToAntigravityResponse).
+function usageOnlyChunkResponse(usage, state) {
+  if (!state._finishSent) {
+    state._usage = usage;
+    return null;
+  }
+  if (state._usageSent) return null;
+  state._usageSent = true;
+  return {
+    response: {
+      candidates: [{ content: { role: GEMINI_ROLE.MODEL, parts: [{ text: "" }] } }],
+      modelVersion: state._modelVersion,
+      responseId: state._responseId,
+      usageMetadata: buildGeminiUsageMetadata(usage)
+    }
+  };
 }
 
 // Register

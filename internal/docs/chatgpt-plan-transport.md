@@ -1,0 +1,9 @@
+# Private ChatGPT plan transport
+
+Chat Completions and Messages dispatch can use the private transport when the owner runtime registers `chatgpt-plan` and sets `DURINDOOR_CHATGPT_PLAN_ENROLLMENT=1`. The gateway requires a validated stored API key whose persisted provider-connection relation explicitly includes the active OAuth connection. Combo restrictions narrow that relation. If multiple eligible connections remain, the existing connection selector must identify one within scope.
+
+The gateway validates the saved private account reference and builds the transport grant server-side. Within one request, retries and combo members remain bound to that connection and account once selected. An expired session or inference HTTP 401 can trigger one renewal through the private account service. Renewal uses the same saved account and egress, and the gateway validates the resulting session again before inference. The connection's stored proxy policy applies to both inference and renewal. Redirects and TLS-terminating relays are disallowed.
+
+`executeChatgptPlan` rechecks the requested model against the selected account's catalog before posting to the fixed Responses endpoint. The normal chat core translates requests and converts the checked Responses stream to the client's JSON or SSE format. Usage is attributed to the validated key and selected connection at a coherent terminal. A truncated stream cannot record successful usage.
+
+The protocol follows OpenAI's [models and inference guide](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference). Request normalization and the private descriptor are adapted from OmniRoute commit `b748429cf5b3aeb142a708fd3e8751b6918b9dc8`, `open-sse/executors/chatgpt.ts` and `open-sse/config/providers/registry/chatgpt/index.ts`.

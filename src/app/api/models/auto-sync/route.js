@@ -3,8 +3,10 @@ import { getProviderConnections, getSettings, getSyncedModelCatalogs } from "@/l
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { isString } from "@/shared/utils/typeChecks.js";
 import {
+  catalogEntryForConnection,
   effectiveSyncedModels,
   getModelAutoSyncIntervalHours,
+  isConnectionScopedSyncProvider,
   isModelAutoSyncEnabled
 } from "@/lib/modelAutoSync/catalog.js";
 import {
@@ -16,7 +18,28 @@ import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 
 export const dynamic = "force-dynamic";
 
-function providerStatus(providerId, entry, settings, sharedMetadata) {
+function modelRows(effective) {
+  return effective.map(({ id, name, kind, capabilities, discoveredCapabilities, metadataSources }) => ({
+    id, name, kind, capabilities, discoveredCapabilities, metadataSources
+  }));
+}
+
+/** Status of one connection of a connection-scoped provider (including MLX, OpenCode Server and Grokified). */
+function connectionStatus(providerId, catalogs, connection, enabled, sharedMetadata) {
+  const entry = catalogEntryForConnection(catalogs, providerId, connection);
+  const effective = enabled ? effectiveSyncedModels(entry, getModelsByProviderId(providerId), providerId, sharedMetadata) : null;
+  return {
+    connectionId: connection.id,
+    syncedAt: entry?.syncedAt || null,
+    lastAttemptAt: entry?.lastAttemptAt || null,
+    error: entry?.error || null,
+    newModelIds: entry?.newModelIds || [],
+    removedModelIds: entry?.removedModelIds || [],
+    models: effective ? modelRows(effective) : null
+  };
+}
+
+function providerStatus(providerId, entry, settings, sharedMetadata, catalogs = {}, connections = []) {
   const enabled = isModelAutoSyncEnabled(providerId, settings);
   const effective = enabled ? effectiveSyncedModels(entry, getModelsByProviderId(providerId), providerId, sharedMetadata) : null;
   return {
@@ -30,9 +53,14 @@ function providerStatus(providerId, entry, settings, sharedMetadata) {
     // The effective list replaces the registry defaults while auto-sync is on
     // and a sync has succeeded; null means "use the registry".
     // Keep declaration snapshots and provenance so enriched defaults stay UNKNOWN in the UI.
-    models: effective ? effective.map(({ id, name, kind, capabilities, discoveredCapabilities, metadataSources }) => ({
-      id, name, kind, capabilities, discoveredCapabilities, metadataSources
-    })) : null
+    models: effective ? modelRows(effective) : null,
+    // These providers' models belong to each connection's own server; the
+    // provider-level `models` stays null and each connection reports its own.
+    ...(isConnectionScopedSyncProvider(providerId) ? {
+      connectionScoped: true,
+      connections: connections.filter((c) => c.provider === providerId)
+        .map((c) => connectionStatus(providerId, catalogs, c, enabled, sharedMetadata))
+    } : null)
   };
 }
 
@@ -52,7 +80,7 @@ export async function GET(request) {
       ...Object.keys(catalogs),
       ...connections.map((c) => c.provider)
     ])].filter(isModelAutoSyncEligible);
-    const providers = Object.fromEntries(ids.map((id) => [id, providerStatus(id, catalogs[id], settings, sharedMetadata)]));
+    const providers = Object.fromEntries(ids.map((id) => [id, providerStatus(id, catalogs[id], settings, sharedMetadata, catalogs, connections)]));
     return NextResponse.json({
       intervalHours: getModelAutoSyncIntervalHours(settings),
       providers,

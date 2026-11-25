@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -45,7 +44,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: fixture.fetch 
 vi.mock("open-sse/handlers/chatCore.js", () => ({ handleChatCore: fixture.core }));
 vi.mock("open-sse/services/liveModelLimits.js", () => ({ warmLiveModelLimits: vi.fn() }));
 vi.mock("@/lib/usageDb", () => ({ recordTokenSaverEvent: vi.fn() }));
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: async ([kind]) => (fixture.settings.mediaRoutes?.[kind] || []).map((id) => ({ id, kind })) }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: async ([kind]) => (fixture.settings.mediaRoutes?.[kind] || []).map((id) => ({ id, kind })) }));
 
 const { default: proxy } = await import("../../src/proxy.js");
 const { uploadFile, createOpenAIBatch, createAnthropicBatch, _waitForBatch, _resetBatches } = await import("open-sse/services/localFilesBatches.js");
@@ -141,7 +140,10 @@ const seedResources = async () => { seeded = { owner: await seedOwner("owner"), 
 
 beforeAll(async () => {
   previous = { HOME: process.env.HOME, DATA_DIR: process.env.DATA_DIR, DURINDOOR_DATABASE_ENGINE: process.env.DURINDOOR_DATABASE_ENGINE };
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "security-routes-"));
+  // The full test inventory can exhaust /tmp's inode quota before this route
+  // matrix runs. Keep its disposable DB and ownership records on the worktree
+  // filesystem instead, where the suite has its own inode budget.
+  tempDir = fs.mkdtempSync(path.join(process.cwd(), ".security-routes-"));
   process.env.HOME = tempDir;
   process.env.DATA_DIR = tempDir;
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";

@@ -1,3 +1,4 @@
+import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "./antigravityProvisioning.js";
 /**
  * Project ID Service - Fetch and cache real Project IDs from Google Cloud Code API
  *
@@ -10,8 +11,10 @@
 import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { credentialFetch } from "../utils/credentialFetch.js";
 import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { createHash } from "node:crypto";
 
 const PROJECT_RESPONSE_MAX_BYTES = 256 * 1024;
 const PROJECT_RESPONSE_TIMEOUT_MS = 30_000;
@@ -127,13 +130,15 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
   if (signal?.aborted) throw projectAbortError(signal.reason);
 
   // Return cached value if still fresh
-  const cached = projectIdCache.get(connectionId);
+  const antigravity = provider === "antigravity" || provider === "agy";
+  const cacheKey = antigravity ? `${connectionId}:${createHash("sha256").update(accessToken).digest("hex")}` : connectionId;
+  const cached = projectIdCache.get(cacheKey);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.projectId;
   }
 
   // Deduplicate concurrent fetches for the same connection
-  const pendingKey = `${connectionId}:${proxyRouteFingerprint(proxyOptions)}`;
+  const pendingKey = `${cacheKey}:${proxyRouteFingerprint(proxyOptions)}`;
   const pending = pendingFetches.get(pendingKey);
   if (pending?.controller?.signal?.aborted) {
     pendingFetches.delete(pendingKey);
@@ -149,12 +154,19 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
     try {
       const projectId = await fetchProjectId(accessToken, controller.signal, proxyOptions, provider);
       if (projectId && !controller.signal.aborted) {
-        projectIdCache.set(connectionId, { projectId, fetchedAt: Date.now() });
+        projectIdCache.set(cacheKey, { projectId, fetchedAt: Date.now() });
         return projectId;
+      }
+      if (antigravity && !controller.signal.aborted) {
+        const error = new Error("Antigravity credential has no provisioned project");
+        error.credentialScoped = true;
+        error.status = 503;
+        throw error;
       }
       console.warn("[ProjectId] could not fetch projectId for connection", connectionId.slice(0, 8));
       return null;
     } catch (error) {
+      if (antigravity && error?.credentialScoped) throw error;
       if (error?.name !== "AbortError") {
         console.warn(`[ProjectId] Error fetching project ID: ${sanitizeErrorMessage(error?.message || error)}`);
       }
@@ -179,6 +191,9 @@ export async function getProjectIdForConnection(connectionId, accessToken, proxy
 export function removeConnection(connectionId) {
   if (!connectionId) return;
   projectIdCache.delete(connectionId);
+  for (const key of projectIdCache.keys()) {
+    if (key.startsWith(`${connectionId}:`)) projectIdCache.delete(key);
+  }
   for (const [key, pending] of pendingFetches) {
     if (!key.startsWith(`${connectionId}:`)) continue;
     try {pending.controller.abort();} catch (_) {/* ignore */}
@@ -199,13 +214,17 @@ export function removeConnection(connectionId) {
 async function fetchProjectId(accessToken, signal, proxyOptions, provider = null) {
   // Antigravity must not carry the Gemini CLI's Google-client fingerprints:
   // the backend refuses to provision a project when it sees them.
-  const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
-  const response = await proxyAwareFetch(CLOUD_CODE_API.loadCodeAssist, {
+  const antigravity = provider === "antigravity" || provider === "agy";
+  const headers = antigravity ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
+  const fetchProject = (url, init) => antigravity ?
+  credentialFetch((target, options) => proxyAwareFetch(target, options, proxyOptions), url, init) :
+  proxyAwareFetch(url, init, proxyOptions);
+  const response = await fetchProject(CLOUD_CODE_API.loadCodeAssist, {
     method: "POST",
     headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
     body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
     signal
-  }, proxyOptions);
+  });
 
   const responseText = await readBoundedResponseText(response, {
     signal,
@@ -214,12 +233,19 @@ async function fetchProjectId(accessToken, signal, proxyOptions, provider = null
   });
   if (!response.ok) {
     const errorText = responseText;
-    throw new Error(`loadCodeAssist failed: HTTP ${response.status} ${sanitizeErrorMessage(errorText)}`);
+    const error = new Error(`loadCodeAssist failed: HTTP ${response.status} ${sanitizeErrorMessage(errorText)}`);
+    if (antigravity) {
+      error.credentialScoped = true;
+      error.status = response.status;
+    }
+    throw error;
   }
 
   const data = JSON.parse(responseText);
-  const projectId = extractProjectId(data);
+  const projectId = antigravity ? extractAntigravityProject(data) : extractProjectId(data);
   if (projectId) return projectId;
+
+  if (antigravity) return onboardUser(accessToken, extractAntigravityOnboardTier(data), signal, proxyOptions, provider);
 
   // Determine the tier to use for onboarding
   let tierID = "legacy-tier";
@@ -250,9 +276,10 @@ async function fetchProjectId(accessToken, signal, proxyOptions, provider = null
 async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, provider = null) {
   console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
-  const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
+  const antigravity = provider === "antigravity" || provider === "agy";
+  const reqBody = antigravity ? { tier_id: tierID, metadata: LOAD_CODE_ASSIST_METADATA } : { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
   // Same fingerprint scoping as loadCodeAssist above.
-  const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
+  const headers = antigravity ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
   // Anti-abuse spacing (upstream #3813): fewer attempts and a long, jittered base
   // delay so multi-account onboard bursts don't trip Google Cloud rate limits.
   const MAX_ATTEMPTS = Number(process.env.ONBOARD_MAX_ATTEMPTS) || 2;
@@ -269,12 +296,15 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
     externalSignal?.addEventListener("abort", forwardAbort);
 
     try {
-      const response = await proxyAwareFetch(CLOUD_CODE_API.onboardUser, {
+      const fetchProject = (url, init) => antigravity ?
+      credentialFetch((target, options) => proxyAwareFetch(target, options, proxyOptions), url, init) :
+      proxyAwareFetch(url, init, proxyOptions);
+      const response = await fetchProject(CLOUD_CODE_API.onboardUser, {
         method: "POST",
         headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
         body: JSON.stringify(reqBody),
         signal: localCtrl.signal
-      }, proxyOptions);
+      });
 
       const responseText = await readBoundedResponseText(response, {
         signal: localCtrl.signal,
@@ -284,13 +314,20 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
 
       if (!response.ok) {
         const errorText = responseText;
-        throw new Error(`onboardUser HTTP ${response.status}: ${sanitizeErrorMessage(errorText)}`);
+        const error = new Error(`onboardUser HTTP ${response.status}: ${sanitizeErrorMessage(errorText)}`);
+        if (antigravity) {
+          error.credentialScoped = true;
+          error.status = response.status;
+        }
+        throw error;
       }
 
       const data = JSON.parse(responseText);
 
       if (data.done === true) {
-        const projectId = extractProjectIdFromOnboard(data);
+        const operationError = antigravity && antigravityOnboardOperationError(data.error);
+        if (operationError) throw operationError;
+        const projectId = antigravity ? extractAntigravityProject(data.response) : extractProjectIdFromOnboard(data);
         if (projectId) {
           console.log(`[ProjectId] Successfully onboarded, project ID: ${projectId}`);
           return projectId;
@@ -299,6 +336,8 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
         return null;
       }
 
+      if (antigravity && attempt === MAX_ATTEMPTS) break;
+
       // Server not done yet – wait (long base + jitter) and retry
       const jitter = Math.floor(Math.random() * 5000);
       console.log(`[ProjectId] Onboard attempt ${attempt}/${MAX_ATTEMPTS}: not done yet, waiting...`);
@@ -306,6 +345,7 @@ async function onboardUser(accessToken, tierID, externalSignal, proxyOptions, pr
 
     } catch (error) {
       clearTimeout(timeoutId);
+      if (error?.credentialScoped) throw error;
       if (error.name === "AbortError") {
         console.warn(`[ProjectId] onboardUser attempt ${attempt} aborted (timeout or connection removed)`);
         if (externalSignal?.aborted) return null; // connection gone – stop retrying

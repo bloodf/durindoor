@@ -44,6 +44,7 @@ export default {
   transport: {
     baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
     validateUrl: "https://api.xiaomimimo.com/v1/models",
+    reasoningInject: { scope: "all" },
   },
   // Multi-endpoint: pick the transport matching client sourceFormat to skip translation.
   transports: [
@@ -51,6 +52,7 @@ export default {
       format: "openai",
       baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
+      quirks: { preserveCacheControl: true },
     },
     {
       format: "claude",

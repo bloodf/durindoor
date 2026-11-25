@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "crypto";
 import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js";
 import { CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { CLAUDE_CLI_VERSION } from "../providers/shared.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CC_ENTRYPOINT = "sdk-cli";
 
@@ -116,15 +116,20 @@ export function decloakToolName(name, toolNameMap, claudeCloaked = false) {
   return name.length > CLAUDE_TOOL_SUFFIX.length ? name.slice(0, -CLAUDE_TOOL_SUFFIX.length) : name;
 }
 
-// Decloak tool_use names in non-streaming Claude response body (INPUT side)
+// Restore tool_use names in nested Claude response envelopes without changing other fields.
 export function decloakToolNames(body, toolNameMap, claudeCloaked = false) {
-  if (!Array.isArray(body?.content)) return body;
-  const content = body.content.map((block) => {
-    if (block?.type !== "tool_use") return block;
-    const name = decloakToolName(block.name, toolNameMap, claudeCloaked);
-    return name === block.name ? block : { ...block, name };
-  });
-  return { ...body, content };
+  if (!body || !isObject(body)) return body;
+  let result = body;
+  for (const [key, value] of Object.entries(body)) {
+    const restored = key === "name" && body.type === "tool_use"
+      ? decloakToolName(value, toolNameMap, claudeCloaked)
+      : decloakToolNames(value, toolNameMap, claudeCloaked);
+    if (restored !== value) {
+      if (result === body) result = Array.isArray(body) ? [...body] : { ...body };
+      result[key] = restored;
+    }
+  }
+  return result;
 }
 
 // CC decoy tools — Claude Code native tool names, marked unavailable

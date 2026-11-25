@@ -8,7 +8,9 @@ import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import StatCard from "@/shared/ui/components/StatCard.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { get } from "@/shared/utils/api.js";
 import { createVisiblePoller } from "@/shared/utils/visiblePoller";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const STATE_TONE = { healthy: "success", degraded: "warning", down: "danger", blocked: "danger", unconfigured: "neutral", unknown: "neutral" };
 const STATE_LABEL = { healthy: "Healthy", degraded: "Degraded", down: "Down", blocked: "Blocked (SSRF)", unconfigured: "Unconfigured", unknown: "Unknown" };
@@ -23,6 +25,7 @@ const SUMMARY_TILES = [
 ];
 
 export default function HealthPage() {
+  const v5 = useUiV5();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -40,11 +43,16 @@ export default function HealthPage() {
     request.current.abort = abort;
     const current = () => !abort.signal.aborted && epoch === request.current.epoch;
     setLoading(true); setHeadroomLoading(true);
+    // Parse failures yield an empty snapshot. A successful JSON null leaves the snapshot unknown.
     const read = async (url) => {
-      const response = await fetch(url, { cache: "no-store", signal: abort.signal });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Health request failed (${response.status})`);
-      return body;
+      try {
+        return await get(url, { cache: "no-store", signal: abort.signal, jsonParseFallback: {} });
+      } catch (failure) {
+        if (Object.hasOwn(failure, "status") && Object.hasOwn(failure, "body")) {
+          throw new Error(failure.body.error || `Health request failed (${failure.status})`);
+        }
+        throw failure;
+      }
     };
     await Promise.allSettled([
       read(force ? "/api/health/providers?force=1" : "/api/health/providers").then((body) => {
@@ -100,7 +108,7 @@ export default function HealthPage() {
     { key: "error", label: "Error", render: (row) => <span className="block max-w-xs truncate text-[13px] text-dd-muted" title={row.error || ""}>{row.error || "—"}</span> },
   ];
 
-  return <div className="space-y-6">
+  return <div className={v5 ? "v5-dashboard-page space-y-6" : "space-y-6"}>
     <PageHeader icon="health_and_safety" title="Provider Health" subtitle="Reachability of your configured provider connections. Probes are SSRF-guarded and proxy-aware." actions={<Button variant="primary" onClick={onRefresh} disabled={refreshing} loading={refreshing} icon="refresh">{refreshing ? "Refreshing…" : "Refresh"}</Button>} />
     {error ? <div className="rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger" role="alert">{error}{data ? " Last received provider measurements remain visible and may be stale." : " Provider measurements are unknown."}</div> : null}
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">

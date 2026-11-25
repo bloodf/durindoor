@@ -16,6 +16,7 @@ vi.mock("@/shared/hooks/useModelCaps", () => ({ useModelCaps: () => ({ getCaps: 
 vi.mock("@/shared/components/DocsLink", () => ({ default: () => null }));
 vi.mock("../../src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx", () => ({ default: () => null }));
 
+import useSettingsStore from "@/store/settingsStore";
 import ProductionCombosPage from "../../src/app/(dashboard)/dashboard/combos/page.js";
 
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -27,6 +28,7 @@ describe("production single combo delete feedback", () => {
   let root;
 
   beforeEach(() => {
+    useSettingsStore.setState({ settings: null, lastFetched: 0, error: null, loading: false });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

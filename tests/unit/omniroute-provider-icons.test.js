@@ -56,7 +56,6 @@ const ADDED_SVG_IDS = [
 // These copied SVGs intentionally have no registry entry (and therefore no UI
 // consumer), so they are stored for future ports but are not wired yet.
 const EXCLUDED_UNWIRED = [
-  "zed-hosted",
 ];
 
 function readKnownSvgs() {
@@ -187,7 +186,7 @@ describe("OmniRoute provider icon assets", () => {
 
   it("uses ProviderIcon for custom provider URLs and ProviderLogo for registered providers", () => {
     const detailPage = readFileSync(
-      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/page.js"),
+      resolve(repoRoot, "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx"),
       "utf8",
     );
     expect(detailPage).toContain("ProviderIcon");

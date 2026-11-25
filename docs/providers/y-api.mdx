@@ -1,0 +1,75 @@
+---
+title: Y-API
+description: Connect the Y-API pay-per-token gateway with a console-issued key, discovered models, and the provider's own error semantics.
+---
+
+Y-API is an OpenAI-compatible gateway run by bestvirtualgoods.com. It meters
+credit per token, signs in with Google or GitHub, and issues API keys from its
+console. DurinDoor connects to it with the operator-issued key and the
+documented endpoints only.
+
+## Setup
+
+1. Sign in at [y-api.bestvirtualgoods.com](https://y-api.bestvirtualgoods.com) and open the **API Keys** page in the console. Signing up also opens an account with a default key.
+2. In DurinDoor, open **Providers**, choose **Y-API**, and add a connection with that key. The key is stored as an API-key credential and is never rewritten.
+3. Save the connection. Validation checks the key with `GET /v1/models` and uses only that catalog endpoint.
+4. Use a model from the discovered list as `y-api/<model-id>`. Y-API ids are `vendor/model`, for example `y-api/deepseek/deepseek-v4-flash`.
+
+Discovery is authoritative. The provider publishes no seeded catalog and the
+ids change with upstream availability, so the list you see after a successful
+connection is the list the gateway currently serves. No models or prices are
+guessed by DurinDoor.
+
+## Endpoints and authorization
+
+| Route | Method | Credential | Purpose |
+| --- | --- | --- | --- |
+| `https://api.y-api.bestvirtualgoods.com/v1/chat/completions` | POST | `Authorization: Bearer <key>` | Chat Completions, JSON and SSE |
+| `https://api.y-api.bestvirtualgoods.com/v1/models` | GET | `Authorization: Bearer <key>` | Model catalog and key check |
+| `https://api.y-api.bestvirtualgoods.com/v1/messages` | POST | `x-api-key: <key>` | Anthropic Messages, same catalog |
+
+An Anthropic-format client is sent to `/v1/messages` with the key in the
+`x-api-key` header the Anthropic SDKs use, plus `anthropic-version`. The
+OpenAI routes use a bearer token. The two routes never share a credential
+slot, so the key cannot leak into the wrong header.
+
+Only chat is enabled. Embeddings, image generation, and other endpoints are
+not part of this integration, and the provider's own error reference states
+that those paths are not served.
+
+## Error semantics
+
+The provider documents that the status code is often misleading and that
+`error.code` carries the real reason. DurinDoor keeps the three cases apart.
+
+| Status | `error.code` | What happened | DurinDoor behavior |
+| --- | --- | --- | --- |
+| 401 | empty | The key does not exist, was revoked, or was not sent | Authentication failure; the connection cools down |
+| 403 | `insufficient_user_quota` | The account balance reached zero | Quota event on that connection; another connection can serve the request |
+| 403 | `pre_consume_token_quota_failed` | The account has credit but this key hit its own cap | Quota event on that connection; raise or remove the cap in the console |
+| 429 | provider text | Throttling | Rate-limit handling; the request recovers on its own |
+| 503 | `model_not_found` | The model id is not in the catalog | The requested model is locked, not the whole connection |
+
+A 403 for exhausted credit is not throttling and not an invalid key. Top up at
+`https://y-api.bestvirtualgoods.com/app/billing`; access is restored
+immediately and existing keys stay valid.
+
+## Provider sources
+
+- [Integration guide](https://y-api.bestvirtualgoods.com/docs)
+- [Error code reference](https://y-api.bestvirtualgoods.com/docs/errors)
+- [OpenAPI 3.1 specification](https://y-api.bestvirtualgoods.com/openapi.json)
+- [Terms of service](https://y-api.bestvirtualgoods.com/terms)
+
+The service is not available to users in mainland China. Its terms forbid
+reselling API access, so a DurinDoor instance that carries a Y-API connection
+is for its own operator's use. Credit is virtual metering inside the service
+and cannot be withdrawn or transferred.
+
+## Verification scope
+
+Closed mocks cover connection validation, discovery, error handling, JSON and
+SSE responses, and provider-reported usage. Live availability and billing are
+outside the offline verification scope.
+
+The Anthropic transport follows Y-API's published OpenAPI specification.

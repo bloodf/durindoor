@@ -1,7 +1,6 @@
-import crypto from "crypto";
 import open from "open";
+import { generatePKCE } from "../utils/pkce.js";
 import { ANTIGRAVITY_CONFIG, getOAuthClientMetadata } from "../constants/oauth.js";
-import { getServerCredentials } from "../config/index.js";
 import { startLocalServer, waitForCallbackParams } from "../utils/server.js";
 import { spinner as createSpinner } from "../utils/ui.js";
 
@@ -18,7 +17,10 @@ export class AntigravityService {
   /**
    * Build Antigravity authorization URL
    */
-  buildAuthUrl(redirectUri, state) {
+  buildAuthUrl(redirectUri, state, codeChallenge) {
+    if (!isString(codeChallenge) || !codeChallenge) {
+      throw new Error("Antigravity authorization requires a PKCE challenge");
+    }
     const params = new URLSearchParams({
       client_id: this.config.clientId,
       response_type: "code",
@@ -26,7 +28,9 @@ export class AntigravityService {
       scope: this.config.scopes.join(" "),
       state: state,
       access_type: "offline",
-      prompt: "consent"
+      prompt: "consent",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256"
     });
 
     return `${this.config.authorizeUrl}?${params.toString()}`;
@@ -35,7 +39,10 @@ export class AntigravityService {
   /**
    * Exchange authorization code for tokens
    */
-  async exchangeCode(code, redirectUri) {
+  async exchangeCode(code, redirectUri, codeVerifier) {
+    if (!isString(codeVerifier) || !codeVerifier) {
+      throw new Error("Antigravity token exchange requires a PKCE verifier");
+    }
     const response = await fetch(this.config.tokenUrl, {
       method: "POST",
       headers: {
@@ -47,13 +54,13 @@ export class AntigravityService {
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
         code: code,
-        redirect_uri: redirectUri
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier
       })
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Token exchange failed: ${error}`);
+      throw new Error(`Token exchange failed: ${response.status}`);
     }
 
     return await response.json();
@@ -71,8 +78,7 @@ export class AntigravityService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get user info: ${error}`);
+      throw new Error(`Failed to get user info: ${response.status}`);
     }
 
     return await response.json();
@@ -110,8 +116,7 @@ export class AntigravityService {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to load code assist: ${errorText}`);
+      throw new Error(`Failed to load code assist: ${response.status}`);
     }
 
     const data = await response.json();
@@ -133,7 +138,7 @@ export class AntigravityService {
       }
     }
 
-    return { projectId, tierId, raw: data };
+    return { projectId, tierId };
   }
 
   /**
@@ -147,8 +152,7 @@ export class AntigravityService {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to onboard user: ${errorText}`);
+      throw new Error(`Failed to onboard user: ${response.status}`);
     }
 
     return await response.json();
@@ -197,6 +201,7 @@ export class AntigravityService {
    * Save Antigravity tokens to server
    */
   async saveTokens(tokens, userInfo, projectId) {
+    const { getServerCredentials } = await import("../config/index.js");
     const { server, token, userId } = getServerCredentials();
 
     const response = await fetch(`${server}/api/cli/providers/antigravity`, {
@@ -244,11 +249,10 @@ export class AntigravityService {
       const redirectUri = `http://localhost:${port}/callback`;
       spinner.succeed(`Local server started on port ${port}`);
 
-      // Generate state
-      const state = crypto.randomBytes(32).toString("base64url");
+      const { codeVerifier, codeChallenge, state } = generatePKCE();
 
       // Build authorization URL
-      const authUrl = this.buildAuthUrl(redirectUri, state);
+      const authUrl = this.buildAuthUrl(redirectUri, state, codeChallenge);
 
       console.log("\nOpening browser for Antigravity authentication...");
       console.log(`If browser doesn't open, visit:\n${authUrl}\n`);
@@ -267,14 +271,14 @@ export class AntigravityService {
         throw new Error(callbackParams.error_description || callbackParams.error);
       }
 
-      if (!callbackParams.code) {
+      if (!callbackParams.code || callbackParams.state !== state) {
         throw new Error("No authorization code received");
       }
 
       spinner.start("Exchanging code for tokens...");
 
       // Exchange code for tokens
-      const tokens = await this.exchangeCode(callbackParams.code, redirectUri);
+      const tokens = await this.exchangeCode(callbackParams.code, redirectUri, codeVerifier);
 
       spinner.text = "Fetching user info...";
 

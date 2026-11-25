@@ -4,13 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
 import DataTable from "@/shared/ui/components/DataTable.jsx";
 import { buildConnectionNameMap, connectionDisplayName } from "@/shared/utils/connectionDisplay.js";
+import { get } from "@/shared/utils/api.js";
 
 const fmt = (value) => new Intl.NumberFormat().format(value || 0);
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;
 
-const buildColumns = (connectionNames) => [
+const buildColumns = (connectionNames, models) => [
   { key: "comboName", label: "Combo", render: (row) => <span className="font-medium text-dd-text">{row.comboName}</span> },
   { key: "connectionId", label: "Connection", mono: true, render: (row) => row.connectionId ? connectionDisplayName(row.connectionId, connectionNames) : <span className="text-dd-muted">No connection recorded</span> },
+  { key: "models", label: "Model served", render: (row) => {
+    const entries = models.filter((model) => model.comboId === row.comboId && model.comboName === row.comboName && model.connectionId === row.connectionId);
+    return entries.length ? entries.map((model) => <div key={JSON.stringify([model.provider, model.model])}>{model.provider} / {model.model}: {fmt(model.requests)} ({model.share}% of combo)</div>) : <span className="text-dd-muted">Not recorded</span>;
+  } },
   { key: "requests", label: "Requests", align: "right", mono: true, render: (row) => fmt(row.requests) },
   { key: "promptTokens", label: "Input", align: "right", mono: true, render: (row) => fmt(row.promptTokens) },
   { key: "completionTokens", label: "Output", align: "right", mono: true, render: (row) => fmt(row.completionTokens) },
@@ -63,14 +68,13 @@ export default function ComboUsageReport({ period, customRange, resetNonce }) {
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    get("/api/providers", { cache: "no-store", skipErrorBody: true })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
-  const columns = useMemo(() => buildColumns(connectionNames), [connectionNames]);
+  const columns = useMemo(() => buildColumns(connectionNames, report?.modelBreakdown || []), [connectionNames, report?.modelBreakdown]);
 
   const rows = report?.rows || [];
   const pageCount = rowsPerPage === "all" ? 1 : Math.max(1, Math.ceil(rows.length / rowsPerPage));

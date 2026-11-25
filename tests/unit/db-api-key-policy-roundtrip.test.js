@@ -243,7 +243,7 @@ describe("exportDb / importDb round-trip of apiKeys.policy + expiresAt", () => {
     // Round-trip via the only write path that exposes policy+expiresAt.
     await sqliteDb.updateApiKey(created.id, { policy, expiresAt });
 
-    const snap = await sqliteDb.exportDb();
+    const snap = await sqliteDb.exportDb({ includeSecrets: true });
     const row = snap.apiKeys.find((k) => k.id === created.id);
     expect(row).toBeDefined();
     expect(row.policy).toEqual(policy);
@@ -308,7 +308,7 @@ describe("exportDb / importDb round-trip of apiKeys.policy + expiresAt", () => {
     const response = new Response("ok");
     expect(await recordApiKeyUsageForResponse(original.key, response, event)).toBe(response);
 
-    const snap = await sqliteDb.exportDb();
+    const snap = await sqliteDb.exportDb({ includeSecrets: true });
     expect(snap.apiKeyUsageTotals).toEqual([
       expect.objectContaining({
         apiKeyId: original.id, totalTokens: 12, totalCost: 0, totalRequests: 1, unknownCostRequests: 1,
@@ -351,7 +351,7 @@ describe("apiKeys.isAdmin", () => {
     expect((await sqliteDb.getApiKeyById(admin.id)).isAdmin).toBe(true);
     await sqliteDb.updateApiKey(admin.id, { isAdmin: false });
 
-    const snap = await sqliteDb.exportDb();
+    const snap = await sqliteDb.exportDb({ includeSecrets: true });
     expect(snap.apiKeys.find((k) => k.id === plain.id).isAdmin).toBe(true);
     const db = await (await import("@/lib/db/driver.js")).getAdapter();
     db.run(`DELETE FROM apiKeys`);

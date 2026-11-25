@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -19,6 +21,8 @@ import TimelineSwimlane from "./components/TimelineSwimlane.jsx";
 import TimelineWindowControls, { DEFAULT_LANE, DEFAULT_WINDOW, resolveLane, resolveWindow } from "./components/TimelineWindowControls.jsx";
 import { statusTone } from "./timelineStatus.js";
 import { useWindowedTraces } from "./useWindowedTraces.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import { get } from "@/shared/utils/api.js";
 
 const FILTER_KEYS = ["provider", "model", "connectionId", "apiKeyId", "status", "endpoint", "startDate", "endDate", "q"];
 const WINDOW_FILTER_KEYS = FILTER_KEYS.filter((key) => key !== "startDate" && key !== "endDate");
@@ -33,6 +37,7 @@ export default function TimelinePage() {
 }
 
 function TimelineList() {
+  const v5 = useUiV5();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [data, setData] = useState({ traces: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1 } });
@@ -73,7 +78,7 @@ function TimelineList() {
     setError("");
     setLoading(true);
     try {
-      const settingsRequest = fetch("/api/settings", { cache: "no-store", signal: controller.signal }).catch(() => null);
+      const settingsRequest = requestSettings({ cache: "no-store", signal: controller.signal }).catch(() => null);
       if (query.get("pageSize") === "all") {
         const allQuery = new URLSearchParams(query);
         allQuery.set("page", "1");
@@ -115,8 +120,7 @@ function TimelineList() {
   // Connection ids render as names; fetch the catalog once (fail-open).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
+    get("/api/providers", { cache: "no-store", skipErrorBody: true })
       .then((body) => { if (!cancelled && body) setConnectionNames(buildConnectionNameMap(body.connections)); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -163,13 +167,13 @@ function TimelineList() {
   const columns = useMemo(() => [
     { key: "started_at", label: "Started", rowHeader: true, render: (trace) => <Link href={`/dashboard/timeline/${trace.id}`} className="inline-flex min-h-11 min-w-11 items-center whitespace-nowrap text-dd-accent outline-none hover:underline focus-visible:shadow-dd-focus">{trace.started_at}</Link> },
     { key: "status", label: "Status", render: (trace) => <Badge tone={statusTone(trace.status || "running")} size="sm">{trace.status || "running"}</Badge> },
-    { key: "provider", label: "Provider", render: (trace) => trace.provider ? <span className="inline-flex items-center gap-2"><ProviderLogo provider={trace.provider} size={16} /><span>{trace.provider}</span></span> : "—" },
+    { key: "provider", label: "Provider", render: (trace) => trace.provider ? <span className={`inline-flex items-center gap-2${v5 ? " whitespace-nowrap" : ""}`}><ProviderLogo provider={trace.provider} size={16} /><span>{trace.provider}</span></span> : "—" },
     { key: "model", label: "Model", mono: true, render: (trace) => trace.model || "—" },
     { key: "connection_id", label: "Connection", mono: true, render: (trace) => connectionDisplayName(trace.connection_id, connectionNames) },
     { key: "event_count", label: "Events", align: "right", render: (trace) => trace.event_count ?? 0 },
     { key: "fallback_count", label: "Fallbacks", align: "right", render: (trace) => trace.fallback_count ?? 0 },
     { key: "total_ms", label: "ms", align: "right", mono: true, render: (trace) => trace.total_ms ?? "—" },
-  ], [connectionNames]);
+  ], [connectionNames, v5]);
 
   const captureOff = (view === "table" ? captureOn : windowed.captureOn) === false;
   const viewError = view === "table" ? error : windowed.error;

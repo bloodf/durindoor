@@ -22,6 +22,7 @@ function directProxyConfig() {
     connectionProxyUrl: "",
     connectionNoProxy: "",
     vercelRelayUrl: "",
+    relaySecret: "",
     strictProxy: false,
     disableEnvProxy: true
   };
@@ -37,9 +38,38 @@ function failedStrictProxyConfig(proxyPoolId, reason) {
     connectionProxyUrl: "",
     connectionNoProxy: "",
     vercelRelayUrl: "",
+    relaySecret: "",
     strictProxy: true,
     disableEnvProxy: true
   };
+}
+
+/**
+ * Carry the deploy secret through the existing vercelRelayUrl credential field
+ * as URL userinfo so auth/chatCore keep forwarding a single relay URL. proxyFetch
+ * strips the userinfo and sends x-relay-secret instead of fetching with it.
+ */
+function embedRelaySecretInUrl(proxyUrl, relaySecret) {
+  const secret = normalizeString(relaySecret);
+  if (!secret) return proxyUrl;
+  try {
+    const url = new URL(proxyUrl);
+    url.username = secret;
+    url.password = "";
+    return url.toString();
+  } catch {
+    return proxyUrl;
+  }
+}
+
+/** Drop relaySecret from the pool object returned to callers. */
+function publicProxyPool(proxyPool) {
+  if (!proxyPool || !Object.prototype.hasOwnProperty.call(proxyPool, "relaySecret")) {
+    return proxyPool;
+  }
+  const rest = { ...proxyPool };
+  delete rest.relaySecret;
+  return rest;
 }
 
 // ─── Proxy pool rotation state (in-memory) ─────────────────────────
@@ -49,13 +79,37 @@ const rotateState = new Map(); // providerId → { index }
  * Pick one proxy pool ID from a list based on strategy.
  * round-robin: cycle sequentially (in-memory, resets on restart)
  * random:      uniform random pick
+ * session:     rendezvous hash by session and pool ID; round-robin without a session
  * none/single: return first entry
  */
-export function pickProxyPoolId(poolIds, strategy, providerId) {
+export function pickProxyPoolId(poolIds, strategy, providerId, sessionId) {
   if (!poolIds || poolIds.length === 0) return null;
   if (poolIds.length === 1) return poolIds[0];
 
-  if (strategy === "round-robin") {
+  if (strategy === "session" && sessionId) {
+    let best = poolIds[0];
+    let bestScore = -1;
+    for (const id of poolIds) {
+      const text = `${sessionId}\0${id}`;
+      let h1 = 0xdeadbeef;
+      let h2 = 0x41c6ce57;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      const score = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+      if (score > bestScore) {
+        best = id;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  if (strategy === "round-robin" || strategy === "session") {
     const state = rotateState.get(providerId) || { index: -1 };
     state.index = (state.index + 1) % poolIds.length;
     rotateState.set(providerId, state);
@@ -154,11 +208,12 @@ providerSpecificData = {})
          * instead of HTTP_PROXY environment variables.
          */
         if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare") {
+          const relaySecret = normalizeString(proxyPool.relaySecret);
           return {
             source: proxyPool.type,
 
             proxyPoolId,
-            proxyPool,
+            proxyPool: publicProxyPool(proxyPool),
 
             connectionProxyEnabled: false,
             connectionProxyUrl: "",
@@ -167,7 +222,11 @@ providerSpecificData = {})
             strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
             disableEnvProxy: strictOAuthPool,
 
-            vercelRelayUrl: proxyUrl // Still mapped to vercelRelayUrl in the unified payload since they use the exact same header spec
+            // Still mapped to vercelRelayUrl in the unified payload since they
+            // use the exact same header spec. Secret rides as URL userinfo for
+            // credential hops that only forward vercelRelayUrl; proxyFetch strips it.
+            vercelRelayUrl: embedRelaySecretInUrl(proxyUrl, relaySecret),
+            relaySecret
           };
         }
 
@@ -178,14 +237,15 @@ providerSpecificData = {})
           source: "pool",
 
           proxyPoolId,
-          proxyPool,
+          proxyPool: publicProxyPool(proxyPool),
 
           connectionProxyEnabled: true,
           connectionProxyUrl: proxyUrl,
           connectionNoProxy: noProxy,
 
           strictProxy: strictOAuthPool || proxyPool.strictProxy === true,
-          disableEnvProxy: strictOAuthPool
+          disableEnvProxy: strictOAuthPool,
+          relaySecret: ""
         };
       }
 
@@ -210,6 +270,8 @@ providerSpecificData = {})
         proxyPool: null,
 
         ...legacy,
+        vercelRelayUrl: "",
+        relaySecret: "",
         strictProxy: false,
         disableEnvProxy: false
       };
@@ -227,6 +289,8 @@ providerSpecificData = {})
       proxyPool: null,
 
       ...legacy,
+      vercelRelayUrl: "",
+      relaySecret: "",
       strictProxy: false,
       disableEnvProxy: false
     };
@@ -251,6 +315,8 @@ providerSpecificData = {})
       connectionProxyEnabled: false,
       connectionProxyUrl: "",
       connectionNoProxy: "",
+      vercelRelayUrl: "",
+      relaySecret: "",
 
       strictProxy: false,
       disableEnvProxy: false

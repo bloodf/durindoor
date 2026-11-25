@@ -73,7 +73,7 @@ beforeAll(async () => {
   // Importing open-sse installs its fetch wrapper; restore the closed mock
   // afterwards so every outbound request is intercepted.
   vi.stubGlobal("fetch", providerFetch);
-});
+}, 60_000); // Cold route imports can exceed Vitest's default hook timeout.
 beforeEach(() => {
   resetState();
 });
@@ -118,7 +118,7 @@ describe("Antigravity OAuth lifecycle", () => {
     expect(connection.projectId).toBe("project-a");
     expect(calls.some(({ url }) => url.includes(":onboardUser"))).toBe(true);
     const onboard = calls.find(({ url }) => url.includes(":onboardUser"));
-    expect(JSON.parse(onboard.options.body).tierId).toBe("free-tier");
+    expect(JSON.parse(onboard.options.body).tier_id).toBe("free-tier");
     expect(new Headers(onboard.options.headers).get("authorization")).toBe("Bearer access-a");
   });
 
@@ -180,7 +180,27 @@ describe("Antigravity OAuth lifecycle", () => {
     expect(saved.projectId).toBe("project-polled");
     const onboardCalls = calls.slice(mark).filter(({ url }) => url.includes(":onboardUser"));
     expect(onboardCalls).toHaveLength(3);
-    expect(JSON.parse(onboardCalls.at(-1).options.body).tierId).toBe("free-tier");
+    expect(JSON.parse(onboardCalls.at(-1).options.body).tier_id).toBe("free-tier");
+  });
+
+  it.each([
+    ["first poll", [], { code: 7, status: "PERMISSION_DENIED", message: "Access denied" }],
+    ["after a pending poll", [{ done: false }], { code: 3, status: "INVALID_ARGUMENT", message: "Invalid project" }],
+  ])("fails on an onboarding operation error on the %s", async (_label, pending, error) => {
+    state.email = `operation-${error.code}@example.test`;
+    state.onboardQueue = [...pending, { done: true, error }, { done: true, response: { cloudaicompanionProject: { id: "too-late" } } }];
+    const mark = calls.length;
+    const before = await db.getProviderConnections({ provider: "antigravity" });
+    const response = await signIn();
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.error).toContain("onboarding operation error");
+    expect(body.error).toContain(`code ${error.code}`);
+    expect(body.error).toContain(error.status);
+    expect(body.error).toContain(error.message);
+    expect(calls.slice(mark).filter(({ url }) => url.includes(":onboardUser"))).toHaveLength(pending.length + 1);
+    expect(await db.getProviderConnections({ provider: "antigravity" })).toHaveLength(before.length);
+    expect(await connectionsFor(state.email)).toHaveLength(0);
   });
 
   it("stops polling at the configured bound and fails the sign-in", async () => {

@@ -106,6 +106,42 @@ export function fromOpenAIFinish(reason, format) {
   }
 }
 
+// Ordinary clean stops: the upstream finished the turn on its own terms.
+// Only these may be promoted to Claude's "tool_use" when the same turn also
+// carried tool calls. Every other reason this fork maps to "end_turn" — a
+// provider safety stop ("content_filter"), an aborted turn ("error") or an
+// unknown literal — keeps its own meaning instead of being relabelled as a
+// tool turn.
+const ORDINARY_STOP_FINISH_REASONS = new Set([OPENAI_FINISH.STOP, CLAUDE_STOP.END_TURN]);
+
+/**
+ * Claude `stop_reason` for an OpenAI-shaped turn that also carried tool calls.
+ *
+ * Some OpenAI-compatible upstreams report `finish_reason: "stop"` together
+ * with `tool_calls`. Claude requires `stop_reason: "tool_use"` whenever the
+ * turn carries `tool_use` blocks, otherwise an agentic Claude client (Claude
+ * Code) reads the turn as final and stops after a single step (#18270).
+ *
+ * The promotion is deliberately narrow:
+ * - no tool call emitted → the mapped reason is returned unchanged;
+ * - a mapped reason that already means something else (`max_tokens`,
+ *   `refusal`, `tool_use`) is preserved;
+ * - only an ordinary clean stop is promoted, so a safety stop or an aborted
+ *   turn keeps its own semantics even though this fork maps them to
+ *   `end_turn`.
+ *
+ * @param {unknown} reason upstream OpenAI `finish_reason`
+ * @param {boolean} hasToolCalls whether the projection emitted tool_use blocks
+ * @returns {string} Claude stop_reason
+ */
+export function claudeStopReasonWithToolCalls(reason, hasToolCalls) {
+  const mapped = fromOpenAIFinish(reason, "claude");
+  if (!hasToolCalls) return mapped;
+  if (mapped !== CLAUDE_STOP.END_TURN) return mapped;
+  if (!isString(reason) || !ORDINARY_STOP_FINISH_REASONS.has(reason)) return mapped;
+  return CLAUDE_STOP.TOOL_USE;
+}
+
 const RESPONSES_FAILED_FALLBACK_MESSAGE = "Upstream aborted the response (finish_reason error)";
 
 /**

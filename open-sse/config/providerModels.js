@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "../services/contextSuffix.js";
 import REGISTRY from "../providers/registry/index.js";
 // PROVIDER_MODELS now built from providers/registry (transport + models co-located)
 import { PROVIDER_MODELS } from "../providers/index.js";
@@ -93,15 +94,32 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 // Declared upstream formats for a model. Null keeps providers with no per-model
 // endpoint restriction on their existing transport-selection path.
 export function getModelSupportedFormats(aliasOrId, modelId) {
+  // ParalonCloud's live GPU catalog is not in the seed. Chat and native
+  // Responses both accept those ids; embeddings stay off the chat transports.
+  if (aliasOrId === "paraloncloud" || aliasOrId === "paralon") {
+    const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS.paraloncloud;
+    const model = findModel(models, modelId, aliasOrId);
+    if (!model || !model.kind || model.kind === "llm") return ["openai", "openai-responses"];
+  }
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.supportedFormats || null;
-  // The Kimi Platform exposes both APIs for platform model IDs, including
+  // The Kimi Platform exposes all three APIs for platform model IDs, including
   // IDs discovered after the bundled catalog was published.
-  if (aliasOrId === "kimi") return ["openai", "claude"];
+  if (aliasOrId === "kimi") return ["openai", "claude", "openai-responses"];
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
   const model = findModel(models, modelId, aliasOrId);
   const declared = modelSupportedFormats(model);
-  if (declared || !model) return declared;
+  if (declared) return declared;
+  if (!model) {
+    // Y-API seeds no static catalog: its model ids are `vendor/model` and come from
+    // authenticated discovery (GET /v1/models), so the model is never found here.
+    // The provider documents one catalog served over both protocols —
+    // "the Anthropic-compatible endpoint, serving the same catalog as
+    // /chat/completions" (https://y-api.bestvirtualgoods.com/openapi.json) — so a
+    // discovered id is routable over both transports.
+    if (aliasOrId === "y-api") return ["openai", "claude"];
+    return null;
+  }
   if ((aliasOrId === "minimax" || aliasOrId === "minimax-cn") && /^MiniMax-M[23]/.test(model.id)) {
     return ["openai", "claude", "openai-responses"];
   }
@@ -162,14 +180,16 @@ function budgetTier(budget) {
  * request suffix intent, then body effort, then thinking budget.
  * Returns null when nothing names a tier.
  */
-export function resolveRequestedModelTier(thinkingIntent, body = null) {
-  if (thinkingIntent?.mode === "level") return normalizeTier(thinkingIntent.level);
+export function resolveRequestedModelTier(thinkingIntent, body = null, provider = null) {
+  // Hydrogen has a registered Antigravity xhigh row; keep other providers unchanged.
+  const tier = (value) => ["xhigh", "max"].includes(value?.toLowerCase?.().trim()) && ["ag", "agy", "antigravity"].includes(provider) ? value.toLowerCase().trim() : normalizeTier(value);
+  if (thinkingIntent?.mode === "level") return tier(thinkingIntent.level);
   if (thinkingIntent?.mode === "budget") return budgetTier(thinkingIntent.budget);
   if (thinkingIntent) return null;
   if (body?.thinking?.type === "adaptive") return "high";
   if (body?.thinking?.type === "disabled" || body?.thinking?.type === "none") return "low";
   const effort = body?.reasoning_effort || body?.output_config?.effort || body?.reasoning?.effort;
-  if (isString(effort) && effort.trim()) return normalizeTier(effort);
+  if (isString(effort) && effort.trim()) return tier(effort);
   const budget = Number(body?.thinking?.budget_tokens);
   if (body?.thinking && Number.isFinite(budget) && budget === 0) return "low";
   return budgetTier(body?.thinking?.budget_tokens);
@@ -197,18 +217,20 @@ export function applyProviderThinkingOverride(body, providerThinking) {
 /** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */
 export function getDispatchUpstreamModelId(aliasOrId, modelId, body = null, providerThinking = null) {
   const effectiveBody = body ? applyProviderThinkingOverride(body, providerThinking) : null;
-  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId, aliasOrId).override, effectiveBody));
+  return getModelUpstreamId(aliasOrId, modelId, resolveRequestedModelTier(parseSuffix(modelId, aliasOrId).override, effectiveBody, aliasOrId));
 }
 
 function findUpstreamModel(aliasOrId, modelId, tier) {
   const parsed = parseSuffix(modelId, aliasOrId);
   const baseId = parsed.cleanModel;
   const models = PROVIDER_MODELS[aliasOrId] || PROVIDER_MODELS[PROVIDER_ID_TO_ALIAS[aliasOrId]];
-  const requestedTier = tier || resolveRequestedModelTier(parsed.override);
+  const requestedTier = tier || resolveRequestedModelTier(parsed.override, null, aliasOrId);
   // `<model>-<tier>` rows are tier variants only in catalogs that use thinking
   // presets (Antigravity today), including rows there without a preset; in
   // other catalogs (codex, grok) `<model>-<level>` ids are distinct models.
-  const tieredRow = requestedTier && isString(baseId) ? findModel(models, `${baseId}-${requestedTier}`, aliasOrId) : null;
+  const tieredRow = requestedTier && isString(baseId) ?
+    findModel(models, `${baseId}-${requestedTier}`, aliasOrId) ||
+      (["xhigh", "max"].includes(requestedTier) && ["ag", "agy", "antigravity"].includes(aliasOrId) ? findModel(models, `${baseId}-high`, aliasOrId) : null) : null;
   const tiered = tieredRow && models.some((row) => parseSuffix(row.upstreamModelId).override) ? tieredRow : null;
   return { baseId, found: tiered || findModel(models, modelId, aliasOrId) || findModelAlias(models, baseId) };
 }
@@ -221,7 +243,8 @@ export function getModelUpstreamId(aliasOrId, modelId, tier = null) {
   // while thinking intent travels in request-scoped translation context.
   // Catalog upstreamModelId presets such as "gemini-3.8-flash-high(high)" are
   // stripped here too; getModelUpstreamThinkingIntent exposes the preset level.
-  const { baseId, found } = findUpstreamModel(aliasOrId, modelId, tier);
+  const exact = findUpstreamModel(aliasOrId, modelId, tier);
+  const { baseId, found } = exact.found ? exact : findUpstreamModel(aliasOrId, stripRecognizedContextSuffix(modelId), tier);
   if (found?.upstreamModelId) return parseSuffix(found.upstreamModelId).cleanModel;
   if (found?.id) return found.id;
   if (aliasOrId === "cx" && isString(baseId) && baseId.endsWith(CODEX_REVIEW_SUFFIX)) {

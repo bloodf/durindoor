@@ -1,33 +1,39 @@
+import { encryptConnectionSecret, decryptConnectionSecret } from "../helpers/connectionSecrets.js";
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { mergeProviderConnection } from "../helpers/mergeProviderMetadata.js";
 import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
-import { providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
+import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import {
+  advanceAntigravityGeneration,
+  deleteAntigravityRotationRows,
+  seedAntigravityLease,
+} from "../../antigravity/leaseSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { ORCAROUTER_ID, credentialHint } from "open-sse/providers/orcarouterCatalog.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 import {
-  encryptField,
-  decryptField,
   isEncryptedBlob } from
 "@/lib/crypto/columnCrypto.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData } from
+"../helpers/providerSpecificDataSecrets.js";
 
-// SEC-B-02: credential fields that must be AES-256-GCM-encrypted at rest
-// inside providerConnections.data. All other fields stay plaintext.
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
-export const SENSITIVE_CONNECTION_FIELDS = Object.freeze([
-"accessToken",
-"refreshToken",
-"apiKey", "managementApiKey",
-"idToken",
-"firecrawlHeaders",
-// STS session token for temporary AWS keys (Bedrock static-key mode).
-"sessionToken"]
-);
+import { SENSITIVE_CONNECTION_FIELDS } from "../sensitiveConnectionFields.js";
+import {
+  connectionCredentialKeyIds,
+  connectionHasCredential,
+  connectionHasMultipleCredentials,
+  credentialKeyId
+} from "../../../shared/utils/credentialFingerprint.js";
+
+export { SENSITIVE_CONNECTION_FIELDS };
 
 const OPTIONAL_FIELDS = [
 "displayName", "email", "globalPriority", "defaultModel",
@@ -71,6 +77,16 @@ function resetHealthStateOnActivation(existing, patch) {
 function mergeProviderConnectionWithHealthReset(existing, patch) {
   const normalized = resetHealthStateOnActivation(existing, patch);
   const merged = mergeProviderConnection(existing, normalized);
+  if (existing.provider === "codex" && merged.providerSpecificData &&
+      Object.hasOwn(merged.providerSpecificData, "codexRefreshAttempt")) {
+    merged.providerSpecificData = { ...merged.providerSpecificData };
+    const attempt = existing.providerSpecificData?.codexRefreshAttempt;
+    if (merged.refreshToken === existing.refreshToken && attempt) {
+      merged.providerSpecificData.codexRefreshAttempt = attempt;
+    } else {
+      delete merged.providerSpecificData.codexRefreshAttempt;
+    }
+  }
   if (normalized?.testStatus === "active") {
     merged.testStatus = "active";
     merged.lastError = normalized.lastError;
@@ -119,14 +135,20 @@ function updateAutoPingEntryInTx(db, provider, connectionId, enabled, schedule =
 function rowToConn(row) {
   if (!row) return null;
   const extra = parseJson(row.data, {});
-  // Decrypt the four sensitive fields. AAD is the row id so a ciphertext
-  // cannot be replayed into a different row. Plaintext values (pre-migration
-  // rows) pass through unchanged so a half-migrated DB still reads cleanly.
+  // Version 2 binds each secret to its connection and field. Legacy blobs
+  // and pre-migration plaintext remain readable.
   for (const field of SENSITIVE_CONNECTION_FIELDS) {
     const value = extra[field];
     if (isEncryptedBlob(value)) {
-      extra[field] = decryptField(value, row.id);
+      try { extra[field] = decryptConnectionSecret(value, row.id, field); } catch {
+        console.warn(`Unable to decrypt connection credential ${field} for ${row.id}`);
+        extra[field] = null;
+        extra.testStatus = "error";
+      }
     }
+  }
+  if (extra.providerSpecificData) {
+    extra.providerSpecificData = decryptProviderSpecificData(extra.providerSpecificData, row.id);
   }
   return {
     ...extra,
@@ -168,8 +190,11 @@ function connToRow(c) {
   for (const field of SENSITIVE_CONNECTION_FIELDS) {
     const value = rest[field];
     if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
-      rest[field] = encryptField(value, id);
+      rest[field] = encryptConnectionSecret(value, id, field);
     }
+  }
+  if (rest.providerSpecificData) {
+    rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
   }
   return {
     id,
@@ -196,6 +221,67 @@ function upsert(db, c) {
        data=excluded.data, updatedAt=excluded.updatedAt`,
     [r.id, r.provider, r.authType, r.name, r.email, r.priority, r.isActive, r.data, r.createdAt, r.updatedAt]
   );
+}
+
+// Keep private ChatGPT plan sessions out of the enumerable provider connection inventory.
+const CHATGPT_PLAN_SCOPE = "privateChatGptPlanAccounts";
+
+async function getChatGptPlanAdapter() {
+  const db = await getAdapter();
+  // sql.js writes a private, asynchronously flushed snapshot in each process.
+  if (db.driver === "sql.js") throw new Error("ChatGPT plan accounts require a shared transactional database");
+  return db;
+}
+
+function readChatGptPlanAccount(db, id) {
+  const row = db.get("SELECT value FROM kv WHERE scope = ? AND key = ?", [CHATGPT_PLAN_SCOPE, id]);
+  return row ? rowToConn(JSON.parse(row.value)) : null;
+}
+
+export async function readPrivateChatGptPlanAccount(id) {
+  return readChatGptPlanAccount(await getChatGptPlanAdapter(), id);
+}
+
+// Use the same pre-read writer lock as claimProviderConnectionPing. A revision
+// also fences sign-out, reauthorization and session handoff with identical bytes.
+export async function compareAndSwapPrivateChatGptPlanAccount(id, expected, next) {
+  const db = await getChatGptPlanAdapter();
+  let applied = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("ChatGPT plan accounts require an initialized schema");
+    const current = readChatGptPlanAccount(db, id);
+    if ((current?.revision ?? null) !== (expected?.revision ?? null) ||
+        !providerCredentialBytesMatch(current, expected)) return;
+    db.run(
+      `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)
+       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+      [CHATGPT_PLAN_SCOPE, id, stringifyJson(connToRow(next))]
+    );
+    applied = true;
+  });
+  return applied;
+}
+
+// The verified selection can only be installed by the private enrollment flow.
+// Read and compare it under the same writer lock used by connection updates.
+export async function compareAndSwapChatGptPlanSelection(id, expected, selection, shouldCommit = () => true) {
+  const db = await getChatGptPlanAdapter();
+  let applied = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Connection binding requires an initialized schema");
+    const current = rowToConn(db.get("SELECT * FROM providerConnections WHERE id = ?", [id]));
+    if (!current || current.provider !== "chatgpt-plan" || current.authType !== "oauth" ||
+        JSON.stringify(current) !== expected.snapshot ||
+        JSON.stringify(current.providerSpecificData?.chatgptPlanAccount ?? null) !== JSON.stringify(expected.selection ?? null) ||
+        !shouldCommit()) return;
+    upsert(db, { ...current, updatedAt: new Date().toISOString(), providerSpecificData: {
+      ...current.providerSpecificData, chatgptPlanAccount: selection, chatgptPlanBindingRevision: uuidv4(),
+    } });
+    applied = true;
+  });
+  return applied;
 }
 
 /**
@@ -252,6 +338,28 @@ export async function getProviderConnectionById(id) {
   return rowToConn(row);
 }
 
+/**
+ * Claim a Codex grant before dispatch. The claim survives response loss and
+ * process exit, and credential persistence clears it when the grant changes.
+ */
+export async function claimCodexRefreshAttempt(id, refreshToken, fingerprint) {
+  const db = await getAdapter();
+  let claimed = false;
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Codex refresh claim requires an initialized schema");
+    const existing = rowToConn(db.get("SELECT * FROM providerConnections WHERE id = ?", [id]));
+    if (existing?.provider !== "codex" || existing.refreshToken !== refreshToken ||
+        existing.providerSpecificData?.codexRefreshAttempt === fingerprint) return;
+    upsert(db, {
+      ...existing,
+      providerSpecificData: { ...existing.providerSpecificData, codexRefreshAttempt: fingerprint }
+    });
+    claimed = true;
+  });
+  return claimed;
+}
+
 // Internal sync reorder — must be called INSIDE a transaction
 function reorderInTx(db, providerId) {
   const list = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [providerId]).map(rowToConn);
@@ -269,7 +377,7 @@ function reorderInTx(db, providerId) {
  * iFlow cookie reimports reuse the row for the same normalized BXAuth session,
  * not its display name or refreshed API key. Distinct sessions stay separate.
  */
-export async function createProviderConnection(data, { shouldCommit, requireNewName, createOnly = false } = {}) {
+export async function createProviderConnection(data, { shouldCommit, requireNewName, createOnly = false, requireNewCookieName = false } = {}) {
   const db = await getAdapter();
   // OAuth flows can be cancelled while an upstream exchange is in flight.
   // Check after the async adapter lookup and immediately before the synchronous
@@ -281,10 +389,31 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
   let result;
 
   db.transaction(() => {
+    if (requireNewCookieName && data.authType === "cookie" && data.name) {
+      // Serialize the read and insert across database connections as well as
+      // within this process, using the shared provider-connection write lock.
+      const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+      if ((lock.changes || 0) !== 1) throw new Error("Cookie connection creation requires an initialized schema");
+    }
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
 
+    // Cookie imports create a new named target; check within the same transaction
+    // as the insert so concurrent pairings cannot create duplicate targets.
+    if (requireNewCookieName && data.authType === "cookie" && data.name &&
+        all.some((c) => c.authType === "cookie" && c.name === data.name)) {
+      const error = new Error("A cookie connection with this name already exists for this provider");
+      error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
+      throw error;
+    }
+
     let existing = null;
-    if (data.authType === "oauth" && data.email) {
+    // Microsoft 365 sign-ins are the same account only for the same tenant/object identity: two
+    // tenants can share an email, and a sign-in without an email claim must still merge.
+    if (data.authType === "oauth" && data.provider === "copilot-m365-web" && data.providerSpecificData?.chathubPath) {
+      existing = all.find((c) => c.authType === "oauth" &&
+      c.providerSpecificData?.chathubPath === data.providerSpecificData.chathubPath) || null;
+    }
+    if (!existing && data.authType === "oauth" && data.email && data.provider !== "copilot-m365-web") {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {
@@ -337,12 +466,13 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
           extractCookieValue(c.providerSpecificData?.cookie, "BXAuth") === session);
       }
     }
+    const isKeyLikeAuth = data.authType === "apikey" || data.authType === "auth_token";
     if (!existing && data.provider === "cursor" && data.providerSpecificData?.userId) {
       existing = all.find(
         (c) => c.providerSpecificData?.userId === data.providerSpecificData.userId
       );
-    } else if (data.authType === "apikey" && data.name) {
-      existing = all.find((c) => c.authType === "apikey" && c.name === data.name);
+    } else if (isKeyLikeAuth && data.name) {
+      existing = all.find((c) => c.authType === data.authType && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
@@ -351,17 +481,18 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     // instead of the default upsert — the UI planner assigns collision-free
     // names, and this guard catches any stale/concurrent state that slips past
     // it. Thrown inside the transaction so nothing is persisted.
-    if (existing && requireNewName && data.authType === "apikey") {
-      const err = new Error(`An API key named "${data.name}" already exists for this provider`);
+    if (existing && requireNewName && isKeyLikeAuth) {
+      const label = data.authType === "auth_token" ? "An auth token" : "An API key";
+      const err = new Error(`${label} named "${data.name}" already exists for this provider`);
       err.code = "PROVIDER_CONNECTION_NAME_CONFLICT";
       throw err;
     }
 
     if (existing) {
       // #6499 — create-only (dashboard "add API key"): a duplicate (provider,
-      // apikey, name) must error, never silently upsert/overwrite. The explicit
+      // apikey|auth_token, name) must error, never silently upsert/overwrite. The explicit
       // update path is updateProviderConnection (PUT /api/providers/[id]).
-      if (createOnly && data.authType === "apikey") {
+      if (createOnly && isKeyLikeAuth) {
         const error = new Error(`A connection named "${data.name}" already exists for this provider`);
         error.code = "PROVIDER_CONNECTION_ALREADY_EXISTS";
         throw error;
@@ -370,6 +501,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       mergeCodexReauthorization(existing, data, now) :
       { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: now };
       upsert(db, merged);
+      if ((merged.provider === "antigravity" || merged.provider === "agy") && isString(data.refreshToken) && data.refreshToken && data.refreshToken !== existing.refreshToken) {
+        advanceAntigravityGeneration(db, merged.id, data.refreshToken, data.providerSpecificData?.antigravitySubject || null);
+      }
       result = merged;
       return;
     }
@@ -402,6 +536,9 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
     if (data.email !== undefined) conn.email = data.email;
 
     upsert(db, conn);
+    if (conn.provider === "antigravity" || conn.provider === "agy") {
+      seedAntigravityLease(db, conn.id, conn.refreshToken, conn.providerSpecificData?.antigravitySubject || null);
+    }
     reorderInTx(db, data.provider);
     result = conn;
   });
@@ -410,17 +547,19 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
 }
 
 // Critical: OAuth refresh token race — atomic merge inside transaction
-export async function updateProviderConnection(id, data, {
+export function applyProviderConnectionPatchInTx(db, id, data, {
   expectedUpdatedAt = null,
   expectedRefreshContext = null,
   returnCommitResult = false,
   signal = null,
   shouldCommit = null,
+  shouldCommitConnection = null,
   // Compatibility fallback writer (#1324/#1311): re-read under the write lock
   // and refuse demoting a concurrent durable reauth marker.
-  refuseIfReauth = false
+  refuseIfReauth = false,
+  antigravityLeaseCommit = false,
+  advanceAntigravityGeneration: shouldAdvanceAntigravityGeneration = false
 } = {}) {
-  const db = await getAdapter();
   let result;
   db.transaction(() => {
     if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
@@ -437,6 +576,11 @@ export async function updateProviderConnection(id, data, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) {result = null;return;}
     const existing = rowToConn(row);
+    if (signal?.aborted) throw new DOMException("Provider connection update aborted", "AbortError");
+    if (isFunction(shouldCommitConnection) && !shouldCommitConnection(existing)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
     if (expectedUpdatedAt && existing.updatedAt !== expectedUpdatedAt) {
       const error = new Error("Provider connection changed during credential refresh");
       error.code = "PROVIDER_CONNECTION_REVISION_CONFLICT";
@@ -456,12 +600,35 @@ export async function updateProviderConnection(id, data, {
       throw error;
     }
     const merged = { ...mergeProviderConnectionWithHealthReset(existing, data), updatedAt: new Date().toISOString() };
+    const selectedWorkspace = existing.provider === "codex" && existing.providerSpecificData?.codexSelectedWorkspaceId;
+    if (selectedWorkspace && (
+      merged.providerSpecificData?.codexSelectedWorkspaceId !== selectedWorkspace ||
+      hasConflictingCodexAccountIds(merged.providerSpecificData) ||
+      resolveCodexAccountId(merged.providerSpecificData, merged.idToken) !== selectedWorkspace ||
+      (data.idToken && resolveCodexAccountId({}, data.idToken) !== selectedWorkspace)
+    )) {
+      const error = new Error("Codex connection workspace cannot be changed");
+      error.code = "PROVIDER_IDENTITY_IMMUTABLE";
+      throw error;
+    }
     upsert(db, merged);
+    if (!antigravityLeaseCommit && (existing.provider === "antigravity" || existing.provider === "agy")) {
+      const nextRefresh = isString(data.refreshToken) && data.refreshToken ? data.refreshToken : null;
+      const subject = data.providerSpecificData?.antigravitySubject || existing.providerSpecificData?.antigravitySubject || null;
+      if (shouldAdvanceAntigravityGeneration || (nextRefresh && nextRefresh !== existing.refreshToken)) {
+        advanceAntigravityGeneration(db, id, nextRefresh || existing.refreshToken, subject);
+      }
+    }
     if (data.isActive === false) updateAutoPingEntryInTx(db, existing.provider, id, false, null);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = returnCommitResult ? { applied: true, connection: merged } : merged;
   });
   return result;
+}
+
+export async function updateProviderConnection(id, data, options = {}) {
+  const db = await getAdapter();
+  return applyProviderConnectionPatchInTx(db, id, data, options);
 }
 
 // Atomic compare-and-set on ping markers so two processes cannot both send the
@@ -481,6 +648,29 @@ export async function claimProviderConnectionPing(id, expected, next) {
     claimed = true;
   });
   return claimed;
+}
+
+// Compare-and-swap on providerSpecificData fields (OmniRoute #20403). Under the
+// writer lock, applies `next` (merged into providerSpecificData) only when every
+// `expected` psd field still holds the given value (missing counts as null).
+// Used for single-use rotating refresh tokens kept in providerSpecificData.
+export async function compareAndSwapProviderSpecificData(id, expected, next) {
+  const db = await getAdapter();
+  let outcome = { applied: false, current: null };
+  db.transaction(() => {
+    const lock = db.run(QUOTA_WRITE_LOCK_SQL);
+    if ((lock.changes || 0) !== 1) throw new Error("Provider data swap requires an initialized schema");
+    const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
+    if (!row) return;
+    const existing = rowToConn(row);
+    const psd = isObject(existing.providerSpecificData) && existing.providerSpecificData !== null ? existing.providerSpecificData : {};
+    outcome = { applied: false, current: existing };
+    if (Object.entries(expected).some(([field, value]) => (psd[field] ?? null) !== (value ?? null))) return;
+    const merged = { ...existing, providerSpecificData: { ...psd, ...next }, updatedAt: new Date().toISOString() };
+    upsert(db, merged);
+    outcome = { applied: true, current: merged };
+  });
+  return outcome;
 }
 
 const MODEL_STATE_VERSION_PREFIX = "modelStateObserved_";
@@ -507,6 +697,30 @@ function activeTimestamp(value, now) {
 }
 
 /**
+ * Per-key health for multi-key connections (#20993). Applies one key's verdict
+ * to the map read inside the write transaction, so concurrent outcomes for
+ * different keys both survive. Entries for keys no longer stored are pruned.
+ * A failure stamped in the same millisecond as a stored verdict wins; a
+ * success needs a strictly newer stamp.
+ */
+function credentialHealthDelta(existing, fingerprint, { healthy, eventMs, status = null }) {
+  const keyId = credentialKeyId(fingerprint);
+  if (!keyId || !connectionHasMultipleCredentials(existing)) return null;
+  const live = connectionCredentialKeyIds(existing);
+  const current = isObject(existing.credentialHealth) ? existing.credentialHealth : {};
+  const pruned = Object.fromEntries(Object.entries(current).filter(([id]) => live.has(id)));
+  const previousAt = Date.parse(pruned[keyId]?.observedAt || "") || 0;
+  if (healthy ? eventMs <= previousAt : eventMs < previousAt) return null;
+  const observedAt = new Date(eventMs).toISOString();
+  return {
+    ...pruned,
+    [keyId]: healthy ?
+      { status: "healthy", observedAt } :
+      { status: "unavailable", observedAt, statusCode: Number(status) || null }
+  };
+}
+
+/**
  * Atomically extend one legacy model lock. The attempt-start watermark fences
  * late completions and the max-expiry merge prevents concurrent 429s from
  * shortening an already accepted cooldown.
@@ -519,6 +733,7 @@ export async function recordProviderConnectionFallbackState(id, {
   cooldownMs,
   backoffLevel = 0,
   observedAt,
+  credentialFingerprint = null,
   webFetch = false,
   webSearch = false,
   videoPoll = false
@@ -547,6 +762,10 @@ export async function recordProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
+    if (!connectionHasCredential(existing, credentialFingerprint)) {
+      result = { applied: false, connection: existing };
+      return;
+    }
     // Auth may have read this account before a concurrent terminal failure.
     // Recheck under the write transaction: ordinary cooldowns cannot demote
     // durable reauth or erase the marker that guards later success clearing.
@@ -558,7 +777,16 @@ export async function recordProviderConnectionFallbackState(id, {
     const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
     const versionKey = `${MODEL_STATE_VERSION_PREFIX}${scope}`;
     const storedVersion = Date.parse(existing[versionKey] || "") || 0;
+    const credentialHealth = credentialHealthDelta(existing, credentialFingerprint, { healthy: false, eventMs, status });
+    // Connection scope keeps the R-02 contract (equal stamps lose); the
+    // per-key verdict above lets a same-millisecond failure win.
     if (eventMs <= storedVersion) {
+      if (credentialHealth) {
+        const keyOnly = { ...existing, credentialHealth, updatedAt: existing.updatedAt };
+        upsert(db, keyOnly);
+        result = { applied: false, keyHealthApplied: true, connection: keyOnly };
+        return;
+      }
       result = { applied: false, connection: existing };
       return;
     }
@@ -574,6 +802,7 @@ export async function recordProviderConnectionFallbackState(id, {
       // dedupe and OAuth compare-and-swap keys.
       updatedAt: existing.updatedAt
     };
+    if (credentialHealth) merged.credentialHealth = credentialHealth;
     if (webSearch && scope.startsWith("websearch:")) {
       merged[`modelError_${scope}`] = Number(status) || 503;
     }
@@ -598,6 +827,7 @@ export async function recordProviderConnectionFallbackState(id, {
 export async function clearProviderConnectionFallbackState(id, {
   model = null,
   observedAt,
+  credentialFingerprint = null,
   webFetch = false,
   webSearch = false
 } = {}, { signal = null, now = Date.now() } = {}) {
@@ -611,24 +841,34 @@ export async function clearProviderConnectionFallbackState(id, {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     const existing = rowToConn(row);
-    const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch });
-    const relevantScopes = webFetch || webSearch || scope === "__all" ? [scope] : [scope, "__all"];
-    const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
-    if (eventMs <= primaryVersion) {
+    if (!connectionHasCredential(existing, credentialFingerprint)) {
       result = { applied: false, connection: existing };
       return;
     }
+    const scope = boundedModelScope(existing.provider, model, { webFetch, webSearch });
+    const relevantScopes = webFetch || webSearch || scope === "__all" ? [scope] : [scope, "__all"];
+    const primaryVersion = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${scope}`] || "") || 0;
+    const credentialHealth = credentialHealthDelta(existing, credentialFingerprint, { healthy: true, eventMs });
+    const rejectKeepingKeyHealth = () => {
+      if (!credentialHealth) {
+        result = { applied: false, connection: existing };
+        return;
+      }
+      const keyOnly = { ...existing, credentialHealth, updatedAt: existing.updatedAt };
+      upsert(db, keyOnly);
+      result = { applied: false, keyHealthApplied: true, connection: keyOnly };
+    };
+    // A success stamped in the same millisecond as a failure never clears it.
+    if (eventMs <= primaryVersion) return rejectKeepingKeyHealth();
     const scopes = relevantScopes;
     const acceptedScopes = scopes.filter((candidate) => {
       const version = Date.parse(existing[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] || "") || 0;
       return eventMs > version;
     });
-    if (acceptedScopes.length === 0) {
-      result = { applied: false, connection: existing };
-      return;
-    }
+    if (acceptedScopes.length === 0) return rejectKeepingKeyHealth();
 
     const merged = { ...existing };
+    if (credentialHealth) merged.credentialHealth = credentialHealth;
     for (const candidate of acceptedScopes) {
       merged[`${MODEL_LOCK_PREFIX}${candidate}`] = null;
       merged[`${MODEL_STATE_VERSION_PREFIX}${candidate}`] = new Date(eventMs).toISOString();
@@ -704,6 +944,7 @@ export async function deleteProviderConnection(id) {
     assertDeletionDoesNotBroadenScopedKeys(db, [id]);
     updateAutoPingEntryInTx(db, row.provider, id, false, null);
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
+    deleteAntigravityRotationRows(db, [id]);
     reorderInTx(db, row.provider);
     ok = true;
   });
@@ -744,10 +985,7 @@ export async function setProviderConnectionAutoPing(id, enabled, schedule = unde
   return result;
 }
 
-export async function deleteProviderConnectionsByProvider(providerId) {
-  const db = await getAdapter();
-  let count = 0;
-  db.transaction(() => {
+export function deleteProviderConnectionsByProviderInTx(db, providerId) {
     const rows = db.all(`SELECT id FROM providerConnections WHERE provider = ?`, [providerId]);
     for (let offset = 0; offset < rows.length; offset += 1024) {
       assertNoActiveQuotaReservationsForTargetSync(db, {
@@ -756,9 +994,16 @@ export async function deleteProviderConnectionsByProvider(providerId) {
     }
     assertDeletionDoesNotBroadenScopedKeys(db, rows.map((row) => row.id));
     for (const row of rows) updateAutoPingEntryInTx(db, providerId, row.id, false, null);
+    const ids = rows.map((row) => row.id);
     db.run(`DELETE FROM providerConnections WHERE provider = ?`, [providerId]);
-    count = rows.length;
-  });
+    deleteAntigravityRotationRows(db, ids);
+    return rows.length;
+}
+
+export async function deleteProviderConnectionsByProvider(providerId) {
+  const db = await getAdapter();
+  let count = 0;
+  db.transaction(() => { count = deleteProviderConnectionsByProviderInTx(db, providerId); });
   return count;
 }
 

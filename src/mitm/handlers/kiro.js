@@ -1,7 +1,7 @@
 const { isString } = require("../../shared/utils/typeChecks.cjs");
 const { err } = require("../logger");
-const { IS_DEV } = require("../config");
-const { fetchRouter, pipeTransformedEventStream } = require("./base");
+const { IS_DEV, KIRO_RESPONSES_PATH } = require("../config");
+const { fetchRouter, pipeSSE, pipeTransformedEventStream } = require("./base");
 const fs = require("fs");
 const path = require("path");
 
@@ -470,6 +470,28 @@ function emitFinish(state) {
   return frames.length > 0 ? frames : null;
 }
 
+/**
+ * Forward a Kiro `POST /v1/responses` turn to the router's /v1/responses with the
+ * alias-mapped model and pipe the response back unchanged (no CodeWhisperer /
+ * EventStream conversion: Kiro speaks the Responses API on this path).
+ */
+async function interceptResponsesApi(req, res, bodyBuffer, mappedModel) {
+  try {
+    const body = JSON.parse(bodyBuffer.toString());
+    dbg(`Responses API: ${body.model} -> ${mappedModel}`);
+    const routerRes = await fetchRouter({ ...body, model: mappedModel }, KIRO_RESPONSES_PATH, req.headers);
+    await pipeSSE(routerRes, res);
+  } catch (error) {
+    err(`[Kiro MITM Responses] Request processing failed: ${error.message}`);
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+    }
+    if (!res.writableEnded) {
+      res.end(JSON.stringify({ error: { message: error.message, type: "mitm_error", handler: "kiro-responses" } }));
+    }
+  }
+}
+
 // ─── MITM intercept entry point ───────────────────────────────────────────────
 /**
  * Intercept Kiro IDE CodeWhisperer request and convert to EventStream response:
@@ -485,6 +507,11 @@ function emitFinish(state) {
  * @param {string} mappedModel - Model name after MITM alias mapping
  */
 async function intercept(req, res, bodyBuffer, mappedModel) {
+  // Kiro 1.x+ Responses API turn: already OpenAI Responses shaped in both
+  // directions, so only the model is remapped and the SSE is piped back as-is.
+  if ((req.url || "") === KIRO_RESPONSES_PATH) {
+    return interceptResponsesApi(req, res, bodyBuffer, mappedModel);
+  }
   try {
     // Detect and handle binary data (e.g., continuation requests with EventStream frames)
     if (isBinaryEventStream(bodyBuffer)) {
@@ -507,12 +534,19 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       model: mappedModel,
       messages,
       stream: true,
+      // Forward requested inference settings so the selected provider can enforce them.
+      ...(body.inferenceConfig?.maxTokens != null && { max_tokens: body.inferenceConfig.maxTokens }),
+      ...(body.inferenceConfig?.temperature != null && { temperature: body.inferenceConfig.temperature }),
+      ...(body.inferenceConfig?.topP != null && { top_p: body.inferenceConfig.topP }),
       // Forward tools so Claude uses structured tool_calls instead of XML text fallback
       ...(tools.length > 0 && { tools, tool_choice: "auto" })
     };
 
     // 3: Forward to 9router
     const routerRes = await fetchRouter(openaiBody, "/v1/chat/completions", req.headers);
+
+    // Preserve gateway errors, including providers rejecting an unsupported limit.
+    if (!routerRes.ok) return pipeSSE(routerRes, res);
 
     // 4 + 5: Re-encode response as AWS EventStream binary using standard pipeline
     const state = initKiroState(mappedModel);

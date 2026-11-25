@@ -9,6 +9,8 @@ import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { StatusDot } from "@/shared/ui/components/StatusDot.jsx";
 import { CONSOLE_LOG_CONFIG } from "@/shared/constants/config";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
 import { startConsoleLogTransport } from "./transport";
 import { CONSOLE_LEVELS } from "./parseConsoleLine";
 import {
@@ -113,6 +115,31 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
     return () => observer?.disconnect();
   }, [entry.id, wrap, onMeasure]);
   const [firstLine, ...moreLines] = entry.message.split("\n");
+  const cache = [
+    entry.completion?.cacheRead ? `↻${entry.completion.cacheRead}` : "",
+    entry.completion?.cacheCreate ? `+${entry.completion.cacheCreate}` : "",
+  ].filter(Boolean).join(" ");
+  const summary = entry.request
+    ? [
+        `POST ${entry.request.model} → ${entry.request.routedModel}`,
+        entry.request.format && `FMT: ${entry.request.format}`,
+        entry.request.mode,
+        entry.request.messages !== null && `${entry.request.messages} MSG`,
+        entry.request.tools !== null && `${entry.request.tools} TOOL`,
+        entry.request.thinking && `THINK:${entry.request.thinking}`,
+        entry.request.account && `ACC:${entry.request.account}`,
+      ].filter(Boolean).join(" · ")
+    : entry.completion
+      ? [
+          `DONE ${entry.completion.totalMs}ms`,
+          entry.completion.ttftMs !== null && `TTFT ${entry.completion.ttftMs}ms`,
+          `IN ${entry.completion.inputTokens}${cache ? ` (CACHE ${cache})` : ""}`,
+          `OUT ${entry.completion.outputTokens}`,
+          entry.completion.routedModel,
+          entry.completion.credits !== undefined && `${entry.completion.credits}cr`,
+          entry.completion.sessionId !== undefined && `sid:${entry.completion.sessionId}`,
+        ].filter(Boolean).join(" · ")
+      : null;
   return (
     <div
       data-console-row={entry.id}
@@ -134,7 +161,7 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
       ) : (
         <>
           <span className="min-w-0 flex-1 truncate whitespace-pre text-dd-text">
-            <HighlightedText text={firstLine} needle={needle} />
+            <HighlightedText text={summary ?? firstLine} needle={needle} />
           </span>
           {moreLines.length > 0 ? <span className="shrink-0 text-dd-subtle">+{moreLines.length} lines</span> : null}
         </>
@@ -152,6 +179,7 @@ function LogRow({ entry, index, needle, wrap, top, onMeasure }) {
  * until measured, then positioned using measured cumulative offsets.
  */
 export default function ConsoleLogClient() {
+  const v5 = useUiV5();
   const [transport, setTransport] = useState({ state: "connecting", error: "" });
   const [lastAt, setLastAt] = useState(null);
   const [retry, setRetry] = useState(0);
@@ -291,7 +319,7 @@ export default function ConsoleLogClient() {
   const tagOptions = [{ value: ALL_TAGS, label: "All tags" }, ...tags.map((value) => ({ value, label: value }))];
 
   return (
-    <div className="space-y-4">
+    <div className={v5 ? "min-w-0 space-y-4 text-dd-text" : "space-y-4"}>
       <PageHeader icon="terminal" title="Console Log" subtitle="Live server output" />
       <Card padding={false}>
         <div className="sticky top-0 z-10 space-y-2 rounded-t-dd-lg border-b border-dd-border-subtle bg-dd-surface px-4 py-3">
@@ -318,9 +346,9 @@ export default function ConsoleLogClient() {
             </div>
           </div>
         </div>
-        {transport.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-dd-border px-4 py-3 text-sm text-dd-danger"><p>Log transport unavailable. {transport.error}{lastAt ? ` Last received ${lastAt.toLocaleTimeString()}; retained logs may be stale.` : " No snapshot received."}</p><Button size="sm" icon="refresh" variant="secondary" onClick={() => setRetry((value) => value + 1)}>Retry log connection</Button></div> : null}
+        {transport.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-dd-border px-4 py-3 text-sm text-dd-danger">{v5 ? <div className="flex min-w-0 flex-1 items-start gap-2"><MotionIcon name="error" size={18} className="mt-0.5 shrink-0 text-dd-danger" /><p>Log transport unavailable. {transport.error}{lastAt ? ` Last received ${lastAt.toLocaleTimeString()}; retained logs may be stale.` : " No snapshot received."}</p></div> : <p>Log transport unavailable. {transport.error}{lastAt ? ` Last received ${lastAt.toLocaleTimeString()}; retained logs may be stale.` : " No snapshot received."}</p>}<Button size="sm" icon="refresh" variant="secondary" onClick={() => setRetry((value) => value + 1)}>Retry log connection</Button></div> : null}
         {clearError ? <p role="alert" className="px-4 py-2 text-sm text-dd-danger">{clearError}</p> : null}
-        <div ref={viewportRef} role="log" tabIndex={0} aria-label="Console log output" aria-live="off" onScroll={handleScroll} className="h-[calc(100vh-320px)] min-h-80 overflow-auto bg-dd-surface">
+        <div ref={viewportRef} role="log" tabIndex={0} aria-label="Console log output" aria-live={v5 ? "polite" : "off"} onScroll={handleScroll} className="h-[calc(100vh-320px)] min-h-80 overflow-auto bg-dd-surface">
           {total === 0 ? (
             <div className="flex h-full items-center justify-center text-[13px] text-dd-muted">{shown.entries.length === 0 ? lastAt ? "No console logs yet." : transport.state === "unavailable" ? "Console logs unavailable." : "Connecting to console logs…" : "No matching console logs."}</div>
           ) : (

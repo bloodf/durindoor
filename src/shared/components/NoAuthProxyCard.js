@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -12,6 +14,7 @@ const STRATEGIES = [
   { value: "none", label: "None (single pool)" },
   { value: "round-robin", label: "Round-robin" },
   { value: "random", label: "Random" },
+  { value: "session", label: "Session" },
 ];
 
 export default function NoAuthProxyCard({ providerId }) {
@@ -25,7 +28,7 @@ export default function NoAuthProxyCard({ providerId }) {
     let cancelled = false;
     Promise.all([
       fetch("/api/proxy-pools?isActive=true", { cache: "no-store" }).then((r) => r.ok ? r.json() : { proxyPools: [] }),
-      fetch("/api/settings", { cache: "no-store" }).then((r) => r.ok ? r.json() : {}),
+      requestSettings({ cache: "no-store" }).then((r) => r.ok ? r.json() : {}),
     ]).then(([poolData, settingsData]) => {
       if (cancelled) return;
       setProxyPools(poolData.proxyPools || []);
@@ -39,7 +42,7 @@ export default function NoAuthProxyCard({ providerId }) {
   const save = useCallback(async (poolId, strategy) => {
     setSaving(true);
     try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
+      const res = await requestSettings({ cache: "no-store" });
       const data = res.ok ? await res.json() : {};
       const current = data.providerStrategies || {};
       const override = { ...(current[providerId] || {}) };
@@ -50,7 +53,7 @@ export default function NoAuthProxyCard({ providerId }) {
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];
       else updated[providerId] = override;
-      await fetch("/api/settings", {
+      await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerStrategies: updated }),
@@ -110,8 +113,10 @@ export default function NoAuthProxyCard({ providerId }) {
               : isRotation
                 ? rotateStrategy === "round-robin"
                   ? `Rotating through all ${proxyPools.length} active pools in order. State is in-memory (resets on restart).`
-                  : `Picking a random pool from ${proxyPools.length} active pools each request.`
-                : "Uses selected pool above. Set to Round-robin or Random to rotate across all active pools."
+                  : rotateStrategy === "session"
+                    ? "Keeps each conversation on one active pool. Requests without a session rotate in order."
+                    : `Picking a random pool from ${proxyPools.length} active pools each request.`
+                : "Uses selected pool above. Choose a rotation strategy to use all active pools."
           }
         >
           <Select

@@ -1,0 +1,88 @@
+---
+title: MiniMax Code
+description: Guarded provider that signs in to a MiniMax account with the device flow and spends its MiniMax Code subscription through an internal MiniMax gateway. Off by default and tested only against closed mocks.
+---
+
+MiniMax Code (`minimax-code`, alias `mmcode`) signs in to a MiniMax account with the OAuth device flow and sends chat through the managed subscription gateway that the MiniMax Code app and its `mcode` CLI use. It is a separate identity from the `minimax` and `minimax-cn` providers, which keep using an API key or a Token Plan key. No credential is shared between them.
+
+This provider is **unverified**. Every test runs against closed mocks of the account service and the gateway. No MiniMax account, token, subscription or live endpoint has been used, so treat each statement here as the contract taken from source, not as tested behavior.
+
+## Read this first
+
+- **Dispatch is off by default.** A connection must set `providerSpecificData.enableSessionDispatch` to the boolean `true`. Anything else, including the string `"true"`, makes every request fail with HTTP 403 `minimax_code_dispatch_disabled` before any call to MiniMax. Signing in does not turn it on. Each connection opts in on its own, so enabling one account never opens a sibling.
+- **The gateway is an internal MiniMax endpoint, not a published API.** `https://agent.minimax.io/mavis/api/v1/llm/v1/messages` comes from OmniRoute's reading of the MiniMax Code app. MiniMax does not document it for third-party clients, and it can change or be closed without notice. When that happens requests fail with the gateway's status.
+- **It spends a subscription through this gateway.** Every client of this DurinDoor instance spends the plan of the account that opted in. Do not enable it for people who should not use that plan, and check MiniMax's terms for your plan first. The MiniMax Token Plan page documents using a subscription key with third-party tools; that is the `minimax` provider, not this one.
+- **The client binding is MiniMax's own.** Sign-in uses the public client `mcode-public`, scope `agent.default` and audience `agent-backend`, which the MiniMax Code source publishes for its own CLI. Public source does not by itself authorize another client to use that binding. This is why the provider is guarded: it stays off for each connection until you opt in.
+
+## Set up
+
+1. Start sign-in from the provider page. DurinDoor asks the account service for a device code with an S256 PKCE challenge, shows the verification URL and code, and polls until you approve it in the browser. The region (`en`, `cn`) picks the account host, `account.minimax.io` or `account.minimax.cn`. The dashboard defaults to Global and lets you select China in the sign-in dialog.
+2. The connection stores the access token, the refresh token and the region, encrypted like any other OAuth connection. DurinDoor never reads or writes a local `~/.minimax` CLI profile, so signing in here does not log out the CLI.
+3. Opt the connection in with **Allow session dispatch** in its edit dialog (it sets `providerSpecificData.enableSessionDispatch` to `true`).
+4. Send a chat completion with `mmcode/MiniMax-M3.1-Flash` or `mmcode/MiniMax-M3`.
+
+Optional per-connection settings in `providerSpecificData`:
+
+| Field | Meaning |
+| --- | --- |
+| `region` | `en` (default) or `cn`. Chooses the account host used to sign in and refresh. |
+| `gatewayUrl` | An `https` URL on a `minimax.io` or `minimax.cn` host, used instead of the default gateway. Any other URL is refused with HTTP 400, so a stored value can never send the token to another host. |
+
+The `cn` region has no known gateway. Set the MiniMax Code gateway URL in Edit Connection for a China account, otherwise requests fail with HTTP 400 before any call.
+
+Cookie capture: **not applicable.** The credential is an OAuth token pair from the device flow, so the cookie capture extension, a pasted `Cookie:` header, cURL and HAR import do not apply.
+
+## How a request runs
+
+- **Sign-in.** Device authorization with the pinned client binding, S256 PKCE and no redirect following. `authorization_pending` and `slow_down` keep polling; `access_denied` and `expired_token` end the flow. The grant is bound to the PKCE verifier kept by DurinDoor, so another party cannot redeem the device code. The region is carried inside the device code, so a poll reaches the host that issued it.
+- **Refresh.** A token that is expired or about to expire is exchanged at `/oauth2/token` with that connection's own refresh token, and the rotated pair is saved back to the same connection. A gateway 401 triggers one refresh and one retry. A 403 never refreshes, so the opt-in guard cannot spend the refresh token. A refresh the account service rejects leaves the old token in place and the request fails with 401.
+- **Chat.** The gateway speaks the Anthropic Messages contract with `Authorization: Bearer <access token>`, `anthropic-version: 2023-06-01` and the app's `MiniMaxAgent` user agent. The OpenAI chat route and the Anthropic Messages route both work, JSON and streamed, through the normal translators. A stored `apiKey` is never sent to this gateway.
+- **Models.** The catalog is static: `MiniMax-M3.1-Flash` and `MiniMax-M3`, with the unprefixed ids the gateway expects. Both `mmcode/` and `minimax-code/` prefixes resolve. Any other id, or one starting with `-`, is refused with HTTP 400. MiniMax publishes no model-list endpoint for this gateway, and a catalog id is not proof that your account may use the model.
+- **Token counting.** The pre-flight `count_tokens` call is skipped, because the gateway documents no such endpoint and the call would send the prompt and token upstream before the opt-in guard runs. Input is estimated locally.
+
+## Gateway budgets and retry
+
+DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`), with the same names and defaults. They are read on every request, so a change takes effect without a restart. Set them in the environment of the DurinDoor process.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `MINIMAX_CODE_MAX_TOKENS` | `8192` | `max_tokens` sent when the request carries none. A request's own `max_tokens` always wins. A value that is not a positive number is ignored. |
+| `MINIMAX_CODE_CONTEXT_WINDOW` | `1000000` | The window the gateway answers in. Only `512000` (the window the model catalog declares as the default) changes anything: it is sent as `context_window`, so the plan counts less of the request, and it lowers the input ceiling to 512000. Any other value is ignored. |
+| `MINIMAX_CODE_MAX_INPUT_TOKENS` | the window | Lowers the input ceiling for a stricter refusal. It cannot raise the ceiling above the window. |
+| `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` | `100000` | Budget of the whole call: the attempt, the backoff and the retry. It stops at the response headers, so a stream that is already flowing is not cut. Zero, negative or non-numeric values use the default. |
+| `MINIMAX_CODE_GATEWAY_RETRIES` | `1` | Retries of a 429, a 5xx or a dropped connection. `0` turns the retry off; values above `3` are capped at `3`; a non-numeric value keeps the default. |
+
+- **Input ceiling.** Before sending, DurinDoor estimates the input tokens of the messages, the system prompt and the tool catalog, weighing CJK at one token per character, Cyrillic at two characters and other text at three. The estimate is deliberately pessimistic. A request over the ceiling is refused with HTTP 413 `context_length_exceeded` ("too large for the managed gateway transport", with the estimate and the limit) and nothing is sent to MiniMax. The status is 413, not 400, so the refusal is not read as an outage of the model.
+- **Call budget.** A call that outlives `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` is stopped and answers HTTP 500 `gateway_timeout`. It is not a 504, so a slow answer does not take the model out of fallback combos.
+- **Retry with backoff.** A gateway 429 or 5xx, or a dropped connection, is retried once after a 1 second backoff (exponential if you raise the retry count: 1 s, 2 s, 4 s, up to 30 s). `Retry-After` does not lengthen the wait, so the retry stays inside the call budget; it is still passed to the client when the retry fails too. If the retry fails the last error is returned with its own status. A 4xx other than 429, including the 413 above, is never retried, and a 401 keeps its separate refresh-and-retry path.
+
+## Errors
+
+| Situation | Result |
+| --- | --- |
+| Connection did not opt in | 403 `minimax_code_dispatch_disabled`, no upstream call |
+| Unknown model id | 400 `minimax_code_invalid_model` |
+| `gatewayUrl` not on a MiniMax host, or `cn` without one | 400 `minimax_code_gateway_unavailable` |
+| No access token stored | 401 `minimax_code_not_signed_in` |
+| Gateway 401 after a failed refresh, or a revoked sign-in | 401 `invalid_credentials`, "sign in again". The token is never echoed |
+| Request over the input ceiling | 413 `context_length_exceeded`, no upstream call |
+| Call outlives the time budget | 500 `gateway_timeout` |
+| Gateway 429, or a 200 body with a rate-limit, quota or overloaded error | 429 `quota_exceeded`, with `Retry-After` when the gateway sends it |
+| Context-window refusal (gateway 400, or in a 200 body) | 413 `context_length_exceeded`, so it is not read as a model outage |
+| Other error inside a 200 body | 500 |
+| Any other gateway status | The same status |
+
+A 4xx that belongs to the request keeps a request-scoped status so it does not lock the model out of fallback combos.
+
+## Limits and not verified
+
+- No live behavior is verified: the gateway URL, its error shapes and status codes, the account service's device-code and refresh responses, token lifetime and rotation, the CN gateway, and whether an account can use each catalog model are all taken from source.
+- The account service returns no account identity, so connections are labelled "MiniMax Code account". Two sign-ins to the same account create two rows that rotate independently, and the service may revoke the older refresh token.
+- The budgets and the single retry above are ported from OmniRoute's transport. Their defaults, including the 1000000 window and the 100000 ms call budget, come from that source and are not verified against a live gateway.
+- OmniRoute's other `MINIMAX_CODE_*` settings (`MINIMAX_CODE_REGION`, `MINIMAX_CODE_AUTH_FILE`, `MINIMAX_CODE_PROFILE_DIR`, `MINIMAX_CODE_AUTH_RECORD`, `MINIMAX_CODE_GATEWAY_URL`) belong to its local `~/.minimax` profile and are not ported. Region and gateway URL are per-connection fields here.
+- A 429 or 5xx is retried by this executor, and DurinDoor's own routing and fallback still apply after it gives up.
+
+## Sources
+
+- [MiniMax Code OAuth endpoints](https://github.com/MiniMax-AI/minimax-code/blob/3c21163c85a9684030cb147bfef48c6284fa3c46/packages/oauth-core/src/endpoint-config.ts): account origins and `/oauth2/device/code`, `/oauth2/token`, `/oauth2/revoke`
+- [MiniMax Code OAuth contracts](https://github.com/MiniMax-AI/minimax-code/blob/3c21163c85a9684030cb147bfef48c6284fa3c46/packages/oauth-core/src/contracts.ts): `mcode-public`, `agent.default`, `agent-backend`

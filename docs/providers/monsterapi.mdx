@@ -1,0 +1,14 @@
+---
+title: "MonsterAPI"
+description: Current upstream availability and verification status for MonsterAPI.
+---
+
+## Upstream status
+
+MonsterAPI is not currently available: its configured API host was not reachable from the implementation environment. A single unauthenticated request to `https://api.monsterapi.ai/v1/models` failed DNS resolution (`Could not resolve host: api.monsterapi.ai`). The provider's public developer documentation host, `https://developer.monsterapi.ai/`, failed DNS resolution as well. Per the provider work-order rule, no integration is staged until the documented API host is available.
+
+The provider configuration describes an OpenAI-compatible API at `https://api.monsterapi.ai/v1/chat/completions` using Bearer API keys and lists `meta-llama/Meta-Llama-3.1-8B-Instruct` and `meta-llama/Llama-3.3-70B-Instruct`.
+
+## Registration steps
+
+{/* Registration steps: registry promotion, executors/index.js, extension providers.js + manifest host permissions, dashboard import, ProviderIcon/Logo, catalog, modelsConfig, stories */}

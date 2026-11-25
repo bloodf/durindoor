@@ -20,8 +20,13 @@
  *   - "block-metadata" → cloud-metadata hostnames + IPv4 link-local
  *                        (169.254.0.0/16) blocked; LAN/loopback allowed.
  *   - "public-only"    → every private/LAN host blocked (RFC1918, loopback,
- *                        100.64/10, ULA, IPv6 link-local fe80::/10); metadata
- *                        is a subset of private so also blocked.
+ *                        100.64/10, ULA, IPv6 link-local fe80::/10, plus the
+ *                        special-use 192.0.0.0/24 — except the two globally
+ *                        reachable anycast assignments 192.0.0.9 and
+ *                        192.0.0.10 — multicast and reserved 224.0.0.0/4 and
+ *                        240.0.0.0/4 ranges, including their IPv4-mapped and
+ *                        NAT64 spellings); metadata is a subset of private so
+ *                        also blocked.
  *
  * Upstream #3313 closes the DNS-rebinding ceiling: active guard modes install
  * an Undici dispatcher whose lookup validates every answer used by the socket.
@@ -41,6 +46,7 @@
 import { lookup as dnsLookup } from "node:dns";
 import { isIP } from "node:net";
 import { Agent, buildConnector } from "undici";
+import { classifyHost } from "../../src/shared/utils/ssrfGuard.js";
 import {
   PRIVATE_PROVIDER_URLS_ENV,
   LOCAL_PROVIDER_URLS_ENV,
@@ -94,53 +100,39 @@ function wordsToIpv4(words) {
 
 function embeddedIpv4Address(host, includeCompatible = false) {
   const words = ipv6ToWords(host);
-  if (!words || !words.slice(0, 5).every((word) => word === 0)) return null;
-  if (words[5] === 0xffff || includeCompatible && words[5] === 0) return wordsToIpv4(words);
+  if (!words) return null;
+  if (words.slice(0, 5).every((word) => word === 0) &&
+      (words[5] === 0xffff || includeCompatible && words[5] === 0)) return wordsToIpv4(words);
+  if (words[0] === 0x0064 && words[1] === 0xff9b && words.slice(2, 6).every((word) => word === 0)) return wordsToIpv4(words);
   return null;
+}
+
+function transitionIpv4Addresses(words) {
+  if (!words) return [];
+  if (words[0] === 0x2002) {
+    return [`${words[1] >>> 8}.${words[1] & 255}.${words[2] >>> 8}.${words[2] & 255}`];
+  }
+  if (words[0] === 0x2001 && words[1] === 0) {
+    const server = `${words[2] >>> 8}.${words[2] & 255}.${words[3] >>> 8}.${words[3] & 255}`;
+    const clientInt = (~((words[6] << 16) | words[7])) >>> 0;
+    const client = `${clientInt >>> 24}.${clientInt >>> 16 & 255}.${clientInt >>> 8 & 255}.${clientInt & 255}`;
+    return [server, client];
+  }
+  return [];
 }
 
 export function isPrivateHost(hostname) {
   const normalized = normalizeHost(hostname);
-  if (!normalized) return true;
-
-  if (
-  normalized === "localhost" ||
-  normalized.endsWith(".localhost") ||
-  normalized.endsWith(".local") ||
-  normalized.endsWith(".internal"))
-  {
-    return true;
-  }
-
-  if (isIP(normalized) === 4) {
-    const [a, b] = normalized.split(".").map((s) => parseInt(s, 10));
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    return false;
-  }
-
-  if (isIP(normalized) === 6) {
-    const words = ipv6ToWords(normalized);
-    if (!words) return true;
-    if (words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff) {
-      return isPrivateHost(wordsToIpv4(words));
-    }
-    // Unspecified, loopback, and deprecated IPv4-compatible IPv6 (::/96).
-    if (words.slice(0, 6).every((word) => word === 0)) return true;
-    const first = words[0];
-    return (
-      (first & 0xfe00) === 0xfc00 ||
-      (first & 0xffc0) === 0xfe80 ||
-      (first & 0xffc0) === 0xfec0 ||
-      (first & 0xff00) === 0xff00 ||
-      first === 0x2001 && words[1] === 0x0db8);
-
-  }
-
-  return false;
+  // Preserve the provider URL policy's explicit TEST-NET-1 allowance. The
+  // shared SSRF classifier remains stricter for image fetches and other callers.
+  if (/^192\.0\.2\.\d{1,3}$/.test(normalized)) return false;
+  if (!normalized || classifyHost(normalized) === "blocked") return true;
+  const words = ipv6ToWords(normalized);
+  if (!words) return false;
+  if (transitionIpv4Addresses(words).some((ip) => classifyHost(ip) === "blocked")) return true;
+  // Preserve the outbound guard's additional local-use NAT64 and documentation blocks.
+  return words[0] === 0x0064 && words[1] === 0xff9b && words[2] === 0x0001 ||
+    words[0] === 0x2001 && words[1] === 0x0db8;
 }
 
 const CLOUD_METADATA_HOSTNAMES = new Set([
@@ -162,6 +154,7 @@ export function isCloudMetadataHost(hostname) {
   if (CLOUD_METADATA_HOSTNAMES.has(host)) return true;
   const embeddedIpv4 = embeddedIpv4Address(host, true);
   if (embeddedIpv4 && isCloudMetadataHost(embeddedIpv4)) return true;
+  if (transitionIpv4Addresses(ipv6ToWords(host)).some(isCloudMetadataHost)) return true;
   if (host.startsWith("169.254.")) return true; // IPv4 link-local /16
   return false;
 }
@@ -237,6 +230,13 @@ export function createOutboundUrlConnector(guard, lookup = dnsLookup) {
 const guardedDispatchers = new Map();
 const guardedProbeDispatchers = new WeakMap();
 export const GUARDED_PROBE_MAX_ORIGINS = MEMORY_CONFIG.proxyDispatchersMaxSize;
+/**
+ * undici defaults to 16 KB of response headers. A signed-in gemini.google.com
+ * page sends ~30 KB (rotated Set-Cookie values), which failed as
+ * UND_ERR_HEADERS_OVERFLOW and made every valid Gemini Web cookie look
+ * unreachable. Browsers accept far more; share this ceiling across dispatchers.
+ */
+export const MAX_RESPONSE_HEADER_SIZE = 128 * 1024;
 
 /** Module-private dispatcher identity plus its immutable guard mode. */
 export function isGuardedProbeDispatcher(dispatcher) {
@@ -252,6 +252,7 @@ export function assertGuardedProbeDispatcherAddressAllowed(dispatcher, address) 
 
 export function createGuardedProbeDispatcher(guard, lookup = dnsLookup, options = {}) {
   const dispatcher = new Agent({
+    maxHeaderSize: MAX_RESPONSE_HEADER_SIZE,
     ...options,
     maxOrigins: GUARDED_PROBE_MAX_ORIGINS,
     connect: createOutboundUrlConnector(guard, lookup)

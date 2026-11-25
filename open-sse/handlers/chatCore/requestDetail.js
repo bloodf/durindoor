@@ -2,7 +2,7 @@ import { saveRequestUsage, appendRequestLog, saveRequestDetail } from "@/lib/usa
 import { COLORS } from "../../utils/stream.js";
 import { canonicalizeUsage, reasoningIsSubsetOfOutput } from "../../utils/usageTracking.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
-import { isObject } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const OPTIONAL_PARAMS = [
 "temperature", "top_p", "top_k",
@@ -28,7 +28,16 @@ export function extractUsageFromResponse(responseBody) {
 
   const responseUsage = responseBody.usage;
   if (responseUsage?.input_tokens !== undefined || responseUsage?.prompt_tokens !== undefined) {
-    const canonical = canonicalizeUsage(responseUsage);
+    // DeepSeek's OpenAI-shaped JSON reports cache hits as an inclusive flat
+    // count. Existing cache fields take precedence, including a reported zero.
+    const flatCache = responseUsage.prompt_cache_hit_tokens;
+    const details = responseUsage.prompt_tokens_details ?? responseUsage.input_tokens_details;
+    const useFlatCache = responseUsage.prompt_tokens !== undefined &&
+      responseUsage.cached_tokens == null && details?.cached_tokens == null &&
+      responseUsage.cache_read_input_tokens === undefined &&
+      (responseUsage.cache_creation_input_tokens === undefined || details?.cache_creation_tokens !== undefined) &&
+      isNumber(flatCache) && Number.isFinite(flatCache) && flatCache >= 0;
+    const canonical = canonicalizeUsage(useFlatCache ? { ...responseUsage, cached_tokens: flatCache } : responseUsage);
     // OpenAI-shaped usage counts reasoning inside the output count, but a few
     // OpenAI-compatible upstreams (xAI) report it on top instead.
     if (canonical && !reasoningIsSubsetOfOutput(responseUsage)) {
@@ -57,7 +66,7 @@ export function extractUsageFromResponse(responseBody) {
 }
 
 export function buildRequestDetail(base, overrides = {}) {
-  return {
+  const detail = {
     provider: base.provider || "unknown",
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
@@ -72,6 +81,17 @@ export function buildRequestDetail(base, overrides = {}) {
     status: base.status || "success",
     ...overrides
   };
+  // Combo opt-out removes payloads after overrides, before the detail reaches storage.
+  if (base.comboNoLog === true) {
+    detail.request = null;
+    detail.providerRequest = null;
+    detail.providerResponse = null;
+    const responseStatus = detail.response?.status;
+    detail.response = detail.status === "error" ? { error: "Request failed" } : {};
+    if (detail.status === "error" && Number.isInteger(responseStatus)) detail.response.status = responseStatus;
+    detail.pxpipe = undefined;
+  }
+  return detail;
 }
 
 /**
@@ -104,7 +124,9 @@ export function formatDoneLine({ usage, latency, provider, model, sessionId }) {
     inStr += ` (CACHE ${parts.join(" ")})`;
   }
   const ttftStr = latency?.ttft ? ` · TTFT ${latency.ttft}ms` : "";
-  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}`;
+  // Same marker as logUsage(): a count we guessed must not read like a measured one.
+  const estimatedStr = u.estimated === true ? " (estimated)" : "";
+  let line = `DONE ${latency?.total ?? 0}ms${ttftStr} · ${inStr} · OUT ${outTok}${estimatedStr}`;
   if (model) line += ` · ${provider ? `${provider}/${model}` : model}`;
   if (Number.isFinite(u.kiro_credits) && u.kiro_credits >= 0) line += ` · ${Number(u.kiro_credits.toFixed(4))}cr`;
   if (sessionId) line += ` · sid:${String(sessionId).replace(/[^\x20-\x7e]/g, "").replace(/^(?:claude|antigravity):/, "").slice(0, 8)}`;
@@ -147,7 +169,7 @@ function reconcileReportedTotal(usage) {
  * billingEpoch is the original admission stamp, including pre-cutover null.
  * Never read the current epoch here: the ledger rejects stale in-flight usage.
  */
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, apiKeyId = null, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, apiKeyId = null, endpoint, usageEventId, billingEpoch, status, latency, label = "USAGE", silent = false, comboId = null, comboName = null, usageAttribution = null }) {
   if (!tokens || !isObject(tokens)) return;
 
   const providerNormalized = tokens.promptTokenCount !== undefined || tokens.totalTokenCount !== undefined ?
@@ -182,6 +204,7 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     // The stable key id of the admitted key. It travels with the row so the
     // request stays attached to the key's budgets when its secret changes.
     apiKeyId: apiKeyId || undefined,
+    usageAttribution,
     endpoint: endpoint || null,
     // Timing rides along with the usage row so the dashboard can report
     // duration and throughput per model/account/key without a second lookup.

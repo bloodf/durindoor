@@ -1,3 +1,4 @@
+import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js";
 import { capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
@@ -175,7 +176,7 @@ import {
   getSyncedModelCatalogs,
   getSettings } from
 "@/lib/localDb";
-import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix } from "open-sse/services/model.js";
+import { parseModel as parseModelCore, normalizeModelReference, resolveModelAliasFromMap, getModelInfoCore, stripRedundantNodePrefix, resolveProviderModelAlias } from "open-sse/services/model.js";
 import { filterPaidModels } from "open-sse/providers/pricing.js";
 import { filterExposedModels } from "@/shared/utils/modelExposureList.js";
 import { isAutoComboId, familyOfAutoId, resolveAutoCombo } from "open-sse/services/autoComboResolver.js";
@@ -271,6 +272,7 @@ export function createRoutableModelIdChecker() {
  * Get full model info (parse or resolve)
  */
 export async function getModelInfo(modelStr) {
+  modelStr = normalizeModelReference(modelStr);
   let parsed = parseModel(modelStr);
   if (parsed.isAlias) {
     const combo = await getComboForModel(parsed.model);
@@ -332,7 +334,7 @@ export async function getModelInfo(modelStr) {
     }
     return {
       provider: parsed.provider,
-      model: parsed.model
+      model: resolveProviderModelAlias(parsed.provider, parsed.model)
     };
   }
 
@@ -453,6 +455,36 @@ function buildDisabledComboMemberMatcher(disabledByProvider, aliases, nodes) {
   };
 }
 
+// Exact combo name first; retry without a Claude context-window suffix
+// ("[1m]"/"-1m") only when the name actually carries one, so plain names are
+// looked up exactly once (9router #2780).
+async function getComboWithSuffixFallback(modelStr) {
+  const combo = await getComboForModel(modelStr);
+  if (combo) return combo;
+  const stripped = stripRecognizedContextSuffix(modelStr);
+  return stripped !== modelStr ? getComboForModel(stripped) : null;
+}
+
+// Provider-only web members refer to the endpoint model (search or fetch).
+// A disabled model from another endpoint must not disable the whole provider.
+export async function filterDisabledComboModels(models, providerModel = null) {
+  if (!Array.isArray(models)) return models;
+  const disabledByProvider = await getDisabledModels().catch(() => ({}));
+  if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) return models;
+  const [aliases, openaiNodes, anthropicNodes] = await Promise.all([
+    getModelAliases().catch(() => ({})),
+    getProviderNodes({ type: "openai-compatible" }).catch(() => []),
+    getProviderNodes({ type: "anthropic-compatible" }).catch(() => []),
+  ]);
+  const isDisabled = buildDisabledComboMemberMatcher(disabledByProvider, aliases, [...openaiNodes, ...anthropicNodes]);
+  const enabled = models.filter((member) => {
+    const target = providerModel && isString(member) && !member.includes("/") && !aliases?.[member]
+      ? `${member}/${providerModel}` : member;
+    return !isDisabled(target);
+  });
+  return enabled.length === models.length ? models : enabled;
+}
+
 export async function getComboModels(modelStr, hidePaidModels = false, exposureSettings = null) {
   if (isAutoComboId(modelStr)) {
     const family = familyOfAutoId(modelStr);
@@ -464,7 +496,7 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
     // fixed once for hidePaidModels (a denied model stayed reachable through
     // an auto combo even after being hidden from GET /v1/models).
     return filterExposedModels(
-      filterPaidModels(resolveAutoCombo(family, catalog), hidePaidModels === true),
+      filterPaidModels(await filterDisabledComboModels(resolveAutoCombo(family, catalog)), hidePaidModels === true),
       exposureSettings
     );
   }
@@ -473,24 +505,10 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
   // genuine `provider/model` routing whenever a saved combo happened to share
   // the basename. Callers that still want provider-prefixed combo resolution
   // must save the combo under the full `provider/name` form.
-  const combo = await getComboForModel(modelStr);
+  const combo = await getComboWithSuffixFallback(modelStr);
   if (!combo || !Array.isArray(combo.models)) return null;
-  const disabledByProvider = await getDisabledModels().catch(() => ({}));
-  if (!Object.values(disabledByProvider || {}).some((ids) => Array.isArray(ids) && ids.length)) {
-    return filterPaidModels(combo.models, hidePaidModels === true);
-  }
-  const [aliases, openaiNodes, anthropicNodes] = await Promise.all([
-    getModelAliases().catch(() => ({})),
-    getProviderNodes({ type: "openai-compatible" }).catch(() => []),
-    getProviderNodes({ type: "anthropic-compatible" }).catch(() => []),
-  ]);
-  const isDisabled = buildDisabledComboMemberMatcher(
-    disabledByProvider,
-    aliases,
-    [...openaiNodes, ...anthropicNodes],
-  );
-  const enabledMembers = combo.models.filter((member) => !isDisabled(member));
-  return filterPaidModels(enabledMembers.length === combo.models.length ? combo.models : enabledMembers, hidePaidModels === true);
+  const enabledMembers = await filterDisabledComboModels(combo.models);
+  return filterPaidModels(enabledMembers, hidePaidModels === true);
 }
 
 // Canonical stored combo name for a request string, so ACL checks, per-combo
@@ -501,6 +519,6 @@ export async function getComboModels(modelStr, hidePaidModels = false, exposureS
 // with a slash is treated as a provider/model call, never a basename lookup.
 export async function getComboCanonicalName(modelStr) {
   if (isAutoComboId(modelStr)) return modelStr;
-  const combo = await getComboForModel(modelStr);
+  const combo = await getComboWithSuffixFallback(modelStr);
   return combo ? combo.name : null;
 }

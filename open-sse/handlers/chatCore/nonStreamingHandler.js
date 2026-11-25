@@ -1,3 +1,6 @@
+import { invalidClassifierVerdict } from "./classifierVerdict.js";
+import { encodeClaudeThinking } from "../../translator/concerns/claudeThinkingEnvelope.js";
+import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
 import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
@@ -5,12 +8,14 @@ import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { ollamaBodyToOpenAI } from "../../translator/response/ollama-to-openai.js";
 import { unwrapClinepassEnvelope } from "../../utils/clinepassEnvelope.js";
-import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, filterUsageForFormat } from "../../utils/usageTracking.js";
-import { createErrorResult } from "../../utils/error.js";
+import { addBufferToUsage, claudeUsageToOpenAI, enrichUsageCost, estimateNonStreamingUsage, filterUsageForFormat } from "../../utils/usageTracking.js";
+import { detectQuotaExhaustion } from "../../services/accountFallback.js";
+import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { parseSSEToOpenAIResponse, createSSEErrorResult } from "./sseToJsonHandler.js";
+import { parseJsonDocumentBehindEventStream } from "./nonStreamingJsonDocument.js";
 import { buildRequestDetail, extractRequestConfig, extractUsageFromResponse, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { translateOpenAIToClaudeIfNeeded } from "../../translator/response/openai-to-claude-json.js";
 import { appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
@@ -22,18 +27,21 @@ import { createResponsesToolNameResolver } from "../../translator/response/opena
 import { translateResponse, initState } from "../../translator/index.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
+import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { toOpenAIUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
+import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
 import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
-import { classifyMaskedGatewayError, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
+import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
-import { CLAUDE_STOP } from "../../translator/schema/finishReasons.js";
+import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
+import { evictResponseDispatcher } from "../../utils/proxyFetch.js";
 
 // Upstream #10258: reject parsed JSON that isn't a plain record (primitives,
 // arrays, null) before any envelope unwrap or property access can throw or
@@ -42,6 +50,43 @@ import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
+
+/**
+ * Upstream marker for a provider body that is an HTML/XML error page instead
+ * of a JSON payload: a doctype or comment (`<!`), a tag (`<` plus a letter) or
+ * an XML declaration (`<?xml`).
+ *
+ * Ported from OmniRoute #1104 (head `d0efab8222df9e63050f6f90dae91ccd520eba66`,
+ * merge `f8045744b3ec0974eeb0ac3feb0ab039302592af`). The merged upstream
+ * expression was `/^\s*(?:\s|<!|<[a-zA-Z]|<\?xml)/` applied to the untrimmed
+ * body; its leading `\s` alternative lets the pattern match after backtracking
+ * over the whitespace, so ANY body that merely starts with whitespace was
+ * classified as an HTML error page and the "generic non-JSON" case was
+ * unreachable for an indented plain-text body. The upstream pull-request head
+ * used `/^(\s|<!|<[a-zA-Z][a-zA-Z0-9]*|<\?xml)/` on the trimmed body, which
+ * keeps the same marker set but requires one of them to be present. This port
+ * keeps that behavior: an HTML error page stays distinguishable from other
+ * unusable non-JSON content.
+ */
+const HTML_ERROR_PAGE_PATTERN = /^(?:<!|<[a-zA-Z]|<\?xml)/;
+
+/**
+ * Detect an upstream HTML/XML error page in a provider body that failed to
+ * parse. The body itself is never echoed, stored or logged.
+ * @param {string} text - Raw provider body.
+ * @returns {boolean} True when the body is an HTML/XML error page.
+ */
+export function isHtmlErrorPageBody(text) {
+  return isString(text) && HTML_ERROR_PAGE_PATTERN.test(text.trimStart());
+}
+
+/**
+ * Client-facing diagnostic for a provider that answered with an HTML error
+ * page instead of a JSON body. It names the fact and the two things an
+ * operator can check; it carries no upstream text and no request detail.
+ */
+const HTML_PROVIDER_ERROR_MESSAGE =
+  "Provider returned HTML error page instead of JSON - check credentials and endpoint";
 
 /** Recover a complete JSON object only when its sole trailing content is an SSE done marker (#5384). */
 export function parseJsonWithTrailingDone(text) {
@@ -143,9 +188,10 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 // prompt_tokens: reverse projection reports full input plus cache fields.
 function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
   if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
-  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens || 0;
+  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens;
   claudeMsg.usage = claudeMsg.usage || {};
-  if (cached > 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  // An explicit reported zero is kept; an omitted counter is not invented.
+  if (Number.isFinite(cached) && cached >= 0) claudeMsg.usage.cache_read_input_tokens = cached;
   return claudeMsg;
 }
 
@@ -329,15 +375,13 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
         if (id !== undefined) part.functionCall.id = id;
       }
     }
+    // The projector omits zero details; native Gemini JSON keeps a reported zero.
     const usage = responseBody.usage;
     if (usage?.prompt_tokens_details?.cached_tokens !== undefined) {
       result.usageMetadata.cachedContentTokenCount = usage.prompt_tokens_details.cached_tokens;
     }
     if (usage?.completion_tokens_details?.reasoning_tokens !== undefined) {
       result.usageMetadata.thoughtsTokenCount = usage.completion_tokens_details.reasoning_tokens;
-      // OpenAI completion tokens include reasoning; Gemini counts thoughts separately.
-      result.usageMetadata.candidatesTokenCount = Math.max(0,
-        result.usageMetadata.candidatesTokenCount - result.usageMetadata.thoughtsTokenCount);
     }
     return result;
   }
@@ -376,21 +420,29 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const usage = response.usageMetadata || responseBody.usageMetadata;
     let textContent = "",reasoningContent = "";
     const toolCalls = [];
+    // Drop the compatibility-only `reason` the Gemini cleaner added to empty object schemas.
+    const stripPlaceholderArgs = createGeminiPlaceholderStripper({ clientTools: options.requestBody?.tools, providerBody: options.providerBody, toolNameMap: options.toolNameMap });
 
     if (content?.parts) {
+      let pendingThoughtSignature = null;
       for (const part of content.parts) {
         if (part.thought === true && part.text) reasoningContent += part.text;else
         if (part.text !== undefined) textContent += part.text;
+        if (part.thought === true && !part.functionCall) {
+          const signature = part.thoughtSignature || part.thought_signature;
+          if (signature) pendingThoughtSignature = signature;
+        }
         if (part.functionCall) {
           // Mirror the streaming translator (#676): prefer the upstream call id
           // and carry any provider-issued thought signature in the transport id
           // so the next-turn request translator can replay it.
-          const partSignature = part.thoughtSignature || part.thought_signature || null;
+          const partSignature = part.thoughtSignature || part.thought_signature || pendingThoughtSignature;
+          pendingThoughtSignature = null;
           const rawId = part.functionCall.id || `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`;
           toolCalls.push({
             id: encodeToolCallIdWithSignature(rawId, partSignature),
             type: "function",
-            function: { name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) }
+            function: { name: part.functionCall.name, arguments: JSON.stringify(stripPlaceholderArgs(part.functionCall.name, part.functionCall.args || {})) }
           });
         }
         // Handle inline image data (from image generation models)
@@ -408,7 +460,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     if (!message.content && !message.tool_calls) message.content = "";
 
-    let finishReason = (candidate.finishReason || "stop").toLowerCase();
+    // Same mapping as the streaming Gemini translator (MAX_TOKENS → length, SAFETY → content_filter).
+    let finishReason = toOpenAIFinish(candidate.finishReason || GEMINI_FINISH.STOP, "gemini");
     if (finishReason === "stop" && toolCalls.length > 0) finishReason = "tool_calls";
 
     const result = {
@@ -463,6 +516,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
     const message = { role: "assistant" };
     if (textContent) message.content = textContent;
     if (thinkingContent) message.reasoning_content = thinkingContent;
+    const thinkingBlocks = (responseBody.content || []).filter((block) => block.type === CLAUDE_BLOCK.THINKING || block.type === CLAUDE_BLOCK.REDACTED_THINKING);
+    const envelope = encodeClaudeThinking(options.effectiveModel || options.model || responseBody.model, thinkingBlocks);
+    if (envelope) message.reasoning_encrypted_content = envelope;
     if (toolCalls.length > 0) message.tool_calls = toolCalls;
     // A refusal (stop_reason "refusal") carries no content blocks at all: fall back to
     // Anthropic's own explanation so the client sees why the turn is empty instead of
@@ -490,7 +546,8 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 
   // Ollama
   if (targetFormat === FORMATS.OLLAMA) {
-    return ollamaBodyToOpenAI(responseBody);
+    const result = ollamaBodyToOpenAI(responseBody);
+    return responsesClient ? projectCompletionToClientFormat(result, sourceFormat, projectionOptions()) : result;
   }
 
   /**
@@ -508,7 +565,9 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
-export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
+  const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
+    createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -552,34 +611,94 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         providerBody: finalBody || translatedBody,
         provider
       });
-      if (!parsed) {
+      // A forced-streaming upstream can answer with one complete JSON response
+      // document under the event-stream media type (OmniRoute #18377). Read it
+      // as the non-stream response it is instead of failing the request.
+      const jsonDocument = parsed ? null : parseJsonDocumentBehindEventStream(sseText, targetFormat);
+      if (!parsed && !jsonDocument) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
       }
-      const sseError = createSSEErrorResult(parsed, credentials);
+      let errorPayload = parsed || jsonDocument.body;
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(errorPayload?.error)) {
+        const code = errorPayload.error.code;
+        if (code === 401 || code === 403) evictResponseDispatcher(providerResponse);
+        errorPayload = { ...errorPayload, error: { ...errorPayload.error, status: code } };
+      }
+      const quotaError = detectQuotaExhaustion({ error: errorPayload?.error });
+      if (quotaError.exhausted) {
+        appendLog({ status: "FAILED 429" });
+        return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quotaError.resetAtMs, undefined, null, credentials);
+      }
+      const sseError = createSSEErrorResult(errorPayload, credentials, sourceFormat);
       if (sseError) {
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
       }
-      responseBody = parsed;
-      // The SSE accumulator produces OpenAI completions even when the provider
-      // transport and client use the same native format (#5380).
-      responseFormat = FORMATS.OPENAI;
+      if (jsonDocument) {
+        // The document keeps its own dialect. The event-stream accumulator
+        // always produces OpenAI completions, even when the provider transport
+        // and the client use the same native format (#5380).
+        responseBody = jsonDocument.body;
+        responseFormat = jsonDocument.format;
+      } else {
+        responseBody = parsed;
+        responseFormat = FORMATS.OPENAI;
+      }
     } else {
       try {
         responseBody = JSON.parse(responseText);
       } catch (err) {
         responseBody = parseJsonWithTrailingDone(responseText);
         if (!responseBody) {
-          appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
+          // OmniRoute #1104: a provider that answers with an HTML error page
+          // (captive portal, proxy interception, wrong endpoint) is a different
+          // failure from a malformed JSON body, and the operator needs to tell
+          // them apart. Only the diagnostic differs here: the status code, the
+          // error envelope, the retry/fallback decision and every usage or
+          // admission effect stay exactly as they were, and no upstream body
+          // text is echoed, stored or logged.
+          const htmlErrorPage = isHtmlErrorPageBody(responseText);
+          appendLog({
+            status: htmlErrorPage ?
+              `FAILED ${HTTP_STATUS.BAD_GATEWAY} (html error page)` :
+              `FAILED ${HTTP_STATUS.BAD_GATEWAY}`
+          });
           console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, htmlErrorPage ?
+            HTML_PROVIDER_ERROR_MESSAGE :
+            `Invalid JSON response from ${provider}`);
         }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
       }
+      // Inspect only the error envelope, never echoed request content.
+      if (responseBody.error) {
+        const quota = detectQuotaExhaustion({ error: responseBody.error });
+        if (quota.exhausted) {
+          appendLog({ status: "FAILED 429" });
+          return createErrorResult(HTTP_STATUS.RATE_LIMITED, "Provider quota exhausted", quota.resetAtMs, undefined, null, credentials);
+        }
+      }
+      // Cloud Code can return a Google RPC error inside an HTTP 200 response.
+      // Preserve its numeric code so account-level authentication handling sees it.
+      if ((provider === "antigravity" || provider === "agy") && isJsonRecord(responseBody.error)) {
+        const code = responseBody.error.code;
+        const status = Number.isInteger(code) && code >= 400 && code <= 599 ? code : HTTP_STATUS.BAD_GATEWAY;
+        if (status === 401 || status === 403) evictResponseDispatcher(providerResponse);
+        const message = isString(responseBody.error.message) && responseBody.error.message.trim() ?
+          responseBody.error.message : "Upstream Antigravity request failed";
+        appendLog({ status: `FAILED ${status}` });
+        return { ...createErrorResult(status, message, undefined, undefined, null, credentials), quotaTerminalReason: "stream_error" };
+      }
+    }
+
+    if (clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY) {
+      // Validate and account for the same completed native response we return.
+      const normalized = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      responseBody = responseBody.response ? { ...responseBody, response: normalized } : normalized;
     }
 
     // Unwrap ClinePass {success, data} envelope before marking success: a
@@ -625,12 +744,13 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     responseBody = inlineThinking.responseBody;
 
 
+    const isTokenLimited = !TRUSTED_EMPTY_STOP_PROVIDERS.has(provider) && hasTokenLimitCompletion(responseBody);
     const claudeCompat = shouldEnableClaudeCompat(claudeClassifierCompat, sourceFormat, body);
     let translatedResponse = translateNonStreamingResponse(
       responseBody,
       responseFormat,
       sourceFormat,
-      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body }
+      { claudeCompat, model, effectiveModel: (finalBody || translatedBody)?.model, provider, customToolNames, toolNameMap, requestBody: body, providerBody: finalBody || translatedBody }
     );
 
     /**
@@ -644,6 +764,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       );
       if (claudeCompat) translatedResponse = stripClaudeThinking(translatedResponse);
     }
+    if (invalidClassifierVerdict(sourceFormat, body, translatedResponse)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
     // Chat clients get the completion as-is, so restore request-side tool-name
     // aliases the way the streaming and forced-SSE paths do (#1433).
     if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);
@@ -651,9 +772,17 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
     if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
 
-    const usage = extractUsageFromResponse(responseBody);
-    appendLog({ tokens: usage, status: "200 OK" });
-    saveUsageStats({ provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    let usage = extractUsageFromResponse(responseBody);
+    // Reported usage always wins and is persisted immediately, as before. When
+    // the provider sent none, persistence waits until the response has passed
+    // the empty-content and fake-success checks below so a failed reply never
+    // records an estimate.
+    const usageReported = Boolean(usage);
+    const persistUsage = () => {
+      appendLog({ tokens: usage, status: "200 OK" });
+      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    };
+    if (usageReported) persistUsage();
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.
@@ -663,7 +792,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
-    if (!isNativeClaudeRefusal && !hasUsefulContent(translatedResponse) && !isTrustedEmptyStop(translatedResponse, provider)) {
+    if (!isNativeClaudeRefusal && !isTokenLimited &&
+        !hasUsefulContent(translatedResponse) && !(clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && hasUsefulContent(responseBody)) && !isTrustedEmptyStop(translatedResponse, provider)) {
       appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(
@@ -694,6 +824,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           Date.now() + EMPTY_CONTENT_COOLDOWN_MS
         );
       }
+    }
+
+    // Successful reply without a provider usage object: persist an estimated
+    // input/output usage, marked `estimated`, from the request actually sent
+    // and the content generated. Client-facing usage is left untouched.
+    if (!usageReported) {
+      usage = estimateNonStreamingUsage(finalBody || translatedBody || body, translatedResponse);
+      persistUsage();
     }
 
     /**
@@ -752,6 +890,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
     const totalLatency = Date.now() - requestStartTime;
     saveRequestDetail(buildRequestDetail({
+      comboNoLog,
       provider, model, connectionId,
       latency: { ttft: totalLatency, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
@@ -769,6 +908,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       console.error("[RequestDetail] Failed to save:", err.message);
     });
 
+    const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && responseFormat === FORMATS.ANTIGRAVITY;
+    if (nativeGemini) {
+      const nativeResponse = antigravityGeminiResponse(responseBody, toolNameMap, true);
+      await markSuccess();
+      return { success: true, response: new Response(streamToClient ? formatSSE(nativeResponse, FORMATS.GEMINI) : JSON.stringify(nativeResponse), {
+        headers: { "Content-Type": streamToClient ? "text/event-stream" : "application/json", "Access-Control-Allow-Origin": "*", "x-durindoor-internal-gemini-native": "1", ...resolvedModelHeaders(provider, model) }
+      }) };
+    }
+
     // Client requested streaming but the provider only returned a non-stream JSON
     if (streamToClient === true) {
       // A same-format Gemini-family response is already a valid streaming chunk.
@@ -784,7 +932,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
           response: new Response(formatSSE(translatedResponse, sourceFormat), {
             headers: {
               "Content-Type": "text/event-stream",
-              ...SSE_HEADERS_CORS
+              ...SSE_HEADERS_CORS,
+              ...resolvedModelHeaders(provider, model)
             }
           })
         };
@@ -792,10 +941,12 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
 
       // Always synthesize from an OpenAI-normalized intermediate. Reading finish
       // and usage from the raw provider body mislabels Claude/Gemini fields and
-      // drops tool terminal semantics.
-      const openAIIntermediate = targetFormat === FORMATS.OPENAI ?
+      // drops tool terminal semantics. The response dialect is the parsed one:
+      // a complete JSON document keeps its own dialect even when the transport
+      // label says otherwise (OmniRoute #18377).
+      const openAIIntermediate = responseFormat === FORMATS.OPENAI ?
       structuredClone(responseBody) :
-      translateNonStreamingResponse(structuredClone(responseBody), targetFormat, FORMATS.OPENAI);
+      translateNonStreamingResponse(structuredClone(responseBody), responseFormat, FORMATS.OPENAI);
       if (!Array.isArray(openAIIntermediate?.choices)) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to normalize non-streaming response for SSE");
       }
@@ -811,7 +962,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         response: new Response(sseText, {
           headers: {
             "Content-Type": "text/event-stream",
-            ...SSE_HEADERS_CORS
+            ...SSE_HEADERS_CORS,
+            ...resolvedModelHeaders(provider, model)
           }
         })
       };
@@ -821,7 +973,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     return {
       success: true,
       response: new Response(JSON.stringify(translatedResponse), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          ...resolvedModelHeaders(provider, model)
+        }
       })
     };
   } finally {

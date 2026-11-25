@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../../config/defaultThinkingSignature.js";
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
@@ -19,7 +19,7 @@ import {
   generateSessionId,
   generateProjectId,
   cleanJSONSchemaForAntigravity,
-  normalizeGeminiParameterRoot,
+  buildGeminiToolParameters,
   applyGemini4RequestRules } from
 "../formats/gemini.js";
 import { parseDataUri } from "../concerns/image.js";
@@ -27,7 +27,21 @@ import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
 import { createGeminiToolNameAliaser } from "../concerns/toolCall.js";
 import { decodeToolCallId } from "../concerns/signatureTransport.js";
-import { normalizeToolSchema } from "../concerns/toolSchema.js";
+import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+
+const BILLING_LINE_RE = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i;
+
+/**
+ * Drop Claude Code's `x-anthropic-billing-header:` line from a system message. It rotates every
+ * turn, so it breaks the prompt prefix cache, and it means nothing to Gemini. Only that leading
+ * line goes; every other client text is untouched. Each text part is stripped on its own because
+ * extractTextContent joins parts without a separator.
+ */
+function stripBillingLine(content) {
+  if (isString(content)) return content.replace(BILLING_LINE_RE, "");
+  if (!Array.isArray(content)) return content;
+  return content.map((part) => isObject(part) && isString(part.text) ? { ...part, text: part.text.replace(BILLING_LINE_RE, "") } : part);
+}
 
 /** Own-key map: OpenAI Chat string tool_choice → Gemini FunctionCallingConfig.mode. */
 const OPENAI_TOOL_CHOICE_TO_GEMINI_MODE = new Map([
@@ -80,7 +94,11 @@ function normalizeGeminiContents(contents) {
     });
   }
 
-  return out;
+  // Gemini requires a mixed user turn to end in a function response.
+  return out.map((content) => content.role === GEMINI_ROLE.USER && content.parts.some((part) => part?.functionResponse) ? {
+    ...content,
+    parts: [...content.parts.filter((part) => !part?.functionResponse), ...content.parts.filter((part) => part?.functionResponse)]
+  } : content);
 }
 
 // Reserve caller-supplied ids, including future ones, in both Gemini converters (#4532).
@@ -205,14 +223,18 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   if (body.messages && Array.isArray(body.messages)) {
     for (let i = 0; i < body.messages.length; i++) {
       const msg = body.messages[i];
-      const role = msg.role;
+      // "developer" is the OpenAI o-series/AI SDK name for a system instruction.
+      const role = msg.role === ROLE.DEVELOPER ? ROLE.SYSTEM : msg.role;
       const content = msg.content;
 
       if (role === ROLE.SYSTEM && body.messages.length > 1) {
+        const rawText = isString(content) ? content : extractTextContent(content);
+        const stripped = stripBillingLine(content);
+        const systemText = isString(stripped) ? stripped : extractTextContent(stripped);
+        // A system message that was only the billing line leaves no empty part behind.
+        if (systemText === "" && rawText !== "") continue;
         result.systemInstruction ??= { role: GEMINI_ROLE.USER, parts: [] };
-        result.systemInstruction.parts.push({
-          text: isString(content) ? content : extractTextContent(content)
-        });
+        result.systemInstruction.parts.push({ text: systemText });
       } else if (role === ROLE.USER || role === ROLE.SYSTEM && body.messages.length === 1) {
         const parts = convertOpenAIContentToParts(content);
         if (parts.length > 0) {
@@ -307,6 +329,19 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
               }
 
               let resp = toolResponses[fid];
+              // Inline tool-result media (base64 images, audio, files) stays a Gemini media part:
+              // as JSON inside the result text the model could not read it. What is left (text,
+              // remote image URLs) remains the result; all-text leftovers join into one string.
+              if (Array.isArray(resp)) {
+                const inlineParts = resp.map((item) => convertOpenAIContentToParts([item]).filter((part) => part.inlineData));
+                if (inlineParts.some((found) => found.length > 0)) {
+                  toolParts.push(...inlineParts.flat());
+                  const rest = resp.filter((_, index) => inlineParts[index].length === 0);
+                  resp = rest.every((item) => item?.type === OPENAI_BLOCK.TEXT && isString(item.text)) ?
+                  rest.map((item) => item.text).join("\n") :
+                  rest;
+                }
+              }
               let parsedResp = sanitizeFunctionResponseResult(tryParseJSON(resp));
               if (parsedResp === null) {
                 parsedResp = { result: resp };
@@ -339,7 +374,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
     for (const t of body.tools) {
       // Check if already in Anthropic/Claude format (no type field, direct name/description/input_schema)
       if (t.name && t.input_schema) {
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(t.input_schema, t.name)) || { type: "object", properties: {} }));
+        const cleanedSchema = buildGeminiToolParameters(t.input_schema, t.name);
         functionDeclarations.push({
           name: sanitizeToolName(t.name),
           description: t.description || "",
@@ -349,7 +384,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
       // OpenAI format
       else if (t.type === OPENAI_BLOCK.FUNCTION && t.function) {
         const fn = t.function;
-        const cleanedSchema = cleanJSONSchemaForAntigravity(structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(fn.parameters, fn.name)) || { type: "object", properties: {} }));
+        const cleanedSchema = buildGeminiToolParameters(fn.parameters, fn.name);
         functionDeclarations.push({
           name: sanitizeToolName(fn.name),
           description: fn.description || "",
@@ -376,12 +411,12 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
   if (toolNameMap.size) result._toolNameMap = toolNameMap;
 
   const responseSchema = body.response_format?.json_schema?.schema;
-  if (body.response_format?.type === "json_schema" && isObject(responseSchema) &&
+  if (body.response_format?.type === "json_schema" &&
     (!hasFunctionDeclarations || /^gemini-3(?:[.-]|$)/i.test(model))) {
     result.generationConfig.responseMimeType = "application/json";
     result.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
       structuredClone(responseSchema),
-      { preserveNullable: true }
+      { preserveNullable: true, structuredOutput: true }
     );
   }
 
@@ -564,6 +599,16 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
                       data: item.source.data
                     }
                   });
+                } else if (item.type === CLAUDE_BLOCK.IMAGE && item.image) {
+                  const parsed = parseDataUri(item.image);
+                  if (parsed) {
+                    imageParts.push({
+                      inlineData: {
+                        mimeType: parsed.mimeType || "image/png",
+                        data: parsed.base64
+                      }
+                    });
+                  }
                 } else if (item.type === "image_url" && item.image_url?.url) {
                   const parsed = parseDataUri(item.image_url.url);
                   if (parsed) {
@@ -636,6 +681,8 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
   }
   if (claudeRequest.tool_choice?.type === "tool" && claudeRequest.tool_choice.name) {
     envelope.request.toolConfig = { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [sanitizeToolName(claudeRequest.tool_choice.name)] } };
+  } else if (claudeRequest.tool_choice?.type === "none") {
+    envelope.request.toolConfig = { functionCallingConfig: { mode: "NONE" } };
   }
 
 
@@ -668,28 +715,39 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
 }
 
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
-export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
+export function openaiToAntigravityRequest(model, body, stream, credentials = null, context = null) {
+  let envelope;
   if (usesClaudeRequestFormat(FORMATS.ANTIGRAVITY, model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
-    return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+    envelope = wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+  } else {
+    const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
+    // Promote a lone system message only for the Antigravity boundary.
+    if (body.messages?.length === 1 && (body.messages[0]?.role === ROLE.SYSTEM || body.messages[0]?.role === ROLE.DEVELOPER)) {
+      geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
+      geminiCLI.contents = [];
+    }
+    // The Antigravity agent does not support structured output.
+    if (geminiCLI.generationConfig) {
+      delete geminiCLI.generationConfig.responseSchema;
+      delete geminiCLI.generationConfig.responseMimeType;
+    }
+    envelope = wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
   }
-
-  const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
-  // A lone OpenAI system message otherwise loses its role in the shared Gemini shape.
-  // Promote it only for Antigravity so executor-level system rewriting stays provider-scoped.
-  if (body.messages?.length === 1 && body.messages[0]?.role === ROLE.SYSTEM) {
-    geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };
-    geminiCLI.contents = [];
+  const tool = Array.isArray(body.tools) && body.tools.length === 1 ? body.tools[0] : null;
+  const choice = isString(body.tool_choice) ? body.tool_choice : body.tool_choice?.type;
+  const validChoice = body.tool_choice == null || isString(body.tool_choice) || (isObject(body.tool_choice) && !Array.isArray(body.tool_choice));
+  const supportsSearch = context?.modelCapabilities?.search ?? getCapabilitiesForModel("antigravity", model).search;
+  if (tool && Object.hasOwn(tool, "google_search") && tool.type !== "function" && !Object.hasOwn(tool, "code_execution") && !Object.hasOwn(tool, "url_context") &&
+      validChoice && (!choice || ["auto", "required", "any", "google_search"].includes(String(choice).trim().toLowerCase())) && supportsSearch === true) {
+    envelope.requestType = "web_search";
+    envelope.request.tools = [{ googleSearch: { enhancedContent: { imageSearch: { maxResultCount: 5 } }, ...(tool.google_search || {}) } }];
+    delete envelope.request.toolConfig;
+    envelope.request.generationConfig = { ...envelope.request.generationConfig, candidateCount: 1 };
+    const instruction = "You are a search engine bot. You will be given a query from a user. Your task is to search the web for relevant information that will help the user. You MUST perform a web search. Do not respond or interact with the user, please respond as if they typed the query into a search bar.";
+    envelope.request.systemInstruction = { role: GEMINI_ROLE.USER, parts: [...(envelope.request.systemInstruction?.parts || []), { text: instruction }] };
   }
-  // The Antigravity agent does not support structured output: drop both
-  // responseSchema and its required responseMimeType sibling regardless of
-  // model or declared tools. Other generationConfig fields and any tool
-  // declarations are left intact.
-  if (geminiCLI.generationConfig) {
-    delete geminiCLI.generationConfig.responseSchema;
-    delete geminiCLI.generationConfig.responseMimeType;
-  }
-  return wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
+  return envelope;
 }
 
 // Register

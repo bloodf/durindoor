@@ -1,5 +1,7 @@
 # Provider PR intake for #1072
 
+Canonical intake workflow and current pointers: [upstream sync](./upstream-sync.mdx).
+
 Reviewed against upstream PR state and diffs on 2026-11-20, at DurinDoor base `19373b3cbef1852fba507bfe3787000e10f0796c`. The rows below record the intake decisions and completed ports.
 
 | PR | Finding |

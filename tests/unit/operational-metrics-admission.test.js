@@ -29,8 +29,8 @@ const globalNames = [
 const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
 let originalEnv, originalGlobals, listeners, directory, adapter, db;
 let metrics, correlation, storage;
-// Import each actual public handler at its test call. Eagerly loading every
-// route in beforeAll made the fixture itself exceed the unchanged hook budget.
+// Load the actual public handlers on demand; the first chat route and its
+// translator dependencies are warmed in a separate setup hook below.
 const postRoute = (load) => ({ POST: async (...args) => (await load()).POST(...args) });
 const chat = postRoute(() => import("../../src/app/api/v1/chat/completions/route.js"));
 const embeddings = postRoute(() => import("../../src/app/api/v1/embeddings/route.js"));
@@ -175,74 +175,7 @@ function authRequest(entry, reason) {
     : { ...chatBody, prompt: "fixture", input: "fixture", image: "data:image/png;base64,eA==", query: "fixture", url: "https://fixture.test", state: {}, questions: {} }, headers, entry.path);
 }
 
-beforeAll(async () => {
-  const setupStarted = performance.now();
-  const phase = (name) => console.info(`[admission fixture] ${name} ${Math.round(performance.now() - setupStarted)}ms`);
-  originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
-  originalGlobals = new Map(globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
-  listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
-  directory = fs.mkdtempSync(path.join(os.tmpdir(), "dd1129-admission-"));
-  process.env.HOME = path.join(directory, "home");
-  fs.mkdirSync(process.env.HOME, { mode: 0o700 });
-  process.env.DATA_DIR = path.join(directory, "data");
-  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
-  delete process.env.DURINDOOR_PG_URL;
-  for (const name of globalNames) delete globalThis[name];
-  vi.resetModules();
-  vi.stubGlobal("fetch", provider.fetch.mockImplementation(() => { throw new Error("Unexpected provider transport in admission fixture"); }));
-  phase("private environment");
-  // Fixture setup needs only these repositories. Importing the whole DB barrel
-  // eagerly pulled provider/routing modules into the 10s setup hook.
-  const settings = await import("@/lib/db/repos/settingsRepo.js");
-  phase("settings repository");
-  const keys = await import("@/lib/db/repos/apiKeysRepo.js");
-  phase("keys repository");
-  const connections = await import("@/lib/db/repos/connectionsRepo.js");
-  phase("connections repository");
-  db = {
-    updateSettings: settings.updateSettings, createApiKey: keys.createApiKey, getApiKeyByKey: keys.getApiKeyByKey,
-    createProviderConnection: connections.createProviderConnection,
-    saveRequestUsage: async (...args) => (await import("@/lib/db/repos/usageRepo.js")).saveRequestUsage(...args),
-  };
-  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
-  phase("private adapter");
-  for (const providerId of ["openai", "minimax"]) {
-    await db.createProviderConnection({ provider: providerId, authType: "apikey", name: "fixture",
-      apiKey: "synthetic-fixture-only", isActive: true });
-    phase("synthetic connection");
-  }
-  metrics = await import("../../open-sse/services/operationalMetrics.js");
-  correlation = await import("../../src/sse/utils/requestCorrelation.js");
-  phase("correlation ready");
-});
-
-beforeEach(async () => {
-  await db.updateSettings({ requireApiKey: true, enableProxyTimeline: false, visionBridgeEnabled: false });
-  provider.fetch.mockClear();
-  provider.execute.mockReset().mockImplementation(({ body, stream }) => {
-    const completion = { id: "chat-fixture", object: "chat.completion", model: body.model,
-      choices: [{ index: 0, message: { role: "assistant", content: "provider reply" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
-    const response = stream ? new Response([
-      { id: completion.id, object: "chat.completion.chunk", model: body.model,
-        choices: [{ index: 0, delta: { role: "assistant", content: "provider reply" }, finish_reason: null }] },
-      { id: completion.id, object: "chat.completion.chunk", model: body.model,
-        choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: completion.usage },
-    ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", {
-      headers: { "content-type": "text/event-stream" },
-    }) : Response.json(completion);
-    return { response, url: "https://provider.test/v1/chat/completions", headers: {}, transformedBody: body };
-  });
-  baseline = sample();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-  expect(sample().active).toBe(baseline.active);
-});
-
-afterAll(async () => {
+async function teardownFixture() {
   try {
     for (const id of ownedBatchIds) await storage._waitForBatch(id);
     if (adapter) {
@@ -271,7 +204,91 @@ afterAll(async () => {
     }
     if (directory) fs.rmSync(directory, { recursive: true, force: true });
   }
+}
+
+afterAll(teardownFixture);
+
+const setupStarted = performance.now();
+const phase = (name) => console.info(`[admission fixture] ${name} ${Math.round(performance.now() - setupStarted)}ms`);
+originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+originalGlobals = new Map(globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+listeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+directory = fs.mkdtempSync(path.join(os.tmpdir(), "dd1129-admission-"));
+process.env.HOME = path.join(directory, "home");
+fs.mkdirSync(process.env.HOME, { mode: 0o700 });
+process.env.DATA_DIR = path.join(directory, "data");
+process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+delete process.env.DURINDOOR_PG_URL;
+for (const name of globalNames) delete globalThis[name];
+vi.resetModules();
+vi.stubGlobal("fetch", provider.fetch.mockImplementation(() => { throw new Error("Unexpected provider transport in admission fixture"); }));
+phase("private environment");
+// Establish isolation before collection-time imports, which can be cold under load.
+try {
+  // Fixture setup needs only these repositories. Importing the whole DB barrel
+  // eagerly pulled provider/routing modules into the 10s setup hook.
+  const [settings, keys, connections] = await Promise.all([
+    import("@/lib/db/repos/settingsRepo.js"),
+    import("@/lib/db/repos/apiKeysRepo.js"),
+    import("@/lib/db/repos/connectionsRepo.js"),
+  ]);
+  phase("repositories");
+  db = {
+    updateSettings: settings.updateSettings, createApiKey: keys.createApiKey, getApiKeyByKey: keys.getApiKeyByKey,
+    createProviderConnection: connections.createProviderConnection,
+    saveRequestUsage: async (...args) => (await import("@/lib/db/repos/usageRepo.js")).saveRequestUsage(...args),
+  };
+  metrics = await import("../../open-sse/services/operationalMetrics.js");
+  correlation = await import("../../src/sse/utils/requestCorrelation.js");
+  const [, translators] = await Promise.all([
+    import("../../src/app/api/v1/chat/completions/route.js"),
+    import("../../open-sse/translator/index.js"),
+  ]);
+  await translators.initTranslators();
+  phase("cold imports ready");
+} catch (error) {
+  await teardownFixture();
+  throw error;
+}
+
+beforeAll(async () => {
+  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+  phase("private adapter");
+  for (const providerId of ["openai", "minimax"]) {
+    await db.createProviderConnection({ provider: providerId, authType: "apikey", name: "fixture",
+      apiKey: "synthetic-fixture-only", isActive: true });
+    phase("synthetic connection");
+  }
+  phase("correlation ready");
+}, 30_000);
+
+beforeEach(async () => {
+  await db.updateSettings({ requireApiKey: true, enableProxyTimeline: false, visionBridgeEnabled: false });
+  provider.fetch.mockClear();
+  provider.execute.mockReset().mockImplementation(({ body, stream }) => {
+    const completion = { id: "chat-fixture", object: "chat.completion", model: body.model,
+      choices: [{ index: 0, message: { role: "assistant", content: "provider reply" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
+    const response = stream ? new Response([
+      { id: completion.id, object: "chat.completion.chunk", model: body.model,
+        choices: [{ index: 0, delta: { role: "assistant", content: "provider reply" }, finish_reason: null }] },
+      { id: completion.id, object: "chat.completion.chunk", model: body.model,
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: completion.usage },
+    ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", {
+      headers: { "content-type": "text/event-stream" },
+    }) : Response.json(completion);
+    return { response, url: "https://provider.test/v1/chat/completions", headers: {}, transformedBody: body };
+  });
+  baseline = sample();
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  expect(sample().active).toBe(baseline.active);
+});
+
+
 
 describe("selected client-admission failures", () => {
   it.each(["chat", "embeddings", "images", "speech", "native"].flatMap((route) =>
@@ -1072,7 +1089,8 @@ describe("ef75 auth-wrapper coverage and selected Ollama transfer", () => {
     expect(response.status).toBe(200);
     expect(Object.fromEntries(response.headers)).toEqual({
       "cache-control": "no-cache, no-transform", connection: "keep-alive",
-      "content-type": "text/event-stream; charset=utf-8", "x-request-id": correlation.getRequestId(req),
+      "content-type": "text/event-stream; charset=utf-8", "x-accel-buffering": "no",
+      "x-request-id": correlation.getRequestId(req),
     });
     const reader = response.body.getReader(), decoder = new TextDecoder();
     expect(decoder.decode((await reader.read()).value)).toBe(route === "messages" ? 'event: ping\ndata: {"type":"ping"}\n\n' : ": keepalive\n\n");

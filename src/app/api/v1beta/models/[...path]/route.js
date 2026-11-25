@@ -1,37 +1,28 @@
-import { annotateClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
+import { corsHeaders } from "@/lib/http/cors.js";
+import { inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import {
   clearAccountError,
-  resolveClientApiKey,
   getProviderCredentials,
   markAccountUnavailable,
 } from "@/sse/services/auth.js";
 import { enforceApiKeyModelPolicy } from "@/sse/services/apiKeyPolicy.js";
 import { observeNativeResponse } from "@/sse/services/nativeUsage.js";
-import { getSettings } from "@/lib/localDb";
+import { admit } from "@/sse/services/admission.js";
 import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
-import { initTranslators } from "open-sse/translator/index.js";
 import {
   convertGeminiToInternal,
   convertOpenAIResponseToGemini,
   transformOpenAISSEToGeminiSSE,
 } from "./geminiBridge.js";
 
-let initialized = false;
+import { estimateGeminiCountTokens, parseGeminiModelPath } from "./geminiRouteHelpers.js";
+
 const GEMINI_NATIVE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 // Gemini model id charset (matches sanitizeGeminiFunctionName); blocks path traversal in upstream URL.
 const GEMINI_NATIVE_MODEL_PATTERN = /^[a-zA-Z0-9_.:-]+$/;
 
-/**
- * Initialize translators once
- */
-async function ensureInitialized() {
-  if (!initialized) {
-    await initTranslators();
-    initialized = true;
-  }
-}
 
 /**
  * Handle CORS preflight
@@ -39,9 +30,7 @@ async function ensureInitialized() {
 export async function OPTIONS() {
   return new Response(null, {
     headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "*"
+      ...corsHeaders(["POST", "OPTIONS"]),
     }
   });
 }
@@ -49,6 +38,7 @@ export async function OPTIONS() {
 /**
  * POST /v1beta/models/{model}:generateContent        — non-streaming
  * POST /v1beta/models/{model}:streamGenerateContent  — streaming (SSE)
+ * POST /v1beta/models/{model}:countTokens — local input token estimate
  *
  * Streaming intent is determined by the URL action suffix (canonical Gemini API
  * convention), NOT by a body field. generationConfig.stream is not a real
@@ -59,38 +49,21 @@ export async function OPTIONS() {
  * Gemini SSE format on the fly via transformOpenAISSEToGeminiSSE().
  */
 async function POSTHandler(request, { params }) {
-  await ensureInitialized();
 
   try {
     const { path } = await params;
-    // path = ["provider", "model:action"] or ["model:action"]
-
-    let model;
-    let action; // ":generateContent" | ":streamGenerateContent"
-
-    if (path.length >= 2) {
-      // Format: /v1beta/models/provider/model:generateContent
-      const provider = path[0];
-      const modelAction = path[1];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      const modelName = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
-      model = provider + "/" + modelName;
-    } else {
-      // Format: /v1beta/models/model:generateContent
-      const modelAction = path[0];
-      action = modelAction.includes(":streamGenerateContent")
-        ? ":streamGenerateContent"
-        : ":generateContent";
-      model = modelAction
-        .replace(":streamGenerateContent", "")
-        .replace(":generateContent", "");
+    const parsed = parseGeminiModelPath(path);
+    if (!parsed) {
+      return Response.json({ error: { message: "Missing model in path", code: 400, status: "INVALID_ARGUMENT" } }, { status: 400 });
     }
-
+    const { model, action } = parsed;
     const body = await request.json();
+
+    if (action === ":countTokens") {
+      const { error } = await admit(request, { kind: "geminiNative" });
+      if (error) return error;
+      return Response.json({ totalTokens: estimateGeminiCountTokens(body) });
+    }
 
     if (isGeminiNativeTtsRequest(model, body)) {
       return await forwardGeminiNativeRequest(request, body, model, action);
@@ -112,7 +85,18 @@ async function POSTHandler(request, { params }) {
     });
 
     inheritHttpObservation(newRequest);
-    const response = await handleChat(newRequest);
+    const response = await handleChat(newRequest, {
+      endpoint: new URL(request.url).pathname,
+      body: convertedBody,
+      headers: Object.fromEntries(request.headers.entries()),
+      geminiNativeResponse: true,
+    });
+
+    if (response.headers.get("x-durindoor-internal-gemini-native") === "1") {
+      const headers = new Headers(response.headers);
+      headers.delete("x-durindoor-internal-gemini-native");
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
 
     if (stream) {
       // Transform OpenAI SSE => Gemini SSE on the fly.
@@ -178,18 +162,11 @@ function buildGeminiNativeUrl(requestUrl, model, action) {
 }
 
 async function validateGeminiNativeClientKey(request) {
-  const settings = await getSettings();
-  const { apiKey, auth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  const { apiKey, auth, error } = await admit(request, {
+    kind: "geminiNative",
+    respond: (status, message) => Response.json({ error: { message } }, { status }),
   });
-  if (!auth.ok && auth.reason === "missing") {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
-      Response.json({ error: { message: "Missing API key" } }, { status: 401 }), "auth_missing") };
-  }
-  if (!auth.ok) {
-    return { apiKey, apiKeyId: auth.apiKeyId, error: annotateClientAdmissionFailure(
-      Response.json({ error: { message: "Invalid API key" } }, { status: 401 }), "auth_invalid") };
-  }
+  if (error) return { apiKey, apiKeyId: auth.apiKeyId, error };
   return { apiKey, apiKeyId: auth.apiKeyId, billingEpoch: auth.billingEpoch, error: null };
 }
 

@@ -51,8 +51,31 @@ export const RESPONSES_ITEM = {
   OUTPUT_TEXT: "output_text",
   INPUT_TEXT: "input_text",
   INPUT_IMAGE: "input_image",
+  INPUT_FILE: "input_file",
   SUMMARY_TEXT: "summary_text",
 };
+
+// OpenAI Responses API `include` entries. These are the only include values a
+// caller-provided array may carry onto the Responses wire: the vocabulary is
+// the Responses contract itself, so an entry outside it is dropped instead of
+// being forwarded to an upstream that would reject it with a 400.
+// `message.output_text.logprobs` is a valid Responses include that individual
+// targets reject — the per-model filter in translator/concerns/paramSupport.js
+// removes it for those models, the translator does not.
+export const RESPONSES_INCLUDE = {
+  REASONING_ENCRYPTED_CONTENT: "reasoning.encrypted_content",
+  MESSAGE_OUTPUT_TEXT_LOGPROBS: "message.output_text.logprobs",
+  WEB_SEARCH_CALL_ACTION_SOURCES: "web_search_call.action.sources",
+  WEB_SEARCH_CALL_RESULTS: "web_search_call.results",
+  OUTPUT_ENCRYPTED_CONTENT: "output.encrypted_content",
+  FILE_SEARCH_CALL_RESULTS: "file_search_call.results",
+  MESSAGE_INPUT_IMAGE_IMAGE_URL: "message.input_image.image_url",
+  COMPUTER_CALL_OUTPUT_OUTPUT_IMAGE_URL: "computer_call_output.output.image_url",
+  CODE_INTERPRETER_CALL_OUTPUTS: "code_interpreter_call.outputs",
+};
+
+// Flat list of the supported Responses include entries.
+export const RESPONSES_INCLUDE_ENTRIES = Object.values(RESPONSES_INCLUDE);
 
 // Valid OpenAI block types (used by filterToOpenAIFormat).
 export const VALID_OPENAI_CONTENT_TYPES = [

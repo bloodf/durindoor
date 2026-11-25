@@ -1,4 +1,5 @@
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
+import { globalCircuitManager } from "@/lib/routing/connectionCircuitState.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
 import { NextResponse } from "next/server";
 import { isValidGitHubCreditLimit } from "open-sse/services/githubCreditLimit.js";
@@ -17,6 +18,7 @@ import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPi
 import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
+import { pickSafeProviderSpecificData, stripConnectionSecrets } from "@/lib/providerRouteHandlers.js";
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
@@ -28,19 +30,6 @@ import {
   encryptedEnvelopeCredentialMessage,
   looksLikeEncryptedEnvelope
 } from "@/shared/utils/credentialEnvelope";
-
-const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
-"managementApiKey",
-"clientSecret",
-"qwenCloudCookie",
-"alibabaConsoleCookie",
-"cookie",
-"QWEN_CLOUD_COOKIE",
-// Bedrock STS token as 9router stored it. DurinDoor keeps it in the encrypted top-level field.
-"sessionToken",
-// Xiaomi account passToken (xiaomi-mimo session login); a long-lived account credential.
-"mimoPassToken"]
-);
 
 // Port of OmniRoute #6562/#6626: `priority` auto-increments unbounded on
 // connection creation (`MAX(priority)+1` per provider in connectionsRepo),
@@ -74,24 +63,13 @@ function invalidRequest(field) {
 }
 
 function sanitizeProviderConnection(connection) {
-  const providerSpecificData = connection.providerSpecificData ?
-  Object.fromEntries(
-    Object.entries(normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData)).
-    filter(([key]) => !SENSITIVE_PROVIDER_SPECIFIC_FIELDS.has(key))
-  ) :
-  connection.providerSpecificData;
-
-  const result = {
-    ...connection,
-    ...(providerSpecificData !== undefined ? { providerSpecificData } : null)
-  };
-  delete result.managementApiKey;
-  delete result.apiKey;
-  delete result.accessToken;
-  delete result.refreshToken;
-  delete result.idToken;
-  delete result.firecrawlHeaders;
-  delete result.sessionToken;
+  const result = stripConnectionSecrets(connection);
+  if (connection.providerSpecificData) {
+    result.providerSpecificData = pickSafeProviderSpecificData(
+      connection.provider,
+      normalizeOpenAIStoreSetting(connection.provider, connection.providerSpecificData)
+    );
+  }
   return result;
 }
 
@@ -280,6 +258,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
+    if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return invalidRequest("providerSpecificData.chatgptPlanAccount");
     const {
       name,
       priority,
@@ -402,6 +381,17 @@ export async function PUT(request, { params }) {
       }
     }
     const updateData = {};
+    // A manual schedule does not change the user's isActive setting.
+    if (body.quotaLockout !== undefined) {
+      if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Quota scheduling requires an operator" }, { status: 403 });
+      const input = body.quotaLockout;
+      if (input === null) updateData.quotaLockout = null;
+      else {
+        if (!isObject(input) || !Object.hasOwn(input, "reactivateAt") || (input.reactivateAt !== null && (!isString(input.reactivateAt) || !Number.isFinite(Date.parse(input.reactivateAt)) || Date.parse(input.reactivateAt) <= Date.now()))) return invalidRequest("quotaLockout.reactivateAt");
+        updateData.quotaLockout = { status: "quota_exhausted", source: "manual", message: "Manually scheduled", detectedAt: new Date().toISOString(), reactivateAt: input.reactivateAt === null ? null : new Date(input.reactivateAt).toISOString() };
+      }
+    }
+
     if (existing.provider === "xai" && isString(body.managementApiKey)) updateData.managementApiKey = body.managementApiKey.trim();
     if (name !== undefined) updateData.name = name;
     if (priority !== undefined) updateData.priority = coercedPriority;
@@ -410,7 +400,24 @@ export async function PUT(request, { params }) {
     }
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
     if (isActive !== undefined) updateData.isActive = isActive;
-    if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
+    if (apiKey && (existing.authType === "apikey" || existing.authType === "auth_token")) updateData.apiKey = apiKey;
+    // Re-importing a web session is how an expired cookie is recovered (#2034): the
+    // Edit dialog sends the fresh cookie in `apiKey`, and the connection keeps its
+    // identity. Failure state recorded against the old cookie (model cooldowns, 401
+    // backoff) is not evidence about the new one, so it is cleared with the swap. The
+    // status and error text reset to unknown unless the caller set those fields itself.
+    if (isString(apiKey) && apiKey.trim() && existing.authType === "cookie" && apiKey !== existing.apiKey) {
+      updateData.apiKey = apiKey;
+      if (testStatus === undefined) updateData.testStatus = "unknown";
+      if (lastError === undefined) updateData.lastError = null;
+      if (lastErrorAt === undefined) updateData.lastErrorAt = null;
+      updateData.rateLimitedUntil = null;
+      updateData.backoffLevel = 0;
+      updateData.errorCode = null;
+      for (const field of Object.keys(existing)) {
+        if (field.startsWith("modelLock_")) updateData[field] = null;
+      }
+    }
     // An empty string is meaningful here: it clears a token left over from temporary keys.
     if (usesAwsCredentials && isString(sessionToken)) updateData.sessionToken = sessionToken.trim();
     if (testStatus !== undefined) updateData.testStatus = testStatus;
@@ -523,6 +530,9 @@ export async function PUT(request, { params }) {
     }
 
     const updated = await updateProviderConnection(id, updateData);
+    // Activation clears persisted model locks; invalidate any in-flight probe
+    // only after that update succeeds. Quota and reauthentication remain separate.
+    if (updated && testStatus === "active") globalCircuitManager.reset(id);
     if (isActive === false) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);
 
     // Hide sensitive fields. Without redacting here, an API-key caller could

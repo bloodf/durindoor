@@ -1,7 +1,7 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
-import { ROLE, CLAUDE_BLOCK, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
-import { fromOpenAIFinish } from "../concerns/finishReason.js";
+import { ROLE, CLAUDE_BLOCK, CLAUDE_STOP, MODEL_FALLBACK, OPENAI_FINISH } from "../schema/index.js";
+import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";
 import { extractTextContent } from "../concerns/textContent.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
@@ -27,10 +27,18 @@ function deduplicateDoubledJson(str) {
   return str;
 }
 
+// Some non-Anthropic models wrap tool arguments in a markdown ```json fence.
+// Strip it so Claude clients receive parseable JSON (9router #1711).
+function stripJsonFence(argsJson) {
+  if (!isString(argsJson)) return argsJson;
+  return argsJson.trim().replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+}
+
 // Sanitize tool call arguments to fix bad params from non-Anthropic models
 function sanitizeToolArgs(toolName, argsJson) {
+  const cleaned = stripJsonFence(argsJson);
   try {
-    const args = JSON.parse(argsJson);
+    const args = JSON.parse(cleaned);
     const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
     toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
     toolName;
@@ -38,8 +46,8 @@ function sanitizeToolArgs(toolName, argsJson) {
     return JSON.stringify(args);
   } catch {
     // Deduplicate doubled JSON before giving up
-    const deduplicated = deduplicateDoubledJson(argsJson);
-    if (deduplicated !== argsJson) {
+    const deduplicated = deduplicateDoubledJson(cleaned);
+    if (deduplicated !== cleaned) {
       try {
         const args = JSON.parse(deduplicated);
         const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
@@ -49,7 +57,7 @@ function sanitizeToolArgs(toolName, argsJson) {
         return JSON.stringify(args);
       } catch {/* fall through to raw return */}
     }
-    return argsJson;
+    return cleaned;
   }
 }
 
@@ -135,8 +143,26 @@ function toClaudeUsage(usage) {
   const outputTokens = firstNumber(usage.completion_tokens, usage.output_tokens);
 
   // Extract cache tokens from prompt_tokens_details
-  const cacheReadTokens = firstNumber(usage.prompt_tokens_details?.cached_tokens, usage.input_tokens_details?.cached_tokens);
-  const cacheCreateTokens = firstNumber(usage.prompt_tokens_details?.cache_creation_tokens, usage.input_tokens_details?.cache_creation_tokens);
+  // A reported zero is evidence of "nothing cached", so keep it distinct from an omitted counter.
+  const reportedCacheReadTokens = [
+    usage.prompt_tokens_details?.cached_tokens,
+    usage.input_tokens_details?.cached_tokens,
+    // DeepSeek-style and flat aliases (OmniRoute #20279); Claude-shaped counter keeps priority.
+    usage.cache_read_input_tokens,
+    usage.prompt_cache_hit_tokens,
+    usage.cached_tokens
+  ].find((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
+  const cacheReadTokens = reportedCacheReadTokens ?? 0;
+  // Cache-write accepts the same aliases as the shared normalizer: the
+  // canonical top-level field, the top-level `cache_write_tokens` alias and
+  // both nested spellings. Canonical fields win over aliases and an explicitly
+  // reported zero is kept as "nothing was written" rather than being read as
+  // an omission. A present-but-non-numeric value counts as no cache write,
+  // matching how the canonical field is treated elsewhere in this path.
+  const cacheWriteRaw = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+    usage.prompt_tokens_details?.cache_creation_tokens ?? usage.prompt_tokens_details?.cache_write_tokens ??
+    usage.input_tokens_details?.cache_creation_tokens ?? usage.input_tokens_details?.cache_write_tokens;
+  const cacheCreateTokens = isNumber(cacheWriteRaw) ? cacheWriteRaw : 0;
 
   // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
   // Because OpenAI's prompt_tokens includes all prompt-side tokens
@@ -144,11 +170,15 @@ function toClaudeUsage(usage) {
     input_tokens: promptTokens - cacheReadTokens - cacheCreateTokens,
     output_tokens: outputTokens
   };
-  if (cacheReadTokens > 0) claudeUsage.cache_read_input_tokens = cacheReadTokens;
+  if (reportedCacheReadTokens !== undefined) claudeUsage.cache_read_input_tokens = reportedCacheReadTokens;
   if (cacheCreateTokens > 0) claudeUsage.cache_creation_input_tokens = cacheCreateTokens;
 
-  // Note: completion_tokens_details.reasoning_tokens is already included in output_tokens
-  // No need to add separately as Claude expects total output_tokens
+  // reasoning_tokens is already included in output_tokens, so output_tokens stays
+  // the total Claude expects. Keep the breakdown as an extra field (Claude clients
+  // ignore it) so usage tracking does not lose reasoning counts on translated streams.
+  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ??
+    usage.output_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens;
+  if (isNumber(reasoningTokens) && reasoningTokens > 0) claudeUsage.reasoning_tokens = reasoningTokens;
   return claudeUsage;
 }
 
@@ -371,9 +401,23 @@ export function openaiToClaudeResponse(chunk, state) {
     } else {
       // Use tracked usage (will be estimated in stream.js if not valid)
       const finalUsage = state.usage || { input_tokens: 0, output_tokens: 0 };
+      // Some OpenAI-compatible upstreams report finish_reason "stop" together
+      // with tool_calls. The Claude client stops its agent loop unless the turn
+      // ends with stop_reason "tool_use" (#18270), so an ordinary stop that
+      // carried tool calls is promoted. Truncation, safety and refusal results
+      // keep their own reason (see claudeStopReasonWithToolCalls).
+      const stopReason = claudeStopReasonWithToolCalls(
+        choice.finish_reason,
+        state.toolCalls instanceof Map && state.toolCalls.size > 0
+      );
+      if (stopReason === CLAUDE_STOP.TOOL_USE) {
+        // The turn really ended with tool calls: keep the shared marker honest
+        // for the usage injection in stream.js.
+        state.finishReason = OPENAI_FINISH.TOOL_CALLS;
+      }
       results.push({
         type: "message_delta",
-        delta: { stop_reason: convertFinishReason(choice.finish_reason) },
+        delta: { stop_reason: stopReason },
         usage: finalUsage
       });
       results.push({ type: "message_stop" });
@@ -382,8 +426,6 @@ export function openaiToClaudeResponse(chunk, state) {
 
   return results.length > 0 ? results : null;
 }
-
-const convertFinishReason = (reason) => fromOpenAIFinish(reason, "claude");
 
 // Register
 register(FORMATS.OPENAI, FORMATS.CLAUDE, null, openaiToClaudeResponse);

@@ -1,4 +1,5 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
+import { parseContext7LibraryId } from "../../shared/context7LibraryId.js";
 // Returns normalized shape across all providers
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import {
@@ -8,6 +9,11 @@ import {
 } from "../../utils/outboundUrlGuard.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { mediaAccounting } from "../mediaAccounting.js";
+import { assertPublicUrlResolved } from "../../../src/shared/utils/ssrfGuard.js";
+
+// Re-exported so the offline Context7 parser tests can assert that the fetch
+// path and the search path share one library-id grammar.
+export { parseContext7LibraryId };
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -134,7 +140,11 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   // target even when a third-party fetch provider receives it in a JSON body.
   try {
     assertOutboundUrlAllowed(url, "public-only");
+    if (provider === "firecrawl_custom") await assertPublicUrlResolved(url);
   } catch (error) {
+    if (provider === "firecrawl_custom" && error?.message?.includes("resolves to an internal host")) {
+      return { success: false, status: 403, error: error.message };
+    }
     if (error instanceof OutboundUrlGuardError) {
       return {
         success: false,
@@ -179,6 +189,9 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
     }
     if (provider === "tinyfish") {
       return await runTinyfish({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt });
+    }
+    if (provider === "keenable") {
+      return await runKeenable({ url, fmt, timeoutMs, maxCharacters, costPerQuery, startedAt });
     }
     if (provider === "ollama") {
       return await runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt, providerConfig });
@@ -498,17 +511,8 @@ async function runOllama({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
 // Context7's `url` is a library reference, not a generic web URL. Accepted
 // forms: "https://context7.com/owner/repo", "context7.com/owner/repo",
 // "/owner/repo", "owner/repo" — each segment path-safe, no traversal.
-const CONTEXT7_LIBRARY_RE = /^\/([\w.-]+)\/([\w.-]+)\/?$/;
-function parseContext7LibraryId(input) {
-  if (!isString(input)) return null;
-  let path = input.trim();
-  const hostMatch = path.match(/^(?:https?:\/\/)?(?:www\.)?context7\.com(\/.*)?$/i);
-  if (hostMatch) path = hostMatch[1] || "";
-  else if (/^https?:\/\//i.test(path)) return null;
-  if (!path.startsWith("/")) path = `/${path}`;
-  const m = CONTEXT7_LIBRARY_RE.exec(path);
-  return m ? `/${m[1]}/${m[2]}` : null;
-}
+// The grammar lives in open-sse/shared/context7LibraryId.js so the fetch
+// executor and the search normalizer accept exactly the same library ids.
 
 async function runContext7({ url, timeoutMs, apiKey, maxCharacters, costPerQuery, startedAt }) {
   const libraryId = parseContext7LibraryId(url);
@@ -605,6 +609,58 @@ async function runAnysearch({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
       provider: "anysearch", url, title: json?.data?.title || null, format: fmt, text,
       costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs
     })
+  };
+}
+
+// Keenable keyless public fetch: GET /v1/fetch/public?url=...[&max_chars=...]
+// Response: { url, title, content, truncated, total_chars, author?, published_at? }
+// Fixed official origin; `live`, `prompt` and any other API option is never sent.
+// guardedProbeFetch never follows redirects, so a redirect is surfaced as an error.
+const KEENABLE_FETCH_URL = "https://api.keenable.ai/v1/fetch/public";
+
+function truncateCodePoints(text, max) {
+  if (!max) return text;
+  const chars = Array.from(text);
+  return chars.length > max ? chars.slice(0, max).join("") : text;
+}
+
+async function runKeenable({ url, fmt, timeoutMs, maxCharacters, costPerQuery, startedAt }) {
+  if (fmt !== "markdown") return { success: false, status: 400, error: `Unsupported Keenable format: ${fmt}` };
+  if (maxCharacters != null && maxCharacters !== 0 && (!Number.isInteger(maxCharacters) || maxCharacters < 1)) {
+    return { success: false, status: 400, error: "Keenable maxCharacters must be a positive integer" };
+  }
+  const qp = new URLSearchParams({ url });
+  if (maxCharacters) qp.set("max_chars", String(maxCharacters));
+  const upstreamStart = Date.now();
+  const r = await tryFetch(`${KEENABLE_FETCH_URL}?${qp}`, {
+    method: "GET",
+    headers: { Accept: "application/json", "X-Keenable-Title": "durindoor" }
+  }, timeoutMs);
+  if (!r.ok) return { success: false, status: r.timeout ? 504 : 502, error: r.error };
+  const upstreamMs = Date.now() - upstreamStart;
+  if (r.res.status >= 300 && r.res.status < 400) {
+    return { success: false, status: 502, error: "Keenable redirected the request; redirects are not followed" };
+  }
+  const { json, text: responseText } = await readJsonOrText(r.res);
+  if (!r.res.ok) {
+    const detail = [json?.message, json?.error, json?.detail].find((v) => isString(v) && v);
+    return { success: false, status: r.res.status, error: detail || responseText?.slice(0, 500) || `Keenable error: ${r.res.status}` };
+  }
+  if (!isString(json?.content)) {
+    return { success: false, status: 502, error: "Keenable returned no extractable content" };
+  }
+  const text = truncateCodePoints(json.content, maxCharacters);
+  return {
+    success: true,
+    data: {
+      ...buildData({ provider: "keenable", url, title: isString(json.title) ? json.title : null, format: fmt, text,
+        costUsd: costPerQuery, responseMs: Date.now() - startedAt, upstreamMs }),
+      metadata: {
+        author: isString(json.author) && json.author ? json.author : null,
+        published_at: isString(json.published_at) && json.published_at ? json.published_at : null,
+        language: null
+      }
+    }
   };
 }
 

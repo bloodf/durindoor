@@ -11,26 +11,29 @@ vi.mock("node:dns", () => ({
   promises: { lookup: lookupMock },
 }));
 
-const { assertPublicUrl, assertPublicUrlResolved, fetchPublic } = await import("../../src/shared/utils/ssrfGuard.js");
+const { assertOutboundUrlAllowed: assertPublicUrl } = await import("../../open-sse/utils/outboundUrlGuard.js");
+const { assertPublicUrlResolved, fetchPublic } = await import("../../src/shared/utils/ssrfGuard.js");
+
+const assertPublicUrlOnly = (url) => assertPublicUrl(url, "public-only");
 
 describe("assertPublicUrl: literal hostname/IP bypasses from #3714", () => {
   it("blocks a trailing-dot FQDN the same as the bare hostname", () => {
-    expect(() => assertPublicUrl("http://localhost/")).toThrow();
-    expect(() => assertPublicUrl("http://localhost./")).toThrow();
-    expect(() => assertPublicUrl("http://LOCALHOST./")).toThrow();
+    expect(() => assertPublicUrlOnly("http://localhost/")).toThrow();
+    expect(() => assertPublicUrlOnly("http://localhost./")).toThrow();
+    expect(() => assertPublicUrlOnly("http://LOCALHOST./")).toThrow();
   });
 
   it("blocks IPv4-mapped IPv6 loopback regardless of which textual form the URL parser picks", () => {
     // WHATWG URL parsing normalizes dotted-decimal IPv4-in-IPv6 to hex form —
     // the original regex only matched the dotted form.
-    expect(() => assertPublicUrl("http://[::ffff:127.0.0.1]/")).toThrow();
-    expect(() => assertPublicUrl("http://[::ffff:7f00:1]/")).toThrow(); // hex form directly
-    expect(() => assertPublicUrl("http://[0000::ffff:127.0.0.1]/")).toThrow();
+    expect(() => assertPublicUrlOnly("http://[::ffff:127.0.0.1]/")).toThrow();
+    expect(() => assertPublicUrlOnly("http://[::ffff:7f00:1]/")).toThrow(); // hex form directly
+    expect(() => assertPublicUrlOnly("http://[0000::ffff:127.0.0.1]/")).toThrow();
   });
 
   it("blocks IPv4-mapped IPv6 cloud metadata address (169.254.169.254)", () => {
-    expect(() => assertPublicUrl("http://[::ffff:169.254.169.254]/")).toThrow();
-    expect(() => assertPublicUrl("http://[::ffff:a9fe:a9fe]/")).toThrow(); // hex form
+    expect(() => assertPublicUrlOnly("http://[::ffff:169.254.169.254]/")).toThrow();
+    expect(() => assertPublicUrlOnly("http://[::ffff:a9fe:a9fe]/")).toThrow(); // hex form
   });
 
   it("blocks other loopback/private/link-local/ULA IPv6 forms", () => {
@@ -42,20 +45,20 @@ describe("assertPublicUrl: literal hostname/IP bypasses from #3714", () => {
       "http://[fd12:3456::1]/",
       "http://[64:ff9b::127.0.0.1]/", // NAT64 well-known prefix embedding a private IPv4
     ]) {
-      expect(() => assertPublicUrl(url), url).toThrow();
+      expect(() => assertPublicUrlOnly(url), url).toThrow();
     }
   });
 
   it("blocks alternate IPv4 literal encodings (already normalized by the URL parser)", () => {
     for (const url of ["http://127.1/", "http://0177.0.0.1/", "http://2130706433/", "http://0x7f.0.0.1/"]) {
-      expect(() => assertPublicUrl(url), url).toThrow();
+      expect(() => assertPublicUrlOnly(url), url).toThrow();
     }
   });
 
   it("still allows public hosts, including public IPv6", () => {
-    expect(() => assertPublicUrl("https://api.openai.com/v1/models")).not.toThrow();
-    expect(() => assertPublicUrl("http://8.8.8.8/")).not.toThrow();
-    expect(() => assertPublicUrl("https://[2001:4860:4860::8888]/")).not.toThrow();
+    expect(() => assertPublicUrlOnly("https://api.openai.com/v1/models")).not.toThrow();
+    expect(() => assertPublicUrlOnly("http://8.8.8.8/")).not.toThrow();
+    expect(() => assertPublicUrlOnly("https://[2001:4860:4860::8888]/")).not.toThrow();
   });
 });
 

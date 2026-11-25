@@ -1,9 +1,14 @@
+import { resolveQuotaRoutingFloor } from "open-sse/config/quotaSelection.js";
+import { evaluateProviderQuotaPreflight } from "@/shared/services/providerQuotaPreflight.js";
+import { rankQuotaConnections } from "@/shared/services/quotaSelection.js";
+import { applyQuotaProviderOrder, quotaProviderOrder } from "@/shared/utils/quotaProviderOrder";
 import { NextResponse } from "next/server";
-import { getProviderConnections } from "@/lib/localDb";
+import { getProviderConnections, getSettings, listProviderQuotaSnapshots } from "@/lib/localDb";
 import { backfillClaudeProfiles, backfillCodexEmails } from "@/lib/oauth/providers";
 import { backfillCursorEmails } from "@/lib/oauth/services/cursorLocalStore.js";
 import { USAGE_APIKEY_PROVIDERS, USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { sanitizeProviderConnectionForClient } from "@/lib/providers/sanitizeProviderConnectionForClient.js";
+import { isBigInt } from "@/shared/utils/typeChecks.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 500;
@@ -12,7 +17,7 @@ const MAX_PAGE_SIZE = 500;
 
 // Kiro's direct import persists authType "api_key" (src/app/api/oauth/kiro/
 // api-key/route.js); older rows use "apikey" — accept both spellings.
-const API_KEY_AUTH_TYPES = ["apikey", "api_key"];
+const API_KEY_AUTH_TYPES = ["apikey", "api_key", "auth_token"];
 
 export function isUsageEligible(connection) {
   // A disabled (isActive:false) api-key/free-tier row must not render a quota
@@ -30,8 +35,32 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// Numeric database values may arrive as strings or BigInts. Invalid values sort last.
+function sortablePriority(value) {
+  if (value == null || value === "") return Infinity;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : Infinity;
+}
+
 function sortConnections(connections, sort) {
   const list = [...connections];
+
+  if (sort === "expiring") {
+    const expiry = (connection) => Math.min(...[connection.expiresAt, connection.rateLimitedUntil].map((value) => {
+      if (value == null || value === "" || isBigInt(value)) return Infinity;
+      const time = new Date(value).getTime();
+      return Number.isFinite(time) && time > 0 ? time : Infinity;
+    }));
+    return list.sort((a, b) => {
+      const timeA = expiry(a);
+      const timeB = expiry(b);
+      if (timeA !== timeB) return timeA - timeB;
+      const priorityA = sortablePriority(a.priority);
+      const priorityB = sortablePriority(b.priority);
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return (a.provider || "").localeCompare(b.provider || "");
+    });
+  }
 
   if (sort === "provider") {
     return list.sort((a, b) => {
@@ -43,11 +72,22 @@ function sortConnections(connections, sort) {
   }
 
   return list.sort((a, b) => {
-    const priorityA = a.priority ?? Number.MAX_SAFE_INTEGER;
-    const priorityB = b.priority ?? Number.MAX_SAFE_INTEGER;
+    const priorityA = sortablePriority(a.priority);
+    const priorityB = sortablePriority(b.priority);
     if (priorityA !== priorityB) return priorityA - priorityB;
     return (a.provider || "").localeCompare(b.provider || "");
   });
+}
+
+// Provider ordering is cosmetic: a settings read failure must not break the
+// quota connection listing, so fall back to the default order.
+function readQuotaProviderOrderSetting(settings) {
+  try {
+    return Array.isArray(settings?.quotaProviderOrder) ? settings.quotaProviderOrder : [];
+  } catch (error) {
+    console.log("Error reading quota provider order:", error);
+    return [];
+  }
 }
 
 export async function GET(request) {
@@ -80,16 +120,46 @@ export async function GET(request) {
       return true;
     });
 
-    const sortedConnections = sortConnections(accountFilteredConnections, sort);
+    let settings = {};
+    try {
+      settings = await getSettings();
+    } catch (error) {
+      console.warn("Error reading provider quota settings:", error);
+    }
+    const savedProviderOrder = readQuotaProviderOrderSetting(settings);
+    const providerOrder = quotaProviderOrder(sortConnections(eligibleConnections, sort), savedProviderOrder);
+    const sorted = sortConnections(accountFilteredConnections, sort);
+    const sortedConnections = sort === "expiring" ? sorted : applyQuotaProviderOrder(sorted, savedProviderOrder);
     const total = sortedConnections.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * pageSize;
-    const pageConnections = sortedConnections.slice(offset, offset + pageSize).map(sanitizeProviderConnectionForClient);
+    const pageConnections = await Promise.all(sortedConnections.slice(offset, offset + pageSize).map(async (connection) => {
+      const safe = sanitizeProviderConnectionForClient(connection);
+      try {
+        const snapshots = await listProviderQuotaSnapshots({ connectionId: connection.id, includeStale: true });
+        const config = settings.quotaSelection || {};
+        const dimensions = config.connections?.[connection.id]?.dimensions || {};
+        safe.quotaWindows = [...new Set(snapshots.map((row) => row.identity.dimensionKey))].map((key) => {
+          const floor = resolveQuotaRoutingFloor(config, { connectionId: connection.id, provider: connection.provider, dimensionKey: key });
+          const own = dimensions[key];
+          return { key, percent: own?.routingFloorEnabled === true ? own.routingFloorRatio * 100 : null, effectivePercent: floor.enabled ? floor.ratio * 100 : null };
+        });
+        const decision = evaluateProviderQuotaPreflight(snapshots, { connectionId: connection.id, provider: connection.provider, connectionWide: true });
+        const ranked = rankQuotaConnections([connection], new Map([[connection.id, decision]]), new Map(), { config });
+        safe.quotaPaused = ranked[0]?.quotaDecision?.reasons?.includes("below_routing_floor") === true;
+      } catch (error) {
+        console.warn(`Error reading quota data for connection ${connection.id}:`, error);
+        safe.quotaWindows = [];
+        safe.quotaPaused = false;
+      }
+      return safe;
+    }));
 
-    return NextResponse.json({
+    const response = {
       connections: pageConnections,
       providerOptions,
+      providerOrder: providerOrder.filter((id) => providerOptions.includes(id)),
       pagination: {
         page: currentPage,
         pageSize,
@@ -100,7 +170,13 @@ export async function GET(request) {
         eligibleConnections: eligibleConnections.length,
         providerFilteredConnections: providerFilteredConnections.length,
       },
-    });
+    };
+    // Only serialize the sanitized response; database values can contain BigInts.
+    return NextResponse.json(JSON.parse(JSON.stringify(response, (_key, value) => {
+      if (!isBigInt(value)) return value;
+      const number = Number(value);
+      return Number.isSafeInteger(number) ? number : value.toString();
+    })));
   } catch (error) {
     console.log("Error fetching providers for client:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });

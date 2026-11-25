@@ -157,8 +157,8 @@
   color: var(--dd-on-accent);
 }
 .dd-docs :focus-visible {
-  outline: 2px solid var(--dd-focus-ring);
-  outline-offset: 3px;
+  outline: var(--site-focus-width) solid var(--dd-focus-ring);
+  outline-offset: var(--site-focus-offset);
 }
 .dd-docs a {
   text-underline-offset: 4px;
@@ -222,6 +222,10 @@
 }
 .dd-docs-article .prose {
   max-width: 72ch;
+  overflow-wrap: anywhere;
+}
+.dd-docs-article .prose :is(h2, h3, h4) {
+  scroll-margin-top: 5rem;
 }
 .dd-docs-article > p {
   max-width: 68ch;
@@ -262,6 +266,10 @@
   border-radius: 10px;
   box-shadow: none;
   margin-block: 24px;
+}
+/* Shiki's light comment color needs a lighter surface for AA contrast. */
+html:not(.dark) .dd-docs figure.shiki {
+  background: #faf9f5;
 }
 .dd-docs figure.shiki pre {
   font-size: 13px;

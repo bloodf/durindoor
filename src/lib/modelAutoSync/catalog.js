@@ -2,6 +2,7 @@ import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel, MODEL_CAPABILITIES, PATTERN_CAPABILITIES, PROVIDER_CAPABILITIES, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { matchPattern } from "open-sse/providers/pricing.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+import { CONNECTION_SCOPED_SYNC_PROVIDERS, connectionCatalogKey, isConnectionScopedSyncProvider } from "./connectionScope.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 
 /**
@@ -30,10 +31,49 @@ const ownRecord = (table, key) => isRecord(table) && Object.hasOwn(table, key) &
  */
 export function isModelAutoSyncEnabled(providerId, settings) {
   // Token Harbor discovery is credential-scoped; provider-wide snapshots can leak a different key's roster.
-  if (providerId === "tokenharbor") return false;
+  // DemonRoute's catalog is account-scoped for the same reason.
+  if (providerId === "tokenharbor" || providerId === "demonroute") return false;
   const overrides = isRecord(settings?.modelAutoSyncProviders) ? settings.modelAutoSyncProviders : {};
   if (isBoolean(overrides[providerId])) return overrides[providerId];
   return MODEL_AUTO_SYNC_DEFAULT_PROVIDERS.includes(providerId);
+}
+
+export { CONNECTION_SCOPED_SYNC_PROVIDERS, isConnectionScopedSyncProvider, connectionCatalogKey };
+
+/**
+ * Credential-free identity of the server a connection points at (origin and
+ * path, no userinfo, query or fragment). A catalog is only trusted for the
+ * endpoint it was fetched from. Returns null when the endpoint cannot be
+ * identified, which makes every stored catalog untrusted for that connection.
+ */
+export function connectionEndpoint(providerId, connection) {
+  const psd = isRecord(connection?.providerSpecificData) ? connection.providerSpecificData : {};
+  const registered = REGISTRY.find((entry) => entry.id === providerId);
+  const raw = providerId === "codex" ? registered?.transport?.baseUrl : isString(psd.baseUrl) && psd.baseUrl.trim() ? psd.baseUrl.trim() : registered?.transport?.baseUrl;
+  try {
+    const url = new URL(raw);
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The stored catalog entry that may describe this connection's models, or
+ * null. Connection-scoped providers read only their own connection's entry,
+ * and only while it still matches the connection's endpoint; a provider-wide
+ * row (written before catalogs were scoped) is never trusted, because it
+ * cannot be attributed to the connection asking. Other providers keep their
+ * provider-wide entry.
+ * @param {Record<string, object>} catalogs - getSyncedModelCatalogs() output
+ */
+export function catalogEntryForConnection(catalogs, providerId, connection) {
+  if (!isConnectionScopedSyncProvider(providerId)) return catalogs?.[providerId] ?? null;
+  if (!isString(connection?.id) || !connection.id) return null;
+  const entry = catalogs?.[connectionCatalogKey(providerId, connection.id)];
+  const endpoint = connectionEndpoint(providerId, connection);
+  if (!isRecord(entry) || entry.connectionId !== connection.id || !endpoint || entry.endpoint !== endpoint) return null;
+  return entry;
 }
 
 /** Interval in hours; 0 turns the scheduler off. Invalid values use the default. */
@@ -51,6 +91,9 @@ export function validateModelAutoSyncSettingsPatch(body) {
   if (Object.prototype.hasOwnProperty.call(body, "modelAutoSyncIntervalHours")) {
     const v = body.modelAutoSyncIntervalHours;
     if (!Number.isInteger(v) || v < 0 || v > MAX_MODEL_AUTO_SYNC_INTERVAL_HOURS) return "Invalid modelAutoSyncIntervalHours";
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "autoPruneStaleComboSteps") && !isBoolean(body.autoPruneStaleComboSteps)) {
+    return "Invalid autoPruneStaleComboSteps";
   }
   if (Object.prototype.hasOwnProperty.call(body, "modelAutoSyncProviders")) {
     const map = body.modelAutoSyncProviders;
@@ -176,7 +219,10 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
     ownRecord(providerCaps, canonicalModel) || ownRecord(providerCaps, model.id) : null;
   const exactDeclaration = catalogMatchesKind ?
     ownRecord(MODEL_CAPABILITIES, canonicalModel) || ownRecord(MODEL_CAPABILITIES, model.id) : null;
-  const patternDeclaration = catalogMatchesKind && !providerDeclaration && !exactDeclaration ?
+  // An image id can start with its chat sibling's id ("gpt-6.1-sol-image"), so a
+  // family pattern (and the limits it carries) describes the chat model, not the row.
+  const imageRow = kind === "image";
+  const patternDeclaration = catalogMatchesKind && !imageRow && !providerDeclaration && !exactDeclaration ?
     PATTERN_CAPABILITIES.find(({ pattern }) => matchPattern(pattern, canonicalModel) || matchPattern(pattern, model.id))?.caps : null;
   const declared = providerDeclaration || exactDeclaration || patternDeclaration || {};
   const registryCapabilities = extractApiCapabilities(catalogMatchesKind ? registered : null);
@@ -188,7 +234,8 @@ export function materializeSyncedModel(providerId, model, sharedMetadata = null)
   const curated = { ...registryCapabilities, ...Object.fromEntries(Object.keys(declared).map((key) => [key, resolved[key]])) };
   const limits = catalogMatchesKind ? resolveModelLimits(canonicalProvider, canonicalModel, null, null, null, true) : null;
   // A transport's configured default is not a model's supported capacity.
-  const usableLimits = limits?.known && (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
+  const usableLimits = limits?.known && !(imageRow && limits.source === "pattern") &&
+    (limits.source !== "registry" || Number.isFinite(registryCapabilities.contextWindow));
   if (usableLimits) {
     curated.contextWindow = limits.contextWindow;
     curated.maxOutput = declared.maxOutput === null ? null : limits.maxOutput;
@@ -294,9 +341,9 @@ export function effectiveSyncedModels(entry, staticModels = [], providerId = nul
  *
  * @param {object|null} previous - stored entry, if any
  * @param {object[]} fetched - normalizeSyncedModels() output (non-empty)
- * @param {{ now: number, staticModels?: object[], connectionId?: string }} options
+ * @param {{ now: number, staticModels?: object[], connectionId?: string, endpoint?: string|null }} options
  */
-export function mergeSyncedCatalog(previous, fetched, { now, staticModels = [], connectionId = null }) {
+export function mergeSyncedCatalog(previous, fetched, { now, staticModels = [], connectionId = null, endpoint = null }) {
   const at = new Date(now).toISOString();
   const before = effectiveSyncedModels(previous, staticModels) ||
   staticModels.filter((m) => isString(m?.id) && !(m.quotaFamily === "review" && m.upstreamModelId));
@@ -309,6 +356,7 @@ export function mergeSyncedCatalog(previous, fetched, { now, staticModels = [], 
     syncedAt: at,
     lastAttemptAt: at,
     connectionId,
+    ...(endpoint ? { endpoint } : null),
     error: null,
     newModelIds: [...fetchedIds].filter((id) => !beforeIds.has(id)),
     removedModelIds: [...beforeIds].filter((id) => !fetchedIds.has(id) && !keptDerived.has(id)),

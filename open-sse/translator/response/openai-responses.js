@@ -7,13 +7,16 @@
  * (apply_patch) stream via custom_tool_call_input.* events, and output_index
  * is offset past a preceding reasoning item so items never collide at 0.
  */
-import { register, initState } from "../index.js";
+import { register, initState } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText } from "../concerns/reasoning.js";
+import { resolveInlineThinkingFormat } from "../../handlers/chatCore/inlineThinking.js";
+import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
+import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { normalizeArrayContentDelta } from "../../utils/arrayContentDelta.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
@@ -55,16 +58,15 @@ function completedUsage(raw) {
   const usage = toResponsesUsage(raw);
   if (!Number.isInteger(usage.input_tokens) || usage.input_tokens + usage.output_tokens <= 0) return null;
   usage.total_tokens = usage.input_tokens + usage.output_tokens;
-  for (const [field, count] of [
-    ["input_tokens_details", "cached_tokens"],
-    ["output_tokens_details", "reasoning_tokens"]
+  for (const [field, count, optional] of [
+    ["input_tokens_details", "cached_tokens", ["cache_write_tokens", "cache_creation_tokens"]],
+    ["output_tokens_details", "reasoning_tokens", []]
   ]) {
     if (!usage[field]) continue;
-    // Codex requires this integer when the optional detail object is present.
-    // Preserve provider extras (e.g. cache creation/audio) when no cache read
-    // or reasoning count was reported, rather than dropping the whole object.
-    if (usage[field][count] === undefined) usage[field][count] = 0;
-    if (!Number.isInteger(usage[field][count]) || usage[field][count] < 0) delete usage[field];
+    // Keep sibling details while making known counters safe for integer clients.
+    for (const key of [count, ...optional.filter((name) => name in usage[field])]) {
+      if (!Number.isInteger(usage[field][key]) || usage[field][key] < 0) usage[field][key] = 0;
+    }
   }
   return usage;
 }
@@ -92,7 +94,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   if (chunk.usage && isObject(chunk.usage)) {
     state.usage = { ...(state.usage || {}), ...chunk.usage };
   }
-  const responseUsage = completedUsage(chunk.usage);
+  const responseUsage = chunk.usage ? completedUsage(state.usage) : null;
   if (responseUsage) state.responsesUsage = responseUsage;
 
   if (!chunk.choices?.length) {
@@ -156,11 +158,35 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     normalizeArrayContentDelta(delta);
   }
 
+  // Only the selected transport/model contract permits interpreting textual tags.
+  // Keep the requested model in state: a chunk's model is upstream-controlled.
+  if (resolveInlineThinkingFormat(state.provider, state.requestedModel, FORMATS.OPENAI) === INLINE_THINKING_FORMATS.THINK_TAGS) {
+    const extractor = state.inlineResponsesExtractor ||= createThinkTagStreamExtractor();
+    if (delta.reasoning_content != null && !isString(delta.reasoning_content)) {
+      const pending = extractor.failOpen();
+      if (pending.content && isString(delta.content)) delta.content = pending.content + delta.content;
+    } else if (isString(delta.content)) {
+      const result = extractor.process(delta.content);
+      delta.content = result.content;
+      if (result.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + result.reasoning;
+    }
+    if (choice.finish_reason) {
+      const pending = extractor.flush();
+      delta.content = (delta.content || "") + (pending.content || "");
+      if (pending.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + pending.reasoning;
+    }
+  }
+
   // Handle reasoning across vendor shapes (reasoning_content / reasoning / reasoning_details)
   const reasoningText = extractReasoningText(delta);
   if (reasoningText && !isInternalReasoningPlaceholder(reasoningText)) {
     startReasoning(state, emit, idx);
     emitReasoningDelta(state, emit, reasoningText);
+  }
+
+  if (isString(delta.reasoning_encrypted_content) && delta.reasoning_encrypted_content) {
+    state.reasoningEncryptedContent = delta.reasoning_encrypted_content;
+    startReasoning(state, emit, idx);
   }
 
   // Handle text content
@@ -174,27 +200,6 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     // inject literal tag markers into content.
     if (state.reasoningId && !state.reasoningDone && !state.inThinking) {
       closeReasoning(state, emit);
-    }
-
-    if (content.includes("<think>")) {
-      state.inThinking = true;
-      content = content.replace("<think>", "");
-      startReasoning(state, emit, idx);
-    }
-
-    if (content.includes("</think>")) {
-      const parts = content.split("</think>");
-      const thinkPart = parts[0];
-      const textPart = parts.slice(1).join("</think>");
-      if (thinkPart) emitReasoningDelta(state, emit, thinkPart);
-      closeReasoning(state, emit);
-      state.inThinking = false;
-      content = textPart;
-    }
-
-    if (state.inThinking && content) {
-      emitReasoningDelta(state, emit, content);
-      content = "";
     }
 
     if (content) {
@@ -216,6 +221,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     state.finishReason = choice.finish_reason;
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
+    mintMissingToolCallIds(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
     if (state.responsesUsage) {
       sendTerminal(state, emit);
@@ -237,7 +243,7 @@ function startReasoning(state, emit, idx) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [] }
+      item: { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [], status: "in_progress" }
     });
 
     emit("response.reasoning_summary_part.added", {
@@ -283,15 +289,9 @@ function closeReasoning(state, emit) {
       part: { type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }
     });
 
-    emit("response.output_item.done", {
-      type: "response.output_item.done",
-      output_index: state.reasoningIndex,
-      item: {
-        id: state.reasoningId,
-        type: RESPONSES_ITEM.REASONING,
-        summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }]
-      }
-    });
+    const item = { id: state.reasoningId, type: RESPONSES_ITEM.REASONING, summary: [{ type: RESPONSES_ITEM.SUMMARY_TEXT, text: state.reasoningBuf }], status: "completed" };
+    if (state.reasoningEncryptedContent) item.encrypted_content = state.reasoningEncryptedContent;
+    emit("response.output_item.done", { type: "response.output_item.done", output_index: state.reasoningIndex, item });
   }
 }
 
@@ -305,7 +305,7 @@ function emitTextContent(state, emit, idx, content) {
     emit("response.output_item.added", {
       type: "response.output_item.added",
       output_index: outputIndex,
-      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT }
+      item: { id: msgId, type: RESPONSES_ITEM.MESSAGE, content: [], role: ROLE.ASSISTANT, status: "in_progress" }
     });
   }
 
@@ -367,7 +367,8 @@ function closeMessage(state, emit, idx) {
         id: msgId,
         type: RESPONSES_ITEM.MESSAGE,
         content: [{ type: RESPONSES_ITEM.OUTPUT_TEXT, annotations: [], logprobs: [], text: fullText }],
-        role: ROLE.ASSISTANT
+        role: ROLE.ASSISTANT,
+        status: "completed"
       }
     });
   }
@@ -527,8 +528,8 @@ function emitToolCall(state, emit, tc) {
           output_index: outputIndex,
           delta
         });
-      } else if (refCallId) {
-        // Name not yet known; queue regular delta for replay once name arrives.
+      } else {
+        // Id or name not yet known; queue regular delta for replay on output_item.added.
         (state.funcPendingArgs[tcIdx] ||= []).push(delta);
       }
     }
@@ -570,6 +571,22 @@ function isCustomToolByState(state, tcIdx, funcName) {
   const name = resolved.name || "";
   const declaredType = state.toolTypes?.[name] || "";
   return declaredType === "custom" || name === "apply_patch" && !Object.hasOwn(state.toolTypes || {}, name);
+}
+
+/**
+ * Upstreams (vLLM/compat gateways) may omit the id on every fragment. At close
+ * time mint a stable id for each named call that never got one, so the item is
+ * announced and closed instead of vanishing from response.completed
+ * (decolua/9router#5636). Deferred to close so a real id arriving after the name
+ * (parallel, out-of-order fragments) still wins.
+ */
+function mintMissingToolCallIds(state, emit) {
+  for (const i in state.funcNames) {
+    if (state.funcCallIds[i] || !state.funcNames[i]) continue;
+    const idx = Number(i);
+    state.funcCallIds[i] = fallbackToolCallId(idx);
+    emitToolCall(state, emit, { index: idx });
+  }
 }
 
 function closeToolCall(state, emit, idx) {
@@ -696,6 +713,7 @@ function flushEvents(state) {
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
+  mintMissingToolCallIds(state, emit);
   for (const i in state.funcCallIds) closeToolCall(state, emit, i);
   sendTerminal(state, emit);
 
@@ -714,7 +732,7 @@ function computeFinishReason(state) {
  * Translate OpenAI Responses API chunk to OpenAI Chat Completions format
  * This is for when Codex returns data and we need to send it to an OpenAI-compatible client
  */
-export function openaiResponsesToOpenAIResponse(chunk, state) {
+export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot = false) {
   if (!chunk) {
     // Flush: send final chunk with finish_reason
     if (state.finishReasonSent || !state.started) return null;
@@ -807,12 +825,14 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     const itemKey = item.id || data.item_id || "";
     const byItem = itemKey ? state.respToolChatIndex.get(itemKey) : undefined;
     const byCall = state.respToolChatIndex.get(state.currentToolCallId);
+    const byOutput = Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined;
     let idx;
-    if (byItem !== undefined || byCall !== undefined) {
-      idx = byItem ?? byCall; // duplicate added (retry) — reuse
+    if (byItem !== undefined || byCall !== undefined || byOutput !== undefined) {
+      idx = byItem ?? byCall ?? byOutput; // duplicate added (retry) — reuse
     } else {
       idx = state.toolCallIndex++;
     }
+    if (Number.isInteger(data.output_index)) (state.respToolOutputIndex ??= new Map()).set(data.output_index, idx);
     if (itemKey) state.respToolChatIndex.set(itemKey, idx);
     state.respToolChatIndex.set(state.currentToolCallId, idx);
 
@@ -878,8 +898,23 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
     const doneItem = data.item;
     const doneKey = doneItem?.id || data.item_id || "";
+    // A done-only item still needs the same header and identity as an added item.
+    const outputKnown = Number.isInteger(data.output_index) && state.respToolOutputIndex?.has(data.output_index);
+    // Snapshot positions identify distinct items; ordinary anonymous done events
+    // may still correlate with the most recently started call.
+    const anonymousKnown = !(terminalSnapshot && isString(doneItem.name) && doneItem.name) &&
+      !doneKey && !doneItem.call_id && state.currentToolCallId &&
+      state.respToolChatIndex?.has(state.currentToolCallId);
+    if (!outputKnown && !anonymousKnown && !(doneKey && state.respToolChatIndex?.has(doneKey)) &&
+        !(doneItem.call_id && state.respToolChatIndex?.has(doneItem.call_id))) {
+      const item = { ...doneItem, call_id: doneItem.call_id || fallbackToolCallId() };
+      const header = openaiResponsesToOpenAIResponse({ type: "response.output_item.added", output_index: data.output_index, item }, state);
+      const args = openaiResponsesToOpenAIResponse({ type: eventType, output_index: data.output_index, item }, state);
+      return [header, ...(Array.isArray(args) ? args : [args])].filter(Boolean);
+    }
     const idx = (doneKey ? state.respToolChatIndex?.get(doneKey) : undefined) ??
     (doneItem?.call_id ? state.respToolChatIndex?.get(doneItem.call_id) : undefined) ??
+    (Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined) ??
     Math.max(0, (state.toolCallIndex || 1) - 1);
     const kind = state.respCustomToolKinds?.get(idx);
     if (kind === "wrapped") {
@@ -914,9 +949,26 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
     return null;
   }
 
+  // Respect the status of generic terminal events before recovering a snapshot.
+  if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "failed") {
+    return openaiResponsesToOpenAIResponse({ type: "response.failed", response: { ...data.response, error: data.response.error || { message: "Response failed" } } }, state);
+  }
+  if ((eventType === "response.done" || eventType === "response.completed") && data.response?.status === "incomplete") {
+    return openaiResponsesToOpenAIResponse({ type: "response.incomplete", response: data.response }, state);
+  }
+
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
     const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
+    const toolSnapshots = [];
+    if (!state.finishReasonSent && eventType !== "response.incomplete" &&
+        (data.response?.status == null || data.response.status === "completed") && Array.isArray(data.response?.output)) {
+      for (const [output_index, item] of data.response.output.entries()) {
+        if (item?.type !== RESPONSES_ITEM.FUNCTION_CALL) continue;
+        const result = openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state, true);
+        if (result) toolSnapshots.push(...(Array.isArray(result) ? result : [result]));
+      }
+    }
     closeResponsesTextSnapshots(state);
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
@@ -961,7 +1013,7 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return textSnapshots.length || pending.length ? [...textSnapshots, ...pending, finalChunk] : finalChunk;
+      return textSnapshots.length || toolSnapshots.length || pending.length ? [...textSnapshots, ...toolSnapshots, ...pending, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;

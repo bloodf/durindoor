@@ -3,7 +3,7 @@ title: Upgrading
 description: Back up the active database, install a chosen release, verify inference, and recover if needed.
 ---
 
-Upgrade after reading the [release notes](../../CHANGELOG.md) for compatibility and migration changes. Record the current package version or image digest and choose the version you intend to install.
+Upgrade after reading the [release notes](https://github.com/bloodf/durindoor/blob/main/CHANGELOG.md) for compatibility and migration changes. Record the current package version or image digest and choose the version you intend to install.
 
 Dashboard **Settings → General → Show update notifications** controls automatic version checks and sidebar update prompts. It is enabled by default, including for existing settings. Turning it off stops those dashboard checks; it does not prevent explicit updates or change the CLI update options.
 
@@ -12,6 +12,8 @@ Dashboard **Settings → General → Show update notifications** controls automa
 Stop DurinDoor and any watchdog that restarts it. Make a full [data backup](./data-management.mdx), including encryption keys, machine ID, and protected environment secrets. For PostgreSQL, also take and verify a database dump.
 
 Startup migration copies are safety copies, not full backups. They retain only the newest three backup directories and can omit request details. SQLite timeline history has its own sidecar.
+
+Before switching runtimes, record `node --version` for npm or source installations and verify the selected release’s declared engine range. Use Node `24.22.2` for this source checkout; see the [runtime evidence matrix](../reference/cli.mdx#runtime-and-artifact-evidence). Rebuild source artifacts under the selected runtime and validate the actual target artifact before returning traffic. For Docker, record the image digest; the image supplies Node.
 
 ## Install the selected version
 
@@ -80,4 +82,4 @@ If SQLite startup reports corruption, stop every writer and restore a verified b
 4. Select the previous image, package version, or source tag.
 5. Start the app and repeat health, inference, and dashboard checks.
 
-Starting an old binary against a migrated database does not undo migrations. For a PostgreSQL-to-SQLite rollback, [Postgres](./postgres.mdx#rollback) also explains the loss of PostgreSQL-era writes and required environment changes.
+Restore the previous compatible Node runtime as well when rolling back a source or npm installation. Reinstall or rebuild the previous artifact under that runtime before starting it. Starting an old binary against a migrated database does not undo migrations. For a PostgreSQL-to-SQLite rollback, [Postgres](./postgres.mdx#rollback) also explains the loss of PostgreSQL-era writes and required environment changes.

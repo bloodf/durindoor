@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { filterModelsForImport } from "@/shared/utils/modelImportFilter";
+import { importCompatibleModels } from "@/shared/utils/compatibleModelImport";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import InferenceStatus from "./InferenceStatus.jsx";
@@ -101,6 +103,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importFilter, setImportFilter] = useState("all");
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
   const [confirmState, setConfirmState] = useState(null);
@@ -349,22 +352,17 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         alert(data.error || "Failed to import models");
         return;
       }
-      const models = data.models || [];
+      const models = filterModelsForImport(data.models, importFilter);
       if (models.length === 0) {
-        alert("No models returned from /models.");
+        alert(importFilter === "all"
+          ? "No models returned from /models."
+          : "No models match the selected price filter. Try All models if pricing is unavailable.");
         return;
       }
-      let importedCount = 0;
-      const existingIds = new Set(allModels.map((model) => model.id));
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (existingIds.has(modelId)) continue;
-        existingIds.add(modelId);
-        await onAddCustomModel(modelId);
-        importedCount += 1;
-      }
-      if (importedCount === 0) {
+      const { imported, failed, skipped } = await importCompatibleModels(models, allModels, onAddCustomModel);
+      if (failed > 0) {
+        alert(`Imported ${imported} models; ${failed} failed; ${skipped} skipped. Retry to import failed models.`);
+      } else if (imported === 0) {
         alert("No new models were added.");
       }
     } catch (error) {
@@ -398,10 +396,30 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
+        <div>
+          <label htmlFor="compatible-model-import-filter" className="text-xs text-dd-muted mb-1 block">Import price filter</label>
+          <select
+            id="compatible-model-import-filter"
+            value={importFilter}
+            onChange={(e) => setImportFilter(e.target.value)}
+            disabled={!canImport || importing}
+            className="min-h-11 px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent"
+          >
+            <option value="all">All models</option>
+            <option value="free">Free only</option>
+            <option value="paid">Paid only</option>
+          </select>
+        </div>
         <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
           {importing ? "Importing..." : "Import discovered models"}
         </Button>
       </div>
+
+      {canImport && (
+        <p className="text-xs text-dd-muted">
+          Price filters use the provider catalog. Models with unknown pricing are included only in All models.
+        </p>
+      )}
 
       {!canImport && (
         <p className="text-xs text-dd-muted">

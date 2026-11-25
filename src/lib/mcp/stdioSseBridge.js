@@ -1,10 +1,18 @@
-const { isString } = require("../../shared/utils/typeChecks.cjs");
+const { isString, isObject } = require("../../shared/utils/typeChecks.cjs");
 // Inline stdio<->SSE bridge for MCP. Spawns one child per plugin on demand,
-// broadcasts JSON-RPC frames over SSE, accepts client messages via HTTP POST.
+// routes JSON-RPC responses to the session that sent the request (id remapping),
+// and broadcasts notifications (no id) to every session of that plugin.
 
 const { spawn } = require("child_process");
 const crypto = require("crypto");
-const { LOCAL_STDIO_PLUGINS } = require("@/shared/constants/coworkPlugins");
+const { LOCAL_STDIO_PLUGINS } = require("../../shared/constants/coworkPlugins");
+
+// Child processes receive only basic execution, locale and proxy settings.
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(PATH|HOME|USER|LANG|LC_.*|TMPDIR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SystemRoot|ComSpec)$/i.test(key)
+  ));
+}
 
 const G_KEY = "__9routerMcpBridges";
 const MAX_TEXT_CHARS = 50000;
@@ -115,11 +123,13 @@ function getOrSpawn(name) {
   const plugin = findPlugin(name);
   if (!plugin) throw new Error(`Unknown local plugin: ${name}`);
 
-  const proc = spawn(plugin.command, plugin.args, { stdio: ["pipe", "pipe", "pipe"], env: process.env });
-  entry = { proc, sessions: new Map(), buffer: "" };
+  const proc = spawn(plugin.command, plugin.args, { stdio: ["pipe", "pipe", "pipe"], env: childEnv() });
+  entry = { proc, sessions: new Map(), buffer: "", nextId: 1, pending: new Map() };
   store.set(name, entry);
 
-  // Parse newline-delimited JSON-RPC from child stdout, broadcast to all sessions.
+  // Parse newline-delimited JSON-RPC from child stdout. Responses with a remapped
+  // id go only to the session that sent the request; notifications (no id) go to
+  // every session of this plugin.
   proc.stdout.on("data", (chunk) => {
     entry.buffer += chunk.toString("utf8");
     let idx;
@@ -128,8 +138,38 @@ function getOrSpawn(name) {
       entry.buffer = entry.buffer.slice(idx + 1);
       if (!raw) continue;
       const line = filterFrame(raw);
-      for (const send of entry.sessions.values()) {
-        try {send(`event: message\ndata: ${line}\n\n`);} catch {/* ignore broken pipe */}
+      let msg;
+      try { msg = JSON.parse(line); } catch {
+        continue;
+      }
+      if (isObject(msg) && msg.id !== undefined && isString(msg.method)) {
+        const targetSessionId = entry.sessions.size === 1
+          ? entry.sessions.keys().next().value
+          : entry.lastSessionId;
+        const send = targetSessionId && entry.sessions.get(targetSessionId);
+        if (send) {
+          if (msg.id !== undefined) {
+            if (!entry.serverRequests) entry.serverRequests = new Set();
+            entry.serverRequests.add(msg.id);
+          }
+          try { send(`event: message\ndata: ${JSON.stringify(msg)}\n\n`); } catch { /* ignore broken pipe */ }
+        }
+        continue;
+      }
+      if (isObject(msg) && msg.id !== undefined && entry.pending.has(msg.id)) {
+        const { sessionId, clientId } = entry.pending.get(msg.id);
+        entry.pending.delete(msg.id);
+        msg.id = clientId;
+        const send = entry.sessions.get(sessionId);
+        if (send) {
+          try { send(`event: message\ndata: ${JSON.stringify(msg)}\n\n`); } catch { /* ignore broken pipe */ }
+        }
+        continue;
+      }
+      if (isObject(msg) && msg.id === undefined) {
+        for (const send of entry.sessions.values()) {
+          try { send(`event: message\ndata: ${line}\n\n`); } catch { /* ignore broken pipe */ }
+        }
       }
     }
   });
@@ -176,10 +216,29 @@ function killAllBridges() {
   }
 }
 
-function sendToChild(name, jsonRpc) {
+/**
+ * Write a JSON-RPC frame to the plugin child.
+ * When `sessionId` is provided and the frame has an `id`, remap to a bridge-local
+ * id so the matching response is delivered only to that session.
+ */
+function sendToChild(name, jsonRpc, sessionId) {
   const entry = getStore().get(name);
   if (!entry?.proc?.stdin?.writable) throw new Error(`Bridge not running: ${name}`);
-  entry.proc.stdin.write(`${JSON.stringify(jsonRpc)}\n`);
+  let frame = jsonRpc;
+  if (sessionId && isObject(jsonRpc) && jsonRpc.id !== undefined) {
+    if (entry.serverRequests?.has(jsonRpc.id) && !isString(jsonRpc.method)) {
+      entry.serverRequests.delete(jsonRpc.id);
+    } else {
+      if (isString(jsonRpc.method)) entry.lastSessionId = sessionId;
+      if (!entry.pending) entry.pending = new Map();
+      if (!entry.nextId) entry.nextId = 1;
+      const clientId = jsonRpc.id;
+      const internalId = entry.nextId++;
+      entry.pending.set(internalId, { sessionId, clientId });
+      frame = { ...jsonRpc, id: internalId };
+    }
+  }
+  entry.proc.stdin.write(`${JSON.stringify(frame)}\n`);
 }
 
 function isRunning(name) {

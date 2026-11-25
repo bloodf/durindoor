@@ -13,7 +13,7 @@ A session cookie is a full login for that account. Anyone who can send requests 
 
 ## Sign in from the dashboard
 
-For **Grok Web** (`grok-web`), **Perplexity Web** (`perplexity-web`), **ChatGPT Web** (`chatgpt-web`), **HuggingChat** (`huggingchat`), and **Muse Spark Web** (`muse-spark-web`), the Add dialog offers **Sign in in-page** alongside manual cookie paste.
+For **Grok Web** (`grok-web`), **Perplexity Web** (`perplexity-web`), **ChatGPT Web** (`chatgpt-web`), **HuggingChat** (`huggingchat`), and **Muse Spark Web** (`muse-spark-web`), the Add dialog offers **Sign in in-page** alongside manual cookie paste. Claude Web, Doubao Web, Z.ai Web, ChatGPT Web Codex and Gemini Web declare the same sign-in profile; Google single sign-on rarely completes in an embedded page, so use import or the extension for Gemini Web.
 
 Sign in inside the embedded page, or choose **Open in popup** if embedding fails. Each popup receives a fresh, one-time bootstrap grant for the same login session; it does not reuse the iframe's grant. The dashboard polls every two seconds and displays captured cookie **names**, never their values. Once the session is ready, enter a connection name and choose **Save connection**. Cancel, closing the modal, or leaving the page discards the login session. Sessions expire after 15 minutes. Signing in does not add an executor for a provider that is not yet runnable.
 
@@ -46,7 +46,7 @@ Under Request Headers, copy the `Cookie` value. Some providers only want one nam
 In DurinDoor open **Providers**, pick the cookie provider, and click Add. The field is labelled **Cookie Value**. The hint under it is the provider's `authHint`.
 </Step>
 <Step>
-Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web` and `zenmux-free`: their chat endpoints create a real conversation per probe, risking account restrictions . Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
+Paste and save. Model chat probes for web-cookie LLM providers are skipped and shown as "Skipped", not failed. Validate and Test Connection also skip `grok-web`, `copilot-web`, `zenmux-free`, `suno` and `udio`: their chat or music endpoints create a real conversation or generation per probe, risking account restrictions or spending credits. Saving or editing those cookies leaves connection status unknown until a real request runs; batch results count skips separately from passes. ZenMux still checks for `ctoken` locally before skipping. `perplexity-web` uses a read-only session check.
 </Step>
 </Steps>
 
@@ -56,22 +56,38 @@ The field is plain text, not a password field, so the cookie is visible on scree
 
 ## What each provider expects
 
-| Provider | Id | Paste |
+| Provider | Id | Credential and current flow |
 | --- | --- | --- |
-| Grok Web | `grok-web` | The `sso=` cookie value (the prefix is optional) |
-| Perplexity Web | `perplexity-web` | The `__Secure-next-auth.session-token` value; chunked `.0`, `.1` cookies are accepted |
-| Copilot Web | `copilot-web` | An `access_token`, or a HAR from a signed-in browser |
-| Microsoft 365 Copilot Web | `copilot-m365-web` | The chathub WebSocket path and `access_token` |
-| ZenMux Free | `zenmux-free` | The full Cookie header; it must include `ctoken=` |
-| Kimi Web | `kimi-web` | Not a cookie: `access_token` and `refresh_token` JSON from localStorage, copied with the dialog's console snippet. See [Kimi Web](./kimi-web.mdx) |
-| ChatGPT Web | `chatgpt-web` | The whole Cookie header from a chatgpt.com request, or the `__Secure-next-auth.session-token` value. Chunked `.0`, `.1` cookies are accepted |
-| HuggingChat | `huggingchat` | The full Cookie header from huggingface.co/chat |
-| T3 Chat Web | `t3-web` | `convex-session-id` plus the Cookie header |
-| Muse Spark Web | `muse-spark-web` | The `ecto_1_sess` value or the full header from meta.ai |
-| Adapta Web | `adapta-web` | The `__client` cookie from agent.adapta.one |
-| Tencent Yuanbao Web | `yuanbao-web` | The Yuanbao session cookie |
-| Suno | `suno` | The Suno session cookie |
-| Udio | `udio` | The Udio session cookie |
+| Grok Web | `grok-web` | `sso` value/header; dashboard import, browser extension, and in-page login. Runnable. |
+| Perplexity Web | `perplexity-web` | `__Secure-next-auth.session-token` including all chunks; dashboard import, extension, and in-page login. Runnable; no provider-specific guide in this checkout. |
+| Copilot Web | `copilot-web` | Personal `access_token`, bearer token, accepted cookie/JSON, or origin-matched HAR. Manual and HAR only; runnable. |
+| Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token` plus `chathubPath`, a Chathub WebSocket URL, or matching HAR. Manual/HAR paste, or native work/school sign-in with refresh. See the [Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx). |
+| ZenMux Free | `zenmux-free` | Full Cookie header containing `ctoken=`. Manual paste only; runnable. |
+| Kimi Web | `kimi-web` | Token JSON from localStorage (not a cookie); manual only. Runnable; see [Kimi Web](./kimi-web.mdx). |
+| ChatGPT Web | `chatgpt-web` | Full header or session token with every chunk; dashboard import, extension, and in-page login. Runnable; see [ChatGPT Web](./chatgpt-web.mdx). |
+| HuggingChat | `huggingchat` | Full Cookie header. Manual and in-page capture; chat dispatch requires **Allow session dispatch** on that connection. Without the opt-in, requests return HTTP 501 (`provider_port_pending`). |
+| T3 Chat Web | `t3-web` | `convex-session-id` plus full Cookie header. Manual paste only; runnable. No provider-specific guide in this checkout. |
+| Muse Spark Web | `muse-spark-web` | `ecto_1_sess` or full header; dashboard import, extension, and in-page login. Chat dispatch requires **Allow session dispatch** on that connection and the gateway's headless browser; without the opt-in, requests return HTTP 501 (`provider_port_pending`). |
+| Adapta Web | `adapta-web` | `__client` from the Clerk origin. Dashboard paste/HAR import only; extension and in-page login are unavailable. Runnable. |
+| Tencent Yuanbao Web | `yuanbao-web` | Both `hy_user` and `hy_token`; dashboard import and extension capture. Runnable. |
+| Claude Web | `claude-web` | `sessionKey` cookie or full header from claude.ai; dashboard import, extension and in-page login. Runnable; see [Claude Web](./claude-web.mdx). |
+| Gemini Web | `gemini-web` | `__Secure-1PSID` and `__Secure-1PSIDTS` from gemini.google.com; dashboard import and extension. Runnable (needs Playwright Chromium); see [Gemini Web](./gemini-web.mdx). |
+| DeepSeek Web | `deepseek-web` | Not a cookie: the `userToken` local storage value from chat.deepseek.com, as an API key, a pasted import field or an extension capture. Runnable; see [DeepSeek Web](./deepseek-web.mdx). |
+| Doubao Web | `doubao-web` | `sessionid` and `s_v_web_id` (or `fp`) from www.dola.com; dashboard import, extension and in-page login. Runnable; see [Doubao Web](./doubao-web.mdx). |
+| Z.ai Web | `zai-web` | `token` cookie from chat.z.ai; dashboard import, extension and in-page login. Runnable; see [Z.ai Web](./zai-web.mdx). |
+| ChatGPT Web Codex | `chatgpt-web-codex` | Same `chatgpt.com` session as ChatGPT Web, with the Codex lanes; dashboard import, extension and in-page login. Runnable; see [ChatGPT Web Codex](./chatgpt-web-codex.mdx). |
+| MaxAI | `maxai` | `access_token`, `device_id` and `user_id` from www.maxai.co; dashboard import and extension. Runnable; see [MaxAI](./maxai.mdx). |
+| Arena | `lmarena` | `arena-auth-prod-v1` (numbered `.0`, `.1` chunks accepted) from arena.ai; dashboard import and extension. Runnable; see [Arena](./lmarena.mdx). |
+| ChatPlayground | `chatplayground` | `__client` and `__session` from app.chatplayground.ai; dashboard import and extension. Runnable; see [ChatPlayground](./chatplayground.mdx). |
+| PromptQL | `promptql` | `__Host-next-auth.csrf-token` and `next-auth.session-token` from prompt.ql.app via dashboard import or extension. Chat exchanges the session for a playground JWT and resolves its project ID. Experimental; see [PromptQL](./promptql.mdx). |
+| Notion AI Web | `notion-web` | `token_v2` from app.notion.com (or a full header with `space_id`); dashboard import and extension. Runnable; see [Notion AI Web](./notion-web.mdx). |
+| NoTrack Web | `notrack-web` | `uid`, `si_usr_id` and `si_ses_id` from notrack.ai (`nt_session` optional via full-header paste); dashboard import and extension. Runnable; see [NoTrack Web](./notrack-web.mdx). |
+| Tencent AI Studio Web | `tencent-aistudio-web` | `sessionid` (unverified) or the full header from aistudio.tencent.ai; dashboard import and extension. Runnable; see [Tencent AI Studio Web](./tencent-aistudio-web.mdx). |
+| Blackbox Web | `blackbox-web` | `next-auth.session-token` from app.blackbox.ai; dashboard import and extension. Runnable; see [Blackbox Web](./blackbox-web.mdx). |
+| Conol Web | `conol-web` | `__Secure-better-auth.session_token` from conol.ai; dashboard import and extension. Runnable; see [Conol Web](./conol-web.mdx). |
+| TinyCMS Web | `tinycms-web` | Not a cookie: the `app-config-uuid` local storage value from site.tinycms.xyz, as an API key, a pasted import field or an extension capture. Runnable; see [TinyCMS Web](./tinycms-web.mdx). |
+| Suno | `suno` | Session cookie. Manual paste only; music generation is runnable, while validation is skipped. |
+| Udio | `udio` | Session cookie. Manual paste only; music generation is runnable, while validation is skipped. |
 
 
 ### Chunked session cookies
@@ -80,11 +96,48 @@ chatgpt.com and perplexity.ai keep their session in a NextAuth cookie, `__Secure
 
 These cookies are `HttpOnly`, so no page script can read them. For ChatGPT Web the add dialog also offers a console snippet that prompts for each chunk value you copy from Application, Cookies, and puts the joined `name=value` string on your clipboard.
 
-Some of these ids exist in the registry before their executor does. A request to one of them returns HTTP 501 with `type: "provider_port_pending"` and names the missing piece. In this build that covers `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, and `yuanbao-web`. ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). See [Hidden and retired providers](./retired.mdx) for unsupported entries. You can save a connection for them, but no request will run until the executor ships.
+HuggingChat and Muse Spark Web dispatch only when **Allow session dispatch** is enabled on the connection serving the request; otherwise they return HTTP 501 with `type: "provider_port_pending"`. Muse Spark Web also needs the gateway's headless browser for its token flow. Suno and Udio chat requests return the same HTTP 501 error, while both run on `POST /v1/music/generations`; see [Suno and Udio](#suno-and-udio). ChatGPT Web has a working browser transport with an HTTP fallback; see its [setup guide](./chatgpt-web.mdx). Adapta Web, T3 Chat Web and Tencent Yuanbao Web have their own executors and are documented below. See [Hidden and retired providers](./retired.mdx) for unsupported entries.
+
+## Import cookies in the dashboard
+
+ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web and Adapta Web offer **Import cookies** next to **Add Connection**. TinyCMS Web and DeepSeek Web offer the same button for their local storage value, with a pasted field instead of a Cookie header. You can also paste credentials in the add dialog.
+
+The import dialog offers three sources and one handover. Its cURL parser only reads request URL and cookie data; it never executes a command or contacts the named site. Example syntax uses synthetic credentials only:
+
+- **Paste header or cURL.** Paste a raw `Cookie` header or a cURL command copied from the browser. For example, `curl 'https://grok.com/' -H 'Cookie: sso=synthetic-session-value'`. The input is read as data in the page: the command is never run, and the URL it names is never requested. This example is synthetic; never paste a real credential into docs or issue reports.
+- **HAR file.** Choose a `.har` file from the machine. The file is parsed in the page and never uploaded. Only requests to the provider's own origin are read, and only the provider's approved cookie names are kept; requests to any other origin are ignored.
+- **Browser extension.** Create a one-use pairing and hand it to the extension, which then sends the session itself. See [Import from a browser extension](#import-from-a-browser-extension).
+
+Choose a target first: a **new connection** with a name, or an existing cookie connection whose cookies are replaced.
+
+The dialog shows what it found before anything is sent: the request URL, the cookie **names**, and the names it ignored. A cookie value is never displayed and never appears in a message. When a HAR file holds several requests to the provider origin with different credentials, the dialog asks which one to import; requests that carry the same credentials are not ambiguous.
+
+Chunked session cookies keep every chunk. A stale unchunked copy is dropped, and a missing chunk is refused before the import, because an incomplete session token would fail later. A pasted header names no origin, so it is imported as the provider's own origin.
+
+The pasted text, the parsed cookies and the pairing secret are dropped from the page as soon as the operator submits or dismisses the dialog.
+
+The import goes through the same API the browser extension uses, so the provider's origin and cookie allowlist are enforced by the server as well, and the stored value is the same encrypted cookie header as a manual paste.
+
+## Import from a browser extension
+
+See the dedicated [cookie capture extension guide](./cookie-capture-extension.mdx) for installation, privacy and limitations.
+
+A browser extension can send a signed-in session to DurinDoor instead of you pasting it. It works for ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Perplexity Web, Grok Web, Muse Spark Web and Tencent Yuanbao Web, and reads two local storage values: TinyCMS Web's `app-config-uuid` and DeepSeek Web's `userToken`. For both it runs one read-only script in the confirmed tab and only on the provider's exact origin. Adapta Web supports dashboard import from the Clerk origin. HuggingChat uses its existing full-header sign-in or manual paste.
+
+1. In the dashboard, an operator asks for a pairing for one provider, either for a new named connection or for one existing cookie connection. The pairing secret is shown once and expires after two minutes. The provider page's **Import cookies** dialog creates the pairing in its **Browser extension** tab and shows the secret, the import URL and the approved cookie names.
+2. The extension sends the provider's approved cookies, the exact provider origin and that secret to `/api/providers/cookie-import`, in the `x-durindoor-pairing-token` header.
+
+The secret works once, only for that provider and target, and only on that route; it is not an API key. Pair again after any failed attempt. The call must use HTTPS, except to `localhost`, `127.0.0.1` or `[::1]` for local development, and the body is limited to 32 KiB. Cookies the provider does not approve, such as `cf_clearance`, are rejected. DurinDoor checks the shape of the cookies and does not contact the provider, so use **Validate** afterwards. Replacing the cookie on an existing connection clears a pending sign-in-again state. The pairing is kept in server memory, so run a single DurinDoor process behind the address the extension uses.
+
+### Install the extension
+
+The extension lives in `extensions/provider-cookie-capture` and has no build step. In a Chromium browser open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and select that folder. To keep a copy, run `node scripts/package-cookie-extension.mjs`: it writes a zip and a `.sha256` file that are byte-identical for the same sources. Unpack the zip and load the folder the same way.
+
+To use it, create a pairing as an operator, sign in to the provider in a tab, open the extension on that tab and paste the pairing. It shows the provider, the provider site and your dashboard address. Tick the confirmation and choose **Send cookies**. The browser then asks to let the extension read cookies for those two sites only, and the extension removes the temporary access when it finishes. The extension is a local unpacked MV3 extension; install it only in a Chromium profile you control. Its one-use pairing is created in the dashboard for a provider and target, expires after two minutes, and is not reusable. The extension does not capture automatically: you must open it on the signed-in provider tab, review provider and dashboard names, confirm, and send. It never runs on its own, keeps no copy of the cookies and makes one request. If a permission is denied, the pairing has expired or the dashboard rejects it, create a new pairing and try again. See the [extension README](https://github.com/bloodf/durindoor/blob/main/extensions/provider-cookie-capture/README.md) for its permissions and limits.
 
 ## Validation
 
-**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web and ZenMux Free skip network validation rather than creating a conversation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web and ChatGPT Web use read-only session requests; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. Microsoft 365 Copilot Web checks that both fields are present. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+**Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free, Suno, Udio, Adapta Web, Doubao Web, Z.ai Web, NoTrack Web and Tencent Yuanbao Web skip network validation (so do HuggingChat and Muse Spark Web, to avoid creating a conversation) rather than creating a conversation or generation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally. Perplexity Web, ChatGPT Web, ChatGPT Web Codex, Claude Web (organization list), Gemini Web (signed-in page check), MaxAI (config request), Arena (a method check on its chat route, since the site has no session endpoint) and ChatPlayground (user request), Notion AI Web (workspace and model list), Tencent AI Studio Web (`GET /api/user/info`, unverified), Blackbox Web (`/api/auth/session`), Conol Web (`/api/agent-servers`) and PromptQL (project-token request) use read-only session requests; TinyCMS Web asks for a signed challenge with its device UUID; DeepSeek Web reads its `users/current` endpoint with the token; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks locally that both fields are present, the host is allowed and the token has not expired. Copilot Web reports an expired JWT token locally; any other paste stays skipped. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 
@@ -92,13 +145,19 @@ A passing probe means the site accepted the cookie at that moment. It does not k
 
 - Tool calling is usually off. Kimi Web, for example, declares `tools: false` for every model. Use an API or OAuth provider when your client needs tools.
 - The model list is whatever the registry declares for that site, and the site can change or drop models without notice.
-- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx), except Grok Web, which has a usage fetcher but no preflight config.
+- These providers do not report quota to the [Quota Tracker](../features/quota-tracking.mdx). For Grok Web, ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Kimi Web, Perplexity Web, ZenMux Free, Suno, Udio, Adapta Web and T3 Chat Web and Tencent Yuanbao Web the **Usage** card shows only what DurinDoor itself recorded for that saved session in the last 30 days (requests, estimated tokens, per model). It is not your subscription's remaining allowance, which none of these sites exposes through a stable API. Music jobs show as requests with no tokens; Suno clip durations are kept in the usage ledger, not on the card. Token counts are estimates of about four characters per token.
+
+## Revocation and expiry
+
+A saved cookie remains usable until the provider rejects it or it is replaced; DurinDoor does not revoke a provider session when you delete a connection. To revoke it, sign out or use the provider account’s session/security controls, then remove the DurinDoor connection. If that site offers a “sign out all sessions” or session-revocation control, use it after a suspected leak. Revocation and expiry are provider-controlled and may take time to propagate. Do not assume deleting a local connection invalidates a copied cookie.
+
+Most providers do not expose a reliable expiry time. A failed read-only check, a 401/403 on a real request, or an expired local JWT indicates that a fresh sign-in may be needed. A skipped validation or a request blocked by a provider's opt-in guard does not confirm validity. Replace an expired credential by editing that connection with a newly captured value; this preserves its name and settings and clears its cooldown. Kimi can refresh an access token only when its refresh token was included; see [Kimi Web](./kimi-web.mdx#refresh). ChatGPT Web may persist cookie rotation from its browser transport; see [its account guide](./chatgpt-web.mdx#session-lifecycle-and-recovery).
 
 ## When the session ends
 
 Most cookie sessions have no proactive refresh or expiry tracking. ChatGPT Web can save cookies rotated by the site, but rotation does not prevent expiry or revocation. The temporary dashboard-login jar discards expired cookies before saving. Kimi Web is the exception: with a refresh token in the paste, it renews its access token on a 401 (see [Kimi Web](./kimi-web.mdx#refresh)). A 401 or 403 from upstream puts that connection on the normal two minute cooldown and the request moves to the next connection or combo member. The connection stays active, so the same rejection repeats after the cooldown.
 
-If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Signing out of the site in your browser usually kills the session DurinDoor holds too.
+If automatic recovery fails, sign in to the site again, copy a fresh cookie, and paste it over the old one with **Edit**. Saving a new cookie on a web-cookie connection replaces the stored value, keeps the connection's name, priority and settings, and clears the cooldown and error state recorded against the old cookie, so the next request uses the new one right away. Other connections of the same provider are not touched. Pasting the same value again changes nothing. Signing out of the site in your browser usually kills the session DurinDoor holds too.
 
 Keep one browser profile for the account you hand to DurinDoor, and avoid signing out of it.
 
@@ -106,6 +165,142 @@ After saving a supported session, send one short request and check **Usage**. A 
 
 ### Copilot Web sessions
 
-Copilot Web accepts a pasted access token, a bearer header, a cookie containing `access_token`, a JSON object containing `access_token` (and optionally the exact `https://copilot.microsoft.com` origin), or a HAR. HAR credentials are taken only from requests to that exact HTTPS origin; other origins are ignored. An invalid supplied credential is rejected locally. Each request starts a fresh personal conversation. An expired or revoked session must be replaced; no refresh token is retained for this manual flow.
+Copilot Web (`copilot-web`, alias `copilot`) and Microsoft 365 Copilot Web (`copilot-m365-web`, alias `m365copilot`) are separate providers. Their credentials, accounts and transports never mix: a personal token is only sent to `copilot.microsoft.com`, a Microsoft 365 token only to the `substrate.office.com` Chathub socket, and a model such as `m365/copilot-m365` is never served from a personal connection. Neither provider can read or emulate browser attestation; DurinDoor only replays the session you paste.
 
-Microsoft 365 Copilot Web uses a separate Chathub path and access token. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` and `included` select the education profile. Individual accounts retain their existing defaults. If a Microsoft 365 stream rewrites text already sent to the client, the stream reports an error; retry without streaming to receive the final snapshot. Manually supplied Microsoft 365 tokens are not refreshed automatically.
+#### Copilot Web (personal)
+
+1. Sign in at `copilot.microsoft.com` and send one message.
+2. In developer tools, Network, pick a request to `copilot.microsoft.com` and copy the `access_token` (from the `Authorization: Bearer` header or the cookie). A HAR export of that session also works; only requests to the exact `https://copilot.microsoft.com` origin are read.
+3. Add **Copilot Web** under Providers and paste. Accepted forms: the bare token, `Bearer <token>`, a cookie string containing `access_token=`, a JSON object with `access_token` (and optionally the exact origin), or a HAR. The pasted text is saved unchanged.
+4. Send one short request. Validate and Test Connection do not start a conversation and report **Skipped**. The one exception is a token that is a JWT whose `exp` has passed: that is reported as expired without any request.
+
+Each request starts a fresh conversation. Responses stream as SSE or return as one JSON body; token counts are estimated by the gateway, not reported by Copilot. Model discovery is the static catalog (`copilot-pro`, `gpt-4-turbo`, `gpt-4`); there is no per-connection model fetch. Quota and usage are not reported by the provider.
+
+#### Microsoft 365 Copilot Web
+
+1. Sign in at `m365.cloud.microsoft/chat` and send one message.
+2. In developer tools, Network, filter by WS and open the Chathub connection (`wss://substrate.office.com/m365Copilot/Chathub/<oid>@<tenant>?...`).
+3. Paste one of: `access_token=<jwt>; chathubPath=<oid>@<tenant>` (alias `userTenant=` is accepted), the full WebSocket URL, or a HAR export. From a HAR, the newest `wss://substrate.office.com` Chathub entry is used; other hosts and redacted tokens are skipped. The credential is not a cookie. Other hosts are rejected.
+4. Validate checks locally that both fields are present, the host is allowed and the JWT has not expired. It opens no socket. Set `providerSpecificData.tier` to `work` or `enterprise` for the work profile; `edu` or `included` select the education profile. Individual accounts keep the defaults.
+
+Native work or school sign-in, per-connection refresh, conversation continuation, images and tools are described in the [Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx); the paste above stays supported and a native connection can sit beside it.
+
+If a Microsoft 365 stream rewrites text already sent, the stream reports an error. Retry without streaming to receive the final snapshot. Token counts are estimated by the gateway.
+
+#### Known limits
+
+- Pasted sessions never refresh. Manual tokens are short lived (Microsoft 365 tokens last roughly an hour). Only a Microsoft 365 native sign-in connection holds a refresh token and renews itself; Copilot Web has no refresh.
+- Personal Copilot may send a proof-of-work `challenge` frame. DurinDoor answers only the bounded hashcash form and fails the request otherwise; it does not attempt any other attestation.
+- Copilot does not report quota, so these providers have no preflight or usage gauge.
+- Opaque tokens that are not JWTs are not judged locally; expiry shows up as a provider 401.
+
+#### Recovery
+
+A 401 or 403 (including a rejected WebSocket upgrade) puts that connection on the normal two minute cooldown and the request moves to the next account, never reusing the rejected token. A locally detected expired JWT returns 401 without contacting Microsoft. To recover, capture a fresh credential as above and paste it over the old one with **Edit** on the connection (or add a new connection). Saving a replacement credential on a web-cookie connection clears its error status, cooldown and model locks, so the next request uses the new token immediately.
+
+## Grok Web
+
+`grok-web` (alias `gw`) sends chat requests to `grok.com` with your signed-in `sso` session. It is separate from the `xai` API provider and the Grok CLI device flow; their credentials do not work here.
+
+1. Sign in at grok.com. In DevTools, Application, Cookies, `https://grok.com`, copy the `sso` value. Or copy the whole `Cookie` request header from the Network tab.
+2. In **Providers → Grok Web**, paste it and save. Accepted forms: the bare value, `sso=<value>`, or a full header. A full header is sent as pasted and must contain `sso=`; a header without it is rejected locally with HTTP 401 and nothing is sent to grok.com. An `sso` with no value, such as a pasted `sso=` or a header whose `sso=` entry is empty, is an empty session and is rejected the same way: HTTP 401 locally, and no request to grok.com. A raw token that merely ends in `=` padding, such as `tok==`, is kept as the `sso` value.
+3. **Validate** and **Test Connection** are skipped for Grok Web. Its only chat endpoint creates a conversation per probe, so a skipped result does not prove the cookie works. Send one short request to confirm.
+4. Models are the registry list (`grok-3` to `grok-4.2`); unlisted ids pass through and map to `grok-4.1-fast` when DurinDoor has no mapping for them. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools and image generation are not supported.
+
+Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `sso` cookie); 429 means grok.com is rate limiting you. With more than one Grok Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above. Signing out of grok.com in that browser profile ends the session.
+
+Known limits: no cookie rotation is written back (unlike ChatGPT Web), so a renewed `sso` must be pasted by hand. Paired `sso-rw` handling beyond forwarding it from a pasted header is untested. DurinDoor does not emulate browser attestation or work around access controls; if grok.com challenges a session, use a different session or provider.
+
+## Perplexity Web
+
+`perplexity-web` (alias `pw`) sends chat requests to `www.perplexity.ai` with your signed-in session. It is separate from the `perplexity` API-key provider.
+
+1. Sign in at perplexity.ai. In DevTools, Application, Cookies, copy `__Secure-next-auth.session-token`. If the value is split into `.0`, `.1` chunks, copy every chunk, or copy the whole `Cookie` request header.
+2. In **Providers → Perplexity Web**, paste it and save. Chunks may be in any order; DurinDoor sends them back in index order.
+3. **Validate** and **Test Connection** call `https://www.perplexity.ai/api/auth/session` only and create no conversation. A live session answers with a `user`; `{}` means expired or incomplete.
+4. Models are the `pplx-*` registry list (for example `pw/pplx-auto`). The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming.
+
+Recovery: HTTP 401 or 403 means the session expired (message: re-paste your `__Secure-next-auth.session-token`); 429 means Perplexity is rate limiting you and is not treated as an expired session. With more than one Perplexity Web connection the request falls back to the next one. To recover a connection, paste the fresh cookie with **Edit** as above; other connections are untouched.
+
+Known limits: no cookie rotation is written back, so a renewed session must be pasted by hand. Conversation continuation is kept only for the same saved session. The model list follows the registry and may drift from the site. DurinDoor does not emulate browser attestation or work around access controls.
+
+## Adapta Web
+
+`adapta-web` (alias `adp-web`) sends chat requests to `agent.adapta.one` with your signed-in Clerk session. It signs in through `clerk.agent.adapta.one`, so it is separate from the Adapta API and from any other Clerk-based provider.
+
+1. Sign in at agent.adapta.one. In DevTools, Application, Cookies, `https://clerk.agent.adapta.one`, copy the `__client` value. Or copy the `Cookie` request header from the Network tab.
+2. In **Providers → Adapta Web**, paste it and save. Accepted forms: the bare `__client` value, or `__client=<value>`. A paste that starts with a different cookie name is not unwrapped, so copy the `__client` value itself. The value is stored in the connection's encrypted `apiKey` column and is never returned to the dashboard.
+3. **Validate** and **Test Connection** are skipped for Adapta Web. Its chat endpoint creates a conversation per probe, so a skipped result does not prove the cookie works. Send one short request to confirm.
+4. Models are the registry list (`adapta-one`, `adapta-gpt`, `adapta-claude`, `adapta-gemini`, `adapta-grok`, `adapta-deepseek`, `adapta-llama`), and the model's lane name in a request is `adp-web/<model>`. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tool calls are emulated: DurinDoor writes your tool definitions into the prompt and reads the call back out of the answer text, so the result depends on the model. Image generation is not supported.
+
+Recovery: the session is exchanged for a short-lived token on every request cycle. HTTP 401 means the session was rejected. The message is `Adapta authentication failed` when the Clerk session check fails, and `Adapta request failed` when the chat endpoint refuses the exchanged token. HTTP 429 means Adapta is rate limiting you. With more than one Adapta Web connection the request falls back to the next one, and only the connection that failed is put on cooldown. To recover a connection, paste the fresh `__client` value with **Edit** as above, which clears the cooldown and the recorded error. Signing out of agent.adapta.one in that browser profile ends the session.
+
+Known limits: every registry lane maps to the same upstream auto-select model, so the lane names do not pin a distinct upstream model. DurinDoor does not emulate browser attestation or work around access controls; if Adapta challenges a session, use a different session or provider.
+
+## T3 Chat Web
+
+`t3-web` (alias `t3chat`) sends chat requests to `t3.chat` with your signed-in session. The site's chat endpoint needs the session cookie that carries the `convex-session-id`.
+
+1. Sign in at t3.chat. In DevTools, Application, Cookies, `https://t3.chat`, copy the `convex-session-id` value together with the rest of the `Cookie` request header.
+2. In **Providers → T3 Chat Web**, paste it and save. Accepted forms: the whole `Cookie` header, including the `convex-session-id` cookie, or the two-line pair `cookies=<header>` on the first line and `convexSessionId=<id>` on the second. A paste without a `convex-session-id` is rejected locally with HTTP 400 and nothing is sent to t3.chat.
+3. **Validate** and **Test Connection** use a read-only `HEAD` request against the site root. A 401 or 403 means the session was rejected. A redirect or a transport failure reports the check as unavailable rather than as a rejection, because it does not establish anything about the session. Send one short request to confirm the session works.
+4. Models are the registry list (`claude-opus-4` to `kimi-k2`), and the model's lane name in a request is `t3/<model>`. The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools are not supported.
+
+Recovery: HTTP 401 or 403 means the session was rejected (message: `T3 Chat request failed`). With more than one T3 Chat Web connection the request falls back to the next one, and only the connection that failed is put on cooldown. To recover a connection, paste the fresh cookie with **Edit** as above, which clears the cooldown and the recorded error. Signing out of t3.chat in that browser profile ends the session.
+
+Known limits: an HTTP relay route cannot carry the session cookie, so T3 Chat refuses a connection that is routed through one and answers HTTP 400 instead of sending the session. Use a direct or proxied route for this provider. Deployment-specific server functions, binary TSS framing, media and session renewal are outside the supported contract.
+
+## Tencent Yuanbao Web
+
+`yuanbao-web` (alias `ybw`) sends chat requests to `yuanbao.tencent.com` with your signed-in session. It is separate from Tencent Hunyuan (`tencent`), Tencent AI Studio and CodeBuddy; their credentials do not work here and this cookie is never sent to them.
+
+1. Sign in at yuanbao.tencent.com. In DevTools, Application, Cookies, copy `hy_user` and `hy_token`, or copy the whole `Cookie` request header.
+2. In **Providers → Tencent Yuanbao Web**, paste it and save. Both values must be present and non-empty; a paste missing either is refused by **Validate** and rejected with HTTP 401 at request time, and nothing is sent. Only `hy_user`, `hy_token` and `hy_source=web` are forwarded; other cookies in the paste are dropped.
+3. **Validate** and **Test Connection** are skipped after the shape check. Yuanbao's chat endpoint creates a conversation per probe, so a skipped result does not prove the session works. Send one short request to confirm.
+4. Models are the static registry list (`deepseek-v3`, `deepseek-r1`, `hunyuan`, `hunyuan-t1` and their `-search` variants). Chat Completions, Messages and Responses clients are served from the same session, with JSON or streaming; reasoning arrives as `reasoning_content`. Tools are not supported.
+
+Recovery: HTTP 401 or 403 means the session expired (message: `hy_user`/`hy_token` may be expired); 429 means Yuanbao is rate limiting you. With more than one Yuanbao connection the request falls back to the next one. Paste a fresh cookie over the old one with **Edit**; the new value takes effect immediately and the cooldown recorded against the old one is cleared. The **Usage** card shows only DurinDoor's own 30-day history.
+
+Known limits: Yuanbao's redirects are refused, so a login redirect from an expired session surfaces as a 502 connection error rather than 401; treat a repeated 502 on a previously working session as expiry and re-paste. No cookie rotation is written back. Model names, session lifetime and stream format can change upstream, and the offline tests cannot prove a given account is authorized.
+
+## HuggingChat
+
+`huggingchat` saves a `huggingface.co/chat` cookie. Chat dispatch requires **Allow session dispatch** on that connection (or `providerSpecificData.enableSessionDispatch: true` through the API); without that exact opt-in, requests return HTTP 501 with `type: "provider_port_pending"` before anything is sent. With it enabled, the gateway dispatches using the saved session. **Validate** and **Test Connection** still report a skipped result; a guarded 501 does not put the connection on cooldown, and the Usage card reports no usage. The model list is a static catalog; listing a model does not mean it can be called. Hugging Face inference tokens are a different provider (`huggingface`) with its own credential.
+
+Recovery: if dispatch is guarded, enable it on the connection. If an enabled request fails because the session expired, sign in again and re-import the cookie. The `huggingface` provider with an inference token is a separate option. DurinDoor does not emulate browser attestation or work around access controls.
+
+## Muse Spark Web
+
+`muse-spark-web` (alias `ms-web`) saves an `ecto_1_sess` cookie from meta.ai. Chat dispatch requires **Allow session dispatch** on the connection (or `providerSpecificData.enableSessionDispatch: true` through the API); without it, requests return HTTP 501 with `type: "provider_port_pending"` and the cookie is not sent. With the opt-in, the gateway refreshes a short-lived token using its shared headless browser pool, so install Playwright Chromium and keep that pool enabled. Validation remains skipped, and the three model ids (`muse-spark`, `muse-spark-thinking`, `muse-spark-contemplating`) are a static catalog. The Muse Code device sign-in (`muse-code`) and the Meta API key (`meta-llama`) are separate providers with their own credentials and are unaffected.
+
+Recovery: if dispatch is guarded, enable it on the connection and ensure the gateway's headless browser is installed and available. If the session expires, re-import the cookie; `muse-code` and `meta-llama` are separate providers with their own credentials.
+
+## ZenMux Free
+
+`zenmux-free` (alias `zmf`) sends chat requests to `zenmux.ai` with your signed-in session. It is separate from the `zenmux` API-key provider; their credentials do not work for each other.
+
+1. Sign in at zenmux.ai. In DevTools, Network, copy the whole `Cookie` request header from a zenmux.ai request. It must contain `ctoken=`.
+2. In **Providers → ZenMux Free**, paste it and save. A leading `Cookie:` and line breaks are tidied. A paste without `ctoken` is rejected locally with HTTP 401 and nothing is sent to zenmux.ai.
+3. **Validate** and **Test Connection** only check that `ctoken` is present, then skip the network call. Send one short request to confirm the session.
+4. Models are the registry list (for example `zmf/deepseek/deepseek-chat`). The same session answers Chat Completions, Messages and Responses clients, with JSON or streaming. Tools are off for every model. Each request goes to the chat endpoint only: the saved cookie is never sent to a token-counting or any other URL, and the context check uses a local estimate.
+
+Recovery: HTTP 401 or 403 from zenmux.ai is reported as "cookies expired or invalid" and cools that connection down; the request falls back to the next ZenMux Free connection if there is one. HTTP 402 is reported as free-tier quota exhausted and keeps its status. To recover, sign in again, copy a fresh header and paste it with **Edit**; the cooldown is cleared at once and other connections are untouched.
+
+Known limits: there is no refresh flow and no expiry time, so the first sign that a session ended is a 401. Non-streamed replies carry an estimated token count (about four characters per token). No attestation is emulated and no access control is bypassed; a session zenmux.ai refuses has to be replaced.
+
+## Suno and Udio
+
+`suno` and `udio` are music providers, not chat providers. A chat request to either returns HTTP 501 (`provider_port_pending`). They run through the music routes with the saved session cookie.
+
+1. Sign in at suno.ai or udio.com and copy the session `Cookie` header from a request to the site's API in the Network tab.
+2. In **Providers**, pick Suno or Udio, paste it and save. Each saved connection keeps its own cookie. The dashboard credential format is unchanged.
+3. **Validate** and **Test Connection** are skipped. The only generic probe would submit a generation and could spend credits, so a skipped result does not prove the cookie works.
+4. Discover models with `GET /v1/models/music`. They are not listed by `GET /v1/models`. Suno ids are `chirp-fenix`, `chirp-crow`, `chirp-v4` and `chirp-v3-5`; Udio is `udio-default`.
+5. Submit with `POST /v1/music/generations` (or `/v1/audio/music`) using a stored DurinDoor API key. The JSON body takes `model`, `prompt` and optional `instrumental`, `title`, `tags`, `lyrics`, `duration`. The answer is `status: "submitted"` with a `request_id` (the clip or track ids, comma separated) and an `x-9router-connection-id` header naming the account that took the job.
+6. Poll with `GET /v1/music/generations/{request_id}`, the same API key, and that connection header. The status moves from `submitted` to `completed` (or `failed`). Suno clips that are `streaming` count as still pending; Udio is complete only when every track is finished. A completed job returns audio URLs, is recorded once in usage, and later polls replay the stored result without contacting the provider.
+
+Account boundaries: a job is bound to the connection and API key that created it. Polling with another key, another connection, or an id DurinDoor never accepted answers 404, and polling never moves to a sibling account.
+
+Recovery: a 401 or 403 on submit cools that connection down and the submit falls back to the next Suno or Udio connection. A 401 on a poll is returned to you as is, because the job exists only on the account that created it; the job stays open. Paste a fresh cookie with **Edit** and poll again with the same connection id: the poll uses the new cookie.
+
+Known limits: no expiry time or refresh flow is known for either site, so the first sign that a session ended is a 401. DurinDoor has no timeout for a job: a poll that keeps answering `submitted` has to be abandoned by the client. Both are unofficial cookie integrations whose request shapes can change without notice. No attestation is emulated and no access control is bypassed; a session the site refuses has to be replaced.

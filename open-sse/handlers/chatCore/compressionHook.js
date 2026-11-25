@@ -41,6 +41,7 @@ import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/c
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
 import { gateStep } from "../../services/compression/fidelityGate.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
+import { serializeCachedPrefix } from "../../translator/concerns/openrouterAnthropicCache.js";
 
 try {
   registerBuiltinEngines();
@@ -67,6 +68,13 @@ function engineStepOptions(engine, entry, log) {
   return options;
 }
 
+function bodyFormat(body) {
+  if (Array.isArray(body?.contents)) return "gemini";
+  if (body?.conversationState || body?.conversation_state) return "kiro";
+  if (body?.anthropic_version || (Array.isArray(body?.messages) && body?.max_tokens !== undefined && (body?.system !== undefined || body?.stop_sequences !== undefined))) return "claude";
+  return "openai";
+}
+
 /**
  * Run the compression engine loop.
  *
@@ -74,10 +82,15 @@ function engineStepOptions(engine, entry, log) {
  * @param {object} [deps] optional DI override { isEngineAvailable, getEngine,
  *        deriveDefaultPlan, resolveAdaptivePlan, planToEngineIds } (tests only)
  * @param {object} cfg  { enabled, engines, applyOpts, adaptive, fidelityGate, log }
+ *        applyOpts.headroomApplied: true when the legacy headroom stage already
+ *        compressed this request, so the stack must skip its headroom step.
  *        fidelityGate: { textInvariants?: boolean } — protected blocks (tool
  *        schemas, media, signatures, error results, instructions, fenced code)
  *        are always gated per step; textInvariants adds the opt-in number /
  *        URL / JSON-key / negation checks. A failing step is rolled back.
+ *        protectCachedPrefix: true (OpenRouter anthropic/* only) rolls back any
+ *        step that rewrites the cached prefix (tools + messages through the last
+ *        cache_control marker), so a prompt-cache hit is never invalidated.
  * @returns {Promise<{body: object, headerValue: string|null}>}
  */
 export async function runCompressionSeam(body, deps, cfg = {}) {
@@ -114,6 +127,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       isAvailable: (id) => {
         if (!isEngineAvailable(id)) return false;
         if (id === "rtk" && cfg.applyOpts?.rtkApplied === true) return false;
+        if (id === "headroom" && cfg.applyOpts?.headroomApplied === true) return false;
         const engine = getEngine(id);
         return engine.isConfigured?.({ config: cfg.applyOpts || {}, stepConfig: engineStepOptions(engine, cfg.engines?.[id]) }) ?? true;
       }
@@ -145,16 +159,26 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
   for (const id of engineIds) {
     const stepInput = working;
     try {
+      if (id === "headroom" && cfg.applyOpts?.headroomApplied === true) continue;
       if (!isEngineAvailable(id)) continue; // unavailable -> skip, keep stepInput
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
       // empty stackedPipeline, so synthesize a minimal {engine} step.
       const engine = getEngine(id);
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
-      const opts = { config: cfg.applyOpts || {}, stepConfig: step };
+      const format = cfg.applyOpts?.format ?? bodyFormat(working);
+      if (id === "headroom") step.format = format;
+      const opts = {
+        config: { format, ...(cfg.applyOpts || {}) },
+        stepConfig: step
+      };
+      const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;
       const res = await engine.apply(working, opts);
       if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
         throw new Error(`engine ${id} returned malformed result`);
+      }
+      if (prefixBefore !== null && prefixBefore !== serializeCachedPrefix(res.body)) {
+        throw new Error("cached prompt prefix would change");
       }
       const verdict = gateStep(stepInput, res.body, cfg.fidelityGate);
       if (!verdict.passed) {

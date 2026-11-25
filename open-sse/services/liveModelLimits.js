@@ -4,6 +4,7 @@ import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractApiCapabilities, extractLiveModelLimits } from "./modelMetadata.js";
+import { createCatalogCache } from "./catalogCache.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -11,10 +12,8 @@ const MAX_SANE_TOKEN_LIMIT = 16_777_216;
 // 2^24 tokens is far above current catalogs while bounding corrupted metadata.
 
 
-/** @type {Map<string, { expiresAt: number, models: object[] | null }>} */
-const catalogCache = new Map();
-/** @type {Map<string, Promise<{ models: object[] } | null>>} */
-const inFlight = new Map();
+// A catalog is `{ expiresAt, models }`; a dead or malformed upstream is `null`.
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, negativeTtlMs: CACHE_TTL_MS });
 /** @type {Map<string, { expiresAt: number, limits: { contextWindow?: number, maxOutput?: number } }>} */
 const modelLimitsCache = new Map();
 
@@ -87,28 +86,11 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
   const endpoint = isString(options.endpoint) && options.endpoint.trim() ?
   options.endpoint.trim() :
   derivedEndpoint;
-  if (!token || !endpoint) return null;
+  if ((!token && !options.allowNoAuth) || !endpoint) return null;
   const key = cacheKey(endpoint, `${token}:${options.cacheVariant || options.anthropic === true}:${JSON.stringify(options.modelAliases || {})}`);
-  const now = Date.now();
-  const cached = catalogCache.get(key);
-  if (cached?.expiresAt > now) {
-    if (cached.models) cacheModelLimits(options.provider, connection, cached.models, cached.expiresAt);
-    return cached.models ? { models: cached.models } : null;
-  }
-  if (inFlight.has(key)) {
-    const result = await inFlight.get(key);
-    const expiresAt = catalogCache.get(key)?.expiresAt;
-    if (result?.models && expiresAt) cacheModelLimits(options.provider, connection, result.models, expiresAt);
-    return result;
-  }
-
-  const promise = (async () => {
+  const catalog = await catalogCache.load(key, async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const cacheMiss = () => {
-      catalogCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, models: null });
-      return null;
-    };
     try {
       let transport = (url, init) => globalThis.fetch(url, init);
       if (options.proxyOptions?.connectionProxyEnabled === true ||
@@ -132,12 +114,12 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         cache: "no-store",
         signal: controller.signal
       }, options.guard, transport);
-      if (!response.ok) return cacheMiss();
+      if (!response.ok) return null;
       const body = await response.json();
       const raw = isFunction(options.selectModels) ?
       options.selectModels(body) :
       Array.isArray(body) ? body : body?.data ?? body?.models ?? body?.results;
-      if (!Array.isArray(raw)) return cacheMiss();
+      if (!Array.isArray(raw)) return null;
       const aliases = options.modelAliases && isObject(options.modelAliases) ?
       options.modelAliases :
       {};
@@ -152,24 +134,19 @@ export async function resolveLiveOpenAIModels(connection, options = {}) {
         const capabilities = extractApiCapabilities(entry, { format: options.anthropic ? "anthropic" : "auto" });
         return [{ id, ...(Object.keys(capabilities).length ? { capabilities } : null) }];
       });
-      if (!models.length) return cacheMiss();
-      const expiresAt = Date.now() + CACHE_TTL_MS;
-      catalogCache.set(key, { expiresAt, models });
-      cacheModelLimits(options.provider, connection, models, expiresAt);
-      return { models };
+      if (!models.length) return null;
+      return { expiresAt: Date.now() + CACHE_TTL_MS, models };
     } catch {
-      return cacheMiss();
+      return null;
     } finally {
       clearTimeout(timeoutId);
     }
-  })();
+  });
 
-  inFlight.set(key, promise);
-  try {
-    return await promise;
-  } finally {
-    if (inFlight.get(key) === promise) inFlight.delete(key);
-  }
+  if (!catalog) return null;
+  // Every caller records limits for its own connection, with the catalog's expiry.
+  cacheModelLimits(options.provider, connection, catalog.models, catalog.expiresAt);
+  return { models: catalog.models };
 }
 
 function anthropicCapabilities(entry) {
@@ -293,7 +270,6 @@ export function warmLiveModelLimits(provider, connection, options = {}) {
 export function clearLiveModelLimitsCache() {
   catalogCache.clear();
   modelLimitsCache.clear();
-  inFlight.clear();
 }
 
 export function normalizeVeniceModel(model) {

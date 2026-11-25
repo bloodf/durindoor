@@ -1,14 +1,16 @@
 import { BaseExecutor } from "./base.js";
-import { readJsonlResponse, streamJsonlToOpenAi } from "./huggingchat/jsonlStream.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { HuggingChatStreamError, readJsonlResponse, streamJsonlToOpenAi } from "./huggingchat/jsonlStream.js";
 import {
   errorJson,
   estimateTokens,
   extractTextFromContent,
-  fetchWithTimeout,
   jsonResponse,
   mergeUpstreamExtraHeaders,
   normalizeSessionCookieHeader,
-  sanitizeErrorMessage } from
+  sanitizeErrorMessage,
+  WEBSESSION_FETCH_TIMEOUT_MS } from
 "./websession-utils.js";
 import huggingchatRegistry from "../providers/registry/huggingchat.js";
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -90,6 +92,18 @@ function extractInitialParentMessageId(value) {
   return isString(lastMessage?.id) && lastMessage.id.trim() ? lastMessage.id : null;
 }
 
+const REIMPORT_GUIDANCE = "Sign in at huggingface.co/chat again and re-import the hf-chat cookie for this connection.";
+const PUBLIC_STREAM_ERROR = "HuggingChat generation failed";
+
+// 401/403 are a credential failure (expired or revoked session) and 429 is quota; every step of the
+// bootstrap maps them the same way so a lapsed session is never reported as a generic 502.
+function upstreamFailureMessage(status, fallback) {
+  if (status === 401 || status === 403) return `HuggingChat session rejected (HTTP ${status}); the hf-chat cookie is expired or revoked. ${REIMPORT_GUIDANCE}`;
+  if (status === 429) return "HuggingChat quota or rate limit reached. Wait and retry, or use another connection.";
+  if (status === 404) return `${fallback}. Check the model id.`;
+  return fallback;
+}
+
 async function readUpstreamErrorDetails(response) {
   const text = await response.text().catch(() => "");
   if (!text) return { message: null, details: null };
@@ -102,25 +116,35 @@ async function readUpstreamErrorDetails(response) {
   }
 }
 
-async function fetchInitialParentMessageId(conversationId, headers, signal, proxyOptions = null) {
-  const res = await fetchWithTimeout(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal }, { proxyOptions });
-  if (!res.ok) return null;
+async function fetchInitialParentMessageId(conversationId, headers, signal, send) {
+  const res = await send(`${API_CONVERSATIONS_URL}/${conversationId}`, { method: "GET", headers, signal });
+  if (!res.ok) return { id: null, status: res.status };
   const text = await res.text().catch(() => "");
-  if (!text) return null;
+  if (!text) return { id: null, status: 200 };
   try {
-    return extractInitialParentMessageId(JSON.parse(text));
+    return { id: extractInitialParentMessageId(JSON.parse(text)), status: 200 };
   } catch {
-    return null;
+    return { id: null, status: 200 };
   }
 }
 
 export class HuggingChatExecutor extends BaseExecutor {
   constructor() {
-    super("huggingchat", { id: "huggingchat", baseUrl: HUGGINGFACE_BASE });
+    super("huggingchat", { id: "huggingchat", baseUrl: HUGGINGFACE_BASE, timeoutMs: WEBSESSION_FETCH_TIMEOUT_MS });
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders, proxyOptions = null } = input;
+    // Conversation setup is not charged; only the message send is quota-bearing.
+    // Without a connection route the send goes through the (patched) global fetch.
+    const send = (url, init, quotaBearing = false) =>
+      sender.sendRequest(url, init, proxyOptions, { quotaBearing, globalFetch: !proxyOptions });
     const messages = body?.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array", "invalid_request"), url: CONVERSATION_URL, headers: {}, transformedBody: body };
@@ -150,17 +174,15 @@ export class HuggingChatExecutor extends BaseExecutor {
     try {
       const createBody = { model: resolvedModel };
       if (systemPrompt) createBody.preprompt = systemPrompt;
-      const createRes = await fetchWithTimeout(CONVERSATION_URL, {
+      const createRes = await send(CONVERSATION_URL, {
         method: "POST",
         headers: { ...baseHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(createBody),
         signal
-      }, { proxyOptions });
+      });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
-        const auth = createRes.status === 401 || createRes.status === 403;
-        const rate = createRes.status === 429;
-        let message = auth ? "HuggingChat auth failed; the hf-chat cookie may be expired." : rate ? "HuggingChat rate limited. Wait and retry." : `HuggingChat conversation creation failed (HTTP ${createRes.status})`;
+        let message = upstreamFailureMessage(createRes.status, `HuggingChat conversation creation failed (HTTP ${createRes.status})`);
         if (upstreamError.message) message = `${message}: ${upstreamError.message}`;
         return { response: errorJson(createRes.status, message, "upstream_error", { details: upstreamError.details }), url: CONVERSATION_URL, headers: baseHeaders, transformedBody: body };
       }
@@ -176,9 +198,18 @@ export class HuggingChatExecutor extends BaseExecutor {
       return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: CONVERSATION_URL, headers: baseHeaders, transformedBody: body };
     }
 
-    const parentMessageId = await fetchInitialParentMessageId(conversationId, baseHeaders, signal, proxyOptions);
+    let parent;
+    try {
+      parent = await fetchInitialParentMessageId(conversationId, baseHeaders, signal, send);
+    } catch (err) {
+      log?.error?.("HUGGINGCHAT", `Conversation lookup failed: ${err?.message || err}`);
+      return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: `${API_CONVERSATIONS_URL}/${conversationId}`, headers: baseHeaders, transformedBody: body };
+    }
+    const parentMessageId = parent.id;
     if (!parentMessageId) {
-      return { response: errorJson(502, "HuggingChat did not return an initial parent message id"), url: `${API_CONVERSATIONS_URL}/${conversationId}`, headers: baseHeaders, transformedBody: body };
+      const lookupStatus = [401, 403, 429].includes(parent.status) ? parent.status : 502;
+      const lookupMessage = lookupStatus === 502 ? "HuggingChat did not return an initial parent message id" : upstreamFailureMessage(lookupStatus, "");
+      return { response: errorJson(lookupStatus, lookupMessage), url: `${API_CONVERSATIONS_URL}/${conversationId}`, headers: baseHeaders, transformedBody: body };
     }
 
     const messageUrl = `${CONVERSATION_URL}/${conversationId}`;
@@ -198,19 +229,16 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-      upstreamResponse = await fetchWithTimeout(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, { proxyOptions });
+      upstreamResponse = billed(await send(messageUrl, { method: "POST", headers: baseHeaders, body: formData, signal }, true));
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("HUGGINGCHAT", `Message send failed: ${err?.message || err}`);
       return { response: errorJson(502, `HuggingChat connection failed: ${err?.message || err}`), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }
 
     if (!upstreamResponse.ok) {
       const upstreamError = await readUpstreamErrorDetails(upstreamResponse);
-      let message = upstreamResponse.status === 401 || upstreamResponse.status === 403 ?
-      "HuggingChat auth failed; session cookie may be expired." :
-      upstreamResponse.status === 429 ?
-      "HuggingChat rate limited. Wait and retry." :
-      `HuggingChat returned HTTP ${upstreamResponse.status}`;
+      let message = upstreamFailureMessage(upstreamResponse.status, `HuggingChat returned HTTP ${upstreamResponse.status}`);
       if (upstreamError.message) message = `${message}: ${upstreamError.message}`;
       return { response: errorJson(upstreamResponse.status, message, "upstream_error", { details: upstreamError.details }), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }
@@ -220,22 +248,71 @@ export class HuggingChatExecutor extends BaseExecutor {
 
     const id = `chatcmpl-huggingchat-${crypto.randomUUID().slice(0, 12)}`;
     const created = Math.floor(Date.now() / 1000);
+    const streamFailure = (err) => ({
+      response: errorJson(502, err.message, "upstream_error", { code: "huggingchat_generation_error" }),
+      url: messageUrl,
+      headers: baseHeaders,
+      transformedBody: sendDataPayload
+    });
+
     if (stream) {
       const encoder = new TextEncoder();
-      const jsonlStream = streamJsonlToOpenAi(upstreamResponse.body, resolvedModel, id, created, signal);
-      const sseStream = new ReadableStream({
-        async start(controller) {
-          try {
-            for await (const chunk of jsonlStream) controller.enqueue(encoder.encode(chunk));
-          } finally {
-            controller.close();
+      const cancellation = new AbortController();
+      const jsonlStream = streamJsonlToOpenAi(upstreamResponse.body, resolvedModel, id, created, signal, cancellation.signal);
+      // Prime the role and first content chunk so a generation error before any content is a real 502
+      // instead of an HTTP 200 stream that fails after the client already saw success.
+      const primed = [];
+      try {
+        const first = await jsonlStream.next();
+        if (!first.done) {
+          primed.push(first.value);
+          if (first.value.includes('"role":"assistant"')) {
+            const content = await jsonlStream.next();
+            if (!content.done) primed.push(content.value);
           }
+        }
+      } catch (err) {
+        if (!(err instanceof HuggingChatStreamError)) throw err;
+        log?.error?.("HUGGINGCHAT", `Stream failed before content: ${sanitizeErrorMessage(err.message)}`);
+        return streamFailure(err);
+      }
+      let cancelled = false;
+      const sseStream = new ReadableStream({
+        async pull(controller) {
+          if (cancelled) return;
+          if (primed.length > 0) {
+            controller.enqueue(encoder.encode(primed.shift()));
+            return;
+          }
+          try {
+            const chunk = await jsonlStream.next();
+            if (cancelled) return;
+            if (chunk.done) controller.close();else
+            controller.enqueue(encoder.encode(chunk.value));
+          } catch (err) {
+            if (cancelled) return;
+            log?.error?.("HUGGINGCHAT", `Stream error: ${sanitizeErrorMessage(err?.message || err)}`);
+            controller.error(Object.assign(new Error(PUBLIC_STREAM_ERROR), { statusCode: 502 }));
+          }
+        },
+        cancel() {
+          cancelled = true;
+          cancellation.abort();
+          void jsonlStream.return(undefined).catch(() => undefined);
         }
       });
       return { response: new Response(sseStream, { status: 200, headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" } }), url: messageUrl, headers: baseHeaders, transformedBody: sendDataPayload };
     }
 
-    const { text, reasoning } = await readJsonlResponse(upstreamResponse.body, signal);
+    let text;
+    let reasoning;
+    try {
+      ({ text, reasoning } = await readJsonlResponse(upstreamResponse.body, signal));
+    } catch (err) {
+      if (!(err instanceof HuggingChatStreamError)) throw err;
+      log?.error?.("HUGGINGCHAT", `Generation error: ${sanitizeErrorMessage(err.message)}`);
+      return streamFailure(err);
+    }
     const message = { role: "assistant", content: text };
     if (reasoning) message.reasoning_content = reasoning;
     return {

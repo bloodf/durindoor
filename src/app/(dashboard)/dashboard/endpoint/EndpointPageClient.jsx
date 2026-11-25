@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import useSettingsStore from "@/store/settingsStore";
+import { get } from "@/shared/utils/api";
 import { requestJSON } from "../providers/workflowRequests.js";
 import PropTypes from "prop-types";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -28,6 +30,9 @@ import StatusAlert from "./components/StatusAlert";
 import MonitoringStrip from "./components/MonitoringStrip";
 import DocsLink from "@/shared/components/DocsLink";
 import { isBrowser, isBoolean } from "@/shared/utils/typeChecks.js";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+
+const V5_ALERT_CLASS = "flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger bg-dd-danger/10 px-3 py-2 text-[13px] text-dd-danger";
 
 function CardSkeleton() {
   return (
@@ -83,6 +88,7 @@ function StatePill({ tone, icon, spin = false, children }) {
 
 
 export default function EndpointPageClient({ localPort = 20128 }) {
+  const uiV5 = useUiV5();
   const [loadError, setLoadError] = useState("");
   const [settingsKnown, setSettingsKnown] = useState(false);
   const [securityError, setSecurityError] = useState(null);
@@ -237,9 +243,8 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const syncTunnelStatus = async () => {
     try {
-      const statusRes = await fetch("/api/tunnel/status", { cache: "no-store" });
-      if (!statusRes.ok) return;
-      const data = await statusRes.json();
+      // Background status reads fail open: unusable status leaves last confirmed state intact.
+      const data = await get("/api/tunnel/status", { cache: "no-store", skipErrorBody: true });
       const tEnabled = getCompositeEndpointEnabled(data.tunnel);
       const tUrl = data.tunnel?.tunnelUrl || "";
       setTunnelUrl(tUrl);
@@ -262,10 +267,10 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     setTunnelChecking(true);
     try {
       const [settings, status] = await Promise.all([
-        requestJSON("/api/settings"),
+        useSettingsStore.getState().fetchSettings({ force: true }),
         requestJSON("/api/tunnel/status", { cache: "no-store" }),
       ]);
-      if (!isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");
+      if (!settings || !isBoolean(settings.requireApiKey) || !isBoolean(settings.requireLogin) || !status?.tunnel || !status?.tailscale) throw new Error("Endpoint configuration is incomplete. Retry.");
       {
         const data = settings;
         setRequireApiKey(data.requireApiKey || false);
@@ -304,7 +309,8 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     if (!settingsKnown || loadError || securityPending.current) return;
     securityPending.current = true; setSecuritySaving(true); setSecurityError(null);
     try {
-      await requestJSON("/api/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+      const saved = await useSettingsStore.getState().patchSettings({ [field]: value });
+      if (!saved) throw new Error(useSettingsStore.getState().error);
       apply(value);
     } catch (error) { setSecurityError({ message: error.message || "Security setting could not be saved.", retry: () => saveSecuritySetting(field, value, apply) }); }
     finally { securityPending.current = false; setSecuritySaving(false); }
@@ -332,15 +338,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       }
       if ((Date.now() - start) % 10000 < TUNNEL_PING_INTERVAL_MS) {
         try {
-          const statusRes = await fetch("/api/tunnel/status");
-          if (statusRes.ok) {
-            const status = await statusRes.json();
-            if (!status.tunnel?.enabled) {
-              setTunnelStatus({ type: "error", message: "Tunnel process stopped unexpectedly." });
-              setTunnelLoading(false);
-              setTunnelProgress("");
-              return false;
-            }
+          const status = await get("/api/tunnel/status", { skipErrorBody: true });
+          if (!status.tunnel?.enabled) {
+            setTunnelStatus({ type: "error", message: "Tunnel process stopped unexpectedly." });
+            setTunnelLoading(false);
+            setTunnelProgress("");
+            return false;
           }
         } catch { /* ignore */ }
       }
@@ -361,14 +364,11 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     const pollProgress = async () => {
       while (polling) {
         try {
-          const r = await fetch("/api/tunnel/status");
-          if (r.ok) {
-            const s = await r.json();
-            if (s.download?.downloading) {
-              setTunnelProgress(`Downloading cloudflared... ${s.download.progress}%`);
-            } else if (polling) {
-              setTunnelProgress("Creating tunnel...");
-            }
+          const s = await get("/api/tunnel/status", { skipErrorBody: true });
+          if (s.download?.downloading) {
+            setTunnelProgress(`Downloading cloudflared... ${s.download.progress}%`);
+          } else if (polling) {
+            setTunnelProgress("Creating tunnel...");
           }
         } catch { /* ignore */ }
         await new Promise((r) => setTimeout(r, 1000));
@@ -647,10 +647,10 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const currentEndpoint = getLocalEndpointUrl(localPort);
 
-  if (!settingsKnown && loadError) return <div role="alert" className="flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"><p>Endpoint configuration could not be loaded. Authentication and exposure controls are unavailable until verified. {loadError}</p><Button icon="refresh" onClick={loadSettings}>Retry</Button></div>;
+  if (!settingsKnown && loadError) return <div role="alert" className={uiV5 ? "flex flex-col gap-3 rounded-dd-lg border border-dd-danger bg-dd-danger/10 p-5 text-[13px] text-dd-danger" : "flex flex-col gap-3 rounded-dd-lg border border-dd-danger/30 p-5"}><p>Endpoint configuration could not be loaded. Authentication and exposure controls are unavailable until verified. {loadError}</p><Button icon="refresh" onClick={loadSettings}>Retry</Button></div>;
   if (loading) {
     return (
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-8" {...(uiV5 ? { role: "status", "aria-busy": true, "aria-label": "Loading endpoint configuration" } : {})}>
         <CardSkeleton />
       </div>
     );
@@ -658,9 +658,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   return (
     <div className="flex flex-col gap-8">
-      {loadError && <div role="alert">Showing last confirmed endpoint configuration. {loadError}<Button icon="refresh" onClick={loadSettings}>Retry</Button></div>}
-      {securityError && <div role="alert">{securityError.message}<Button icon="refresh" onClick={securityError.retry}>Retry</Button></div>}
-      {securitySaving && <p role="status">Saving security setting…</p>}
+      {loadError && <div role="alert" className={uiV5 ? V5_ALERT_CLASS : undefined}>Showing last confirmed endpoint configuration. {loadError}<Button icon="refresh" onClick={loadSettings}>Retry</Button></div>}
+      {securityError && <div role="alert" className={uiV5 ? V5_ALERT_CLASS : undefined}>{securityError.message}<Button icon="refresh" onClick={securityError.retry}>Retry</Button></div>}
+      {securitySaving && <p role="status" className={uiV5 ? "text-[13px] text-dd-muted" : undefined}>Saving security setting…</p>}
       <PageHeader
         icon="key"
         title="Endpoint"

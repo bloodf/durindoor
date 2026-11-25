@@ -6,11 +6,18 @@
 //   - the actual upstream fan-out lives in the message route
 
 import { registerSession, unregisterSession } from "@/lib/mcp/gateway/sseSessions";
+import { validateGatewayKey } from "@/lib/localDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
+  const authorization = request.headers.get("Authorization");
+  const rawKey = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : request.headers.get("x-api-key") || request.headers.get("x-goog-api-key") || new URL(request.url).searchParams.get("key");
+  const key = rawKey ? await validateGatewayKey(rawKey) : null;
+  if (!key) return Response.json({ error: "unauthorized" }, { status: 401 });
   const encoder = new TextEncoder();
   let sid = null;
   const onAbort = () => {
@@ -24,7 +31,11 @@ export async function GET(request) {
       const send = (chunk) => {
         try { controller.enqueue(encoder.encode(chunk)); } catch { /* closed */ }
       };
-      sid = registerSession(send);
+      sid = registerSession(send, key.id);
+      if (!sid) {
+        controller.close();
+        return;
+      }
       send(`event: endpoint\ndata: /api/mcp-gateway/message?sessionId=${sid}\n\n`);
     },
     cancel() {
@@ -45,6 +56,7 @@ export async function GET(request) {
   // sweep — unregister eagerly on abort. `once` self-removes the listener
   // after it fires; cancel() removes it on the normal path.
   request.signal.addEventListener("abort", onAbort, { once: true });
+  if (!sid) return Response.json({ error: "too many SSE sessions" }, { status: 429 });
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",

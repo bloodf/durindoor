@@ -552,6 +552,99 @@ function hasAssistantBetween(messages, fromExclusive, toExclusive) {
   return false;
 }
 
+const isToolResultBlock = (block) => isObject(block) && block.type === CLAUDE_BLOCK.TOOL_RESULT;
+
+function isResultCarrier(msg) {
+  if (!msg || !isObject(msg)) return false;
+  if (msg.role === ROLE.TOOL) return true;
+  return msg.role === ROLE.USER && Array.isArray(msg.content) && msg.content.some(isToolResultBlock);
+}
+
+/**
+ * Take the real results for still-open call ids out of `msg`. Returns the
+ * carrier to hoist (null when nothing matches) and the message left behind
+ * (null when the whole message moved). Blocks move intact, so is_error,
+ * cache_control and non-text content survive; text and unrelated blocks of a
+ * mixed Claude carrier stay where the client put them.
+ */
+function takeOpenResults(msg, openIds) {
+  if (!isObject(msg)) return null;
+  if (msg.role === ROLE.TOOL) {
+    if (!msg.tool_call_id || !openIds.has(msg.tool_call_id)) return null;
+    openIds.delete(msg.tool_call_id);
+    return { hoisted: msg, rest: null };
+  }
+  if (msg.role !== ROLE.USER || !Array.isArray(msg.content)) return null;
+  const taken = [];
+  const kept = [];
+  for (const block of msg.content) {
+    if (isToolResultBlock(block) && openIds.has(block.tool_use_id)) {
+      openIds.delete(block.tool_use_id);
+      taken.push(block);
+    } else {
+      kept.push(block);
+    }
+  }
+  if (taken.length === 0) return null;
+  if (kept.length === 0) return { hoisted: msg, rest: null };
+  return { hoisted: { ...msg, content: taken }, rest: { ...msg, content: kept } };
+}
+
+/**
+ * Hoist a real tool result that a client displaced past a non-tool message
+ * back into its assistant turn's result run:
+ * [assistant(c1,c2), tool(c1), user, tool(c2)] -> [assistant, tool(c1), tool(c2), user].
+ * Strict upstreams reject the displaced shape, and the pair fixer would
+ * otherwise add a placeholder that duplicates the real id.
+ *
+ * Only a result whose id is still unanswered in that assistant turn moves,
+ * the scan stops at the next assistant message, and nothing is invented:
+ * unanswered calls are left for fixMissingToolResponses, duplicate and
+ * unrelated results stay where they were. Replaces body.messages with a new
+ * array and never mutates the caller's message objects.
+ */
+export function repairDisplacedToolResults(body) {
+  if (!body?.messages || !Array.isArray(body.messages)) return body;
+  let messages = body.messages;
+
+  for (let i = 0; i < messages.length; i++) {
+    const ids = getToolCallIds(messages[i]);
+    if (ids.length === 0) continue;
+    const openIds = new Set(ids);
+
+    let runEnd = i + 1;
+    for (; runEnd < messages.length && isResultCarrier(messages[runEnd]); runEnd++) {
+      for (const id of getResultIds(messages[runEnd])) openIds.delete(id);
+    }
+
+    const hoisted = [];
+    const removals = new Map(); // index -> replacement message or null
+    for (let j = runEnd; j < messages.length && openIds.size > 0; j++) {
+      if (messages[j]?.role === ROLE.ASSISTANT) break;
+      const taken = takeOpenResults(messages[j], openIds);
+      if (!taken) continue;
+      hoisted.push(taken.hoisted);
+      removals.set(j, taken.rest);
+    }
+    if (hoisted.length === 0) continue;
+
+    const rebuilt = messages.slice(0, runEnd);
+    rebuilt.push(...hoisted);
+    for (let j = runEnd; j < messages.length; j++) {
+      if (!removals.has(j)) rebuilt.push(messages[j]);
+      else if (removals.get(j)) rebuilt.push(removals.get(j));
+    }
+    body.messages = rebuilt;
+    messages = rebuilt;
+  }
+  return body;
+}
+
+function getResultIds(msg) {
+  if (msg.role === ROLE.TOOL) return msg.tool_call_id ? [msg.tool_call_id] : [];
+  return msg.content.filter(isToolResultBlock).map((block) => block.tool_use_id);
+}
+
 /**
  * Pair tool results to assistant turns by call id (not position).
  *

@@ -1,5 +1,5 @@
 import { CODEX_FINGERPRINT_MODES } from "../../../open-sse/config/codexIdentity.js";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isBoolean, isString } from "../../shared/utils/typeChecks.js";
 
 const SAFE_FIELDS = [
 "id", "provider", "authType", "name", "email", "displayName",
@@ -15,7 +15,7 @@ const SAFE_PSD_FIELDS = [
 "connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy",
 "githubLogin", "githubName", "githubEmail", "githubUserId",
 "username", "firstName", "lastName", "authMethod", "authKind",
-"profileArn", "codexFingerprintMode", "codexUltrafastMode", "aiCreditLimit"];
+"profileArn", "codexFingerprintMode", "codexUltrafastMode", "aiCreditLimit", "zdrEnabled"];
 
 
 function maskName(name) {
@@ -55,6 +55,9 @@ export function sanitizeProviderConnectionForClient(c) {
     }
     if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
       psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
+    }
+    if (c.provider?.startsWith("openai-compatible-") && !c.provider.startsWith("openai-compatible-responses-") && isBoolean(c.providerSpecificData.strictChatHistory)) {
+      psd.strictChatHistory = c.providerSpecificData.strictChatHistory;
     }
     safe.providerSpecificData = psd;
   }

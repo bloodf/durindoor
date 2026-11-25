@@ -1,5 +1,7 @@
+import { hasPaidEvidence } from "../config/freeModelCatalog.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { extractLiveModelLimits } from "./modelMetadata.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 /**
@@ -24,10 +26,10 @@ const FETCH_TIMEOUT_MS = 8000;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_MODELS = 2000;
 
-/** @type {{ expiresAt: number, models: object[] | null } | null} */
-let cached = null;
-/** @type {Promise<object[] | null> | null} */
-let inFlight = null;
+const CACHE_KEY = "openrouter";
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, negativeTtlMs: FAILURE_TTL_MS });
+/** @type {object[] | null} Served through a failed refresh. */
+let lastGood = null;
 /** @type {Map<string, object>} */
 let capabilitiesById = new Map();
 
@@ -37,6 +39,7 @@ const stringSet = (value) => new Set(Array.isArray(value) ? value.filter(isStrin
 const isZeroPrice = (price) => (isNumber(price) || isString(price) && price.trim() !== "") && Number(price) === 0;
 
 export function isOpenRouterFreeModel(entry) {
+  if (hasPaidEvidence(entry)) return false;
   if (!isRecord(entry) || !isString(entry.id) || !entry.id.endsWith(":free")) return false;
   // Only scalar fee fields are prices; nested values such as the
   // `pricing.overrides` array describe per-provider variants, not this variant's fee.
@@ -115,24 +118,16 @@ async function fetchCatalog(fetchImpl) {
  * `freeOnly` keeps only free models.
  */
 export async function resolveOpenRouterModels({ freeOnly = false, fetchImpl = null } = {}) {
-  if (!cached || cached.expiresAt <= Date.now()) {
-    if (!inFlight) {
-      const transport = isFunction(fetchImpl) ? fetchImpl : (url, init) => globalThis.fetch(url, init);
-      inFlight = fetchCatalog(transport).then((models) => {
-        if (models) {
-          cached = { expiresAt: Date.now() + CACHE_TTL_MS, models };
-          capabilitiesById = new Map(models.map((m) => [m.id, m.capabilities]));
-          return;
-        }
-        // Serve the last good catalog through a failed refresh; retry later.
-        cached = { expiresAt: Date.now() + FAILURE_TTL_MS, models: cached?.models ?? null };
-      }).finally(() => {
-        inFlight = null;
-      });
+  await catalogCache.load(CACHE_KEY, async () => {
+    const transport = isFunction(fetchImpl) ? fetchImpl : (url, init) => globalThis.fetch(url, init);
+    const fetched = await fetchCatalog(transport);
+    if (fetched) {
+      lastGood = fetched;
+      capabilitiesById = new Map(fetched.map((m) => [m.id, m.capabilities]));
     }
-    await inFlight;
-  }
-  const models = cached?.models;
+    return fetched;
+  });
+  const models = lastGood;
   if (!models) return null;
   return freeOnly ? models.filter((m) => m.free) : models;
 }
@@ -150,7 +145,7 @@ export function getOpenRouterModelCapabilities(modelId) {
 }
 
 export function clearOpenRouterCatalogCache() {
-  cached = null;
-  inFlight = null;
+  catalogCache.clear();
+  lastGood = null;
   capabilitiesById = new Map();
 }

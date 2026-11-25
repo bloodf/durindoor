@@ -36,14 +36,17 @@ A saved credential or successful probe does not prove chat, streaming, tools, or
 
 If an account is unavailable, routing can try another eligible connection for the same provider and model. A [combo](../features/combos.mdx) can then try another model. Priority controls fill-first order; other strategies are optional. Scope client keys when only selected accounts should be reachable.
 
+Atlas Cloud is available as an API-key provider with OpenAI-compatible chat and model discovery. SubQ is available as an API-key provider for the System One endpoint. ParalonCloud uses the connection's API key for chat, embeddings, and authenticated model discovery (`paraloncloud/<model>` or `paralon/<model>`); see the [Inference API documentation](https://paraloncloud.com/docs/inference-api). Parallel provides web search and Markdown extraction with an API key; search supports mode and domain filters. For NaN.Builders chat, embeddings, media, and reranking, see [NaN](./nan.mdx).
+
 <Cards>
+  <Card title="Provider sign-in methods" href="/docs/providers/sign-in-methods" description="Compare implemented sign-in methods and their security boundaries." />
   <Card title="Connecting accounts" href="/docs/providers/connecting-accounts" description="OAuth, cookies, token refresh, and account priority." />
   <Card title="API key providers" href="/docs/providers/api-key-providers" description="Paste a key, env fallbacks, and key-to-account scoping." />
   <Card title="OpenAI-compatible nodes" href="/docs/providers/openai-compatible-nodes" description="Custom OpenAI, Anthropic, and embedding endpoints." />
   <Card title="Network LLM servers" href="/docs/providers/network-llm-servers" description="Network Ollama hosts, LAN OpenAI-compatible servers, failover, and LAN discovery." />
   <Card title="Free and local" href="/docs/providers/free-and-local" description="No-auth, Ollama, LM Studio, cookies, and local devices." />
   <Card title="Local router providers" href="/docs/providers/local-router-providers" description="Self-hosted OpenAI-compatible IDs and metadata-only entries." />
-  <Card title="Web cookie providers" href="/docs/providers/web-cookie" description="Copy a browser session cookie and what each site expects." />
+  <Card title="Web cookie providers" href="/docs/providers/web-cookie" description="Sign in, import cookies with the browser extension, and check what each site expects." />
   <Card title="Openference OAuth" href="/docs/providers/openference" description="Operator-configured OAuth client, model discovery, and connection setup." />
   <Card title="Provider catalog" href="/docs/providers/catalog" description="Generated list of registry ids, auth types, and model counts." />
 </Cards>
@@ -59,5 +62,45 @@ Some providers need more than the generic flow. These pages cover sign-in, impor
   <Card title="Kiro" href="/docs/providers/kiro" description="Builder ID, Identity Center, social login, API key, and IDE token import." />
   <Card title="Cursor" href="/docs/providers/cursor" description="Import the Cursor IDE session, auto-detect paths, and no refresh." />
   <Card title="Kimi Web" href="/docs/providers/kimi-web" description="Copy localStorage tokens, choose models, and refresh an expired session." />
+  <Card title="Claude Web" href="/docs/providers/claude-web" description="Import a claude.ai session, check it against the organization list, and the model catalog." />
+  <Card title="Gemini Web" href="/docs/providers/gemini-web" description="Google session cookies, the Chromium requirement, and the errors specific to the Gemini page." />
+  <Card title="Microsoft 365 Copilot Web" href="/docs/providers/copilot-m365-web" description="Work or school sign-in with PKCE, per-connection refresh, conversation continuation, images, tools, citations, and image generation." />
+  <Card title="DeepSeek Web" href="/docs/providers/deepseek-web" description="Capture or paste the userToken from local storage; cookies alone are not accepted." />
+  <Card title="Doubao Web" href="/docs/providers/doubao-web" description="Dola session cookies, the two models, and expired or rate-limited sessions." />
+  <Card title="Z.ai Web" href="/docs/providers/zai-web" description="The chat.z.ai token, GLM models, and CAPTCHA proof limits." />
+  <Card title="ChatGPT Web Codex" href="/docs/providers/chatgpt-web-codex" description="Codex performance lanes over a ChatGPT web session." />
+  <Card title="MaxAI" href="/docs/providers/maxai" description="Browser-minted access token, device and user IDs, and request signing limits." />
+  <Card title="Arena" href="/docs/providers/lmarena" description="The arena-auth-prod-v1 session cookie, numbered chunks, and the pinned model list." />
+  <Card title="ChatPlayground" href="/docs/providers/chatplayground" description="Clerk session cookies, the live model catalog, and the message length limit." />
+  <Card title="Y-API" href="/docs/providers/y-api" description="Console-issued key, discovered models, and the provider's 403 quota semantics." />
+  <Card title="Grokified" href="/docs/providers/grokified" description="Prepaid Grok access key, the live model catalog, and the vendor's error classes." />
+  <Card title="Helyx AI" href="/docs/providers/helyxai" description="Bearer key, daily free tokens, and the 401, 402 and 429 error classes." />
+  <Card title="TabiToken" href="/docs/providers/tabitoken" description="NewAPI gateway over the Claude Messages endpoint with an x-api-key header." />
+  <Card title="Poe" href="/docs/providers/poe" description="Poe API key, live bot catalog, and the Anthropic-compatible route for Claude bots." />
+  <Card title="TwinMind" href="/docs/providers/twinmind" description="Experimental app API with Firebase refresh tokens and chat dispatch." />
+  <Card title="HyperAgent" href="/docs/providers/hyperagent" description="Unofficial cookie-header session with thread-based chat dispatch." />
+  <Card title="Cloudflare AI Playground" href="/docs/providers/cloudflare-playground" description="Anonymous text-only playground models and Cloudflare's rate limits." />
+  <Card title="g4f Gemini" href="/docs/providers/g4f-gemini" description="g4f's hosted Gemini proxy with an optional member key." />
+  <Card title="g4f NVIDIA" href="/docs/providers/g4f-nvidia" description="g4f's hosted NVIDIA NIM proxy with an optional member key." />
+  <Card title="g4f Ollama" href="/docs/providers/g4f-ollama" description="g4f's hosted Ollama proxy with an optional member key." />
+  <Card title="g4f Pollinations" href="/docs/providers/g4f-pollinations" description="g4f's hosted Pollinations proxy with an optional member key." />
+  <Card title="NoTrack" href="/docs/providers/notrack" description="Developer API key, the documented model catalog, limits, and error types." />
+  <Card title="NaN" href="/docs/providers/nan" description="Inference API key (not a platform token), model discovery, and usage." />
+  <Card title="NLP Cloud" href="/docs/providers/nlpcloud" description="Bearer API key, GPU chatbot endpoint, and local quota reservations." />
+  <Card title="Replicate" href="/docs/providers/replicate" description="Text predictions, streaming, and local capacity refusal before dispatch." />
+  <Card title="PromptQL" href="/docs/providers/promptql" description="Experimental playground session with cookie import." />
+  <Card title="Notion AI Web" href="/docs/providers/notion-web" description="The token_v2 session cookie, workspace lookup, and Notion's private inference endpoint." />
+  <Card title="NoTrack Web" href="/docs/providers/notrack-web" description="The notrack.ai chat session cookies and the single dispatch model." />
+  <Card title="Tencent AI Studio Web" href="/docs/providers/tencent-aistudio-web" description="The aistudio.tencent.ai session, the Hunyuan models, and the unverified capture profile." />
+  <Card title="TinyCMS Web" href="/docs/providers/tinycms-web" description="The localStorage device UUID, its import paths, and the signed-challenge flow." />
+  <Card title="Blackbox Web" href="/docs/providers/blackbox-web" description="The app.blackbox.ai session cookie, the pinned catalog, and subscription errors." />
+  <Card title="Conol Web" href="/docs/providers/conol-web" description="The conol.ai session cookie, per-chat sessions, and the fallback model list." />
+  <Card title="Cursor API" href="/docs/providers/cursor-api" description="A Cursor user API key exchanged for a session token; off until each connection opts in." />
+  <Card title="Devin Desktop" href="/docs/providers/devin-desktop" description="Devin session token or browser sign-in over the desktop Connect transport; off until opted in." />
+  <Card title="WorkBuddy" href="/docs/providers/workbuddy" description="WorkBuddy device sign-in, refresh, and the account model catalog; off until opted in." />
+  <Card title="MiniMax Code" href="/docs/providers/minimax-code" description="MiniMax account device sign-in for the Code subscription gateway; off until opted in." />
+  <Card title="Zed Hosted Models" href="/docs/providers/zed-hosted" description="Zed native-app sign-in and its hosted model plan; off until opted in." />
+  <Card title="Freebuff" href="/docs/providers/freebuff" description="Freebuff device login (not a paid Codebuff key); off until opted in." />
+  <Card title="ZCode" href="/docs/providers/zcode" description="Local ZCode app-server using the signed-in profile; dispatch stays off until each connection opts in." />
   <Card title="Hidden and retired providers" href="/docs/providers/retired" description="Providers you can no longer add and ids with no executor yet." />
 </Cards>

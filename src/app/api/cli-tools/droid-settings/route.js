@@ -1,18 +1,32 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { isDurinDoorDroidModel } from "@/shared/utils/droidConfig";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
+import { applyEdits, modify, parse as parseJsonc } from "jsonc-parser";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
-import { isString } from "../../../../shared/utils/typeChecks.js";
+import { readExistingConfig } from "@/lib/cliTools/readExistingConfig";
+import { isRecord, isString } from "../../../../shared/utils/typeChecks.js";
 
 const execAsync = promisify(exec);
+const JSONC_FORMAT_OPTIONS = { insertSpaces: true, tabSize: 2 };
 
 const getDroidDir = () => path.join(os.homedir(), ".factory");
 const getDroidSettingsPath = () => path.join(getDroidDir(), "settings.json");
+
+const parseDroidSettings = (raw) => {
+  const errors = [];
+  const parsed = parseJsonc(raw, errors, { allowTrailingComma: true, disallowComments: false });
+  if (errors.length > 0 || !isRecord(parsed)) {
+    throw new Error("expected a JSONC object");
+  }
+  return { parsed, raw };
+};
 
 // Check if droid CLI is installed (via which/where or config file exists)
 const checkDroidInstalled = async () => {
@@ -34,15 +48,12 @@ const checkDroidInstalled = async () => {
   }
 };
 
-// Read current settings.json
+// Read current settings.json (JSONC-tolerant for status checks)
 const readSettings = async () => {
   try {
     const settingsPath = getDroidSettingsPath();
     const content = await fs.readFile(settingsPath, "utf-8");
-    // Tolerate JSONC (trailing commas) and treat unparseable files as "no config"
-    // rather than throwing a 500 that the UI misreads as "tool not installed".
-    const stripped = content.replace(/,(\s*[}\]])/g, "$1");
-    return JSON.parse(stripped);
+    return parseDroidSettings(content).parsed;
   } catch (error) {
     return null;
   }
@@ -51,7 +62,7 @@ const readSettings = async () => {
 // Check if settings has DurinDoor customModels
 const has9RouterConfig = (settings) => {
   if (!settings || !settings.customModels) return false;
-  return settings.customModels.some((m) => m.id?.startsWith("custom:9Router"));
+  return settings.customModels.some((m) => isDurinDoorDroidModel(m));
 };
 
 // GET - Check droid CLI and read current settings
@@ -71,7 +82,10 @@ export async function GET() {
 
     return NextResponse.json({
       installed: true,
-      settings: redactSecrets(settings),
+      settings: redactSecrets(settings && Array.isArray(settings.customModels) ? {
+        ...settings,
+        customModels: settings.customModels.map((model) => isDurinDoorDroidModel(model) ? { ...model, durinDoorManaged: true } : model)
+      } : settings),
       has9Router: has9RouterConfig(settings),
       settingsPath: getDroidSettingsPath()
     });
@@ -98,70 +112,63 @@ export async function POST(request) {
     const droidDir = getDroidDir();
     const settingsPath = getDroidSettingsPath();
 
-    // Ensure directory exists
+    // Read existing settings before creating directory or writing; refuse unparseable files.
+    const existing = await readExistingConfig(settingsPath, parseDroidSettings);
+    const settings = existing?.parsed ?? {};
+    const existingRaw = existing?.raw ?? null;
+
     await fs.mkdir(droidDir, { recursive: true });
 
-    // Read existing settings or create new
-    let settings = {};
-    try {
-      const existingSettings = await fs.readFile(settingsPath, "utf-8");
-      settings = JSON.parse(existingSettings);
-    } catch {/* No existing settings */}
+    const existingCustomModels = Array.isArray(settings.customModels) ? settings.customModels : [];
+    const managedModels = existingCustomModels.filter(isDurinDoorDroidModel);
+    const existingKey = managedModels.find((m) => m.apiKey && m.apiKey !== "sk_9router")?.apiKey || managedModels[0]?.apiKey;
 
-    // Ensure customModels array exists
-    if (!settings.customModels) {
-      settings.customModels = [];
-    }
-    const existingKey = settings.customModels.find((m) => m.id?.startsWith("custom:9Router"))?.apiKey;
+    // Remove all existing DurinDoor configs while keeping the user's own customModels
+    const preservedModels = existingCustomModels.filter((m) => !isDurinDoorDroidModel(m));
 
-    // Remove all existing DurinDoor configs
-    settings.customModels = settings.customModels.filter((m) => !m.id?.startsWith("custom:9Router"));
-
-    // Normalize baseUrl to ensure /v1 suffix
-    const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
+    // Normalize baseUrl to ensure a single /v1 suffix
+    const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
+    const normalizedBaseUrl = trimmedBaseUrl.endsWith("/v1") ? trimmedBaseUrl : `${trimmedBaseUrl}/v1`;
     const keyToUse = apiKey || existingKey || "your_api_key";
 
-    // Determine active model: prefer explicit activeModel, else first of modelsArray
-    // If activeModel is explicitly empty string, no model will be set as default
-    let defaultIndex = 0;
-    if (isString(activeModel)) {
-      if (activeModel === "") {
-        defaultIndex = -1; // signal: don't set a default
-      } else {
-        const idx = modelsArray.indexOf(activeModel);
-        defaultIndex = idx >= 0 ? idx : 0;
-      }
-    }
-
-    // Add entries for all requested models
-    // The first one (index 0) will be the default if defaultIndex >= 0
+    const addedEntries = [];
     for (let i = 0; i < modelsArray.length; i++) {
       const m = modelsArray[i];
       if (!m || !isString(m)) continue;
-      settings.customModels.push({
+      addedEntries.push({
         model: m,
-        id: `custom:9Router-${i}`,
+        id: `custom:DurinDoor-${i}`,
         index: i,
         baseUrl: normalizedBaseUrl,
         apiKey: keyToUse,
         displayName: m,
         maxOutputTokens: 131072,
         noImageSupport: false,
-        provider: "openai"
+        provider: "generic-chat-completion-api"
       });
     }
 
-    // Set default model if applicable
-    if (defaultIndex >= 0 && settings.customModels[defaultIndex]) {
-      // Reorder so the default comes first
-      const [defaultEntry] = settings.customModels.splice(defaultIndex, 1);
-      settings.customModels.unshift({ ...defaultEntry, index: 0 });
-      // Re-index the rest
-      settings.customModels.forEach((m, i) => {m.index = i;});
-    }
+    settings.customModels = [...preservedModels, ...addedEntries];
 
-    // Write settings
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    // Determine default model by ID among DurinDoor's entries; activeModel === "" leaves order unchanged.
+    if (!(isString(activeModel) && activeModel === "") && addedEntries.length > 0) {
+      const targetEntry = (isString(activeModel) && addedEntries.find((e) => e.model === activeModel)) || addedEntries[0];
+      const targetIdx = settings.customModels.findIndex((m) => m.id === targetEntry.id);
+      if (targetIdx >= 0) {
+        const [defaultEntry] = settings.customModels.splice(targetIdx, 1);
+        settings.customModels.unshift({ ...defaultEntry, index: 0 });
+      }
+    }
+    settings.customModels.forEach((m, i) => { m.index = i; });
+
+    // Write settings, preserving JSONC comments and formatting on existing files
+    const nextContent = existingRaw !== null
+      ? applyEdits(
+          existingRaw,
+          modify(existingRaw, ["customModels"], settings.customModels, { formattingOptions: JSONC_FORMAT_OPTIONS })
+        )
+      : JSON.stringify(settings, null, 2);
+    await writeConfigAtomic(settingsPath, nextContent);
 
     return NextResponse.json({
       success: true,
@@ -170,7 +177,11 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error updating droid settings:", error);
-    return NextResponse.json({ error: "Failed to update droid settings" }, { status: 500 });
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    return NextResponse.json(
+      { error: refusedToClobber ? error.message : "Failed to update droid settings" },
+      { status: 500 }
+    );
   }
 }
 
@@ -179,33 +190,27 @@ export async function DELETE() {
   try {
     const settingsPath = getDroidSettingsPath();
 
-    // Read existing settings
-    let settings = {};
-    try {
-      const existingSettings = await fs.readFile(settingsPath, "utf-8");
-      settings = JSON.parse(existingSettings);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        return NextResponse.json({
-          success: true,
-          message: "No settings file to reset"
-        });
-      }
-      throw error;
+    // Read existing settings; refuse unparseable files without modifying them.
+    const existing = await readExistingConfig(settingsPath, parseDroidSettings);
+    if (!existing) {
+      return NextResponse.json({
+        success: true,
+        message: "No settings file to reset"
+      });
     }
+
+    const { parsed: settings, raw: existingRaw } = existing;
 
     // Remove DurinDoor customModels
-    if (settings.customModels) {
-      settings.customModels = settings.customModels.filter((m) => !m.id?.startsWith("custom:9Router"));
-
-      // Remove customModels array if empty
-      if (settings.customModels.length === 0) {
-        delete settings.customModels;
-      }
+    if (Array.isArray(settings.customModels)) {
+      const remaining = settings.customModels.filter((m) => !isDurinDoorDroidModel(m));
+      const nextCustomModels = remaining.length > 0 ? remaining : undefined;
+      const nextContent = applyEdits(
+        existingRaw,
+        modify(existingRaw, ["customModels"], nextCustomModels, { formattingOptions: JSONC_FORMAT_OPTIONS })
+      );
+      await writeConfigAtomic(settingsPath, nextContent);
     }
-
-    // Write updated settings
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -213,6 +218,10 @@ export async function DELETE() {
     });
   } catch (error) {
     console.log("Error resetting droid settings:", error);
-    return NextResponse.json({ error: "Failed to reset droid settings" }, { status: 500 });
+    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    return NextResponse.json(
+      { error: refusedToClobber ? error.message : "Failed to reset droid settings" },
+      { status: 500 }
+    );
   }
 }

@@ -3,7 +3,6 @@ title: Token Harbor
 description: Connect a Token Harbor Universal Key and discover its models.
 ---
 
-# Token Harbor
 
 Add a Token Harbor connection using a [Universal Key](https://tokenharbor.ai/docs/getting-started/universal-key). DurinDoor discovers models with that connection's key from Token Harbor's authenticated `/v1/models` endpoint. Model availability can change; use the exact returned ID, including any slash or suffix, after the `tokenharbor/` prefix. No static catalog is bundled. Provider-wide model auto-sync is disabled because it cannot retain separate catalogs for different keys.
 

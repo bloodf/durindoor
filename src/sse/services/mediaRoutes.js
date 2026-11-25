@@ -1,17 +1,13 @@
-import { buildModelsList } from "@/app/api/v1/models/buildModelsList.js";
+import { buildModelsList } from "@/shared/models/buildModelsList.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
-import { getVideoConfig } from "open-sse/handlers/videoCore.js";
-import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
-import { supportsSttTranslation } from "open-sse/handlers/sttCore.js";
-import { getImageAdapter } from "open-sse/handlers/imageProviders/index.js";
-import { getEmbeddingAdapter } from "open-sse/handlers/embeddingProviders/index.js";
+import { resolveProviderId } from "@/shared/constants/providers.js";
 import { isKeylessProviderWorking } from "./keylessAvailability.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { getApiKeyProviderConnectionIds, getProviderConnections } from "@/lib/localDb";
-import { MEDIA_ROUTE_KINDS, normalizeRouteModels } from "@/shared/constants/mediaRoutes.js";
+import { normalizeRouteModels } from "@/shared/constants/mediaRoutes.js";
+import { mediaTransportSupport, mediaKindLabel, mediaEndpointSupport } from "./mediaTransport.js";
 import { canonicalizePolicyModelIdentity } from "./apiKeyPolicyIdentity.js";
 
 export {
@@ -22,6 +18,17 @@ export {
   normalizeRouteModels,
   normalizeMediaRoutes
 } from "@/shared/constants/mediaRoutes.js";
+
+export {
+  MEDIA_KIND_TRANSPORTS,
+  MEDIA_ENDPOINT_SUPPORTS,
+  MEDIA_ROUTE_ENDPOINTS,
+  mediaTransportSupport,
+  mediaEndpointSupport,
+  mediaKindLabel,
+  supportsVideoJobs,
+  supportsTranslation
+} from "./mediaTransport.js";
 
 const savedRoute = (settings, kind) => normalizeRouteModels(settings?.mediaRoutes?.[kind]) || [];
 
@@ -43,52 +50,31 @@ async function scopedProviders(apiKeyId) {
 /**
  * Models the user can route for `kind` right now, as `/v1/models/{kind}`
  * lists them (combos excluded; a route holds concrete models), minus providers
- * with no image/embedding adapter, providers a scoped API key cannot call, and keyless providers that are not installed and
+ * with no transport for the kind, providers a scoped API key cannot call, and keyless providers that are not installed and
  * working (see keylessAvailability.js).
  */
-// Some catalogs list models of a kind for providers the gateway has no adapter
-// for (live or custom rows the registry does not cover); those can only return 400.
-const KIND_ADAPTER = Object.freeze({
-  image: (providerId) => !!getImageAdapter(providerId),
-  embedding: (providerId) => !!getEmbeddingAdapter(providerId)
-});
-
+// A catalog can list a model of the kind for a provider the gateway cannot
+// dispatch (a live or custom row for a provider the registry does not
+// cover); those can only return 400, so they stay off the route.
 export async function listMediaRouteCandidates(kind, { apiKeyId = null } = {}) {
   const allowed = await scopedProviders(apiKeyId);
-  const hasAdapter = KIND_ADAPTER[kind] || (() => true);
   const list = (await buildModelsList([kind], getProviderValidationGuard(), { exposeComboOnly: false }))
     .filter((m) => m?.owned_by !== "combo" && isString(m?.id) && (!m.kind || m.kind === kind))
-    .filter((m) => (!allowed || allowed.has(providerOfModelId(m.id))) && hasAdapter(providerOfModelId(m.id)));
+    .filter((m) => (!allowed || allowed.has(providerOfModelId(m.id)))
+      && mediaTransportSupport(kind, providerOfModelId(m.id)) !== "unsupported");
   const providers = [...new Set(list.map((m) => providerOfModelId(m.id)))];
   const working = new Map(await Promise.all(providers.map(async (p) => [p, await isKeylessProviderWorking(p, { apiKeyId })])));
   return list.filter((m) => working.get(providerOfModelId(m.id)));
 }
 
-/** /v1/videos runs async job APIs; veoaifree-web's videoConfig is the sync generator. */
-export const supportsVideoJobs = (providerId) => !!getVideoConfig(providerId) && !supportsVideoGeneration(providerId);
-export const supportsTranslation = (providerId, model) => supportsSttTranslation(AI_PROVIDERS[providerId]?.sttConfig, model);
-
-/** Endpoints that can run only part of their kind's models, shown per endpoint on the dashboard. */
-export const MEDIA_ROUTE_ENDPOINTS = Object.freeze({
-  video: [
-    { path: "/v1/video/generations", supports: supportsVideoGeneration },
-    { path: "/v1/videos", supports: supportsVideoJobs }
-  ],
-  stt: [
-    { path: "/v1/audio/transcriptions", supports: null },
-    { path: "/v1/audio/translations", supports: supportsTranslation }
-  ]
-});
-
-function kindLabel(kind) {
-  return MEDIA_ROUTE_KINDS.find((k) => k.id === kind)?.label.toLowerCase() || kind;
-}
+/** The provider-local model id of a published model id. */
+const modelOf = (id) => String(id).slice(String(id).indexOf("/") + 1);
 
 function noRouteResponse(kind, reason) {
   const message = {
-    saved: `None of the models in the ${kindLabel(kind)} route are available. Update it in Dashboard > Media Routes, or pass a model.`,
-    endpoint: `None of the models in the ${kindLabel(kind)} route can run on this endpoint. Add one it supports in Dashboard > Media Routes, or pass a model.`,
-    none: `No connected provider supports ${kindLabel(kind)} on this endpoint. Connect one in Dashboard > Media Providers, or pass a model.`
+    saved: `None of the models in the ${mediaKindLabel(kind)} route are available. Update it in Dashboard > Media Routes, or pass a model.`,
+    endpoint: `None of the models in the ${mediaKindLabel(kind)} route can run on this endpoint. Add one it supports in Dashboard > Media Routes, or pass a model.`,
+    none: `No connected provider supports ${mediaKindLabel(kind)} on this endpoint. Connect one in Dashboard > Media Providers, or pass a model.`
   }[reason];
   return errorResponse(HTTP_STATUS.BAD_REQUEST, message, { type: "invalid_request_error", code: "no_provider_for_kind" });
 }
@@ -102,11 +88,15 @@ function noRouteResponse(kind, reason) {
  * @param {object} options
  * @param {object} options.settings - current settings
  * @param {(providerId: string, model: string) => boolean} [options.supports] - endpoint-specific model filter
+ * @param {string|null} [options.endpoint] - endpoint path; a model runs here only when the provider's transport can serve it
  * @param {string|null} [options.apiKeyId] - the caller's key, which decides the host a keyless provider is probed at
  */
-export async function describeMediaRoute(kind, { settings, supports = null, apiKeyId = null } = {}) {
+export async function describeMediaRoute(kind, { settings, supports = null, endpoint = null, apiKeyId = null } = {}) {
   const all = await listMediaRouteCandidates(kind, { apiKeyId });
-  const candidates = supports ? all.filter((m) => supports(providerOfModelId(m.id), String(m.id).slice(String(m.id).indexOf("/") + 1))) : all;
+  const candidates = endpoint
+    ? all.filter((m) => mediaEndpointSupport(kind, endpoint, providerOfModelId(m.id), modelOf(m.id)).supported)
+    : supports ? all.filter((m) => supports(providerOfModelId(m.id), modelOf(m.id))) : all;
+
   const saved = savedRoute(settings, kind);
   const available = new Set(candidates.map((m) => canonicalizePolicyModelIdentity(m.id)));
   // Older catalogs omitted the vendor prefix. Keep the saved request unchanged.

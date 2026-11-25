@@ -12,6 +12,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { listRegistryFiles, registryDir, root } from "./gen-registry-index.mjs";
 import { PROVIDER_MODELS } from "../open-sse/config/providerModels.js";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 export const catalogPath = path.join(root, "docs", "providers", "catalog.mdx");
 
@@ -99,7 +100,7 @@ export async function main(opts = {}) {
   return { exitCode: 0, message: `wrote ${outPath}` };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   const check = process.argv.includes("--check");
   const result = await main({ check });
   if (result.exitCode) console.error(result.message);

@@ -1,5 +1,9 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+import { REQUEST_DETAILS_TITLE } from "@/i18n/keyedMessages";
+import { useKeyedMessage } from "@/i18n/useKeyedMessage";
+
 import { getOutputTokens } from "./tokenDisplay.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
@@ -17,6 +21,9 @@ import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 const REQUEST_DETAIL_ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100, "all"];
 const REQUEST_DETAIL_MAX_PAGE_SIZE = 100;
 const REQUEST_DETAIL_PAGE_SIZE = 20;
+
+// A received HTTP failure is shown inline. Fetch and JSON exceptions also need diagnostics.
+class RequestDetailsHttpError extends Error {}
 
 const PAYLOAD_STAGES = [
   { field: "request", label: "Client request" },
@@ -180,6 +187,7 @@ function JsonTreeNode({ name, data, depth = 0 }) {
 }
 
 export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
+  const requestDetailsTitle = useKeyedMessage(REQUEST_DETAILS_TITLE);
   const [details, setDetails] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -227,7 +235,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       };
       const requestPage = async (page, pageSize) => {
         const res = await fetch(`/api/usage/request-details?${buildParams(page, pageSize).toString()}`, { signal });
-        if (!res.ok) throw new Error(`Request details failed: ${res.status}`);
+        if (!res.ok) throw new RequestDetailsHttpError(`Request details failed: ${res.status}`);
         return res.json();
       };
       const allMode = pagination.pageSize === "all";
@@ -255,10 +263,11 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
         totalPages: allMode ? 1 : totalPages,
       }));
     } catch (error) {
-      if (error?.name !== "AbortError") {
+      if (error?.name === "AbortError") return;
+      if (!(error instanceof RequestDetailsHttpError)) {
         console.error("Failed to fetch request details:", error);
-        setFetchError(error.message || "Failed to fetch request details");
       }
+      if (!signal.aborted) setFetchError(error.message || "Failed to fetch request details");
     } finally {
       if (!signal.aborted) setLoading(false);
     }
@@ -270,7 +279,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/settings", { signal: controller.signal })
+    requestSettings({ signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data && !controller.signal.aborted) setObservabilityEnabled(data.enableObservability === true); })
       .catch(() => {});
@@ -412,7 +421,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       <Drawer
         open={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        title="Request details"
+        title={<span data-i18n-skip="true">{requestDetailsTitle}</span>}
         width={520}
       >
         {selectedDetail ? (

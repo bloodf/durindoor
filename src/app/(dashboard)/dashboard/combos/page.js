@@ -1,16 +1,12 @@
 "use client";
 
+import useSettingsStore from "@/store/settingsStore";
+
 import { useState, useEffect, useEffectEvent, useRef } from "react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 import { ModelSelectModal, CapacityBadges, CardSkeleton } from "@/shared/components";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card } from "@/shared/ui/components/Card.jsx";
-import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
-import Field from "@/shared/ui/components/Field.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -27,13 +23,22 @@ import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { translate } from "@/i18n/runtime";
 import ConnectionGroupsPanel from "./ConnectionGroupsPanel.jsx";
 import ComboAllowListEditor from "./ComboAllowListEditor.jsx";
-import { sortComboModels } from "@/lib/combos/comboSort.js";
 import ComboUsageReport from "./components/ComboUsageReport";
+import ComboFormModal from "./components/ComboFormModal.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import ModelSummary from "@/shared/ui/v5/combos/ModelSummary.jsx";
+import "@/shared/ui/v5/combos/combos.css";
+import { createSettingsQueue } from "../providers/workflowRequests.js";
 
-// Validate combo name: only a-z, A-Z, 0-9, -, _
-const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 
 export default function CombosPage() {
+  const v5 = useUiV5();
+  const settingsError = useSettingsStore((state) => state.error);
+  const [strategyQueue] = useState(() => createSettingsQueue({}, async (updated) => {
+    const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: updated });
+    if (!saved) throw new Error(useSettingsStore.getState().error || translate("Could not save routing strategy. Retry."));
+    setComboStrategies(updated);
+  }));
   const [combos, setCombos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -54,6 +59,8 @@ export default function CombosPage() {
   const { copied, copy } = useCopyToClipboard();
 
   const loadRequest = useRef(0);
+  const strategyVersion = useRef(0);
+  const strategyWrites = useRef(0);
 
   const selectedCombos = combos.filter((c) => selectedIds.includes(c.id));
   const allSelected = combos.length > 0 && selectedIds.length === combos.length;
@@ -78,11 +85,12 @@ export default function CombosPage() {
     setPresetLoading(source);
     try {
       const previewRes = await fetch(`/api/combos/presets?source=${source}`);
-      const preview = await previewRes.json();
       if (!previewRes.ok) {
+        const preview = await previewRes.json().catch(() => ({}));
         alert(preview.error || `Failed to preview ${label}`);
         return;
       }
+      const preview = await previewRes.json();
 
       const toCreate = preview.toCreate ?? (preview.items || []).filter((i) => !i.exists).length;
       const toSkip = preview.toSkip ?? (preview.items || []).filter((i) => i.exists).length;
@@ -147,24 +155,29 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     const request = ++loadRequest.current;
+    const version = strategyVersion.current;
+    const writesInFlight = strategyWrites.current;
     const isCurrent = () => loadRequest.current === request;
     try {
       const [combosRes, providersRes, settingsRes, groupsRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
-        fetch("/api/settings"),
+        useSettingsStore.getState().fetchSettings({ force: true }),
         fetch("/api/connection-groups"),
       ]);
-      const combosData = await combosRes.json();
-      const providersData = await providersRes.json();
-      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const combosData = combosRes.ok ? await combosRes.json() : await combosRes.json().catch(() => ({}));
+      if (!combosRes.ok) throw new Error(combosData?.error || `Failed to load combos (${combosRes.status})`);
+      const providersData = providersRes.ok ? await providersRes.json() : await providersRes.json().catch(() => ({}));
+      const settingsData = settingsRes || {};
       const groupsData = groupsRes.ok ? await groupsRes.json() : {};
 
       if (!isCurrent()) return;
-      if (!combosRes.ok) throw new Error(combosData?.error || "Failed to load combos");
       // Show every non-media combo here (llm, embedding, tts, ...); media/web
       // combos belong to media-providers/web (#2686).
-      const visibleCombos = (combosData.combos || []).filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind));
+      // Older or malformed records may omit models; cards and editors expect an array.
+      const visibleCombos = (Array.isArray(combosData.combos) ? combosData.combos : [])
+        .filter(c => !MEDIA_PROVIDER_KINDS.some(({ id }) => id === c.kind))
+        .map(c => ({ ...c, models: Array.isArray(c.models) ? c.models : [] }));
       setLoadError("");
       setCombos(visibleCombos);
       const alive = new Set(visibleCombos.map((combo) => combo.id));
@@ -175,7 +188,11 @@ export default function CombosPage() {
         setActiveProviders(filterActiveConnections(connections));
       }
       if (groupsRes.ok) setGroups(groupsData.groups || []);
-      setComboStrategies(settingsData.comboStrategies || {});
+      // A read overlapping a strategy write may contain the pre-write map.
+      if (!v5 || (!writesInFlight && !strategyWrites.current && version === strategyVersion.current)) {
+        setComboStrategies(settingsData.comboStrategies || {});
+        strategyQueue.replace(settingsData.comboStrategies || {});
+      }
       await fetchPrunedCombos(isCurrent);
     } catch (error) {
       console.log("Error fetching data:", error);
@@ -239,12 +256,22 @@ export default function CombosPage() {
     return updated;
   };
 
-  const persistComboStrategies = async (updated) => {
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboStrategies: updated }),
-    });
+  // V5 serializes strategy edits against the last accepted settings map so
+  // edits to separate rows cannot overwrite each other while a request is pending.
+  const persistComboStrategies = async (change) => {
+    if (v5) {
+      strategyVersion.current += 1;
+      strategyWrites.current += 1;
+      try {
+        return await strategyQueue.update(change);
+      } finally {
+        strategyWrites.current -= 1;
+        strategyVersion.current += 1;
+      }
+    }
+    const updated = change(comboStrategies);
+    const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: updated });
+    if (!saved) throw new Error(useSettingsStore.getState().error || "Failed to save combo strategy");
     setComboStrategies(updated);
   };
 
@@ -262,7 +289,7 @@ export default function CombosPage() {
           const res = await fetch(`/api/combos/${id}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Failed to delete combo");
           if (combo?.name) {
-            await persistComboStrategies(pruneStrategiesForNames([combo.name]));
+            await persistComboStrategies((current) => pruneStrategiesForNames([combo.name], current));
           }
           setCombos((prev) => prev.filter((c) => c.id !== id));
           setSelectedIds((prev) => prev.filter((x) => x !== id));
@@ -283,6 +310,7 @@ export default function CombosPage() {
     const count = selectedCombos.length;
     let remaining = selectedCombos;
     let strategies = comboStrategies;
+    const deletedNames = new Set();
     let pending = false;
     setConfirmState({
       title: "Delete Selected Combos",
@@ -304,18 +332,19 @@ export default function CombosPage() {
           ));
           const ids = succeeded.map((combo) => combo.id);
           remaining = remaining.filter((combo) => !ids.includes(combo.id));
+          succeeded.forEach((combo) => deletedNames.add(combo.name));
           strategies = pruneStrategiesForNames(succeeded.map((combo) => combo.name), strategies);
           setCombos((prev) => prev.filter((combo) => !ids.includes(combo.id)));
           setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
           if (ids.length > 0 || remaining.length === 0) {
             // Keep cleanup retryable until the settings boundary accepts it.
-            const response = await fetch("/api/settings", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ comboStrategies: strategies }),
-            });
-            if (!response.ok) throw new Error("Failed to update combo strategies");
-            setComboStrategies(strategies);
+            if (v5) {
+              await persistComboStrategies((current) => pruneStrategiesForNames([...deletedNames], current));
+            } else {
+              const saved = await useSettingsStore.getState().patchSettings({ comboStrategies: strategies });
+              if (!saved) throw new Error(useSettingsStore.getState().error || "Failed to update combo strategies");
+              setComboStrategies(strategies);
+            }
           }
           if (remaining.length > 0) {
             const failed = remaining.length;
@@ -344,7 +373,8 @@ export default function CombosPage() {
   // patch (strategy back to default "fallback") drops the entry entirely.
   const handleSetComboStrategy = async (comboName, patch) => {
     try {
-      const updated = { ...comboStrategies };
+      const update = (current) => {
+      const updated = { ...current };
       const next = { ...(updated[comboName] || {}), ...patch };
       // Prune to keep settings clean: default fallback with no extras = no entry.
       if (!next.fallbackStrategy || next.fallbackStrategy === "fallback") {
@@ -358,9 +388,14 @@ export default function CombosPage() {
         updated[comboName] = next;
       }
 
-      await persistComboStrategies(updated);
+      return updated;
+      };
+      await persistComboStrategies(update);
+      return { ok: true };
     } catch (error) {
       console.log("Error updating combo strategy:", error);
+      alert(error.message);
+      return { ok: false, error: error.message };
     }
   };
 
@@ -368,7 +403,8 @@ export default function CombosPage() {
     if (selectedCombos.length === 0 || !strategy) return;
     setBulkBusy(true);
     try {
-      const updated = { ...comboStrategies };
+      const update = (current) => {
+      const updated = { ...current };
       for (const combo of selectedCombos) {
         if (!strategy || strategy === "fallback") {
           delete updated[combo.name];
@@ -379,7 +415,9 @@ export default function CombosPage() {
           };
         }
       }
-      await persistComboStrategies(updated);
+      return updated;
+      };
+      await persistComboStrategies(update);
     } catch (error) {
       console.log("Error bulk updating combo strategy:", error);
       alert("Failed to update strategy for selected combos");
@@ -398,13 +436,15 @@ export default function CombosPage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
+    <div className={`${v5 ? "v5-combos-page " : ""}flex min-w-0 flex-col gap-6 px-1 sm:px-0`}>
+      {settingsError && <p role="alert" className="text-dd-danger">{settingsError}</p>}
       <PageHeader
+        className={v5 ? "v5-combo-page-heading" : undefined}
         icon="layers"
         title={translate("Combos")}
         subtitle={translate("Group models under one name, then pick a strategy per combo.")}
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-stretch">
+          <div className={`flex w-full flex-col gap-2 sm:w-auto sm:items-stretch${v5 ? " sm:me-0.5" : ""}`}>
             <Button
               variant="primary"
               icon="add"
@@ -534,6 +574,7 @@ export default function CombosPage() {
                 <ComboCard
                   key={combo.id}
                   combo={combo}
+                  v5={v5}
                   getCaps={getCaps}
                   comboByName={comboByName}
                   activeProviders={activeProviders}
@@ -552,7 +593,8 @@ export default function CombosPage() {
                       connections={providerConnections}
                       groups={groups}
                       onChange={async (allowedConnectionIds) => {
-                        await handleUpdate(combo.id, { allowedConnectionIds });
+                        const result = await handleUpdate(combo.id, { allowedConnectionIds });
+                        if (v5) return result;
                       }}
                     />
                   }
@@ -627,8 +669,34 @@ function getStrategyOptions() {
   ];
 }
 
-function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
+function ComboCard({ combo, v5, getCaps, comboByName = {}, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, allowListEditor, selected = false, onToggleSelect, prunedMembers = [] }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
+  const [timeoutDraft, setTimeoutDraft] = useState(null);
+  const [writeState, setWriteState] = useState({ pending: false, error: "", retry: false });
+  const rowPending = useRef(false);
+  const retryPatch = useRef(null);
+  const savePatch = async (patch) => {
+    if (rowPending.current) return;
+    rowPending.current = true;
+    retryPatch.current = patch;
+    setWriteState({ pending: true, error: "", retry: false });
+    const result = await onSetStrategy(patch);
+    if (result?.ok === false) setWriteState({ pending: false, error: result.error || translate("Routing change could not be saved."), retry: true });
+    else {
+      if (Object.hasOwn(patch, "timeoutMs")) setTimeoutDraft(null);
+      setWriteState({ pending: false, error: "", retry: false });
+    }
+    rowPending.current = false;
+  };
+  const saveTimeout = () => {
+    if (timeoutDraft === null || rowPending.current) return;
+    const seconds = Number(timeoutDraft);
+    if (timeoutDraft.trim() === "" || !Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(seconds * 1000)) {
+      setWriteState({ pending: false, error: translate("Enter a whole number of seconds, zero or greater."), retry: false });
+      return;
+    }
+    savePatch({ timeoutMs: seconds * 1000 });
+  };
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
@@ -636,8 +704,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
   const comboCaps = overlayComboCapabilities(derivedCaps, combo.capabilities);
 
   return (
-    <Card className={`group ${selected ? "ring-1 ring-dd-accent/40 bg-dd-accent-soft/30" : ""}`}>
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <Card className={`group ${v5 ? "v5-combo-row " : ""}${selected ? "ring-1 ring-dd-accent/40 bg-dd-accent-soft/30" : ""}`}>
+      <div className={v5 ? "v5-combo-row-body" : "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"}>
         <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
           <Checkbox
             checked={selected}
@@ -655,7 +723,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
                 {prunedMembers.length === 1 ? "1 model no longer listed" : `${prunedMembers.length} models no longer listed`}
               </Badge>
             )}
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            {v5 ? <ModelSummary models={combo.models} getCaps={getCaps} comboByName={comboByName} /> : <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
               {combo.models.length === 0 ? (
                 <span className="text-xs italic text-dd-subtle">No models</span>
               ) : (
@@ -673,7 +741,7 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
               {combo.models.length > 3 && (
                 <span className="text-[10px] text-dd-subtle">+{combo.models.length - 3} more</span>
               )}
-            </div>
+            </div>}
             {comboCaps && (
               <div className="mt-1 flex items-center gap-2 text-[10px] text-dd-subtle dd-tnum">
                 <span>ctx {fmtK(comboCaps.contextWindow)}</span>
@@ -709,14 +777,15 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
         </div>
 
         {/* Actions */}
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0">
+        <div className={v5 ? "v5-combo-actions" : "flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3 sm:shrink-0"}>
           {/* Strategy selector — always visible */}
           <div className="w-full sm:w-[200px]">
             <Select
               aria-label={`Strategy for ${combo.name}`}
               options={getStrategyOptions()}
               value={current}
-              onChange={(value) => onSetStrategy({ fallbackStrategy: value })}
+              disabled={v5 && writeState.pending}
+              onChange={(value) => v5 ? savePatch({ fallbackStrategy: value }) : onSetStrategy({ fallbackStrategy: value })}
               size="sm"
             />
           </div>
@@ -726,14 +795,18 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             <div className="flex items-center gap-1.5">
               <span className="whitespace-nowrap text-[10px] text-dd-muted">{translate("Timeout")}</span>
               <Input
+                aria-label={v5 ? `Timeout for ${combo.name}` : undefined}
                 type="number"
                 min="0"
                 step="1"
                 size="sm"
-                value={(strategy.timeoutMs || 0) / 1000}
+                value={v5 ? (timeoutDraft ?? String((strategy.timeoutMs || 0) / 1000)) : (strategy.timeoutMs || 0) / 1000}
+                disabled={v5 && writeState.pending}
+                onBlur={v5 ? saveTimeout : undefined}
+                onKeyDown={v5 ? (event) => { if (event.key === "Enter") { event.preventDefault(); saveTimeout(); } } : undefined}
                 onChange={(e) => {
-                  const sec = parseInt(e.target.value, 10) || 0;
-                  onSetStrategy({ timeoutMs: sec * 1000 });
+                  if (v5) { setTimeoutDraft(e.target.value); setWriteState({ pending: false, error: "", retry: false }); }
+                  else { const sec = parseInt(e.target.value, 10) || 0; onSetStrategy({ timeoutMs: sec * 1000 }); }
                 }}
                 className="w-14 text-center dd-tnum [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 placeholder="0"
@@ -743,6 +816,8 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
             </div>
           )}
 
+          {v5 && writeState.pending && <span role="status" className="text-xs text-dd-muted">{translate("Saving…")}</span>}
+          {v5 && writeState.error && <div role="alert" className="text-xs text-dd-danger">{writeState.error}{writeState.retry && <Button variant="ghost" size="sm" onClick={() => savePatch(retryPatch.current)}>{translate("Retry")}</Button>}</div>}
           <div className="flex flex-wrap items-center justify-end gap-1">
             <IconButton
               icon={copied === `combo-${combo.id}` ? "check" : "content_copy"}
@@ -780,405 +855,5 @@ function ComboCard({ combo, getCaps, comboByName = {}, activeProviders = [], cop
         closeOnSelect={true}
       />
     </Card>
-  );
-}
-
-function ModelItem({ id, index, model, weight = 1, requirePositiveWeight = false, isFirst, isLast, onEdit, onWeightChange, onMoveUp, onMoveDown, onRemove }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    // no transition — prevents the CSS settle animation fighting React's re-render on drop
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 999 : undefined,
-  };
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(model);
-  const startEditing = () => {
-    setDraft(model);
-    setEditing(true);
-  };
-  const commit = () => {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== model) onEdit(trimmed);
-    else setDraft(model);
-    setEditing(false);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") commit();
-    if (e.key === "Escape") { setDraft(model); setEditing(false); }
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group flex min-w-0 flex-wrap items-center gap-1.5 rounded-dd bg-dd-surface-2 py-1 transition-colors sm:flex-nowrap ${isDragging ? "shadow-dd-elevated ring-1 ring-dd-accent/30" : ""}`}
-    >
-      {/* Drag handle */}
-      <button
-        {...attributes}
-        {...listeners}
-        type="button"
-        aria-label={`Drag to reorder ${model || `model ${index + 1}`}`}
-        className="flex min-h-11 min-w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-dd text-dd-muted outline-none transition-colors hover:text-dd-accent focus-visible:shadow-dd-focus active:cursor-grabbing"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <circle cx="9" cy="4" r="2"/><circle cx="15" cy="4" r="2"/>
-          <circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/>
-          <circle cx="9" cy="20" r="2"/><circle cx="15" cy="20" r="2"/>
-        </svg>
-      </button>
-      {/* Index badge */}
-      <span className="w-3 shrink-0 text-center text-[10px] font-medium text-dd-muted dd-tnum">{index + 1}</span>
-
-      {/* Inline editable model value */}
-      {editing ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={handleKeyDown}
-          className="min-w-0 flex-1 rounded-dd border border-dd-accent/40 bg-dd-surface px-1.5 py-0.5 font-mono text-xs text-dd-text outline-none focus:shadow-dd-focus"
-        />
-      ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          className="flex min-h-11 min-w-0 flex-1 cursor-text items-center truncate rounded-dd px-1.5 py-0.5 font-mono text-xs text-dd-text outline-none transition-colors hover:bg-dd-surface-3 focus-visible:shadow-dd-focus"
-          onClick={startEditing}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startEditing(); } }}
-          title="Click to edit"
-        >
-          {model}
-        </div>
-      )}
-
-      <div className="w-16 shrink-0">
-        <Field error={weight === "" || !Number.isFinite(Number(weight)) || Number(weight) < 0 || (requirePositiveWeight && Number(weight) === 0) ? "Use a positive weight" : undefined}>
-          <Input
-            aria-label="Weight"
-            size="sm"
-            type="number"
-            min="0"
-            step="0.01"
-            value={weight}
-            onChange={(event) => onWeightChange(event.target.value)}
-            className="px-1.5 text-center dd-tnum"
-            title="Selection weight; zero is fallback-only for round robin"
-          />
-        </Field>
-      </div>
-
-      {/* Priority arrows */}
-      <div className="flex shrink-0 items-center gap-0.5">
-        <IconButton
-          icon="arrow_upward"
-          label="Move up"
-          size="sm"
-          onClick={onMoveUp}
-          disabled={isFirst}
-        />
-        <IconButton
-          icon="arrow_downward"
-          label="Move down"
-          size="sm"
-          onClick={onMoveDown}
-          disabled={isLast}
-        />
-      </div>
-
-      {/* Remove */}
-      <IconButton
-        icon="close"
-        label="Remove"
-        size="sm"
-        onClick={onRemove}
-        className="text-dd-muted hover:bg-dd-danger/10 hover:text-dd-danger"
-      />
-    </div>
-  );
-}
-
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
-  // Initialize state with combo values - key prop on parent handles reset on remount
-  const [name, setName] = useState(combo?.name || "");
-  const [models, setModels] = useState(combo?.models || []);
-  const [weights, setWeights] = useState(() => Object.fromEntries((combo?.members || []).map((member) => [member.id, member.weight])));
-  const [modelError, setModelError] = useState("");
-  const [capabilities, setCapabilities] = useState(combo?.capabilities || {});
-  const [showModelSelect, setShowModelSelect] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [nameError, setNameError] = useState("");
-  const [modelAliases, setModelAliases] = useState({});
-  // OmniRoute #11812 (port(omniroute)): one-shot member reorder, not a
-  // persisted live mode — picking a method sorts `models` immediately and
-  // saves through the existing field.
-  const [sortMethod, setSortMethod] = useState("manual");
-  const handleSortMethodChange = (method) => {
-    setSortMethod(method);
-    setModels((current) => sortComboModels(current, method));
-  };
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  // Use stable index-based IDs so duplicates and similar names are handled correctly
-  const modelItems = models.map((model, i) => ({ uid: `item-${i}`, model }));
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = modelItems.findIndex((m) => m.uid === active.id);
-      const newIndex = modelItems.findIndex((m) => m.uid === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        setModels((prev) => arrayMove(prev, oldIndex, newIndex));
-      }
-    }
-  };
-
-  // Each mounted form is one open session; late metadata cannot update another session.
-  useEffect(() => {
-    let active = true;
-    const fetchModalData = async () => {
-      try {
-        const aliasesRes = await fetch("/api/models/alias");
-        if (!aliasesRes.ok) return;
-        const aliasesData = await aliasesRes.json();
-        if (active) setModelAliases(aliasesData.aliases || {});
-      } catch (error) {
-        console.error("Error fetching modal data:", error);
-      }
-    };
-    fetchModalData();
-    return () => { active = false; };
-  }, []);
-
-  const validateName = (value) => {
-    if (!value.trim()) {
-      setNameError("Name is required");
-      return false;
-    }
-    if (!VALID_NAME_REGEX.test(value)) {
-      setNameError("Only letters, numbers, -, _ and . allowed");
-      return false;
-    }
-    setNameError("");
-    return true;
-  };
-
-  const handleNameChange = (e) => {
-    const value = e.target.value;
-    setName(value);
-    if (value) validateName(value);
-    else setNameError("");
-  };
-
-  const handleAddModel = (model) => {
-    if (!models.includes(model.value)) {
-      setModels((current) => sortComboModels([...current, model.value], sortMethod));
-    }
-  };
-
-  const handleDeselectModel = (model) => {
-    setModels(models.filter((m) => m !== model.value));
-  };
-
-  const handleRemoveModel = (index) => {
-    setModels(models.filter((_, i) => i !== index));
-  };
-
-  const handleMoveUp = (index) => {
-    if (index === 0) return;
-    const newModels = [...models];
-    [newModels[index - 1], newModels[index]] = [newModels[index], newModels[index - 1]];
-    setModels(newModels);
-  };
-
-  const handleMoveDown = (index) => {
-    if (index === models.length - 1) return;
-    const newModels = [...models];
-    [newModels[index], newModels[index + 1]] = [newModels[index + 1], newModels[index]];
-    setModels(newModels);
-  };
-  const handleWeightChange = (model, value) => {
-    const weight = Number(value);
-    setWeights((current) => ({ ...current, [model]: value !== "" && Number.isFinite(weight) && weight >= 0 ? weight : value }));
-  };
-  const handleEditModel = (index, newModel) => {
-    if (models.some((model, modelIndex) => modelIndex !== index && model === newModel)) {
-      setModelError("A combo cannot contain the same model twice");
-      return;
-    }
-    const oldModel = models[index];
-    setModelError("");
-    setModels((current) => current.map((model, modelIndex) => modelIndex === index ? newModel : model));
-    setWeights((current) => {
-      const next = { ...current, [newModel]: current[oldModel] ?? 1 };
-      delete next[oldModel];
-      return next;
-    });
-  };
-  const handleSave = async () => {
-    if (!validateName(name)) return;
-    const members = models.map((id) => ({ id, weight: Number(weights[id] ?? 1) }));
-    if (invalidWeights) return;
-    setSaveError("");
-    setSaving(true);
-    try {
-      const result = await onSave({ name: name.trim(), models, members, capabilities });
-      if (!result?.ok) setSaveError(result?.error || "Failed to save combo");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const isEdit = !!combo;
-  // Keep invalid weight drafts editable, explain the blocked save, and retain
-  // the same input node/focus as feedback appears (matching the V5 review form).
-  const invalidWeights = models.some((id) => weights[id] === "" || !Number.isFinite(Number(weights[id] ?? 1)) || Number(weights[id] ?? 1) < 0) || (models.length > 0 && !models.some((id) => Number(weights[id] ?? 1) > 0));
-
-  // Layout contract (mirrors KeysPageClient and shared/components/ComboFormModal):
-  // Cancel/Save live in the Modal `footer` slot so the primitive owns padding,
-  // the divider and 44px targets; the body must not render its own button row.
-  // The capability ceiling is a bordered `rounded-dd-lg p-4` fieldset.
-  // Covered by tests/unit/combos-modal-spacing.test.js.
-  return (
-    <>
-      <Modal
-        open={isOpen}
-        onClose={onClose}
-        title={isEdit ? "Edit Combo" : "Create Combo"}
-        size="lg"
-        pending={saving}
-        footer={
-          <>
-            {models.length > 0 && !models.some((id) => Number(weights[id] ?? 1) > 0) && <p role="alert">At least one member must have a positive weight.</p>}
-            <Button onClick={onClose} variant="ghost" disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              loading={saving}
-              disabled={!name.trim() || !!nameError || invalidWeights}
-            >
-              {isEdit ? "Save" : "Create"}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <Input
-            label="Combo Name"
-            value={name}
-            onChange={handleNameChange}
-            placeholder="my-combo"
-            error={nameError}
-            hint="Only letters, numbers, -, _ and . allowed"
-          />
-          {saveError ? <p role="alert" className="text-xs text-dd-danger">{saveError}</p> : null}
-
-          <section aria-labelledby="combo-models-heading">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 id="combo-models-heading" className="text-sm font-medium text-dd-text">Models</h2>
-              <div className="flex items-center gap-2">
-                <Select
-                  aria-label="Sort models"
-                  value={sortMethod}
-                  onChange={handleSortMethodChange}
-                  options={[
-                  { value: "manual", label: "Manual order" },
-                  { value: "provider", label: "By provider" },
-                  { value: "name", label: "By name" }]
-                  }
-                  size="sm"
-                  fullWidth={false}
-                  disabled={models.length < 2}
-                />
-                <span className="text-xs text-dd-muted dd-tnum">{models.length}</span>
-              </div>
-            </div>
-
-            {models.length === 0 ? (
-              <div className="px-4 py-5 text-center">
-                <span aria-hidden="true" className="material-symbols-outlined mb-1 text-xl text-dd-muted">layers</span>
-                <p className="text-xs text-dd-muted">No models added yet</p>
-              </div>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
-                <SortableContext items={modelItems.map((m) => m.uid)} strategy={verticalListSortingStrategy}>
-                  <div tabIndex={0} aria-label="Combo models" className="flex max-h-[55vh] min-w-0 flex-col gap-1 overflow-y-auto sm:max-h-[350px]" role="region">
-                    {modelItems.map(({ uid, model }, index) => (
-                      <ModelItem
-                        key={uid}
-                        id={uid}
-                        index={index}
-                        model={model}
-                        weight={weights[model] ?? 1}
-                        requirePositiveWeight={!models.some((id) => Number(weights[id] ?? 1) > 0)}
-                        isFirst={index === 0}
-                        isLast={index === modelItems.length - 1}
-                        onEdit={(newVal) => handleEditModel(index, newVal)}
-                        onWeightChange={(value) => handleWeightChange(model, value)}
-                        onMoveUp={() => handleMoveUp(index)}
-                        onMoveDown={() => handleMoveDown(index)}
-                        onRemove={() => handleRemoveModel(index)}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-            {modelError && <p role="alert" className="mt-1 text-xs text-dd-danger">{modelError}</p>}
-
-            <Button variant="secondary" size="sm" icon="add" onClick={() => setShowModelSelect(true)} className="mt-2 w-full border-dashed">
-              Add Model
-            </Button>
-          </section>
-          <fieldset className="rounded-dd-lg border border-dd-border p-4">
-            <legend className="px-1 text-sm font-semibold text-dd-text">Capability ceiling</legend>
-            <p className="mb-3 text-xs text-dd-muted">Optional. Only disables derived features or lowers derived limits; blank fields preserve member-derived capabilities.</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {["vision", "pdf", "audioInput", "videoInput", "imageOutput", "audioOutput", "videoOutput", "search", "tools", "reasoning"].map((key) => (
-                <Checkbox
-                  key={key}
-                  checked={capabilities[key] === false}
-                  onChange={(checked) => setCapabilities((current) => {
-                    const next = { ...current };
-                    if (checked) next[key] = false; else delete next[key];
-                    return next;
-                  })}
-                  label={`Disable ${key}`}
-                  aria-label={`Disable ${key}`}
-                />
-              ))}
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input label="Context window" type="number" min="1" value={capabilities.contextWindow ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, contextWindow: event.target.value === "" ? undefined : Number(event.target.value) }))} />
-              <Input label="Max output" type="number" min="1" value={capabilities.maxOutput ?? ""} onChange={(event) => setCapabilities((current) => ({ ...current, maxOutput: event.target.value === "" ? undefined : Number(event.target.value) }))} />
-            </div>
-          </fieldset>
-        </div>
-      </Modal>
-
-      {/* Model Select Modal */}
-      <ModelSelectModal
-        isOpen={showModelSelect}
-        onClose={() => setShowModelSelect(false)}
-        onSelect={handleAddModel}
-        onDeselect={handleDeselectModel}
-        activeProviders={activeProviders}
-        modelAliases={modelAliases}
-        title="Add Model to Combo"
-        kindFilter={kindFilter}
-        addedModelValues={models}
-        closeOnSelect={false}
-      />
-    </>
   );
 }

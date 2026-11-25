@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { hasValidCliToken, hasValidToken, isLocalRequest } from "@/dashboardGuard";
+import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";
+import { getRequestModelDiscoveryOptions } from "@/sse/services/modelAccess";
+import { resolveChatgptPlanDispatch } from "@/sse/services/chatgptPlanDispatch";
+import { PROVIDERS } from "open-sse/config/providers.js";
 import { fetchConnectionModels } from "./fetchConnectionModels.js";
 
 /**
@@ -13,6 +18,22 @@ export async function GET(request, { params }) {
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (connection.provider === "chatgpt-plan") {
+      if (process.env.DURINDOOR_CHATGPT_PLAN_ENROLLMENT !== "1" || !isLocalRequest(request) ||
+          !hasExactRequestOrigin(request)) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (!await hasValidCliToken(request) && !await hasValidToken(request)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const { verifiedKey } = await getRequestModelDiscoveryOptions(request);
+      const dispatch = await resolveChatgptPlanDispatch({
+        planRequest: { verifiedKey }, providerRegistered: Boolean(PROVIDERS["chatgpt-plan"]),
+        preferredConnectionId: id, signal: request.signal,
+      });
+      if (!dispatch) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      const models = (await dispatch.listModels()).map((row) => ({ id: row.slug, name: row.display_name || row.slug }));
+      return NextResponse.json({ provider: connection.provider, connectionId: id, models }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const result = await fetchConnectionModels(connection, { requestUrl: request.url, signal: request.signal });

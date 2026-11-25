@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardFooter, CardHeader } from "@/shared/ui/components/Card.jsx";
@@ -21,6 +23,7 @@ import { isBrowser, isUndefined, isObject } from "../../../../shared/utils/typeC
 import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
 import useSettingsStore from "@/store/settingsStore";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
 const DATA_RETENTION_PRESETS = [7, 15, 30, 60, 90];
 const MODEL_AUTO_SYNC_INTERVALS = [
@@ -59,7 +62,23 @@ function getLocaleFromCookie() {
   return normalizeLocale(value);
 }
 
+/** Split a comma/newline separated allowlist field into trimmed entries (#2195). */
+function splitOidcAllowlist(value) {
+  return String(value || "").split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+/** Saved OIDC allowlist arrays as editable textarea drafts. */
+function oidcAllowlistDraft(data) {
+  const join = (list) => (Array.isArray(list) ? list.join("\n") : "");
+  return {
+    oidcAllowedSubjects: join(data?.oidcAllowedSubjects),
+    oidcAllowedEmails: join(data?.oidcAllowedEmails),
+    oidcAllowedDomains: join(data?.oidcAllowedDomains)
+  };
+}
+
 export default function ProfilePage() {
+  const uiV5 = useUiV5();
   const { theme, setTheme } = useTheme();
   const [locale, setLocale] = useState("en");
   const [activeTab, setActiveTab] = useState("general");
@@ -70,6 +89,8 @@ export default function ProfilePage() {
   // Keep OIDC disclosure unavailable until saved settings settle its layout and draft.
   const [loading, setLoading] = useState(true);
   const [settingsError, setSettingsError] = useState("");
+  const [toolSourcesSaving, setToolSourcesSaving] = useState(false);
+  const [toolSourcesError, setToolSourcesError] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [notificationError, setNotificationError] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
@@ -86,7 +107,10 @@ export default function ProfilePage() {
     oidcIssuerUrl: "",
     oidcClientId: "",
     oidcScopes: "openid profile email",
-    oidcLoginLabel: "Sign in with OIDC"
+    oidcLoginLabel: "Sign in with OIDC",
+    oidcAllowedSubjects: "",
+    oidcAllowedEmails: "",
+    oidcAllowedDomains: ""
   });
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcStatus, setOidcStatus] = useState({ type: "", message: "" });
@@ -99,7 +123,8 @@ export default function ProfilePage() {
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
-    outboundNoProxy: ""
+    outboundNoProxy: "",
+    proxyTestUrl: ""
   });
   const [firecrawlUrl, setFirecrawlUrl] = useState("");
   const [firecrawlUrlStatus, setFirecrawlUrlStatus] = useState({ type: "", message: "" });
@@ -127,7 +152,7 @@ export default function ProfilePage() {
     const request = ++settingsRequest.current;
     setLoading(true);
     setSettingsError("");
-    return fetch("/api/settings").
+    return requestSettings().
     then(async (res) => {
       const data = await res.json();
       if (!res.ok || !data || !isObject(data) || Array.isArray(data)) throw new Error(data?.error || "Settings could not be loaded.");
@@ -141,14 +166,16 @@ export default function ProfilePage() {
         oidcIssuerUrl: data?.oidcIssuerUrl || "",
         oidcClientId: data?.oidcClientId || "",
         oidcScopes: data?.oidcScopes || "openid profile email",
-        oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC"
+        oidcLoginLabel: data?.oidcLoginLabel || "Sign in with OIDC",
+        ...oidcAllowlistDraft(data)
       });
       setOidcClientSecret("");
       if (data?.authMode === "oidc" || data?.authMode === "both") setOidcExpanded(true);
       setProxyForm({
         outboundProxyEnabled: data?.outboundProxyEnabled === true,
         outboundProxyUrl: data?.outboundProxyUrl || "",
-        outboundNoProxy: data?.outboundNoProxy || ""
+        outboundNoProxy: data?.outboundNoProxy || "",
+        proxyTestUrl: data?.proxyTestUrl || ""
       });
       setFirecrawlUrl(data?.firecrawlBaseUrl || "");
       setSettingsReady(true);
@@ -165,7 +192,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (isBrowser()) {
-      setOidcRedirectUri(`${window.location.origin}/api/auth/oidc/callback`);
+      setOidcRedirectUri(`${window.location.origin}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth/oidc/callback`);
     }
   }, []);
 
@@ -183,7 +210,7 @@ export default function ProfilePage() {
     setFirecrawlUrlLoading(true);
     setFirecrawlUrlStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ firecrawlBaseUrl: value || "" })
@@ -210,12 +237,13 @@ export default function ProfilePage() {
     setProxyStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           outboundProxyUrl: proxyForm.outboundProxyUrl,
-          outboundNoProxy: proxyForm.outboundNoProxy
+          outboundNoProxy: proxyForm.outboundNoProxy,
+          proxyTestUrl: proxyForm.proxyTestUrl
         })
       });
 
@@ -228,6 +256,27 @@ export default function ProfilePage() {
       }
     } catch (err) {
       setProxyStatus({ type: "error", message: "An error occurred" });
+    } finally {
+      setProxyLoading(false);
+    }
+  };
+
+  const saveProxyTestUrl = async (event) => {
+    event.preventDefault();
+    setProxyLoading(true);
+    setProxyStatus({ type: "", message: "" });
+    try {
+      const response = await requestSettings( {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyTestUrl: proxyForm.proxyTestUrl.trim() })
+      });
+      const data = await response.json();
+      setProxyStatus(response.ok
+        ? { type: "success", message: "Test URL saved" }
+        : { type: "error", message: data.error || "Failed to save test URL" });
+    } catch {
+      setProxyStatus({ type: "error", message: "Failed to save test URL" });
     } finally {
       setProxyLoading(false);
     }
@@ -249,7 +298,7 @@ export default function ProfilePage() {
       const res = await fetch("/api/settings/proxy-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyUrl })
+        body: JSON.stringify({ proxyUrl, testUrl: proxyForm.proxyTestUrl })
       });
 
       const data = await res.json();
@@ -276,7 +325,7 @@ export default function ProfilePage() {
     setProxyStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outboundProxyEnabled })
@@ -311,7 +360,7 @@ export default function ProfilePage() {
     setPassStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -323,7 +372,7 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (res.ok && data?.reauthenticate) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
         return;
       }
       if (res.ok) {
@@ -359,7 +408,7 @@ export default function ProfilePage() {
     request.pending = true;
     setRoutingSave({ pending: true, failedPatch: null });
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch)
@@ -385,7 +434,7 @@ export default function ProfilePage() {
 
   const updateVisionBridge = async (patch) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch)
@@ -434,7 +483,7 @@ export default function ProfilePage() {
 
   const updateHidePaidModels = async (hidePaidModels) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hidePaidModels })
@@ -450,7 +499,7 @@ export default function ProfilePage() {
 
   const updateExposeComboOnly = async (exposeComboOnly) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ exposeComboOnly })
@@ -483,7 +532,7 @@ export default function ProfilePage() {
     const modelVisibilityDenylist = toList(modelVisibilityDraft.deny);
     setModelVisibilitySaving(true);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelVisibilityAllowlist, modelVisibilityDenylist })
@@ -500,7 +549,7 @@ export default function ProfilePage() {
 
   const updateRequireLogin = async (requireLogin) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requireLogin })
@@ -539,13 +588,16 @@ export default function ProfilePage() {
         oidcIssuerUrl: issuerUrl,
         oidcClientId: clientId,
         oidcScopes: scopes || "openid profile email",
-        oidcLoginLabel: loginLabel || "Sign in with OIDC"
+        oidcLoginLabel: loginLabel || "Sign in with OIDC",
+        oidcAllowedSubjects: splitOidcAllowlist(oidcForm.oidcAllowedSubjects),
+        oidcAllowedEmails: splitOidcAllowlist(oidcForm.oidcAllowedEmails),
+        oidcAllowedDomains: splitOidcAllowlist(oidcForm.oidcAllowedDomains)
       };
       if (secret) {
         payload.oidcClientSecret = secret;
       }
 
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -559,7 +611,8 @@ export default function ProfilePage() {
           oidcIssuerUrl: data?.oidcIssuerUrl || issuerUrl,
           oidcClientId: data?.oidcClientId || clientId,
           oidcScopes: data?.oidcScopes || scopes || "openid profile email",
-          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC"
+          oidcLoginLabel: data?.oidcLoginLabel || loginLabel || "Sign in with OIDC",
+          ...oidcAllowlistDraft(data)
         });
         setOidcClientSecret("");
         setOidcStatus({
@@ -597,7 +650,7 @@ export default function ProfilePage() {
     setOidcTestStatus({ type: "", message: "" });
 
     try {
-      const saveRes = await fetch("/api/settings", {
+      const saveRes = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -650,9 +703,27 @@ export default function ProfilePage() {
     }
   };
 
+  const updateLogToolSources = async (enabled) => {
+    setToolSourcesSaving(true);
+    setToolSourcesError("");
+    try {
+      const res = await requestSettings( {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logToolSources: enabled }),
+      });
+      if (!res.ok) throw new Error("Settings update failed");
+      setSettings((prev) => ({ ...prev, logToolSources: enabled }));
+    } catch {
+      setToolSourcesError("Could not save tool source diagnostics. Try again.");
+    } finally {
+      setToolSourcesSaving(false);
+    }
+  };
+
   const updateObservabilityEnabled = async (enabled) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enableObservability: enabled })
@@ -667,7 +738,7 @@ export default function ProfilePage() {
 
   const updateProxyTimelineEnabled = async (enabled) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enableProxyTimeline: enabled }),
@@ -697,7 +768,7 @@ export default function ProfilePage() {
 
   const updateDataRetention = async (patch) => {
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -741,7 +812,7 @@ export default function ProfilePage() {
   const updateProxyTimelineRetention = async (value) => {
     const days = Number(value);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyTimelineRetentionDays: days }),
@@ -755,7 +826,7 @@ export default function ProfilePage() {
   const updateModelAutoSyncInterval = async (value) => {
     const hours = Number(value);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelAutoSyncIntervalHours: hours }),
@@ -768,7 +839,7 @@ export default function ProfilePage() {
 
   const reloadSettings = async () => {
     try {
-      const res = await fetch("/api/settings");
+      const res = await requestSettings();
       if (!res.ok) return;
       const data = await res.json();
       setSettings(data);
@@ -838,6 +909,7 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to import database");
       }
 
+      useSettingsStore.getState().invalidate();
       await reloadSettings();
       setDbStatus({ type: "success", message: "Database imported successfully" });
     } catch (err) {
@@ -893,7 +965,7 @@ export default function ProfilePage() {
     try {
       const res = await fetch("/api/auth/logout", { method: "POST" });
       if (res.ok) {
-        window.location.assign("/login");
+        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
       }
     } catch (err) {
       console.error("Failed to logout:", err);
@@ -906,6 +978,11 @@ export default function ProfilePage() {
     { value: "oidc", label: "OIDC only", hint: "Require OIDC for dashboard access." },
     { value: "both", label: "Both", hint: "Allow either password or OIDC." },
   ];
+
+  if (!settingsReady && uiV5) return <main aria-label="Profile settings" className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6">
+    <h1 className="text-xl font-semibold tracking-tight text-dd-text">Settings</h1>
+    <Card padding={false}><CardContent>{loading ? <p role="status" className="text-[13px] text-dd-muted">Loading settings…</p> : <div role="alert" className="flex flex-wrap items-center justify-between gap-3"><p className="text-[13px] text-dd-danger">{settingsError}</p><Button icon="refresh" variant="secondary" onClick={loadSettings}>Retry settings</Button></div>}</CardContent></Card>
+  </main>;
 
   if (!settingsReady) return <main aria-label="Profile settings" className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
     <h1 className="text-2xl font-semibold">Settings</h1>
@@ -968,18 +1045,18 @@ export default function ProfilePage() {
         onChanged={(patch) => setSettings((current) => ({ ...current, ...patch }))}
       />
 
-      <Card padding={false}><CardHeader icon="badge" title="OIDC Dashboard Login" subtitle={settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik, Keycloak, or Google"} actions={<Button variant="ghost" icon={oidcExpanded ? "expand_less" : "expand_more"} aria-label="Toggle OIDC settings" aria-expanded={oidcExpanded} disabled={loading} onClick={() => setOidcExpanded((v) => !v)} />} />{oidcExpanded ? <CardContent className="flex flex-col gap-5"><Field group label="Auth mode" hint="Choose password login, OIDC, or both."><SegmentedControl aria-label="Auth mode" options={authOptions} value={oidcForm.authMode} onChange={(value) => updateOidcForm("authMode", value)} disabled={loading || oidcLoading} /></Field><div className="grid gap-4 md:grid-cols-2"><Input label="Issuer URL" placeholder="https://auth.example.com/application/o/durindoor/" value={oidcForm.oidcIssuerUrl} onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client ID" placeholder="durindoor-dashboard" value={oidcForm.oidcClientId} onChange={(e) => updateOidcForm("oidcClientId", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client Secret" hint="This value is write-only after saving." type="password" placeholder="Leave blank to keep existing secret" value={oidcClientSecret} onChange={(e) => setOidcClientSecret(e.target.value)} disabled={loading || oidcLoading} /><Input label="Scopes" placeholder="openid profile email" value={oidcForm.oidcScopes} onChange={(e) => updateOidcForm("oidcScopes", e.target.value)} disabled={loading || oidcLoading} /><div className="md:col-span-2"><Input label="Login Button Label" placeholder="Sign in with OIDC" value={oidcForm.oidcLoginLabel} onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)} disabled={loading || oidcLoading} /></div></div><div className="rounded-dd bg-dd-surface-2 p-3"><p className="text-xs font-medium text-dd-muted">Redirect URI</p><code className="block break-all font-mono text-xs text-dd-text">{oidcRedirectUri}</code></div><div className="flex flex-wrap gap-2"><Button variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()}>Save auth mode</Button><Button variant="secondary" loading={oidcTestLoading} onClick={testOidcConnection}>Test connection</Button></div>{oidcTestStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcTestStatus)}`}>{oidcTestStatus.message}</p> : null}{oidcStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcStatus)}`}>{oidcStatus.message}</p> : null}{settings.authMode === "oidc" ? <p className="text-xs text-dd-warning">OIDC login is active. Password login is disabled until you switch back.</p> : null}{settings.authMode === "both" ? <p className="text-xs text-dd-warning">Password and OIDC login are both active.</p> : null}</CardContent> : null}</Card>
+      <Card padding={false}><CardHeader icon="badge" title="OIDC Dashboard Login" subtitle={settings.authMode === "oidc" ? "OIDC active" : settings.authMode === "both" ? "Password + OIDC active" : "Optional SSO via Authentik, Keycloak, or Google"} actions={<Button variant="ghost" icon={oidcExpanded ? "expand_less" : "expand_more"} aria-label="Toggle OIDC settings" aria-expanded={oidcExpanded} disabled={loading} onClick={() => setOidcExpanded((v) => !v)} />} />{oidcExpanded ? <CardContent className="flex flex-col gap-5"><Field group label="Auth mode" hint="Choose password login, OIDC, or both."><SegmentedControl aria-label="Auth mode" options={authOptions} value={oidcForm.authMode} onChange={(value) => updateOidcForm("authMode", value)} disabled={loading || oidcLoading} /></Field><div className="grid gap-4 md:grid-cols-2"><Input label="Issuer URL" placeholder="https://auth.example.com/application/o/durindoor/" value={oidcForm.oidcIssuerUrl} onChange={(e) => updateOidcForm("oidcIssuerUrl", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client ID" placeholder="durindoor-dashboard" value={oidcForm.oidcClientId} onChange={(e) => updateOidcForm("oidcClientId", e.target.value)} disabled={loading || oidcLoading} /><Input label="Client Secret" hint="This value is write-only after saving." type="password" placeholder="Leave blank to keep existing secret" value={oidcClientSecret} onChange={(e) => setOidcClientSecret(e.target.value)} disabled={loading || oidcLoading} /><Input label="Scopes" placeholder="openid profile email" value={oidcForm.oidcScopes} onChange={(e) => updateOidcForm("oidcScopes", e.target.value)} disabled={loading || oidcLoading} /><div className="md:col-span-2"><Input label="Login Button Label" placeholder="Sign in with OIDC" value={oidcForm.oidcLoginLabel} onChange={(e) => updateOidcForm("oidcLoginLabel", e.target.value)} disabled={loading || oidcLoading} /></div></div><div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><p className="text-xs text-dd-muted">Only identities on these allowlists can sign in through OIDC. Separate entries with commas or new lines. Email and domain entries match only when the IdP reports email_verified.</p><div className="grid gap-4 md:grid-cols-3"><Textarea label="Allowed subjects" placeholder="sub claim values" rows={3} value={oidcForm.oidcAllowedSubjects} onChange={(e) => updateOidcForm("oidcAllowedSubjects", e.target.value)} disabled={loading || oidcLoading} /><Textarea label="Allowed emails" placeholder="ops@example.com" rows={3} value={oidcForm.oidcAllowedEmails} onChange={(e) => updateOidcForm("oidcAllowedEmails", e.target.value)} disabled={loading || oidcLoading} /><Textarea label="Allowed domains" placeholder="example.com" rows={3} value={oidcForm.oidcAllowedDomains} onChange={(e) => updateOidcForm("oidcAllowedDomains", e.target.value)} disabled={loading || oidcLoading} /></div>{!splitOidcAllowlist(oidcForm.oidcAllowedSubjects).length && !splitOidcAllowlist(oidcForm.oidcAllowedEmails).length && !splitOidcAllowlist(oidcForm.oidcAllowedDomains).length ? <p role="alert" className="text-xs text-dd-warning">OIDC allowlist is empty: every OIDC login will be refused until you add a subject, email or domain.</p> : null}</div><div className="rounded-dd bg-dd-surface-2 p-3"><p className="text-xs font-medium text-dd-muted">Redirect URI</p><code className="block break-all font-mono text-xs text-dd-text">{oidcRedirectUri}</code></div><div className="flex flex-wrap gap-2"><Button variant="primary" loading={oidcLoading} onClick={() => saveOidcSettings()}>Save auth mode</Button><Button variant="secondary" loading={oidcTestLoading} onClick={testOidcConnection}>Test connection</Button></div>{oidcTestStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcTestStatus)}`}>{oidcTestStatus.message}</p> : null}{oidcStatus.message ? <p role="status" className={`text-xs ${statusClass(oidcStatus)}`}>{oidcStatus.message}</p> : null}{settings.authMode === "oidc" ? <p className="text-xs text-dd-warning">OIDC login is active. Password login is disabled until you switch back.</p> : null}{settings.authMode === "both" ? <p className="text-xs text-dd-warning">Password and OIDC login are both active.</p> : null}</CardContent> : null}</Card>
       </section>
 
       <section role="tabpanel" aria-label="Routing settings" hidden={activeTab !== "routing"} className="flex flex-col gap-5">
 
-      <Card padding={false}><CardHeader icon="route" title="Routing Strategy" subtitle="Defaults used when DurinDoor selects an upstream model" /><CardContent className="flex flex-col gap-5"><Toggle label="Round Robin" description="Cycle through accounts to distribute load." checked={settings.fallbackStrategy === "round-robin"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")} disabled={loading || routingSave.pending} />{settings.fallbackStrategy === "round-robin" ? <Input label="Sticky Limit" hint="Calls per account before switching." type="number" min="1" max="10" value={routingDrafts.stickyRoundRobinLimit ?? (settings.stickyRoundRobinLimit || 3)} onChange={(e) => updateStickyLimit(e.target.value)} disabled={loading || routingSave.pending} /> : null}<Toggle label="Cache Affinity" description="Pin each conversation to one account so the provider prompt cache keeps hitting." checked={settings.fallbackStrategy === "cache-affinity"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "cache-affinity" ? "fill-first" : "cache-affinity")} disabled={loading || routingSave.pending} /><Toggle label="Combo Round Robin" description="Cycle through providers in combos instead of always starting with first." checked={settings.comboStrategy === "round-robin"} onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")} disabled={loading || routingSave.pending} />{settings.comboStrategy === "round-robin" ? <Input label="Combo Sticky Limit" hint="Calls per combo model before switching." type="number" min="1" max="100" value={routingDrafts.comboStickyRoundRobinLimit ?? (settings.comboStickyRoundRobinLimit || 1)} onChange={(e) => updateComboStickyLimit(e.target.value)} disabled={loading || routingSave.pending} /> : null}{routingSave.pending ? <p role="status" className="text-xs text-dd-muted">Saving routing preference…</p> : null}{routingSave.failedPatch ? <div className="flex flex-wrap items-center gap-3"><p role="alert" className="text-xs text-dd-danger">Could not confirm the routing save. Retry to apply this preference.</p><Button variant="secondary" size="sm" onClick={() => saveRoutingPreference(routingSave.failedPatch)}>Retry routing save</Button></div> : null}<Input id="vision-bridge-model-input" label="Vision Model" hint="Target as provider/model. Empty or invalid keeps original model." placeholder="openai/gpt-4o" key={settings.visionBridgeModel || ""} defaultValue={settings.visionBridgeModel || ""} onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })} disabled={loading} /><Toggle label="Vision Bridge" description="Reroute image-bearing requests on a text-only model to this vision model." checked={settings.visionBridgeEnabled === true} onChange={handleVisionBridgeToggle} disabled={loading} /><p className="border-t border-dd-border-subtle pt-4 text-xs text-dd-muted">{settings.fallbackStrategy === "round-robin" ? `Currently distributing requests with ${settings.stickyRoundRobinLimit || 3} calls per account.` : settings.fallbackStrategy === "cache-affinity" ? "Currently pinning each conversation to one account (Cache Affinity); requests without a conversation id use priority order." : "Currently using accounts in priority order (Fill First)."}{settings.comboStrategy === "round-robin" ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} calls per model.` : " Combos always start with their first model."}</p></CardContent></Card>
+      <Card padding={false}><CardHeader icon="route" title="Routing Strategy" subtitle="Defaults used when DurinDoor selects an upstream model" /><CardContent className="flex flex-col gap-5"><Toggle label="Round Robin" description="Cycle through accounts to distribute load." checked={settings.fallbackStrategy === "round-robin"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "round-robin" ? "fill-first" : "round-robin")} disabled={loading || routingSave.pending} />{settings.fallbackStrategy === "round-robin" ? <Input label="Sticky Limit" hint="Calls per account before switching." type="number" min="1" max="10" value={routingDrafts.stickyRoundRobinLimit ?? (settings.stickyRoundRobinLimit || 3)} onChange={(e) => updateStickyLimit(e.target.value)} disabled={loading || routingSave.pending} /> : null}<Toggle label="Earliest Reset" description="Use the account with the soonest known quota reset." checked={settings.fallbackStrategy === "earliest-reset"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "earliest-reset" ? "fill-first" : "earliest-reset")} disabled={loading || routingSave.pending} /><Toggle label="Cache Affinity" description="Pin each conversation to one account so the provider prompt cache keeps hitting." checked={settings.fallbackStrategy === "cache-affinity"} onChange={() => updateFallbackStrategy(settings.fallbackStrategy === "cache-affinity" ? "fill-first" : "cache-affinity")} disabled={loading || routingSave.pending} /><Toggle label="Combo Round Robin" description="Cycle through providers in combos instead of always starting with first." checked={settings.comboStrategy === "round-robin"} onChange={() => updateComboStrategy(settings.comboStrategy === "round-robin" ? "fallback" : "round-robin")} disabled={loading || routingSave.pending} />{settings.comboStrategy === "round-robin" ? <Input label="Combo Sticky Limit" hint="Calls per combo model before switching." type="number" min="1" max="100" value={routingDrafts.comboStickyRoundRobinLimit ?? (settings.comboStickyRoundRobinLimit || 1)} onChange={(e) => updateComboStickyLimit(e.target.value)} disabled={loading || routingSave.pending} /> : null}{routingSave.pending ? <p role="status" className="text-xs text-dd-muted">Saving routing preference…</p> : null}{routingSave.failedPatch ? <div className="flex flex-wrap items-center gap-3"><p role="alert" className="text-xs text-dd-danger">Could not confirm the routing save. Retry to apply this preference.</p><Button variant="secondary" size="sm" onClick={() => saveRoutingPreference(routingSave.failedPatch)}>Retry routing save</Button></div> : null}<Input id="vision-bridge-model-input" label="Vision Model" hint="Target as provider/model. Empty or invalid keeps original model." placeholder="openai/gpt-4o" key={settings.visionBridgeModel || ""} defaultValue={settings.visionBridgeModel || ""} onBlur={(e) => updateVisionBridge({ visionBridgeModel: e.target.value.trim() })} disabled={loading} /><Toggle label="Vision Bridge" description="Reroute image-bearing requests on a text-only model to this vision model." checked={settings.visionBridgeEnabled === true} onChange={handleVisionBridgeToggle} disabled={loading} /><p className="border-t border-dd-border-subtle pt-4 text-xs text-dd-muted">{settings.fallbackStrategy === "round-robin" ? `Currently distributing requests with ${settings.stickyRoundRobinLimit || 3} calls per account.` : settings.fallbackStrategy === "earliest-reset" ? "Currently prioritizing accounts whose quota resets soonest." : settings.fallbackStrategy === "cache-affinity" ? "Currently pinning each conversation to one account (Cache Affinity); requests without a conversation id use priority order." : "Currently using accounts in priority order (Fill First)."}{settings.comboStrategy === "round-robin" ? ` Combos rotate after ${settings.comboStickyRoundRobinLimit || 1} calls per model.` : " Combos always start with their first model."}</p></CardContent></Card>
       <Card padding={false}><CardHeader icon="sync" title="Model Auto-update" subtitle="Refresh provider model lists from their APIs" /><CardContent className="flex flex-col gap-3"><Field label="Update interval" hint="Providers with Auto-update models on (set on each provider page) are refreshed this often. Off stops scheduled updates; Sync now still works."><Select aria-label="Model auto-update interval" options={MODEL_AUTO_SYNC_INTERVALS} value={MODEL_AUTO_SYNC_INTERVALS.some((o) => o.value === settings.modelAutoSyncIntervalHours) ? settings.modelAutoSyncIntervalHours : 24} disabled={loading} onChange={updateModelAutoSyncInterval} /></Field></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="Network settings" hidden={activeTab !== "network"} className="flex flex-col gap-5">
 
-      <Card padding={false}><CardHeader icon="lan" title="Network" subtitle="Outbound services and proxy behavior" /><CardContent className="flex flex-col gap-5"><Toggle label="Outbound Proxy" description="Enable proxy for OAuth and provider outbound requests." checked={settings.outboundProxyEnabled === true} onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))} disabled={loading || proxyLoading} />{settings.outboundProxyEnabled === true ? <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><Input label="Proxy URL" hint="Leave empty to inherit existing environment proxy." placeholder="http://127.0.0.1:7897" value={proxyForm.outboundProxyUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))} disabled={loading || proxyLoading} /><Input label="No Proxy" hint="Comma-separated hostnames or domains to bypass proxy." placeholder="localhost,127.0.0.1" value={proxyForm.outboundNoProxy} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))} disabled={loading || proxyLoading} /><div className="flex flex-wrap gap-2"><Button variant="secondary" loading={proxyTestLoading} disabled={loading || proxyLoading} onClick={testOutboundProxy}>Test proxy URL</Button><Button type="submit" variant="primary" loading={proxyLoading}>Apply</Button></div></form> : null}{proxyStatus.message ? <p role="status" className={`text-xs ${statusClass(proxyStatus)}`}>{proxyStatus.message}</p> : null}<form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Firecrawl URL" hint="Custom Firecrawl or self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL." placeholder="https://api.firecrawl.dev" value={firecrawlUrl} onChange={(e) => setFirecrawlUrl(e.target.value)} disabled={loading || firecrawlUrlLoading} /><div><Button type="submit" variant="primary" loading={firecrawlUrlLoading}>Save</Button></div>{firecrawlUrlStatus.message ? <p role="status" className={`text-xs ${statusClass(firecrawlUrlStatus)}`}>{firecrawlUrlStatus.message}</p> : null}</form></CardContent></Card>
+      <Card padding={false}><CardHeader icon="lan" title="Network" subtitle="Outbound services and proxy behavior" /><CardContent className="flex flex-col gap-5"><Toggle label="Outbound Proxy" description="Enable proxy for OAuth and provider outbound requests." checked={settings.outboundProxyEnabled === true} onChange={() => updateOutboundProxyEnabled(!(settings.outboundProxyEnabled === true))} disabled={loading || proxyLoading} />{settings.outboundProxyEnabled === true ? <form onSubmit={updateOutboundProxy} className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5"><Input label="Proxy URL" hint="Leave empty to inherit existing environment proxy." placeholder="http://127.0.0.1:7897" value={proxyForm.outboundProxyUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundProxyUrl: e.target.value }))} disabled={loading || proxyLoading} /><Input label="No Proxy" hint="Comma-separated hostnames or domains to bypass proxy." placeholder="localhost,127.0.0.1" value={proxyForm.outboundNoProxy} onChange={(e) => setProxyForm((prev) => ({ ...prev, outboundNoProxy: e.target.value }))} disabled={loading || proxyLoading} /><div className="flex flex-wrap gap-2"><Button variant="secondary" loading={proxyTestLoading} disabled={loading || proxyLoading} onClick={testOutboundProxy}>Test proxy URL</Button><Button type="submit" variant="primary" loading={proxyLoading}>Apply</Button></div></form> : null}<form onSubmit={saveProxyTestUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Test URL" hint="HTTPS destination for proxy tests. Leave empty for the default." placeholder="https://google.com/" value={proxyForm.proxyTestUrl} onChange={(e) => setProxyForm((prev) => ({ ...prev, proxyTestUrl: e.target.value }))} disabled={loading || proxyLoading} /><div><Button type="submit" variant="primary" loading={proxyLoading}>Save test URL</Button></div></form>{proxyStatus.message ? <p role="status" className={`text-xs ${statusClass(proxyStatus)}`}>{proxyStatus.message}</p> : null}<form onSubmit={updateFirecrawlUrl} className="flex flex-col gap-3 border-t border-dd-border-subtle pt-5"><Input label="Firecrawl URL" hint="Custom Firecrawl or self-hosted endpoint. Falls back to FIRECRAWL_BASE_URL." placeholder="https://api.firecrawl.dev" value={firecrawlUrl} onChange={(e) => setFirecrawlUrl(e.target.value)} disabled={loading || firecrawlUrlLoading} /><div><Button type="submit" variant="primary" loading={firecrawlUrlLoading}>Save</Button></div>{firecrawlUrlStatus.message ? <p role="status" className={`text-xs ${statusClass(firecrawlUrlStatus)}`}>{firecrawlUrlStatus.message}</p> : null}</form></CardContent></Card>
       </section>
 
       <section role="tabpanel" aria-label="System and data settings" hidden={activeTab !== "system"} className="flex flex-col gap-5">
@@ -988,7 +1065,7 @@ export default function ProfilePage() {
         {dbStatus.message ? <p role="status" className={`text-xs ${statusClass(dbStatus)}`}>{dbStatus.message}</p> : null}<SelectiveTransferPanel />
       </CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
+      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Log tool sources" description="Log tool names and source counts for authenticated requests when LOG_LEVEL=DEBUG. Tool names may disclose identifiers." checked={settings.logToolSources === true} onChange={updateLogToolSources} disabled={loading || toolSourcesSaving} />{toolSourcesError ? <p role="alert" className="text-xs text-dd-danger">{toolSourcesError}</p> : null}<Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
         <div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5">
           <Toggle label="Auto-clean old data" description="Every hour, delete usage history, request details, timeline traces and quota snapshots older than the window below." checked={dataRetentionEnabled} onChange={(value) => updateDataRetention({ dataRetentionEnabled: value === true })} disabled={loading} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { cavemanEngine } from "../../../open-sse/services/compression/engines/cavemanAdapter.js";
 import { cavemanCompress, applyRulesToText } from "../../../open-sse/services/compression/caveman.js";
 
@@ -105,6 +105,26 @@ describe("caveman leaves unfenced diffs intact (#1468)", () => {
     const out = result.body.messages[0].content;
     expect(out).toContain(DIFF);
     expect(out).not.toContain("Please kindly make sure");
+  });
+
+  it("keeps protected placeholders opaque with numeric and ordinary seeds", () => {
+    const random = vi.spyOn(globalThis.crypto, "getRandomValues");
+    try {
+      for (const seedByte of [0x12, 0xab]) {
+        random.mockImplementation((bytes) => bytes.fill(seedByte));
+        const content = `${TRIGGER}\n\n${DIFF}\n\nPlease kindly explain whether this is basically safe.`;
+        const result = cavemanCompress(
+          { model: "gpt-4", messages: [{ role: "user", content }] },
+          { enabled: true, intensity: "full", preservePatterns: ["CAVEMAN"] }
+        );
+        const out = result.body.messages[0].content;
+        expect(out).toContain(DIFF);
+        expect(out).not.toContain("Please kindly make sure");
+        expect(out).not.toContain("OMNI_CAVEMAN");
+      }
+    } finally {
+      random.mockRestore();
+    }
   });
 
   it("keeps a bare hunk without file headers", () => {

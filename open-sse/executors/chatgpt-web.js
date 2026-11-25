@@ -19,18 +19,28 @@
  *              pool disabled), in which case HTTP.
  */
 import { executeChatGptWebCleanRoom } from "../utils/chatgptWebExecutorAdapter.js";
+import { runChatGptWebBrowserTurn } from "../utils/chatgptWebBrowserSession.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { BrowserUnavailableError } from "../services/browserPool.js";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ChatGptWebHttpExecutor } from "./chatgpt-web-http.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const CHATGPT_WEB_URL = "https://chatgpt.com";
 export const CHATGPT_WEB_TRANSPORTS = ["auto", "browser", "http"];
 
+// The page's own conversation request failed with an auth status. The HTTP transport
+// already reports these as 401/403, so an expired session reads the same on both.
+const UPSTREAM_AUTH_STATUS = /\bconversation failed with status (401|403)\b/i;
+
 function statusForAdapterError(message) {
   if (/storage state|credentials|connection ID|session cookie/i.test(message)) return 401;
+  const upstreamAuth = UPSTREAM_AUTH_STATUS.exec(message);
+  if (upstreamAuth) return Number(upstreamAuth[1]);
   // Preserve upstream quota semantics so the shared account-fallback loop can exclude a
   // depleted Free session and immediately try the next configured ChatGPT Web account.
   if (
@@ -60,6 +70,14 @@ function hasTools(body) {
   return Array.isArray(body?.tools) && body.tools.length > 0 && body?.tool_choice !== "none";
 }
 
+function hasMediaParts(body) {
+  return Array.isArray(body?.messages) && body.messages.some((message) =>
+    Array.isArray(message?.content) && message.content.some((part) =>
+      isObject(part) && ["image", "image_url", "input_image", "file", "document", "input_file"].includes(part.type),
+    ),
+  );
+}
+
 export class ChatGptWebExecutor extends BaseExecutor {
   /**
    * @param {object} [deps] test seams: `browser` (adapter deps), `runBrowser`,
@@ -72,20 +90,37 @@ export class ChatGptWebExecutor extends BaseExecutor {
   }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input);
     const transport = resolveChatGptWebTransport(input.credentials?.providerSpecificData);
-    if (transport === "http" || (transport === "auto" && hasTools(input.body))) {
+    const hasMedia = hasMediaParts(input.body);
+    const hasRequestTools = hasTools(input.body);
+    if (transport === "auto" && hasMedia && hasRequestTools) {
+      const message = "ChatGPT Web cannot process image or file inputs together with tools.";
+      return {
+        response: errorResponse(400, message, { type: "invalid_request", code: "UNSUPPORTED_MEDIA_WITH_TOOLS" }),
+        url: CHATGPT_WEB_URL,
+        headers: {},
+        transformedBody: input.body,
+      };
+    }
+    if (transport === "http" || (transport === "auto" && hasRequestTools)) {
       return this.httpExecutor.execute(input);
     }
     try {
-      return await this.runBrowser(input);
+      return await this.runBrowser(input, sender);
     } catch (error) {
-      if (transport === "auto" && error instanceof BrowserUnavailableError) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      if (transport === "auto" && !hasMedia && error instanceof BrowserUnavailableError) {
         input.log?.warn?.("CGPT-WEB", `Browser transport unavailable, using HTTP: ${error.message}`);
         return this.httpExecutor.execute(input);
       }
-      const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      let message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
       // Runtime prerequisites are unavailable even when their diagnostics mention a request.
       const status = error instanceof BrowserUnavailableError ? 503 : statusForAdapterError(message);
+      if (UPSTREAM_AUTH_STATUS.test(message)) {
+        message = `ChatGPT auth failed (HTTP ${status}) — the session may be expired. Re-paste your __Secure-next-auth.session-token cookie from chatgpt.com.`;
+      }
       return {
         response: errorResponse(status, message || "ChatGPT Web browser execution failed", {
           type: "upstream_error",
@@ -94,14 +129,40 @@ export class ChatGptWebExecutor extends BaseExecutor {
         url: CHATGPT_WEB_URL,
         headers: {},
         transformedBody: input.body,
+        attemptStartedAt: sender.attemptStartedAt,
       };
     }
   }
 
-  runBrowser(input) {
-    const proxyUrl = resolveProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
+  async runBrowser(input, sender) {
+    const proxyUrl = resolveConnectProxyForRequest(CHATGPT_WEB_URL, input.proxyOptions).proxyUrl;
     const run = this.deps.runBrowser ?? executeChatGptWebCleanRoom;
-    return run({ ...input, proxyUrl }, this.deps.browser ?? {});
+    const deps = this.deps.browser ?? {};
+    const runTurn = deps.runTurn ?? runChatGptWebBrowserTurn;
+    let sent = null;
+    // The page turn is the one physical send; browser and session setup are not.
+    // Starting it stands in for response headers, so the header deadline does not
+    // cut off a long answer.
+    const sendTurn = async (session, turn) => {
+      try {
+        sent = await sender.sendRequest(CHATGPT_WEB_URL, { signal: input.signal }, input.proxyOptions, {
+          transport: () => ({ reply: runTurn(session, turn) }),
+        });
+      } catch (error) {
+        // The turn never started, so its own page cleanup will not run.
+        if (session?.closePageOnCleanup) await session.page?.close().catch(() => {});
+        throw error;
+      }
+      return sent.reply;
+    };
+    try {
+      const response = await run({ ...input, proxyUrl }, { ...deps, runTurn: sendTurn });
+      transferProviderAttemptDispatch(sent, response);
+      return response;
+    } catch (error) {
+      await settleProviderAttemptDispatch(sent, { reason: input.signal?.aborted ? "abort" : "transport_error" });
+      throw error;
+    }
   }
 }
 

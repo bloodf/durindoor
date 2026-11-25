@@ -41,7 +41,8 @@ vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
   checkAndRefreshToken: vi.fn(async (_provider, credentials) => credentials),
   updateProviderCredentials: vi.fn(),
 }));
-vi.mock("../../src/sse/services/model.js", () => ({ getAutoComboCatalog: vi.fn() }));
+vi.mock("../../src/sse/services/model.js", () => ({ filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn() }));
 vi.mock("../../src/sse/utils/logger.js", () => ({
   debug: vi.fn(), error: vi.fn(), info: vi.fn(), request: vi.fn(), warn: vi.fn(),
 }));

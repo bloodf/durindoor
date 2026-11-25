@@ -22,7 +22,8 @@
  * the `<thinking_mode>enabled</thinking_mode>` reasoning trigger, matching
  * buildKiroPayload.
  */
-import { register } from "../index.js";
+import { createKiroToolNames } from "../../utils/kiroToolNames.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { validateKiroOutputLimit } from "./openai-to-kiro.js";
 import { resolveSessionId } from "../../utils/sessionManager.js";
@@ -50,16 +51,7 @@ function toolUseToText(name, input) {
   return `[Tool call: ${name || "unknown"}(${argStr})]`;
 }
 
-/**
- * Kiro's CodeWhisperer API rejects tool names with characters outside
- * `[a-zA-Z0-9_-]`. Replace only the illegal characters with `_` — consecutive
- * underscores are legal and must survive intact (MCP-style names like
- * `mcp__server__tool` rely on the double underscore as a separator).
- * Mirrors the sanitizer in openai-to-kiro.js so both Kiro routes agree.
- */
-function sanitizeKiroToolName(name) {
-  return isString(name) ? name.replace(/[^a-zA-Z0-9_-]/g, "_") : name;
-}
+
 
 /** Preserve error meaning when Claude tool results must become plain text. */
 function toolResultBlockToText(content, isError = false) {
@@ -127,7 +119,7 @@ function flattenClaudeToolInteractions(messages) {
  * Kiro requires alternating user/assistant turns; consecutive same-role
  * messages are merged.
  */
-function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new Map()) {
+function convertClaudeMessagesToKiro(messages, tools, model, toolName) {
   const history = [];
   let currentMessage = null;
 
@@ -146,8 +138,7 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
     // Kiro rejects illegal characters in a tool name; sanitize and remember
     // the original so the response translators can hand the client back the
     // name it registered.
-    const name = sanitizeKiroToolName(originalName);
-    if (name !== originalName) toolNameMap.set(name, originalName);
+    const name = toolName(originalName);
     const description = t.description || `Tool: ${name}`;
     const schema = t.input_schema || {};
     const normalizedSchema = normalizeKiroToolSchema(schema);
@@ -274,7 +265,7 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
             toolUses.push({
               toolUseId: block.id,
               // Match the sanitized name Kiro was given in the tool spec.
-              name: sanitizeKiroToolName(block.name),
+              name: toolName(block.name),
               input: block.input || {}
             });
           }
@@ -295,17 +286,24 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
 
   if (currentRole !== null) flushPending();
 
-  // Pop the last user turn as currentMessage (skip trailing assistant turns).
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].userInputMessage) {
-      currentMessage = history.splice(i, 1)[0];
-      break;
-    }
+  // Only a final user turn owns currentMessage; keep assistant-ended history
+  // intact and supply the same neutral continuation used by the Chat route.
+  if (history.at(-1)?.userInputMessage) {
+    currentMessage = history.pop();
+  } else if (history.length > 0) {
+    currentMessage = { userInputMessage: { content: "Continue", modelId: model } };
   }
 
-  // Grab tools from the first history user turn before cleanup strips them.
-  const firstHistoryTools =
-  history[0]?.userInputMessage?.userInputMessageContext?.tools;
+  // Grab the tools schema from whichever history turn received it before
+  // cleanup strips it. The schema is attached to the first *emitted user
+  // turn*, which is not necessarily history[0]: a transcript that opens with
+  // an assistant turn puts the schema on a later turn, and a transcript with
+  // no user turn at all leaves it on none. Reading history[0] alone dropped
+  // the schema in both shapes.
+  const toolsCarrier = history.find((item) =>
+  item?.userInputMessage?.userInputMessageContext?.tools?.length
+  );
+  const carriedTools = toolsCarrier?.userInputMessage?.userInputMessageContext?.tools;
 
   history.forEach((item) => {
     if (item.userInputMessage?.userInputMessageContext?.tools) {
@@ -354,16 +352,33 @@ function convertClaudeMessagesToKiro(messages, tools, model, toolNameMap = new M
     currentMessage = { userInputMessage: { content: "", modelId: model } };
   }
 
-  // Inject tools into currentMessage after cleanup if not already present.
+  // Inject the declared schema into currentMessage after cleanup, so the turn
+  // Kiro validates against tool use always carries it.
+  //
+  // Two sources, in order:
+  //   1. the history turn that already received the schema, carried over as
+  //      the same caller-declared specifications;
+  //   2. the caller's own `tools` array, for a transcript with no user turn
+  //      (the schema was attached to no turn at all) or one whose only user
+  //      turn became currentMessage without it.
+  //
+  // Only caller-declared specifications are ever carried. When the client
+  // declared no tools, flattenClaudeToolInteractions already collapsed every
+  // tool_use / tool_result block to text, so nothing structured remains to
+  // validate and nothing is injected.
+  const resolvedTools = carriedTools?.length > 0
+  ? carriedTools
+  : (clientProvidedTools && Array.isArray(tools) ? buildToolSpecs() : null);
+
   if (
-  firstHistoryTools?.length > 0 &&
+  resolvedTools?.length > 0 &&
   !currentMessage.userInputMessage.userInputMessageContext?.tools)
   {
     if (!currentMessage.userInputMessage.userInputMessageContext) {
       currentMessage.userInputMessage.userInputMessageContext = {};
     }
     currentMessage.userInputMessage.userInputMessageContext.tools =
-    firstHistoryTools;
+    resolvedTools;
   }
 
   return { history: mergedHistory, currentMessage };
@@ -450,11 +465,12 @@ export function claudeToKiroRequest(model, body, stream, credentials, translatio
   }
 
   const toolNameMap = new Map();
+  const toolName = createKiroToolNames((tools || []).map((t) => t.name), toolNameMap);
   const { history, currentMessage } = convertClaudeMessagesToKiro(
     messages,
     tools,
     kiroModelId,
-    toolNameMap
+    toolName
   );
 
   // Guard 2: tools present → reconcile dangling tool_results.

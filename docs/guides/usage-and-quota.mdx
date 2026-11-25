@@ -66,11 +66,13 @@ A 429 sent to the client carries `Retry-After` when the cooldown is known. The f
 
 ## Retention
 
-Nothing is pruned by default. Turn on **Auto-clean old data** under **Profile → Observability** to delete usage history, request details, timeline traces, and quota snapshots older than the window you pick (30 days unless you change it; presets 7, 15, 30, 60, or 90, or a custom value from 1 to 3650). The sweep runs hourly, starting a minute after boot. **Clean now** runs it at once. Over HTTP it is `GET` and `POST /api/data-retention`.
+Nothing is pruned by default. Turn on **Auto-clean old data** under **Profile → Observability** to delete usage history, request details, timeline traces, and quota snapshots older than the window you pick (30 days unless you change it; presets 7, 15, 30, 60, or 90, or a custom value from 1 to 3650). The sweep also prunes usageLastSeen, usageDaily and token-saver records, and rebuilds the boundary day from retained events. The usage stats API exposes `totalRequestsLifetime`, the stored counter; retention rebuilds it from remaining history. The sweep runs hourly, starting a minute after boot. **Clean now** runs it at once. Over HTTP it is `GET` and `POST /api/data-retention`.
 
 There is no CSV export for usage. **Download Backup** under **Profile → Data & Backups** saves portable configuration JSON, including API-key lifetime totals, but not request usage history, request details, or timeline events. To preserve that history, use an engine-level backup: the SQLite database or a PostgreSQL dump. See [Data management](../operations/data-management.mdx).
 
 ## Prices
+
+GitHub Copilot requests for `claude-sonnet-5.5` use the built-in Sonnet 5.5 token rates for estimated cost. A custom price for that provider and model can override them.
 
 Estimated cost uses the built-in model prices. Override a model's price on **Settings → Pricing** (`/dashboard/settings/pricing`) or through `/api/pricing` (`GET`, `PATCH`, `DELETE` to reset). New requests use the new price. Rows already stored keep their original estimate. Compare estimates with provider billing before using them for financial decisions.
 

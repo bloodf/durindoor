@@ -54,10 +54,10 @@ Compose has `postgres16`, `postgres17`, and `postgres18` profiles. Start one pro
 
 <Steps>
 <Step>
-Start a cluster. Default compose `up` does not start Postgres. Before using a profile, replace its example PostgreSQL password and review the host port publication. For SQLite cutover, leave `DURINDOOR_PG_URL` unset or empty and do not set `DURINDOOR_DATABASE_ENGINE=postgres`.
+Start a cluster. Default compose `up` does not start Postgres. Before using a profile, set `POSTGRES_PASSWORD` in `.env`. Include the PostgreSQL override file so the required password is only interpolated when you opt in. For SQLite cutover, leave `DURINDOOR_PG_URL` unset or empty and do not set `DURINDOOR_DATABASE_ENGINE=postgres`.
 
 ```bash
-docker compose --profile postgres18 up -d
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml --profile postgres18 up -d
 ```
 
 </Step>

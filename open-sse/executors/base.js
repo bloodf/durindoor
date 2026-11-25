@@ -1,22 +1,19 @@
-import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
+import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
+import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
+import { evictResponseDispatcher } from "../utils/proxyFetch.js";
+import { cancelDiscardedResponse, carriesCredential, createRequestSender, requestAbortError, resolveHeaderTimeout } from "./sendRequest.js";
 import { dbg } from "../utils/debugLog.js";
 
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
-import { findOffendingField } from "../config/providerFieldStrips.js";
-import { readBoundedResponseText } from "../utils/error.js";
-import {
-  prepareProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
-  settleProviderAttemptDispatch,
-  transferProviderAttemptDispatch } from
-"../services/providerAttemptContext.js";
+import { findOffendingField, findRejected422Field } from "../config/providerFieldStrips.js";
+import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 
 
 // Format byte count to human-readable string for debug logs
@@ -40,17 +37,18 @@ function removeBetaFlag(headers, flag) {
   }
 }
 
-function requestAbortError(reason) {
-  if (reason instanceof Error && reason.name === "AbortError") return reason;
-  return new DOMException("Provider request aborted", "AbortError");
-}
-
-/** Release a discarded response without trusting provider-controlled cancel latency. */
-function cancelDiscardedResponse(response) {
-  try {
-    const cancellation = response?.body?.cancel?.("discarded provider response");
-    if (cancellation?.catch) void cancellation.catch(() => {});
-  } catch {/* body may already be locked or closed */}
+/** Collapse case variants before fetch combines duplicate Anthropic headers. */
+export function normalizeAnthropicHeaders(headers) {
+  for (const name of ["anthropic-version", "anthropic-beta"]) {
+    const keys = Object.keys(headers).filter((key) => key.toLowerCase() === name);
+    if (!keys.length) continue;
+    const values = [...new Set(keys.flatMap((key) => String(headers[key] ?? "").split(",")).map((value) => value.trim()).filter(Boolean))];
+    // Keep the first spelling: callers and tests read the canonical key as set.
+    const [kept, ...duplicates] = keys;
+    for (const key of duplicates) delete headers[key];
+    if (values.length) headers[kept] = name === "anthropic-version" ? values[0] : values.join(",");
+    else delete headers[kept];
+  }
 }
 
 /**
@@ -234,7 +232,7 @@ export class BaseExecutor {
       } else if (credentials.accessToken) {
         headers["Authorization"] = `Bearer ${credentials.accessToken}`;
       }
-      if (!headers["anthropic-version"]) {
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === "anthropic-version")) {
         headers["anthropic-version"] = ANTHROPIC_API_VERSION;
       }
     } else {
@@ -250,6 +248,7 @@ export class BaseExecutor {
       headers["Accept"] = "text/event-stream";
     }
 
+    normalizeAnthropicHeaders(headers);
     return headers;
   }
 
@@ -263,6 +262,10 @@ export class BaseExecutor {
 
   shouldRetry(status, urlIndex) {
     return status === HTTP_STATUS.RATE_LIMITED && urlIndex + 1 < this.getFallbackCount();
+  }
+
+  shouldFallbackResponse(response, url, errorText) {
+    return false;
   }
 
   // Override in subclass for provider-specific refresh
@@ -279,42 +282,18 @@ export class BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null }) {
-    // An executor-chosen no-proxy transport (OpenCode's TLS client), only when set.
-    const withDirectFetch = (init) => {
-      if (directFetch) init.directFetch = directFetch;
-      return init;
-    };
     if (signal?.aborted) throw requestAbortError(signal.reason);
     // Callers (direct execute() calls, tests) may omit requestContext entirely.
     // Allocate a fresh per-call object so executor request-scoped metadata
     // (Grok session/req/turn ids, etc.) is always threaded, never dropped.
     requestContext ??= {};
-    const fallbackCount = this.getFallbackCount();
+    const fallbackCount = this.getFallbackCount(credentials);
     let lastError = null;
     let lastStatus = 0;
     const retryAttemptsByUrl = {};
     const dispatchesByUrl = {};
     // Keep explicit 400 downgrades across rebuilt attempts in this execution.
     const strippedFields = new Set();
-    let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-    attemptStartedAt :
-    null;
-    let dispatchCount = 0;
-    const beginDispatch = () => {
-      const contextual = prepareProviderAttemptDispatch();
-      if (Number.isSafeInteger(contextual) && contextual > 0) {
-        providerAttemptStartedAt = contextual;
-        dispatchCount += 1;
-        return providerAttemptStartedAt;
-      }
-      if (dispatchCount > 0 || providerAttemptStartedAt === null) {
-        const allocated = isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
-        if (Number.isSafeInteger(allocated) && allocated > 0) providerAttemptStartedAt = allocated;
-      }
-      dispatchCount += 1;
-      return providerAttemptStartedAt;
-    };
-
     // Merge default retry config with provider-specific config (base ceiling per status).
     // NOTE: never mutate this.config — executors are cached singletons shared across
     // concurrent requests. All per-request policy lives in local vars derived from requestPolicy.
@@ -326,7 +305,16 @@ export class BaseExecutor {
     const skipRules = policy.skipRules;
     const hasContainsRule = policy.hasContainsRule;
     // Header/connect timeout: per-request policy override → provider config → global default.
-    const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    const headerTimeoutMs = resolveHeaderTimeout(this.config, policy);
+
+    const sender = createRequestSender({
+      attemptStartedAt,
+      onProviderAttempt,
+      headerTimeoutMs,
+      // Decided per send below: only a request that carries a credential is guarded.
+      credentialed: false,
+      deferHeaders: true
+    });
 
     // Count actual sends separately from status retries: every recovery spends
     // the per-URL ceiling, without changing status-specific retry allowances.
@@ -404,6 +392,21 @@ export class BaseExecutor {
         }
         if (dynamic != null && dynamic !== false) waitMs = dynamic;
       }
+      // Hooks own their hint decisions; an explicit operator retry also wins.
+      // Only inspect an eligible generic 429, and keep the original response intact.
+      if (response && Number(statusKey) === HTTP_STATUS.RATE_LIMITED &&
+          !this.computeRetryDelay && matchedRule?.action !== "retry") {
+        const now = Date.now();
+        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, now });
+        if (evidence?.source !== "retry_after") {
+          const bodyText = await readOptionalProbeText(response, { signal });
+          evidence = parseRateLimitEvidence({ status: 429, bodyText, now });
+        }
+        const remaining = Math.min(attempts - retryAttemptsByUrl[urlIndex],
+          maxTransportAttempts == null ? Infinity : maxTransportAttempts - dispatchesByUrl[urlIndex]);
+        if (["retry_after", "structured_body"].includes(evidence?.source) &&
+            evidence.resetAtMs - now > remaining * delayMs) return false;
+      }
       retryAttemptsByUrl[urlIndex]++;
       log?.debug?.("RETRY", `${reason} retry ${retryAttemptsByUrl[urlIndex]}/${attempts} after ${waitMs / 1000}s`);
       await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -420,12 +423,14 @@ export class BaseExecutor {
       // The third slot deliberately differs from upstream's URL slot so executor
       // adaptations can consume request-scoped state without retaining it.
       // Extra arguments are backward-compatible with executors that do not use them.
-      const url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
+      let url = this.buildUrl(model, stream, urlIndex, credentials, requestContext);
       const transformedBody = this.clampCustomMaxOutput(
         this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext
       );
-      const headers = this.buildHeaders(credentials, stream, requestContext, model);
+      const headers = this.buildHeaders(credentials, stream, requestContext, model, body, transformedBody);
+      const claudeOAuth = this.provider === "claude" && !credentials?.apiKey && Boolean(credentials?.accessToken);
+      const claudeFast = claudeOAuth && isClaudeFastRequest(transformedBody, claudeRequestedBetas(body, requestContext.clientHeaders));
       // Relay correlation is server-owned. Never trust the client's x-request-id;
       // preserve an executor-supplied upstream ID when one is intentional.
       if (proxyOptions?.vercelRelayUrl && requestContext?.requestId &&
@@ -438,17 +443,6 @@ export class BaseExecutor {
       }
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
-
-      // Abort if upstream doesn't return response headers within the connect/header timeout.
-      // OUR timeout is proven by reason identity at the catch (mergedSignal.reason ===
-      // connectCtrl.signal.reason): undici rejects with the exact reason object we pass to
-      // abort(), and a near-simultaneous caller abort must not be misclassified.
-      let connectCtrl = new AbortController();
-      const armConnectTimer = () => setTimeout(() => {
-        connectCtrl.abort(fetchConnectTimeoutError());
-      }, headerTimeoutMs);
-      let connectTimer = armConnectTimer();
-      let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
         // Native executors may advertise OpenAI input without using its wire API.
@@ -465,56 +459,62 @@ export class BaseExecutor {
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
-        chargeDispatch(urlIndex);
-        beginDispatch();
-        const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
-        if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
-        let response = await runQuotaBearingProviderRequest(() =>
-          proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
-        // Cohere can explicitly suggest its supported tier on a 422. Retry only
-        // that rejection, once, and only when a different effort was sent.
-        //
-        // COMPATIBILITY CONTRACT (see internal/docs/port-reports/1073-existing-provider-request-residuals.md):
-        //  - The recovery is an EXTRA transport dispatch on this base URL, so it
-        //    is gated by the SAME transport-attempt budget the generic retry path
-        //    spends (`requestPolicy.maxTransportAttempts`, which counts the
-        //    first try). With a one-attempt ceiling the 422 is returned unchanged
-        //    and no second request is dispatched.
-        //  - The error body read is OPTIONAL. A body that cannot be read is a
-        //    NON-MATCH: the original response and its status are preserved
-        //    instead of the read failure surfacing as a transport error.
-        //  - Without a requestPolicy (no ceiling) the implicit pre-port
-        //    behavior is unchanged: the recovery still runs exactly once.
-        if (this.provider === "cohere" && response.status === 422 &&
-            isString(requestBody?.reasoning_effort) && requestBody.reasoning_effort !== "high" &&
-            transportBudgetLeft(urlIndex)) {
-          const errorText = await readOptionalProbeText(response, { signal });
-          if (/reasoning_effort/i.test(errorText) && /\buse\s+['"`]high['"`]\s+instead\b/i.test(errorText)) {
-            requestBody = { ...requestBody, reasoning_effort: "high" };
-            bodyStr = JSON.stringify(requestBody);
+        const send = (serializedBody) => {
+          chargeDispatch(urlIndex);
+          return sender.sendRequest(url, {
+            method: "POST", headers, body: serializedBody, signal,
+            // Credentials never follow a redirect unless the registry entry says why it must.
+            ...(!this.config?.quirks?.allowRedirects && carriesCredential(url, headers, credentials) ? { redirect: "error" } : null),
+            ...(directFetch ? { directFetch } : null)
+          }, proxyOptions);
+        };
+        let response = await send(bodyStr);
+        let responseFormat;
+        // Only the official Chat endpoint can negotiate its token field or
+        // fall back to Responses. Each replay uses the ordinary dispatch budget.
+        if (this.provider === "openai" && openAIChatWire && Array.isArray(requestBody?.messages) &&
+            /\/chat\/completions\/?$/.test(new URL(url).pathname)) {
+          const replay = async () => {
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: bodyStr, signal: mergedSignal
-            }), proxyOptions));
+            response = await send(JSON.stringify(requestBody));
+          };
+          const errorPayload = async () => {
+            try { return JSON.parse(await readOptionalProbeText(response, { signal })); }
+            catch (error) { if (signal?.aborted) throw error; return null; }
+          };
+          if (response.status === 400 && requestBody.max_tokens !== undefined && transportBudgetLeft(urlIndex)) {
+            const err = (await errorPayload())?.error;
+            const message = String(err?.message || "").toLowerCase();
+            if ((["unsupported_parameter", "unknown_parameter"].includes(err?.code) && err?.param === "max_tokens") ||
+                (message.includes("max_tokens") && (message.includes("unknown parameter") || message.includes("max_completion_tokens")))) {
+              requestBody = { ...requestBody, max_completion_tokens: requestBody.max_completion_tokens ?? requestBody.max_tokens };
+              delete requestBody.max_tokens;
+              await replay();
+            }
+          }
+          if ((response.status === 400 || response.status === 404) && transportBudgetLeft(urlIndex)) {
+            const message = String((await errorPayload())?.error?.message || "").toLowerCase();
+            if (message.includes("/chat/completions") &&
+                (message.includes("not a chat model") || (message.includes("/v1/responses") && message.includes("instead")))) {
+              requestBody = openaiToOpenAIResponsesRequest(model, requestBody, stream, credentials);
+              url = url.replace(/\/chat\/completions\/?(?=\?|$)/i, "/responses");
+              responseFormat = FORMATS.OPENAI_RESPONSES;
+              await replay();
+            }
           }
         }
-        if (response.status === 400 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex)) {
+        for (let round = 0; !claudeFast && [400, 422].includes(response.status) && round < 4 && this.config?.quirks?.allowFieldStripping !== false && transportBudgetLeft(urlIndex); round++) {
           // OPTIONAL probe: an unreadable body is a non-match, never a transport
           // error that would discard the upstream 400.
           const errorText = await readOptionalProbeText(response, { signal });
-          const field = findOffendingField(errorText);
+          const field = response.status === 422 && requestBody && isObject(requestBody) && !Array.isArray(requestBody) ?
+            findRejected422Field(errorText, requestBody) : response.status === 400 ? findOffendingField(errorText) : null;
           if (
           field &&
-          // Azure negotiates token-limit spellings in its executor. Dropping
-          // either field here would silently remove the caller's output cap.
-          !(this.provider === "azure" && (field === "max_tokens" || field === "max_completion_tokens")) &&
+          // Azure and OpenAI negotiate token-limit spellings. Dropping a
+          // limit here would silently remove the caller's output cap.
+          !(["azure", "openai"].includes(this.provider) && (field === "max_tokens" || field === "max_completion_tokens" || field === "max_output_tokens")) &&
           requestBody && isObject(
             requestBody) &&
           !Array.isArray(requestBody) &&
@@ -524,45 +524,16 @@ export class BaseExecutor {
             delete requestBody[field];
             strippedFields.add(field);
             bodyStr = JSON.stringify(requestBody);
-            log?.debug?.("RETRY", `400 mentioned unsupported field ${field}; stripping and retrying once`);
+            log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            // Reset the connect timeout for the new upstream request.
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: bodyStr, signal: mergedSignal
-            }), proxyOptions));
-          }
+            response = await send(bodyStr);
+          } else break;
         }
-        // Relayed SSE (vercel relay): keep the timeout/abort signal live until
-        // the body actually ends — EOF, error, downstream cancel, or caller
-        // abort — so a stalled stream cannot bypass retry/fallback (port of
-        // diegosouzapw/OmniRoute#7093 "bound Bifrost stream lifetime").
-        const relaySse = Boolean(proxyOptions?.vercelRelayUrl) && isRelaySseResponse(response);
-        if (relaySse) {
-          const originalResponse = response;
-          response = new Response(
-            boundRelayStreamLifetime(response.body, {
-              signal: mergedSignal,
-              timeoutSignal: connectCtrl.signal,
-              onFinalize: () => clearTimeout(connectTimer)
-            }),
-            {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers
-            }
-          );
-          // Keep the quota dispatch ticket reachable through the rebuilt response.
-          transferProviderAttemptDispatch(originalResponse, response);
-        } else {
-          clearTimeout(connectTimer);
+        if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
+          evictResponseDispatcher(response);
         }
+        response = sender.finishHeaders(response, proxyOptions);
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
@@ -575,8 +546,27 @@ export class BaseExecutor {
         // (never a transport error that would discard the upstream response), while
         // a caller abort during the probe still cancels the request.
         let errorText = null;
-        if (hasContainsRule && response.status >= 400) {
+        if ((hasContainsRule && response.status >= 400) || (claudeOAuth && !claudeFast && response.status === 429) ||
+          ((this.provider === "kiro" || this.provider === "amazon-q") && url.includes(".kiro.dev") && response.status === 400)) {
           errorText = await readOptionalProbeText(response, { signal });
+        }
+
+        if (claudeOAuth && !response.ok && (claudeFast || response.status === 429)) {
+          let message = errorText ?? "";
+          if (errorText) {
+            try {
+              const parsed = JSON.parse(errorText);
+              if (isString(parsed?.error?.message)) message = parsed.error.message;
+            } catch {
+              // Some upstream refusals have a plain-text body.
+            }
+          }
+          const claudeRequestScoped = isClaudeRequestScopedError(response.status, response.headers, message, claudeFast);
+          if (claudeRequestScoped || claudeFast) {
+            return { response, url, headers, transformedBody: requestBody,
+              attemptStartedAt: sender.attemptStartedAt, terminalProvenance: "upstream",
+              claudeRequestScoped };
+          }
         }
 
         // Antigravity 504s move to the account layer without replaying this URL.
@@ -596,12 +586,14 @@ export class BaseExecutor {
             url,
             headers,
             transformedBody: requestBody,
-            attemptStartedAt: providerAttemptStartedAt,
+            responseFormat,
+            attemptStartedAt: sender.attemptStartedAt,
             terminalProvenance: "upstream"
           };
         }
 
-        if (!antigravityGatewayTimeout && this.shouldRetry(response.status, urlIndex)) {
+        if (!antigravityGatewayTimeout && urlIndex + 1 < fallbackCount &&
+          (this.shouldRetry(response.status, urlIndex) || this.shouldFallbackResponse(response, url, errorText))) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
@@ -614,37 +606,41 @@ export class BaseExecutor {
           url,
           headers,
           transformedBody: requestBody,
-          attemptStartedAt: providerAttemptStartedAt,
-          terminalProvenance: "upstream"
+          responseFormat,
+          attemptStartedAt: sender.attemptStartedAt,
+          terminalProvenance: "upstream",
+          ...(claudeFast ? { claudeFast: true } : null)
         };
       } catch (error) {
-        clearTimeout(connectTimer);
+        sender.clearHeaderTimer();
         if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
-        // Prove OUR timer fired by reason identity (mergedSignal.reason ===
-        // connectCtrl's reason). connectCtrl.signal.aborted alone would
-        // misclassify a caller-first abort when the timer fires before the
-        // fetch rejection reaches this catch; the reason on the merged signal
-        // is whichever fired FIRST, so identity is authoritative.
-        const isConnectTimeout = connectCtrl.signal.aborted &&
-        mergedSignal?.reason === connectCtrl.signal.reason;
+        const timeoutReason = sender.timeoutReason;
+        const isConnectTimeout = Boolean(timeoutReason);
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // A caller-initiated abort (signal aborted but NOT our connect timer) must propagate.
         if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
           error.errorKind = "aborted";
-          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
+          throw error;
+        }
+
+        if (claudeFast) {
+          error.errorKind = errorKind;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
+          error.claudeRequestScoped = true;
           throw error;
         }
 
         // A confirmed Antigravity header deadline has consumed the account's
         // full budget. Preserve the original reason for account-level failover.
-        if (isConnectTimeout && this.provider === "antigravity") {
-          const timeout = connectCtrl.signal.reason;
+        if (isConnectTimeout && (this.provider === "antigravity" || this.provider === "agy")) {
+          const timeout = timeoutReason;
           timeout.errorKind = "connect_timeout";
           timeout.antigravityPreResponseTimeout = true;
-          timeout.providerAttemptStartedAt = providerAttemptStartedAt;
+          timeout.providerAttemptStartedAt = sender.attemptStartedAt;
           throw timeout;
         }
 
@@ -656,7 +652,7 @@ export class BaseExecutor {
         // passes requestPolicy.skipRules into execute() (account layer wires that).
         if (matchedSkip({ statusKey: HTTP_STATUS.BAD_GATEWAY, errorKind, text: error.message })) {
           error.errorKind = errorKind;
-          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
 
@@ -665,13 +661,13 @@ export class BaseExecutor {
           continue;
         }
         error.errorKind = errorKind;
-        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        error.providerAttemptStartedAt = sender.attemptStartedAt;
         throw error;
       }
     }
 
     const error = lastError || new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
-    error.providerAttemptStartedAt = providerAttemptStartedAt;
+    error.providerAttemptStartedAt = sender.attemptStartedAt;
     throw error;
   }
 }

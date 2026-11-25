@@ -8,6 +8,7 @@ import {
 "open-sse/services/projectId.js";
 import {
   TOKEN_EXPIRY_BUFFER_MS as BUFFER_MS,
+  isUnrecoverableRefreshError,
   refreshAccessToken as _refreshAccessToken,
   refreshClaudeOAuthToken as _refreshClaudeOAuthToken,
   refreshGoogleToken as _refreshGoogleToken,
@@ -18,17 +19,18 @@ import {
   refreshCopilotToken as _refreshCopilotToken,
   getAccessToken as _getAccessToken,
   refreshTokenByProvider as _refreshTokenByProvider,
-  formatProviderCredentials as _formatProviderCredentials,
-  getAllAccessTokens as _getAllAccessTokens,
   refreshKiroToken as _refreshKiroToken,
   getRefreshLeadMs as _getRefreshLeadMs } from
 "open-sse/services/tokenRefresh.js";
 import {
-  parseTimeMs,
+  expiryFromLifetime,
+  toIsoTime,
   refreshProviderCredentials as _refreshProviderCredentials,
   resolveCredentialProxyOptions as _resolveCredentialProxyOptions,
   shouldRefreshCredentials as _shouldRefreshCredentials } from
 "open-sse/services/oauthCredentialManager.js";
+import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
+import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
@@ -67,12 +69,6 @@ _getAccessToken(provider, credentials, log, proxyOptions);
 export const refreshTokenByProvider = (provider, credentials, proxyOptions = null) =>
 _refreshTokenByProvider(provider, credentials, log, proxyOptions);
 
-export const formatProviderCredentials = (provider, credentials) =>
-_formatProviderCredentials(provider, credentials, log);
-
-export const getAllAccessTokens = (userInfo) =>
-_getAllAccessTokens(userInfo, log);
-
 export const shouldRefreshCredentials = (provider, credentials) =>
 _shouldRefreshCredentials(provider, credentials);
 
@@ -93,36 +89,12 @@ export function releaseConnection(connectionId) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-/**
- * Compute an ISO expiry timestamp from a relative expiresIn (seconds).
- * @param {number} expiresIn
- * @returns {string}
- */
-function toExpiresAt(expiresIn) {
-  return new Date(Date.now() + expiresIn * 1000).toISOString();
-}
+const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
 
-/**
- * Normalize any accepted expiry shape to the ISO string the rest of the app stores.
- * Goes through `parseTimeMs` so a numeric epoch — including the string form the
- * bulk-import routes can persist — self-heals on the next refresh instead of being
- * dropped as an Invalid Date.
- *
- * @param {unknown} expiresAt
- * @returns {string|null}
- */
-function normalizeExpiresAt(expiresAt) {
-  const ms = parseTimeMs(expiresAt);
-  return ms === null ? null : new Date(ms).toISOString();
-}
-
-/**
- * Providers that carry a real Google project ID.
- * @param {string} provider
- * @returns {boolean}
- */
-function needsProjectId(provider) {
-  return provider === "antigravity" || provider === "agy" || provider === "gemini-cli";
+/** A refresh secret that is safe to store and to send back in a header. */
+function isStorableSecret(value) {
+  return isString(value) && value.trim() !== "" &&
+  value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 /**
@@ -136,7 +108,7 @@ function needsProjectId(provider) {
  * @param {object|null} proxyOptions
  */
 function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
-  if (!needsProjectId(provider) || !connectionId || !accessToken) return;
+  if (!refreshCapabilities(provider).googleProjectId || !connectionId || !accessToken) return;
 
   // Lazy resolution: do not eagerly trigger onboardUser during background token refresh.
   // Eagerly fetching projectId across multiple accounts simultaneously triggers
@@ -168,26 +140,44 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
 
 /**
  * Persist updated credentials for a connection to localDb.
- * Only fields that are present in `newCredentials` are written.
+ * Only fields that are present in `newCredentials` are written. Malformed
+ * tokens and times are skipped so the valid fields beside them still persist.
  *
  * @param {string} connectionId
  * @param {object} newCredentials
+ * @param {object} [options]
+ * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
+ * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
+ *   The write is refused when the stored token is neither this one nor its replacement.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
+  const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
+    // Persist only the cookie, and only while the sending session is current.
+    if (isString(rotatedApiKey) && rotatedApiKey) {
+      if (expectedRefreshContext?.authType !== "cookie" ||
+          expectedRefreshContext.id !== connectionId || !expectedRefreshContext.apiKey) return false;
+      const result = await updateProviderConnection(connectionId, { apiKey: rotatedApiKey }, {
+        expectedRefreshContext,
+        returnCommitResult: true
+      });
+      return result?.applied === true;
+    }
+
     const updates = {};
 
-    if (newCredentials.accessToken) updates.accessToken = newCredentials.accessToken;
-    if (newCredentials.refreshToken) updates.refreshToken = newCredentials.refreshToken;
-    if (newCredentials.idToken) updates.idToken = newCredentials.idToken;
-    if (newCredentials.lastRefreshAt) updates.lastRefreshAt = newCredentials.lastRefreshAt;
-    if (newCredentials.expiresAt) updates.expiresAt = newCredentials.expiresAt;
-    if (newCredentials.expiresIn) {
-      updates.expiresAt = toExpiresAt(newCredentials.expiresIn);
+    for (const field of ["accessToken", "refreshToken", "idToken"]) {
+      if (isStorableSecret(newCredentials[field])) updates[field] = newCredentials[field];
+    }
+    const lastRefreshAt = toIsoTime(newCredentials.lastRefreshAt);
+    if (lastRefreshAt) updates.lastRefreshAt = lastRefreshAt;
+    const lifetimeExpiresAt = expiryFromLifetime(newCredentials.expiresIn);
+    if (lifetimeExpiresAt) {
+      updates.expiresAt = lifetimeExpiresAt;
       updates.expiresIn = newCredentials.expiresIn;
-    } else if (newCredentials.expiresAt) {
-      const expiresAt = normalizeExpiresAt(newCredentials.expiresAt);
+    } else {
+      const expiresAt = toIsoTime(newCredentials.expiresAt);
       if (expiresAt) {
         updates.expiresAt = expiresAt;
         updates.expiresIn = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
@@ -207,23 +197,29 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
-    // Web-cookie providers (chatgpt-web) rotate their session cookie; only this
-    // explicit field may replace the stored apiKey.
-    if (isString(newCredentials.rotatedApiKey) && newCredentials.rotatedApiKey) {
-      updates.apiKey = newCredentials.rotatedApiKey;
+    let guard = null;
+    if (expectedRefreshContext) {
+      guard = { expectedRefreshContext };
+    } else if (presentedRefreshToken) {
+      // Compare only the token: request credentials do not mirror the stored row.
+      guard = {
+        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken ||
+        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
+      };
     }
-
-    const result = await updateProviderConnection(connectionId, updates);
+    const result = guard ?
+    await updateProviderConnection(connectionId, updates, { ...guard, returnCommitResult: true }) :
+    await updateProviderConnection(connectionId, updates);
+    const applied = guard ? result?.applied === true : !!result;
     log.info("TOKEN_REFRESH", "Credentials updated in localDb", {
       connectionId,
-      success: !!result
+      success: applied
     });
-    return !!result;
+    return applied;
   } catch (error) {
-    log.error("TOKEN_REFRESH", "Error updating credentials in localDb", {
-      connectionId,
-      error: error.message
-    });
+    const details = { connectionId };
+    if (!rotatedApiKey) details.error = error.message;
+    log.error("TOKEN_REFRESH", "Error updating credentials in localDb", details);
     return false;
   }
 }
@@ -249,12 +245,18 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   }
   const effectiveProxyOptions = _resolveCredentialProxyOptions(creds, proxyOptions);
   const force = options?.force === true;
+  // CAS fingerprint of the credentials we are about to present. Matches the
+  // request-path guard in refreshAndUpdateCredentials so a concurrent winner
+  // that already rotated is not overwritten with reauth_required.
+  const expectedRefreshContext = providerRefreshContext(
+    provider === "codex" && credentials._connection ? { ...credentials._connection, ...credentials } : credentials
+  );
 
   // ── 1. Regular access-token expiry ────────────────────────────────────────
   if (force || _shouldRefreshCredentials(provider, creds)) {
     const expiresAt = creds.expiresAt ? new Date(creds.expiresAt).getTime() : null;
     const remaining = expiresAt ? expiresAt - Date.now() : null;
-    const refreshLead = _getRefreshLeadMs(provider);
+    const refreshLead = _getRefreshLeadMs(provider, creds.providerSpecificData);
 
     log.info("TOKEN_REFRESH", "Refreshing provider credentials proactively", {
       provider,
@@ -263,29 +265,64 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       lastRefreshAt: creds.lastRefreshAt || null
     });
 
+    const presentedRefreshToken = creds.refreshToken;
     const newCreds = await _refreshProviderCredentials(provider, creds, log, effectiveProxyOptions);
+
+    // Background force-refresh used to drop unrecoverable results silently,
+    // leaving the row "active" after refresh_token_reused / invalid_grant
+    // (durindoor#2280). Pin the same durable reauth_required state the request
+    // path writes, then surface the error (the tick swallows it).
+    if (isUnrecoverableRefreshError(newCreds)) {
+      if (creds.connectionId) {
+        try {
+          await updateProviderConnection(
+            creds.connectionId,
+            {
+              testStatus: "reauth_required",
+              lastError: "OAuth session expired. Reconnect this account.",
+              errorCode: "REAUTH",
+              lastErrorAt: new Date().toISOString()
+            },
+            { expectedRefreshContext }
+          );
+        } catch (persistErr) {
+          log.warn("TOKEN_REFRESH", "Failed to pin reauth_required after unrecoverable refresh", {
+            connectionId: creds.connectionId,
+            error: persistErr?.message ?? String(persistErr)
+          });
+        }
+      }
+      const err = new Error("Failed to refresh credentials. Please re-authorize the connection.");
+      err.code = "PROVIDER_REAUTH_REQUIRED";
+      throw err;
+    }
+
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
       const mergedCreds = {
         ...newCreds,
-        existingProviderSpecificData: creds.providerSpecificData
+        // Persist saved configuration, not proxy values resolved for this request.
+        existingProviderSpecificData: creds._connection?.providerSpecificData || creds.providerSpecificData
       };
 
       // Persist to DB (non-blocking path continues below)
-      await updateProviderCredentials(creds.connectionId, mergedCreds);
+      const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
+      const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
+      if (guardedCodex && !applied) return creds;
 
       creds = {
         ...creds,
         ...newCreds,
-        expiresAt: newCreds.expiresIn ?
-        toExpiresAt(newCreds.expiresIn) :
-        normalizeExpiresAt(newCreds.expiresAt) || newCreds.expiresAt || creds.expiresAt,
+        expiresAt: expiryFromLifetime(newCreds.expiresIn) ||
+        toIsoTime(newCreds.expiresAt) || creds.expiresAt,
         providerSpecificData: newCreds.providerSpecificData ?
         { ...creds.providerSpecificData, ...newCreds.providerSpecificData } :
         creds.providerSpecificData
       };
 
       // Non-blocking: discover only when this connection has no stored project ID.
-      if (!creds.projectId) {
+      if (!creds.projectId && (provider !== "antigravity" && provider !== "agy" ||
+          creds.isActive !== false && creds._connection?.isActive !== false)) {
         _refreshProjectId(provider, creds.connectionId, creds.accessToken, effectiveProxyOptions);
       }
     }
@@ -315,7 +352,11 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         };
 
         await updateProviderCredentials(creds.connectionId, {
-          providerSpecificData: updatedSpecific
+          providerSpecificData: {
+            ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
+            copilotToken: copilotTokenResult.token,
+            copilotTokenExpiresAt: copilotTokenResult.expiresAt
+          }
         });
 
         creds.providerSpecificData = updatedSpecific;

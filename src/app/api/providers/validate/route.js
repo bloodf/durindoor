@@ -1,6 +1,7 @@
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
+import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
 import { getProviderConnectionById, getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
@@ -9,7 +10,8 @@ import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
-import { isConversationProbeProvider, SKIPPED_WEB_SESSION_ERROR } from "@/lib/providers/conversationProbe.js";
+import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
+import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
@@ -19,10 +21,12 @@ import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { isString, isObject } from "../../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
+import { registryAllowsKeylessCredential } from "@/lib/providers/validation/registryCredentials.js";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
+import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -239,7 +243,9 @@ export async function POST(request) {
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
     // LAN compatible nodes (#2023) may run without a key; their probes then send no auth header.
     const isKeyOptionalNode = isOpenAICompatibleProvider(provider) || isAnthropicCompatibleProvider(provider) || isCustomEmbeddingProvider(provider);
-    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !hasApiKeySubstitute) {
+    // A registry entry that marks the key optional or absent accepts a keyless connection.
+    const isRegistryKeyless = registryAllowsKeylessCredential(provider);
+    if (!provider || !apiKey && provider !== "ollama-local" && !isNoAuth && !isSystemoneCompatibleProvider(provider) && !isKeyOptionalNode && !isRegistryKeyless && !hasApiKeySubstitute) {
       return NextResponse.json({ error: "Provider and API key required" }, { status: 400 });
     }
     if (provider === "opencode-server") {
@@ -249,7 +255,7 @@ export async function POST(request) {
       const result = await fetchOpenCodeServerModels({ apiKey, providerSpecificData });
       return NextResponse.json({ valid: !result.error, error: result.error ?? null });
     }
-    if (isNoAuth && !apiKey) {
+    if ((isNoAuth || isRegistryKeyless) && !apiKey) {
       return NextResponse.json({ valid: true, error: null });
     }
 
@@ -266,8 +272,15 @@ export async function POST(request) {
       return NextResponse.json({ valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" });
     }
 
+    // Local-only, no request: a JWT access token past its exp is reported as expired. Other
+    // pastes stay skipped here and are rejected at dispatch if unusable.
+    if (provider === "copilot-web") {
+      const check = checkCopilotWebCredential(apiKey || providerSpecificData?.cookie);
+      if (check.expired) return NextResponse.json({ valid: false, error: check.error });
+    }
+
     if (isConversationProbeProvider(provider)) {
-      return NextResponse.json({ valid: false, skipped: true, error: SKIPPED_WEB_SESSION_ERROR });
+      return NextResponse.json({ valid: false, skipped: true, error: skippedWebSessionError(provider) });
     }
 
     let isValid = false;
@@ -407,7 +420,7 @@ export async function POST(request) {
         }
 
         const messagesUrl = `${normalizedBase}/v1/messages`;
-        const model = node.defaultModel || "claude-3-haiku-20240307";
+        const model = node.defaultModel || ANTHROPIC_VALIDATION_MODEL;
 
         let res;
         try {
@@ -420,7 +433,7 @@ export async function POST(request) {
             },
             body: JSON.stringify({
               model,
-              max_tokens: 1,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           }, guardedProbeFetch);
@@ -450,7 +463,7 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("cloudflare-ai"),
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1
+            max_tokens: 10
           })
         });
         isValid = cfRes.status !== 401 && cfRes.status !== 403 && cfRes.status !== 404;
@@ -491,7 +504,7 @@ export async function POST(request) {
           body: JSON.stringify({
             model: getDefaultModel("snowflake") || "llama3.1-70b",
             messages: [{ role: "user", content: "test" }],
-            max_tokens: 1
+            max_tokens: 10
           }),
         });
         isValid = snowflakeRes.status !== 401 && snowflakeRes.status !== 403;
@@ -523,7 +536,7 @@ export async function POST(request) {
             headers,
             body: JSON.stringify({
               messages: [{ role: "user", content: "test" }],
-              max_tokens: 1
+              max_tokens: 10
             })
           }, guardedProbeFetch);
         } catch (err) {
@@ -544,6 +557,19 @@ export async function POST(request) {
           valid: webResult,
           error: webResult ? null : "Invalid API key"
         });
+      }
+
+      // whoami checks the token without running a potentially paid inference task.
+      if (provider === "huggingface") {
+        const res = await fetchValidationProbe("https://huggingface.co/api/whoami-v2", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        }).catch(() => null);
+        if (!res) return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
+        if (res.ok) return NextResponse.json({ valid: true, error: null });
+        if (res.status === 401 || res.status === 403) {
+          return NextResponse.json({ valid: false, error: "Invalid API key" });
+        }
+        return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
       }
 
       // Generic probe for tts/embedding providers (config-driven)
@@ -594,8 +620,8 @@ export async function POST(request) {
               "content-type": "application/json"
             },
             body: JSON.stringify({
-              model: "claude-3-haiku-20240307",
-              max_tokens: 1,
+              model: ANTHROPIC_VALIDATION_MODEL,
+              max_tokens: 10,
               messages: [{ role: "user", content: "test" }]
             })
           });
@@ -640,7 +666,7 @@ export async function POST(request) {
               const res = await fetchValidationProbe(cfg.baseUrl, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+                body: JSON.stringify({ model: testModel, max_tokens: 10, messages: [{ role: "user", content: "test" }] })
               });
               isValid = res.status !== 401 && res.status !== 403;
             } else {
@@ -654,7 +680,7 @@ export async function POST(request) {
                   "content-type": "application/json",
                   ...(cfg.headers || {})
                 },
-                body: JSON.stringify({ model: testModel, max_tokens: 1, messages: [{ role: "user", content: "test" }] })
+                body: JSON.stringify({ model: testModel, max_tokens: 10, messages: [{ role: "user", content: "test" }] })
               });
               // 400 = model resolution error but auth passed (e.g. agentrouter "no available channel")
               isValid = res.status !== 401 && res.status !== 403;
@@ -671,13 +697,16 @@ export async function POST(request) {
               },
               body: JSON.stringify({
                 model: getDefaultModel(provider),
-                max_tokens: 1,
+                max_tokens: 10,
                 messages: [{ role: "user", content: "test" }]
               })
             });
             isValid = res.status !== 401 && res.status !== 403;
             break;
           }
+
+        case "assemblyai":
+          return NextResponse.json(await probeAssemblyAiKey(apiKey, fetchValidationProbe));
 
         case "deepseek":
         case "groq":
@@ -696,7 +725,6 @@ export async function POST(request) {
         case "paraloncloud":
         case "ollama":
         case "ollama-local":
-        case "assemblyai":
         case "nanobanana":
         case "chutes":
         case "xiaomi-mimo":
@@ -774,17 +802,20 @@ export async function POST(request) {
             const model = cfg.validationModelId || getDefaultModel(modelKey);
             const payload = openaiToCommandCodeRequest(model, {
               messages: [{ role: "user", content: "ping" }],
-              max_tokens: 1,
+              max_tokens: 10,
               stream: false
             }, false);
+            const probeHeaders = {
+              "Content-Type": "application/json",
+              ...(cfg.headers || {}),
+              "x-session-id": crypto.randomUUID(),
+              "Authorization": `Bearer ${apiKey}`
+            };
+            // Per-connection Zero Data Retention opt-in must reach the probe too.
+            if (providerSpecificData?.zdrEnabled === true) probeHeaders["x-cmd-zdr"] = "1";
             const res = await fetchValidationProbe(cfg.baseUrl, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(cfg.headers || {}),
-                "x-session-id": crypto.randomUUID(),
-                "Authorization": `Bearer ${apiKey}`
-              },
+              headers: probeHeaders,
               body: JSON.stringify(payload)
             });
             // A schema/rate-limit response proves the key reached Command Code.

@@ -31,7 +31,7 @@ describe("#1089 registered mixed custom/namespace strict and parallel boundary",
     const [custom, namespaced] = chat.tools.map((tool) => tool.function);
 
     expect(custom.parameters).toEqual({
-      type: "object", properties: { input: { type: "string" } }, required: ["input"], additionalProperties: false,
+      type: "object", properties: { input: { type: "string", description: "Raw freeform input for this custom tool" } }, required: ["input"], additionalProperties: false,
     });
     expect(custom.strict).toBeUndefined();
     expect(chat._customToolNames).toEqual(["files.patch"]);

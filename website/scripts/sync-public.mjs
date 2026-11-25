@@ -4,6 +4,7 @@ import { cp, mkdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyPublicBrand } from "./sync-brand-public.mjs";
+import { rewriteCssImport } from "./rewrite-css-import.mjs";
 
 const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appPublic = join(siteRoot, "..", "public");
@@ -59,10 +60,7 @@ const stylesDir = join(siteRoot, "src", "styles", "shared");
 await mkdir(stylesDir, { recursive: true });
 for (const [source, target] of STYLES) {
   const css = await readFile(join(siteRoot, "..", source), "utf8");
-  const rewritten = css.replace(
-    /@import "tailwindcss" source\("[^"]*"\);/,
-    '@import "tailwindcss" source("../../../../src");\n@source "../../";',
-  );
+  const rewritten = rewriteCssImport(css, source);
   await writeFile(join(stylesDir, target), rewritten);
   console.log(`[sync-public] styles/shared/${target}`);
 }

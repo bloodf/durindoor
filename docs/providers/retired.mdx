@@ -55,7 +55,7 @@ Some ids are in the registry so their card, auth hint, and model list exist, but
 }
 ```
 
-The current blocked set includes `adapta-web`, `huggingchat`, `muse-spark-web`, `suno`, `t3-web`, `udio`, `yuanbao-web`, and `devin`. ChatGPT Web is implemented and is not in that set. It is mostly [web cookie providers](./web-cookie.mdx#what-each-provider-expects), plus `devin`, which has no chat transport. Saving a credential does not enable inference. Choose an implemented provider until a release adds the required transport.
+The current blocked set includes `huggingchat`, `muse-spark-web`, `suno`, `udio`, and `devin`. ChatGPT Web, Adapta Web, T3 Chat Web and Tencent Yuanbao Web are implemented and are not in that set. It is mostly [web cookie providers](./web-cookie.mdx#what-each-provider-expects), plus `devin`, which has no chat transport. Saving a credential does not enable inference. Choose an implemented provider until a release adds the required transport.
 
 ## Retired models
 

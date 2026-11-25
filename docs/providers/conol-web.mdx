@@ -1,0 +1,16 @@
+---
+title: Conol Web
+description: Use a signed-in conol.ai session cookie, the session flow, limits and errors.
+---
+
+Conol Web is an experimental cookie-authenticated integration with [conol.ai](https://conol.ai). Sign in on the site, then add a Conol Web connection.
+
+## Setup and cookie capture
+
+Capture cookies with the browser extension on `conol.ai`, or paste a `Cookie` request header, cURL command, or HAR containing `__Secure-better-auth.session_token`. **Validate** sends a read-only `GET /api/agent-servers` with the cookie. Store the entire cookie value as a secret.
+
+Each chat creates an empty session, configures the model preset/model/effort through the session model endpoint, submits the latest user turn, and reads the `logDeltas=1` stream. OpenAI JSON and SSE responses are produced from assistant text deltas. 401/403 mean the session expired or was rejected; 429 and other upstream statuses are preserved. The published model list is a fallback and account availability can vary.
+
+## Limits and sources
+
+The integration currently forwards plain text turns; Conol owns any agent/tool behavior. Session continuity and advanced multimodal uploads from OmniRoute are not included.

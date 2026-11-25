@@ -16,6 +16,7 @@
  * status and retry hint instead.
  */
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { formatClaudeSseError } from "./sseFrames.js";
 import { ERROR_TYPES } from "../config/errorConfig.js";
 import { createClientAdmissionSelection } from "../services/operationalMetrics.js";
 
@@ -122,10 +123,7 @@ export function buildKeepaliveErrorFrame(format, { text = "", status = null, ret
     body?.type === "error" && isString(error?.type) && error.type ||
     ANTHROPIC_ERROR_TYPES[status] ||
     "api_error";
-    return ENCODER.encode(`event: error\ndata: ${JSON.stringify({
-      type: "error",
-      error: { type, message, ...meta }
-    })}\n\n`);
+    return ENCODER.encode(formatClaudeSseError({ type, message, ...meta }));
   }
   return ENCODER.encode(`data: ${JSON.stringify({
     error: {
@@ -189,6 +187,9 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
+  // Keep only the suffix needed to recognize two independently terminated SSE lines.
+  let sseSuffix = "";
+  let sseAtBoundary = true;
   const admissionSelection = createClientAdmissionSelection();
 
   const stream = new ReadableStream({
@@ -246,7 +247,14 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
             while (true) {
               const { done, value } = await upstreamReader.read();
               if (done) break;
-              if (value) controller.enqueue(value);
+              if (value) {
+                controller.enqueue(value);
+                if (value.length) {
+                  const tail = value.subarray(Math.max(0, value.length - 4));
+                  sseSuffix = (sseSuffix + String.fromCharCode(...tail)).slice(-4);
+                  sseAtBoundary = /\r?\n\r?\n$/.test(sseSuffix);
+                }
+              }
             }
           } else {
             let bodyReadFailed = false;
@@ -264,7 +272,11 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
       } catch {
         if (!aborted) {
           try {
-            controller.enqueue(fallbackErrorFrame);
+            if (upstreamReader && !sseAtBoundary) {
+              controller.error(new Error(FALLBACK_ERROR_MESSAGE));
+            } else {
+              controller.enqueue(fallbackErrorFrame);
+            }
           } catch {
 
             /* consumer gone */}
@@ -291,7 +303,10 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive"
+      Connection: "keep-alive",
+      // This slow-path response is what the client sees while the real turn is
+      // still starting; buffering proxies must not hold it.
+      "X-Accel-Buffering": "no"
     }
   }));
 }

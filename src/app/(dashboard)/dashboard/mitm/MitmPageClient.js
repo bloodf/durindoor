@@ -1,5 +1,7 @@
 "use client";
 
+import { requestSettings } from "@/store/settingsStore";
+
 import { useState, useEffect } from "react";
 import { MITM_TOOLS } from "@/shared/constants/cliTools";
 import { getModelsByProviderId } from "@/shared/constants/models";
@@ -7,9 +9,12 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/sha
 import { Card, CardContent } from "@/shared/ui/components/Card.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { MitmServerCard, MitmToolCard } from "@/app/(dashboard)/dashboard/cli-tools/components";
 
 export default function MitmPageClient() {
+  const v5 = useUiV5();
   const [connections, setConnections] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
@@ -56,7 +61,7 @@ export default function MitmPageClient() {
 
   const fetchCloudSettings = async () => {
     try {
-      const res = await fetch("/api/settings");
+      const res = await requestSettings();
       if (res.ok) {
         const data = await res.json();
         setCloudEnabled(data.cloudEnabled || false);
@@ -78,9 +83,9 @@ export default function MitmPageClient() {
   const mitmTools = Object.entries(MITM_TOOLS);
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className={v5 ? "v5-dashboard-page flex w-full min-w-0 flex-col gap-4 text-dd-text" : "flex w-full flex-col gap-4"}>
       <PageHeader icon="security" title="MITM Proxy" subtitle="Redirect supported IDE traffic through configured providers" />
-      <Card padding={false} className="border-dd-warning/40"><CardContent className="flex items-start gap-3"><span className="material-symbols-outlined shrink-0 text-dd-warning" aria-hidden="true">warning</span><div className="space-y-1"><Badge tone="warning">Use with care</Badge><p className="text-[13px] leading-relaxed text-dd-text">MITM intercepts HTTPS traffic from IDE tools through a local CA to redirect requests to your providers. It may violate tool terms and risk account bans.</p></div></CardContent></Card>
+      <Card padding={false} className="border-dd-warning/40"><CardContent className="flex items-start gap-3">{v5 ? <MotionIcon name="warning" size={20} className="shrink-0 text-dd-warning" /> : <span className="material-symbols-outlined shrink-0 text-dd-warning" aria-hidden="true">warning</span>}<div className="space-y-1"><Badge tone="warning">Use with care</Badge><p className="text-[13px] leading-relaxed text-dd-text">MITM intercepts HTTPS traffic from IDE tools through a local CA to redirect requests to your providers. It may violate tool terms and risk account bans.</p></div></CardContent></Card>
       <MitmServerCard apiKeys={apiKeys} cloudEnabled={cloudEnabled} onStatusChange={setMitmStatus} />
       <section className="grid gap-4" aria-label="MITM tool configuration">{mitmTools.map(([toolId, tool]) => <MitmToolCard key={toolId} tool={tool} isExpanded={expandedTool === toolId} onToggle={() => setExpandedTool(expandedTool === toolId ? null : toolId)} serverRunning={mitmStatus.running} dnsActive={mitmStatus.dnsStatus?.[toolId] || false} hasCachedPassword={mitmStatus.hasCachedPassword || false} needsSudoPassword={mitmStatus.needsSudoPassword !== false} isWin={mitmStatus.isWin === true} apiKeys={apiKeys} activeProviders={getActiveProviders()} hasActiveProviders={hasActiveProviders()} modelAliases={modelAliases} cloudEnabled={cloudEnabled} onDnsChange={(data) => setMitmStatus((prev) => ({ ...prev, dnsStatus: data.dnsStatus ?? prev.dnsStatus }))} />)}</section>
     </div>

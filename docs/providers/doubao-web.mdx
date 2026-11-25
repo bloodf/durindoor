@@ -1,0 +1,12 @@
+---
+title: "Doubao Web"
+description: Use a Dola consumer chat session with supported Doubao models.
+---
+
+Doubao Web uses the Dola consumer chat site at `www.dola.com`, with your own browser session cookies. It supports `dola-speed` and `dola-pro`; access and usage limits follow the account and site policy. Expired sessions require importing fresh cookies.
+
+## Setup
+
+Sign in at [Dola](https://www.dola.com/), then use the cookie capture extension or paste the `Cookie` request header from a Dola chat request into the connection. A HAR export can also supply the request's Cookie header. Keep the full cookie header: `sessionid` authenticates the session and `s_v_web_id` (or `fp`) supplies the browser fingerprint. Treat the value as a password and never share it.
+
+The provider sends chat requests to `https://www.dola.com/chat/completion`. Cookie sessions may expire or be limited by Dola; HTTP 401/403 indicates credentials need refreshing, and HTTP 429 indicates a quota/rate limit.

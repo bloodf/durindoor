@@ -30,7 +30,7 @@ Save the connection, then send `ollama-local/<model>` with the model id from `GE
 </Step>
 </Steps>
 
-The health probe for an Ollama connection is `GET {baseUrl}/api/tags`, with a 5 second timeout. Model discovery reads the native Ollama endpoints (`/api/tags`, `/api/show`, `/api/ps`) for each saved host, so every host contributes its own model list and its own context limits.
+The health probe for an Ollama connection is `GET {baseUrl}/api/tags`, with a 5 second timeout. Model discovery reads `/api/tags` for membership, `/api/show` for model details, and `/api/ps` for the context length of loaded models. Discovery is per host and connection. If discovery fails, the last known catalog may be returned with a warning; context lengths are available only when observed.
 
 ### Several Ollama hosts
 
@@ -81,11 +81,11 @@ Send an empty key or leave it out. DurinDoor sends no `Authorization` header whe
 
 ### Point a node at a network server
 
-LocalAI, another DurinDoor instance, or any other OpenAI-compatible server works as a provider node. Open Dashboard, then Providers, then **Custom Providers (OpenAI/Anthropic Compatible)**, then **Add OpenAI Compatible**. Set the base URL to the server's `/v1` root, for example `http://localai.internal:8080/v1` for LocalAI or `http://192.168.1.40:20128/v1` for another DurinDoor instance.
+LocalAI, another DurinDoor instance, or any other OpenAI-compatible server works as a provider node. Open Dashboard, then Providers, then **Custom Providers (OpenAI/Anthropic Compatible)**, then **Add OpenAI Compatible**. Set the base URL to the server's `/v1` root, for example `http://localai.internal:8080/v1` for LocalAI or `http://192.168.1.40:20128/v1` for another DurinDoor instance. Use an address reachable from DurinDoor; inside a container, `localhost` refers to that container.
 
-Give the node a prefix. Clients request `prefix/model`, so `oc-lab/qwen2.5-coder` reaches that server. The key on the connection is optional; add a DurinDoor client API key when the other instance requires one.
+Give the node a prefix and save it, then open it and add a connection. Clients request `prefix/model`, so `oc-lab/qwen2.5-coder` reaches that server. The key on the connection is optional; add a DurinDoor client API key when the other instance requires one. Use **Import** on the node page to discover models and save the rows you want, or enable passthrough for unknown IDs.
 
-The node base URL is copied into every connection created for it, and the `GET /v1/models` catalog of that server is what the gateway publishes for the prefix.
+The node base URL is copied into every connection created for it. The gateway can include live discoveries from an active connection in its catalog; check DurinDoor's own `GET /v1/models` for the IDs available to clients.
 
 ### Health and model discovery
 
@@ -118,7 +118,7 @@ The **Discover on LAN** panel on the Providers page scans for Ollama and OpenAI-
 
 ### Turning it on
 
-Discovery is off by default. The scan needs the `lanDiscoveryEnabled` setting and an operator session, so the setting itself can only be changed by a signed-in dashboard operator or a machine-bound CLI token. An inference API key alone is refused for this setting. With the setting off, the panel says so and the scan request is refused.
+Discovery is off by default. The scan and the `lanDiscoveryEnabled` setting require operator access: a signed-in dashboard session, a machine-bound CLI token, or the open local dashboard when login is disabled. An inference API key alone is refused. With the setting off, the panel says so and the scan request is refused.
 
 ```bash
 curl -X PATCH http://localhost:20128/api/settings \
@@ -137,18 +137,19 @@ Give either a list of hosts or one CIDR range, never both:
 
 For every host and port the scan probes `GET /api/tags` for Ollama and `GET /v1/models` for an OpenAI-compatible server. Each probe times out after 1.5 seconds, and at most 32 probes run at the same time.
 
-A candidate you add becomes an `ollama-local` connection with that base URL, or an OpenAI-compatible node with the prefix `lan-<host>-<port>`.
+A candidate you add becomes an `ollama-local` connection with that base URL, or an OpenAI-compatible node with the prefix `lan-<host>-<port>`. After adding a node, open it and add a connection before using it.
 
 ### Limits worth knowing
 
 - The probes are unauthenticated. A server that answers `401` on `/v1/models` does not appear as a candidate, so a server that checks a key has to be added by base URL instead.
-- Only `http` is probed, and only IPv4 addresses are scanned.
+- Only `http` is probed. CIDR ranges and literal IP inputs are IPv4 only; hostnames are also accepted.
+- A successful HTTP response can appear even if it contains no parseable model list; check the candidate before adding it.
 - The scan covers the hosts and ports you name. It does not look for servers on other subnets.
 - The outbound URL guard applies to the probes, so a blocked host is skipped instead of reported. See the next section.
 
 ## Outbound URL guard
 
-Every provider probe, model discovery request, and LAN discovery probe goes through the outbound URL guard. The default mode is local-first: LAN and localhost hosts are allowed, while cloud metadata hostnames and the `169.254.0.0/16` link-local range are blocked. DNS answers are validated too, so a public name that resolves to a private address is refused.
+The outbound URL guard applies to these provider probes, model discovery requests, and LAN discovery probes. The default mode is local-first: LAN and localhost hosts are allowed, while cloud metadata hostnames and the `169.254.0.0/16` link-local range are blocked. DNS answers are checked as well; ordinary private addresses remain allowed in the default mode, but are blocked in strict mode.
 
 These environment variables change the mode. See [Environment variables](../reference/environment.mdx) for the full list.
 
@@ -159,7 +160,7 @@ These environment variables change the mode. See [Environment variables](../refe
 | `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS` | `1`, `true`, `yes`, `on` | Full opt-in: no host checks at all, including the metadata block. |
 | `OUTBOUND_SSRF_GUARD_ENABLED` | `false`, `0`, `no`, `off` | Legacy spelling of the same full opt-in. |
 
-Only turn the guard off for a target you trust. Under the full opt-in no check runs, so the guard no longer protects the metadata endpoints either.
+Use trusted networks and upstreams: an unauthenticated HTTP server can expose requests and responses to others on the network. Restrict access to the upstream and use HTTPS and authentication where available. Turning the guard off removes its metadata protection for all guarded targets, not just one server.
 
 ## Verify
 
@@ -168,8 +169,15 @@ After saving, list the models and send a short request:
 ```bash
 curl http://localhost:20128/v1/models \
   -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY"
+
+curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_DURINDOOR_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"ollama-local/YOUR_MODEL_ID","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 Confirm the provider and the account on **Usage**. A saved connection and a successful probe do not prove that chat, streaming, or tools work on that server.
 
 Related pages: [OpenAI-compatible nodes](./openai-compatible-nodes.mdx), [Free and local](./free-and-local.mdx), [Local router providers](./local-router-providers.mdx).
+
+Ollama Local embedding requests send the connection API key as a bearer token when configured, including when Ollama is behind an authenticated reverse proxy. Without a key, requests omit the authorization header.

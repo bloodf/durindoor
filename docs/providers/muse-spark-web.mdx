@@ -1,0 +1,12 @@
+---
+title: Muse Spark Web
+description: Use a Meta AI web session with the gateway's browser-backed dispatch.
+---
+
+Muse Spark Web (`muse-spark-web`, alias `ms-web`) uses an `ecto_1_sess` web session. Import the cookie through the web login flow or paste it into a connection. Enable **Allow session dispatch** when editing that connection, or set `providerSpecificData.enableSessionDispatch` to `true` through the API. Without that explicit opt-in, requests return HTTP 501 with `provider_port_pending`.
+
+The gateway refreshes the session through Meta's GraphQL endpoint and uses its shared headless browser pool to load `https://www.meta.ai/` and extract a short-lived WebSocket token. It caches the token per connection for up to four minutes, then refreshes it. The gateway sends warm-up and mode requests to Meta and exchanges binary frames with `wss://gateway.meta.ai/ws/clippy`. Install Playwright Chromium on the gateway and keep the browser pool enabled; see [Gemini Web](./gemini-web.mdx) for browser setup. If the session expires, re-import the cookie.
+
+The `muse-spark` model uses `think_fast`; `muse-spark-thinking` and `muse-spark-contemplating` use `think_hard`. Responses are returned as OpenAI-compatible JSON or streamed chunks and translated for other supported routes. Web sessions and captured protocol templates can change without notice; model availability, rate limits, browser resources and session lifetime are controlled by Meta. Connection validation is skipped. Protect the imported cookie as a credential.
+
+The implementation ports the MIT-licensed OmniRoute contract at [4265bb2ad5477450a07d3a43ea33a62c6c874878](https://github.com/cheaper-inference/OmniRoute/tree/4265bb2ad5477450a07d3a43ea33a62c6c874878), including [fresh-access-token.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/fresh-access-token.ts), [ws-frame.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-frame.ts), [ws-templates.ts](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/muse-spark-web/ws-templates.ts), and its executor.

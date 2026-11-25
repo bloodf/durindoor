@@ -5,7 +5,11 @@ description: Connect OAuth, device-code, imported-token, and cookie accounts, th
 
 A connection is one credential row for one provider. Claude Code, Codex, Gemini CLI, and GitHub use OAuth. ChatGPT Web and other `webCookie` registry entries use a browser session cookie; see [Web cookie providers](./web-cookie.mdx). The same provider can hold several connections so you can rotate quota or keep personal and team accounts apart.
 
+For a method-by-method overview, see [Provider sign-in methods](./sign-in-methods.mdx).
+
 Open Dashboard, then Providers, then the provider card. Connect starts the flow that provider supports.
+
+The connection check shows a short diagnostic category for authentication, quota or rate limits, unsupported checks, and runtime/provider failures. It uses the existing test result and displays general next steps; raw upstream response text is not shown in the connection list. A successful connection check does not establish that every model or feature is available.
 
 ## Browser OAuth
 
@@ -16,6 +20,8 @@ Gemini CLI keeps its OAuth connection separate from Gemini API-key, Vertex and A
 Some providers pin a loopback callback port. If the dashboard is not on a loopback host, the OAuth modal may run the callback on the server instead of in the browser tab.
 
 ### Vertex AI and Vertex Partner
+
+Vertex Gemini 3 and 4 chat requests drop trailing model turns before dispatch because Vertex rejects them. Older Gemini and image models retain those turns.
 
 A Vertex AI or Vertex Partner connection takes one of three Google credentials:
 
@@ -38,6 +44,8 @@ For GitHub Enterprise Copilot, enter an HTTPS enterprise URL before starting dev
 Amazon Q uses AWS Builder ID or IAM Identity Center device login. It does not offer Kiro's API-key, social-login, or token-import methods.
 
 Muse Code uses Meta device login or a pasted `META_API_KEY`. Device login can mint an inference key before the first request. If the durable login token is revoked, sign in again.
+
+The two credentials are not interchangeable. The key that device login mints is the Muse Code subscription key, and Meta scopes it to the Muse Code client. A Meta Model API key is the credential Meta documents for external clients, so paste one for gateway requests: it is sent to `https://api.meta.ai/v1/responses` as a plain bearer token with no client fingerprint, and it is never reminted. On first run, the Muse Code CLI lets you sign in with your browser or paste an API key. Run `/login` to reopen those choices.
 
 Choose **Kimi Coding (International)** for a `kimi.ai` account and use a model such as `kimi-ai/k3`. Existing `kimi-coding` connections use the `kimi.com` account service and keep the `kmc` model prefix. The Kimi platform and Kimi Coding API-key cards have their own credentials.
 
@@ -68,6 +76,8 @@ Kimi Web uses access and refresh tokens from localStorage, rather than a browser
 ## Token refresh
 
 DurinDoor refreshes supported OAuth credentials before expiry, both on requests and in the background. Refresh is provider-specific and can fail. Imported Cursor, Windsurf, Trae, and Devin tokens have no public refresh flow. Qoder refresh can return 403 and require a new login.
+
+Connections can set `providerSpecificData.refreshLeadMs` to a positive finite number of milliseconds to override the provider's request-time refresh lead. Background refresh uses the larger of this lead and its 30-minute minimum.
 
 An unrecoverable grant error, such as `invalid_grant` or a reused refresh token, requires reconnecting. Revoked Codex and OrcaRouter credentials can be quarantined as `reauth_required`; sign in again or replace the credential. Quota failures are separate from credential revocation.
 
@@ -119,4 +129,4 @@ After connecting, send a short request with an ID from `GET /v1/models` and chec
 
 For CodeBuddy International, create an [International API key](https://www.codebuddy.ai/profile/keys) and save it under **CodeBuddy International** in the dashboard. Tencent's [IAM guide](https://www.codebuddy.ai/docs/cli/iam) lists `CODEBUDDY_API_KEY` for individual developers, identifies International as the default CLI environment, and specifies the `X-Api-Key` header. China keys use the separate CodeBuddy CN connection.
 
-DurinDoor follows the [pinned OmniRoute transport](https://github.com/cheaper-inference/OmniRoute/blob/bd9b1324abb82f0e00066f631b6dd7744e5d975a/open-sse/config/providers/registry/codebuddy-intl/index.ts) for the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.
+DurinDoor uses the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.

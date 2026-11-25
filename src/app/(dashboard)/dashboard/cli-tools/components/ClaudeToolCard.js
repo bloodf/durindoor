@@ -6,11 +6,12 @@ import { Card } from "@/shared/ui/components/Card";
 import Button from "@/shared/ui/components/Button";
 import IconButton from "@/shared/ui/components/IconButton";
 import { Badge } from "@/shared/ui/components/Badge";
-import Select from "@/shared/ui/components/Select";
+import CliOptionSelect from "./CliOptionSelect.js";
 import Image from "next/image";
 import BaseUrlSelect from "./BaseUrlSelect";
 import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
+import useSettingsStore from "@/store/settingsStore";
 import DocsLink from "@/shared/components/DocsLink";
 
 const CLOUD_URL = process.env.NEXT_PUBLIC_CLOUD_URL;
@@ -53,6 +54,8 @@ export default function ClaudeToolCard({
   const [modelAliases, setModelAliases] = useState({});
   const [showManualConfigModal, setShowManualConfigModal] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const settings = useSettingsStore((state) => state.settings);
+  const settingsError = useSettingsStore((state) => state.error);
   const [ccFilterNaming, setCcFilterNaming] = useState(false);
   const [claudeClassifierCompat, setClaudeClassifierCompat] = useState("off");
   const [claudeClassifierCompatLoading, setClaudeClassifierCompatLoading] = useState(false);
@@ -86,21 +89,18 @@ export default function ClaudeToolCard({
     if (isExpanded) fetchModelAliases();
   }, [isExpanded]);
 
+  useEffect(() => { void useSettingsStore.getState().fetchSettings(); }, []);
+
   useEffect(() => {
-    fetch("/api/settings").then(r => r.json()).then(data => {
-      setCcFilterNaming(!!data.ccFilterNaming);
-      setClaudeClassifierCompat(["auto", "always"].includes(data.claudeClassifierCompat) ? data.claudeClassifierCompat : "off");
-    }).catch(() => {});
-  }, []);
+    if (!settings) return;
+    setCcFilterNaming(!!settings.ccFilterNaming);
+    setClaudeClassifierCompat(["auto", "always"].includes(settings.claudeClassifierCompat) ? settings.claudeClassifierCompat : "off");
+  }, [settings]);
 
   const handleCcFilterNamingToggle = async (e) => {
     const value = e.target.checked;
-    setCcFilterNaming(value);
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ccFilterNaming: value }),
-    }).catch(() => {});
+    const saved = await useSettingsStore.getState().patchSettings({ ccFilterNaming: value });
+    if (saved) setCcFilterNaming(value);
   };
 
   // "claudeClassifierCompat" gates a security-relevant default-allow short-
@@ -122,13 +122,8 @@ export default function ClaudeToolCard({
     setClaudeClassifierCompat(next);
     setClaudeClassifierCompatLoading(true);
     try {
-      const res = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claudeClassifierCompat: next }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const saved = await res.json();
+      const saved = await useSettingsStore.getState().patchSettings({ claudeClassifierCompat: next });
+      if (!saved) throw new Error(useSettingsStore.getState().error);
       setClaudeClassifierCompat(["auto", "always"].includes(saved.claudeClassifierCompat) ? saved.claudeClassifierCompat : "off");
     } catch {
       setClaudeClassifierCompat(previous);
@@ -287,7 +282,7 @@ export default function ClaudeToolCard({
 
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-8 flex items-center justify-center shrink-0">
-            <Image src="/providers/claude.png" alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-dd-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
+            <Image src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/providers/claude.png`} alt={tool.name} width={32} height={32} className="size-8 object-contain rounded-dd-lg" sizes="32px" onError={(e) => { e.target.style.display = "none"; }} />
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -302,6 +297,7 @@ export default function ClaudeToolCard({
         <span aria-hidden="true" className={`material-symbols-outlined text-dd-muted text-[20px] transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
       </button>
 
+      {isExpanded && settingsError && <p role="alert" className="text-dd-danger">{settingsError}</p>}
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-dd-border flex flex-col gap-4">
           {checkingClaude && (
@@ -384,7 +380,7 @@ export default function ClaudeToolCard({
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[8rem_auto_1fr_auto] sm:items-center sm:gap-2">
                   <span className="text-xs font-semibold text-dd-text sm:text-right sm:text-sm">Context window</span>
                   <span aria-hidden="true" className="material-symbols-outlined hidden text-dd-muted text-[14px] sm:inline">arrow_forward</span>
-                  <Select
+                  <CliOptionSelect
                     size="sm"
                     aria-label="Context window"
                     value={maxContextTokens}

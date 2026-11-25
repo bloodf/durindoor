@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
+import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
@@ -307,7 +306,7 @@ function applyWorkflowBlock(answers, workflow) {
 
 function applyWorkflowDiff(answers, patches) {
   let firstKey;
-  for (const patch of patches ?? []) {
+  for (const patch of (Array.isArray(patches) ? patches : []).filter(isRecord)) {
     const step = /^\/steps\/(\d+)$/.exec(patch.path ?? "");
     if (step) {
       for (const [itemIndex, item] of (patch.value?.items ?? []).entries()) {
@@ -369,7 +368,7 @@ async function* extractContent(eventStream, signal) {
     }
     if (event.backend_uuid) backendUuid = event.backend_uuid;
 
-    const blocks = event.blocks ?? [];
+    const blocks = Array.isArray(event.blocks) ? event.blocks.filter(isRecord) : [];
     for (const block of blocks) {
       const usage = block.intended_usage ?? "";
 
@@ -498,7 +497,8 @@ function buildStreamingResponse(eventStream, model, cid, created, history, curre
           if (chunk.done) {fullAnswer = chunk.answer || fullAnswer;break;}
           let dt = chunk.delta || "";
           if (dt) {
-            dt = cleanResponse(dt, false);
+            const previousAnswer = fullAnswer;
+            dt = cleanResponse(previousAnswer + dt, false).slice(previousAnswer.length);
             if (dt) {
               controller.enqueue(encoder.encode(sseChunk({
                 id: cid, object: "chat.completion.chunk", created, model, system_fingerprint: null,
@@ -568,7 +568,13 @@ export class PerplexityWebExecutor extends BaseExecutor {
     super("perplexity-web", PROVIDERS["perplexity-web"]);
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null }, sender, billed) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -634,9 +640,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = await runQuotaBearingProviderRequest(
-        () => proxyAwareFetch(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions)
-      );
+      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions));
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);

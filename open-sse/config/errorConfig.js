@@ -20,6 +20,23 @@ export const ERROR_TYPES = {
   504: { type: "server_error", code: "gateway_timeout" }
 };
 
+// Claude Messages API error types are distinct from the OpenAI-compatible
+// types above. Keep this projection separate so OpenAI clients are unchanged.
+export const CLAUDE_ERROR_TYPES = Object.freeze({
+  400: "invalid_request_error",
+  401: "authentication_error",
+  402: "permission_error",
+  403: "permission_error",
+  404: "not_found_error",
+  413: "request_too_large",
+  429: "rate_limit_error",
+  500: "api_error",
+  502: "api_error",
+  503: "overloaded_error",
+  504: "timeout_error",
+  529: "overloaded_error"
+});
+
 // Default error messages per status code (client-facing)
 export const DEFAULT_ERROR_MESSAGES = {
   400: "Bad request",
@@ -78,6 +95,15 @@ export const BACKOFF_CONFIG = resolveBackoffConfig();
 
 // Default cooldown for transient/unknown errors
 export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
+
+/**
+ * 4xx statuses that describe the credential or the route, not the request body,
+ * and so keep rotating connections instead of being handed back to the client:
+ * 412 is Fireworks' "account is suspended", 423 and 428 are account/route
+ * preconditions (decolua/9router#4378). 409 stays request-scoped here on
+ * purpose: tests/unit/account-fallback-request-scoped-4xx.test.js pins it.
+ */
+export const ACCOUNT_SCOPED_4XX_STATUSES = new Set([412, 423, 428]);
 
 /**
  * Gateway/relay statuses: the hop in front of the origin answers while the
@@ -147,7 +173,11 @@ export const WRONG_MODEL_TEXT = [
   "model not supported",
   "model not found",
   "model does not exist",
-  "unknown model"];
+  "unknown model",
+  // OpenRouter (and similar routers) echo the requested id: "<id> is not a valid model ID".
+  // Keep this ahead of billing/capacity text rules so a client-chosen id containing
+  // those phrases cannot bench the shared account (#2315).
+  "not a valid model"];
 
 export const WRONG_MODEL_PATTERNS = [
   /\bmodel\s+\S+\s+is\s+not\s+supported\b/,

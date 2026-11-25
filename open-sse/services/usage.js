@@ -3,7 +3,7 @@
  */
 
 import { fetchGeminiApiKeyQuota } from "../../src/lib/usage/geminiApiKeyQuotaAdapter.js";
-import { fetchXaiQuota } from "../../src/lib/usage/xaiQuotaAdapter.js";
+import { fetchXaiOAuthQuota, fetchXaiQuota } from "../../src/lib/usage/xaiQuotaAdapter.js";
 import { getGitHubUsage } from "./usage/github.js";
 import { getGeminiUsage, getAntigravityUsage } from "./usage/google.js";
 import { getClaudeUsage, consumeClaudeResetGrant } from "./usage/claude.js";
@@ -16,6 +16,8 @@ import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getCodeBuddyCnUsage } from "./usage/codebuddy-cn.js";
 import { getCursorUsage } from "./usage/cursor.js";
 import { getClinepassUsage } from "./usage/clinepass.js";
+import { getDeepRelayUsage } from "./usage/deeprelay.js";
+import { getOpenDesignUsage } from "./usage/opendesign.js";
 import { getSyntheticUsage } from "./usage/synthetic.js";
 import { getKimiUsage } from "./usage/kimi.js";
 import { getDeepseekUsage } from "./usage/deepseek.js";
@@ -33,6 +35,7 @@ import {
 "./usage/misc.js";
 import { getGrokCliUsage } from "./usage/grok-cli.js";
 import { getXiaomiMimoUsage } from "./usage/xiaomi-mimo.js";
+import { getSensenovaUsage } from "./usage/sensenova.js";
 
 /**
  * Get usage data for a provider connection
@@ -64,20 +67,26 @@ const USAGE_HANDLERS = {
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   clinepass: (c) => getClinepassUsage(c.accessToken, c.apiKey, c.proxyOptions),
   synthetic: (c) => getSyntheticUsage(c.apiKey, c.proxyOptions),
+  deeprelay: (c) => getDeepRelayUsage(c.apiKey, c.proxyOptions),
+  "opendesign-go": (c) => getOpenDesignUsage(c),
   cursor: (c) => getCursorUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   gemini: () => fetchGeminiApiKeyQuota(),
   xai: async (c) => {
     const local = await getXaiUsage(c.connectionId);
-    const snapshot = await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
-    return { ...local, ...snapshot, message: snapshot.outcome === "unknown" ? local.message : snapshot.message, quotaMessage: snapshot.notice || snapshot.message, quotas: { ...local.quotas, ...snapshot.quotas } };
+    const snapshot = c.authType === "oauth" && c.accessToken ?
+      await fetchXaiOAuthQuota({ connection: c.connection, proxyOptions: c.proxyOptions }) :
+      await fetchXaiQuota({ connection: c.connection, proxyOptions: c.proxyOptions });
+    return { ...local, ...snapshot, message: snapshot.outcome === "success" ? snapshot.message : local.message, quotaMessage: snapshot.notice || snapshot.message, quotas: { ...local.quotas, ...snapshot.quotas } };
   },
   "grok-web": () => getGrokWebUsage(),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "kimi-coding": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
+  "kimi-ai": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData, "kimi-ai"),
   "kimi-coding-apikey": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),
-  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions)
+  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.apiKey || c.accessToken, c.providerSpecificData, c.proxyOptions),
+  sensenova: (c) => getSensenovaUsage(c.connection, c.proxyOptions)
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {

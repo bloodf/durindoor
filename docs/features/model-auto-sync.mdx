@@ -18,7 +18,17 @@ Auto-update is **on by default** for OpenAI, Anthropic (API key), Claude (OAuth)
 | Codex | the ChatGPT Codex models endpoint, filtered by `minimal_client_version` |
 | GitHub Copilot | `GET https://api.githubcopilot.com/models` (chat models only) |
 
-The sync uses the provider's first active connection, its proxy route, and the same request the provider page's model import uses. An expiring OAuth token is refreshed first.
+The sync uses the provider's first active connection (MLX, OpenCode Server and Grokified sync every connection; see below), its proxy route, and the same request the provider page's model import uses. An expiring OAuth token is refreshed first.
+
+## MLX, OpenCode Server and Grokified: per-connection catalogs
+
+MLX and OpenCode Server connections point at their own servers, and Grokified model availability belongs to each account, so their model lists are **never shared across connections**. Turn auto-update on from the provider page (it is off by default for these providers) and **Sync now** fetches every active connection and stores each list under that connection and the endpoint it was fetched from.
+
+- `/v1/models`, `/v1/models/{kind}` and `/v1/models/{provider}/{model}` list the models of one connection per provider, as they always have: the first active connection by priority. An API key limited to provider accounts uses the first of its own connections instead, and sees none of the provider when it holds none. A key never sees a model ID that only another connection's server reported.
+- A connection whose endpoint changed since its last sync, or that has not synced yet, is listed from its own live discovery or the built-in registry when discovery is unavailable. The next sync replaces the stale list.
+- Provider-wide lists stored by earlier versions cannot be tied to a connection, so they are ignored and replaced on the next sync. Until then these providers fall back to their own live discovery or the built-in registry. When scheduling is enabled, a missing connection catalog is due immediately, even if a legacy provider timestamp is recent. A failed attempt retains its normal retry interval; setting the schedule to Off still disables scheduled runs.
+- `GET /api/models/auto-sync` reports `connectionScoped: true` for these providers: the provider-level `models` is `null` and `connections` carries each connection's sync time, error and list.
+- Other providers keep one provider-wide list, synced with their first active connection.
 
 ## What gets published
 
@@ -43,6 +53,29 @@ Pruning only changes listings. A request that names a removed model is still sen
 - The registry file is never changed. Turning auto-update off for a provider restores its built-in list right away.
 - A failure in one provider never stops the others and never affects requests.
 - When a combo member or a model alias points at a removed model, the sync logs it and the combos page shows a **models no longer listed** badge on that combo. Nothing is rewritten; edit the combo to pick a current model.
+
+## Stale combo steps: badge, opt-in auto-prune and restore
+
+A combo step whose model is missing from its provider's latest successful sync is **stale**. The combo editor marks it **Not in live catalog**. A provider with no successful sync yet, or one that only syncs per connection, shows no badge, and models you added yourself with **Add Model** are never stale. The badge is advisory: the step still routes, and the provider answers for itself.
+
+Nothing is removed from a combo unless you opt in:
+
+- `autoPruneStaleComboSteps` (default `false`) is a global setting. Set it with `PATCH /api/settings` and `{ "autoPruneStaleComboSteps": true }`; it has the same authorization as the other `modelAutoSync*` settings.
+- When it is on, a sync that **succeeds with a non-empty list** moves that provider's stale steps off every combo. A failed or empty sync prunes nothing. Only steps of the provider that just synced are touched.
+- A combo is never left with zero steps. If every step is stale, the combo is left as it is and the sync log says so.
+- Each removed step is recorded on the combo as `prunedSteps`: `{ step, model, provider, prunedAt, reason, weight }`, where `step` is the original position.
+
+To recover, open the combo editor, find the pruned steps list and click **Restore**, or call the API with the same authorization as a combo edit:
+
+```bash
+# restore every pruned step
+curl -X POST http://localhost:20128/api/combos/{id}/restore
+# restore selected steps only
+curl -X POST http://localhost:20128/api/combos/{id}/restore \
+  -H 'content-type: application/json' -d '{"models":["openai/gpt-4o"]}'
+```
+
+Restored steps return to their original position (or the end when the combo is shorter) with their weight. A step that is already on the combo is not added twice. `GET /api/combos/{id}/stale-steps` returns the `staleSteps` for the badge and the `prunedSteps` that can still be restored.
 
 ## Set a schedule
 
@@ -75,3 +108,5 @@ The provider auto-update panel identifies the provider and the runtime list sour
 Discovery freshness describes the stored snapshot at render time. `STALE` means the last attempt failed after a successful sync, or the snapshot has reached the configured sync interval. Missing, invalid or future timestamps and missing intervals show `UNKNOWN`. A recent timestamp does not verify live model availability. Reopen the provider page to read the current status.
 
 Vendor verification remains `UNKNOWN`: the existing list-models status does not attest to a model vendor. This summary describes list provenance only, not per-field capability or price provenance. It does not change model limits, user overrides, routing or provider selection, and adds no discovery requests.
+
+Deleting a compatible provider also removes model aliases that target its provider node ID.

@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
   getNoAuthProviderCredentials: vi.fn()
 }));
 
-vi.mock("@/app/api/v1/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
+vi.mock("@/shared/models/buildModelsList.js", () => ({ buildModelsList: mocks.buildModelsList }));
 // Keyless providers (veoaifree-web, edge-tts...) would otherwise be probed over
 // the real network; a slow or blocked host drops them from the route and turns
 // these tests into network-dependent flakes.
@@ -55,7 +55,8 @@ vi.mock("../../src/sse/services/model.js", async () => {
     }),
     getComboModels: vi.fn(async () => null),
     getComboCanonicalName: vi.fn(async () => null),
-    getAutoComboCatalog: vi.fn(async () => ({}))
+    filterDisabledComboModels: async (models) => models,
+  getAutoComboCatalog: vi.fn(async () => ({}))
   };
 });
 vi.mock("../../src/sse/services/auth.js", () => ({
@@ -443,5 +444,21 @@ describe("media endpoints without a model", () => {
     expect((await res.json()).error.code).toBe("no_provider_for_kind");
     expect(mocks.handleVideoProxyCore).not.toHaveBeenCalled();
   });
+  });
+});
+
+describe("OpenRouter image ZDR policy", () => {
+  it("blocks generation before dispatch and permits an explicit exception", async () => {
+    mocks.handleImageGenerationCore.mockResolvedValue(ok({ data: [] }, "image"));
+    const imageRequest = () => post("/v1/images/generations", { model: "openrouter/openai/gpt-5-image", prompt: "a cat" });
+    mocks.getSettings.mockResolvedValue({ openrouterRouting: { zdr: true } });
+    const blocked = await handleImageGeneration(imageRequest());
+    expect(blocked.status).toBe(400);
+    expect(await blocked.text()).toMatch(/blocked by the ZDR requirement/);
+    expect(mocks.handleImageGenerationCore).not.toHaveBeenCalled();
+    mocks.getSettings.mockResolvedValue({ openrouterRouting: { zdr: true, allowImageWithoutZdr: true } });
+    const allowed = await handleImageGeneration(imageRequest());
+    expect(allowed.status).toBe(200);
+    expect(mocks.handleImageGenerationCore).toHaveBeenCalledTimes(1);
   });
 });

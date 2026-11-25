@@ -23,8 +23,35 @@ export const COLORS = {
   cyan: "\x1b[36m"
 };
 
-// Buffer tokens to prevent context errors
-const BUFFER_TOKENS = 2000;
+// Default buffer tokens reported to clients to prevent context-window overflows
+export const DEFAULT_BUFFER_TOKENS = 2000;
+
+const warnedInvalidUsageBuffers = new Set();
+
+/**
+ * Resolve the client-facing usage buffer from USAGE_BUFFER_TOKENS.
+ * Accepts non-negative decimal integers (including 0 to disable).
+ * Unset/blank or invalid values fall back to DEFAULT_BUFFER_TOKENS.
+ */
+export function getBufferTokens() {
+  const raw = process.env.USAGE_BUFFER_TOKENS;
+  if (raw === undefined || raw === null) return DEFAULT_BUFFER_TOKENS;
+  const trimmed = String(raw).trim();
+  if (trimmed === "") return DEFAULT_BUFFER_TOKENS;
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    if (Number.isSafeInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  if (!warnedInvalidUsageBuffers.has(trimmed)) {
+    warnedInvalidUsageBuffers.add(trimmed);
+    console.warn(
+      `[usage] Invalid USAGE_BUFFER_TOKENS="${trimmed}"; expected a non-negative integer, falling back to ${DEFAULT_BUFFER_TOKENS}`,
+    );
+  }
+  return DEFAULT_BUFFER_TOKENS;
+}
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -34,6 +61,7 @@ function getTimeString() {
 /**
  * Add buffer tokens to usage to prevent context errors
  * @param {object} usage - Usage object (any format)
+ * @param {string} [provider] - Upstream provider id
  * @returns {object} Usage with buffer added
  */
 export function addBufferToUsage(usage, provider) {
@@ -41,21 +69,22 @@ export function addBufferToUsage(usage, provider) {
   if (provider === GEMINI_INTERACTIONS_ID) return usage;
   if (!usage || !isObject(usage)) return usage;
 
+  const buffer = getBufferTokens();
   const result = { ...usage };
 
-  // Claude format
-  if (result.input_tokens !== undefined) {
-    result.input_tokens += BUFFER_TOKENS;
+  // Claude / OpenAI Responses format
+  if (buffer > 0 && result.input_tokens !== undefined) {
+    result.input_tokens += buffer;
   }
 
-  // OpenAI format
-  if (result.prompt_tokens !== undefined) {
-    result.prompt_tokens += BUFFER_TOKENS;
+  // OpenAI Chat Completions format
+  if (buffer > 0 && result.prompt_tokens !== undefined) {
+    result.prompt_tokens += buffer;
   }
 
   // Calculate or update total_tokens
   if (result.total_tokens !== undefined) {
-    result.total_tokens += BUFFER_TOKENS;
+    if (buffer > 0) result.total_tokens += buffer;
   } else if (result.prompt_tokens !== undefined && result.completion_tokens !== undefined) {
     // Calculate total_tokens if not exists
     result.total_tokens = result.prompt_tokens + result.completion_tokens;
@@ -91,7 +120,7 @@ export function filterUsageForFormat(usage, targetFormat) {
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
     [FORMATS.OPENAI_RESPONSES]: [
-    'input_tokens', 'output_tokens',
+    'input_tokens', 'output_tokens', 'total_tokens',
     'input_tokens_details', 'output_tokens_details',
     'estimated', 'cost_usd', 'cost_in_usd', 'cost_in_usd_ticks', 'cost_details', 'tokens_per_second'],
 
@@ -252,10 +281,16 @@ export function canonicalizeUsage(usage) {
   if (!usage || !isObject(usage) || Array.isArray(usage)) return null;
 
   const num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
-  const completion = num(usage.completion_tokens ?? usage.output_tokens);
   const inputDetails = usage.prompt_tokens_details ?? usage.input_tokens_details;
   const outputDetails = usage.completion_tokens_details ?? usage.output_tokens_details;
   const reasoning = num(usage.reasoning_tokens ?? outputDetails?.reasoning_tokens);
+  const reportedCompletion = num(usage.completion_tokens ?? usage.output_tokens);
+  // 9router #3945: when reasoning sits inside the output count, an upstream
+  // that reports completion 0 (or below its own reasoning slice) undercounts.
+  // Additive families (reasoning_included_in_output === 0) bill it on top.
+  const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
+    reasoningIsSubsetOfOutput(usage);
+  const completion = foldReasoning ? reasoning : reportedCompletion;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
   usage.cache_creation_input_tokens !== undefined &&
@@ -288,7 +323,7 @@ export function canonicalizeUsage(usage) {
     completion_tokens: completion,
     // Exclusive cache normalization changes the component sum, so its incoming
     // total becomes stale. Inclusive providers' explicit totals stay authoritative.
-    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? explicitTotal : componentTotal,
+    total_tokens: hasExclusiveCache ? componentTotal : explicitTotal > 0 ? Math.max(explicitTotal, foldReasoning ? componentTotal : 0) : componentTotal,
     cached_tokens: cached,
     cache_creation_input_tokens: cacheCreation
   };
@@ -406,6 +441,33 @@ export function hasValidUsage(usage) {
 /**
  * Extract usage from any format (Claude, OpenAI, Gemini, Responses API)
  */
+// Claude message_start can carry a positive output count before any output is
+// produced. It is provisional until a message_delta receipt reports the final
+// cumulative count. Markers live outside the usage object so they never reach
+// clients or persisted logs.
+const provisionalOutputUsage = new WeakSet();
+const finalOutputReceipts = new WeakSet();
+const mark = (set, usage) => {
+  if (usage) set.add(usage);
+  return usage;
+};
+
+/** True while the output count is still the Claude message_start placeholder. */
+export function isProvisionalOutput(usage) {
+  return Boolean(usage) && isObject(usage) && provisionalOutputUsage.has(usage);
+}
+
+/**
+ * Raise a provisional output count to the estimate of the output already
+ * received, so an interrupted stream is not billed at the placeholder.
+ */
+export function refreshProvisionalOutput(usage, outputChars) {
+  if (!isProvisionalOutput(usage)) return usage;
+  const estimate = estimateOutputTokens(outputChars);
+  if (estimate <= (Number(usage.completion_tokens) || 0)) return usage;
+  return mark(provisionalOutputUsage, { ...usage, completion_tokens: estimate });
+}
+
 export function extractUsage(chunk) {
   if (!chunk || !isObject(chunk)) return null;
 
@@ -414,29 +476,38 @@ export function extractUsage(chunk) {
   // so callers must MERGE (mergeUsage), not overwrite, to keep cache counts.
   if (chunk.type === "message_start" && chunk.message?.usage && isObject(chunk.message.usage)) {
     const u = chunk.message.usage;
-    return normalizeUsage({
+    const provisional = Number(u.output_tokens) > 0;
+    const extracted = normalizeUsage({
       prompt_tokens: u.input_tokens || 0,
       completion_tokens: u.output_tokens || 0,
       cache_read_input_tokens: u.cache_read_input_tokens,
       cache_creation_input_tokens: u.cache_creation_input_tokens
     });
+    return provisional ? mark(provisionalOutputUsage, extracted) : extracted;
   }
   // Claude format (message_delta event). Anthropic reports thinking as a
   // subset of output_tokens, so preserve the detail without inflating output.
   if (chunk.type === "message_delta" && chunk.usage && isObject(chunk.usage)) {
-    return normalizeUsage({
+    const hasFinalOutput = chunk.usage.output_tokens != null && Number.isFinite(Number(chunk.usage.output_tokens));
+    const extracted = normalizeUsage({
       prompt_tokens: chunk.usage.input_tokens || 0,
       completion_tokens: chunk.usage.output_tokens || 0,
       cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
       output_tokens_details: chunk.usage.output_tokens_details
     });
+    return hasFinalOutput ? mark(finalOutputReceipts, extracted) : extracted;
   }
 
-  // OpenAI Responses API format (response.completed or response.done).
+  // OpenAI Responses API terminal usage, including reported incomplete responses.
   // Cache fields already follow the inclusive Responses contract here.
-  if ((chunk.type === "response.completed" || chunk.type === "response.done") && chunk.response?.usage && isObject(chunk.response.usage)) {
-    const usage = chunk.response.usage;
+  // A bare Responses-shaped `usage` (input_tokens/output_tokens, no prompt_tokens) can also
+  // arrive directly on a translated stream chunk; read it the same way.
+  const isTerminalResponsesEvent = chunk.type === "response.completed" || chunk.type === "response.done" || chunk.type === "response.incomplete";
+  const responsesUsage = isTerminalResponsesEvent ? chunk.response?.usage :
+    chunk.usage?.input_tokens !== undefined && chunk.usage?.prompt_tokens === undefined ? chunk.usage : null;
+  if (responsesUsage && isObject(responsesUsage)) {
+    const usage = responsesUsage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
     const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
@@ -456,13 +527,22 @@ export function extractUsage(chunk) {
   // OpenAI format (also covers DeepSeek which uses prompt_cache_hit_tokens).
   // Kiro can attach credit-only metering without token counts.
   if (chunk.usage && isObject(chunk.usage) && (
-  chunk.usage.prompt_tokens !== undefined || chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
+  chunk.usage.prompt_tokens !== undefined || chunk.usage.completion_tokens !== undefined ||
+  chunk.usage.total_tokens !== undefined || chunk.usage.kiro_credits !== undefined)) {
     const hasPromptTokens = chunk.usage.prompt_tokens !== undefined;
+    const reasoningTokens = Number(chunk.usage.completion_tokens_details?.reasoning_tokens) || 0;
+    // 9router #3945: fold reasoning into a zero/undercounted completion only when
+    // it is a subset of the output count; additive upstreams are marked below.
+    const foldReasoning = reasoningTokens > (Number(chunk.usage.completion_tokens) || 0) &&
+      reasoningIsSubsetOfOutput(chunk.usage);
     const normalized = normalizeUsage({
       prompt_tokens: chunk.usage.prompt_tokens,
-      completion_tokens: hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
+      completion_tokens: foldReasoning ? reasoningTokens :
+        hasPromptTokens ? chunk.usage.completion_tokens || 0 : chunk.usage.completion_tokens,
       total_tokens: chunk.usage.total_tokens,
-      cached_tokens: chunk.usage.prompt_tokens_details?.cached_tokens || chunk.usage.prompt_cache_hit_tokens,
+      cached_tokens: [chunk.usage.prompt_tokens_details?.cached_tokens, chunk.usage.input_tokens_details?.cached_tokens,
+        chunk.usage.cache_read_input_tokens, chunk.usage.prompt_cache_hit_tokens, chunk.usage.cached_tokens]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens,
       // OpenRouter reports cost as a bare USD number on usage; same unit as cost_usd.
       cost_usd: isUsdReceipt(chunk.usage.cost) ? chunk.usage.cost : chunk.usage.cost_usd,
@@ -496,7 +576,8 @@ export function extractUsage(chunk) {
       prompt_tokens: usageMeta.promptTokenCount || 0,
       completion_tokens: usageMeta.candidatesTokenCount || 0,
       total_tokens: usageMeta.totalTokenCount,
-      cached_tokens: usageMeta.cachedContentTokenCount,
+      cached_tokens: [usageMeta.cachedContentTokenCount, usageMeta.cached_content_token_count]
+        .find((value) => value != null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0),
       reasoning_tokens: usageMeta.thoughtsTokenCount
     }));
   }
@@ -616,11 +697,15 @@ export function mergeUsage(prev, next) {
   }
 
   const merged = { ...prev };
+  const prevProvisional = isProvisionalOutput(prev);
+  // Some Anthropic-compatible streams replace the initial total with uncached input when cache counts arrive.
+  const preferNextInput = (next.cache_read_input_tokens != null || next.cache_creation_input_tokens != null)
+    && prev.cache_read_input_tokens == null && prev.cache_creation_input_tokens == null && next.prompt_tokens != null;
   for (const [k, v] of Object.entries(next)) {
     // typeof NaN === "number" — guard with Number.isFinite so one malformed
     // chunk can't poison the whole accumulation (Math.max(x, NaN) is NaN).
     if (isNumber(v) && Number.isFinite(v)) {
-      merged[k] = Math.max(isNumber(merged[k]) ? merged[k] : 0, v);
+      merged[k] = k === "prompt_tokens" && preferNextInput ? v : Math.max(isNumber(merged[k]) ? merged[k] : 0, v);
     } else if (k === "estimated" && isBoolean(v)) {
       // Estimation marker: once estimated, stays estimated (a real value never
       // downgrades an estimate to authoritative).
@@ -631,7 +716,12 @@ export function mergeUsage(prev, next) {
       merged[k] = v; // Kiro credit unit label: take latest
     }
   }
-  return merged;
+  if (prevProvisional && finalOutputReceipts.has(next)) {
+    // The final receipt replaces the placeholder, even when it is lower.
+    merged.completion_tokens = next.completion_tokens;
+    return merged;
+  }
+  return prevProvisional || isProvisionalOutput(next) ? mark(provisionalOutputUsage, merged) : merged;
 }
 
 /**
@@ -702,7 +792,112 @@ export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI
 }
 
 /**
- * Log usage with cache info (green color)
+ * Character length of a string value. Non-strings contribute nothing.
+ * @param {unknown} value
+ * @returns {number}
+ */
+function textLength(value) {
+  return isString(value) ? value.length : 0;
+}
+
+/**
+ * Character length of a tool payload. A string is counted as written; any
+ * other value is measured from its JSON form.
+ * @param {unknown} value
+ * @returns {number}
+ */
+function payloadLength(value) {
+  if (isString(value)) return value.length;
+  try { return JSON.stringify(value ?? "").length; } catch { return 0; }
+}
+
+/**
+ * Sum text lengths of a string or an array of content blocks.
+ * @param {unknown} content
+ * @returns {number}
+ */
+function contentLength(content) {
+  if (isString(content)) return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((sum, block) => sum + (isString(block) ? block.length : textLength(block?.text)), 0);
+}
+
+/**
+ * Measure the generated output of a completed non-streaming response in
+ * characters so a missing usage object can be estimated. Counts assistant
+ * text, reasoning and tool-call payloads across the response dialects the
+ * non-streaming handler emits (OpenAI Chat, Claude Messages, Responses,
+ * Gemini candidates, Ollama).
+ * @param {object} response - Client-shaped or provider response body.
+ * @returns {number} Output length in characters, 0 when nothing measurable.
+ */
+export function measureResponseOutputLength(response) {
+  if (!response || !isObject(response) || Array.isArray(response)) return 0;
+  let total = 0;
+
+  if (Array.isArray(response.choices)) {
+    for (const choice of response.choices) {
+      const message = choice?.message;
+      if (!message || !isObject(message)) continue;
+      total += contentLength(message.content) + textLength(message.reasoning_content) + textLength(message.reasoning);
+      for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
+        total += textLength(call?.function?.name) + payloadLength(call?.function?.arguments);
+      }
+      if (message.function_call) {
+        total += textLength(message.function_call.name) + payloadLength(message.function_call.arguments);
+      }
+    }
+    return total;
+  }
+  if (response.type === "message" && Array.isArray(response.content)) {
+    for (const block of response.content) {
+      if (block?.type === "text") total += textLength(block.text);
+      else if (block?.type === "thinking") total += textLength(block.thinking);
+      else if (block?.type === "tool_use") total += textLength(block.name) + payloadLength(block.input);
+    }
+    return total;
+  }
+  if (Array.isArray(response.output)) {
+    for (const item of response.output) {
+      if (item?.type === "message") total += contentLength(item.content);
+      else if (item?.type === "reasoning") total += contentLength(item.summary);
+      else if (item?.type === "function_call") total += textLength(item.name) + payloadLength(item.arguments);
+    }
+    return total;
+  }
+  const candidates = response.candidates ?? response.response?.candidates;
+  if (Array.isArray(candidates)) {
+    for (const candidate of candidates) {
+      const parts = candidate?.content?.parts;
+      if (!Array.isArray(parts)) continue;
+      for (const part of parts) {
+        total += textLength(part?.text);
+        if (part?.functionCall) total += textLength(part.functionCall.name) + payloadLength(part.functionCall.args);
+      }
+    }
+    return total;
+  }
+  if (response.message && isObject(response.message)) {
+    const calls = response.message.tool_calls;
+    return textLength(response.message.content) + (Array.isArray(calls) ? payloadLength(calls) : 0);
+  }
+  return textLength(response.response);
+}
+
+/**
+ * Estimate usage for a successful non-streaming response whose provider sent
+ * no usage object. The result is flagged `estimated: true`; reported usage
+ * must always be preferred by the caller.
+ * @param {object} requestBody - Request sent to the provider.
+ * @param {object} response - Completed response body.
+ * @returns {object} Estimated OpenAI-shaped usage.
+ */
+export function estimateNonStreamingUsage(requestBody, response) {
+  return estimateUsage(requestBody, measureResponseOutputLength(response), FORMATS.OPENAI);
+}
+
+/**
+ * Log verbose usage in green, including cache and reasoning fields; estimates are yellow.
  */
 export function logUsage(provider, usage, model = null, connectionId = null, apiKey = null) {
   if (!usage || !isObject(usage)) return;
@@ -720,11 +915,11 @@ export function logUsage(provider, usage, model = null, connectionId = null, api
   const outTokens = usage?.completion_tokens || usage?.output_tokens || 0;
   const accountPrefix = connectionId ? connectionId.slice(0, 8) + "..." : "unknown";
 
-  let msg = `[${getTimeString()}] 📊 ${COLORS.green}[USAGE] ${p} | in=${inTokens} | out=${outTokens} | account=${accountPrefix}${COLORS.reset}`;
+  let msg = `[${getTimeString()}] 📊 ${COLORS.green}[USAGE] ${p} | in=${inTokens} | out=${outTokens} | account=${accountPrefix}`;
 
   // Add estimated flag if present
   if (usage.estimated) {
-    msg += ` ${COLORS.yellow}(estimated)${COLORS.reset}`;
+    msg += ` ${COLORS.yellow}(estimated)${COLORS.green}`;
   }
 
   // Add cache info if present (unified from different formats)
@@ -737,5 +932,5 @@ export function logUsage(provider, usage, model = null, connectionId = null, api
   const reasoning = usage.reasoning_tokens;
   if (reasoning) msg += ` | reasoning=${reasoning}`;
 
-  console.log(msg);
+  console.log(msg + COLORS.reset);
 }

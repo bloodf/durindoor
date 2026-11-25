@@ -1,6 +1,9 @@
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
+import { hasResponsesContentItem } from "./responsesContent.js";
+import { isSafetyStopPayload } from "./safetyStopFrame.js";
+import { emittedFormatTerminalKind } from "./streamTerminal.js";
 
 const encoder = new TextEncoder();
 const GRACE_MS = 1000;
@@ -9,6 +12,9 @@ const GRACE_MS = 1000;
 export function hasResponsesSnapshotOutput(payload) {
   if (!["response.completed", "response.done"].includes(payload?.type) || payload?.response?.status === "failed") return false;
   return Array.isArray(payload?.response?.output) && payload.response.output.some((item) => {
+    if (item?.type === "image_generation_call") {
+      return payload.response.status === "completed" && item.status === "completed" && hasResponsesContentItem(item);
+    }
     if (item?.type === "message" && Array.isArray(item.content)) {
       return item.content.some((part) =>
         part?.type === "output_text" && isString(part.text) && part.text.trim() ||
@@ -40,7 +46,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
   };
   const hasOutput = () => {
     const snapshot = getSnapshot?.();
-    return sawOutput || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
+    return sawOutput || snapshot?.hasTokenLimitTerminal || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
       Number(snapshot?.usage?.completion_tokens ?? snapshot?.usage?.output_tokens ?? snapshot?.usage?.candidatesTokenCount ?? 0) > 0;
   };
   const process = (controller, frame) => {
@@ -52,7 +58,10 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
     // Native Claude and Responses passthrough content is not accumulated by
     // the OpenAI-oriented accounting snapshot, so observe client output too.
-    if (format === FORMATS.OPENAI_RESPONSES && hasResponsesSnapshotOutput(payload) ||
+    // An explicit provider safety/refusal stop is the provider's answer, not an
+    // empty completion: keep its terminal instead of replacing it with an error.
+    if (isSafetyStopPayload(payload) ||
+        format === FORMATS.OPENAI_RESPONSES && hasResponsesSnapshotOutput(payload) ||
         event === "content_block_delta" && (payload?.delta?.text?.trim?.() || payload?.delta?.thinking?.trim?.()) ||
         event === "content_block_start" && payload?.content_block?.type === "tool_use" ||
         ["response.output_text.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta"].includes(event) && payload?.delta?.trim?.() ||
@@ -60,10 +69,14 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
       sawOutput = true;
     }
     const reason = payload?.choices?.find((choice) => choice.finish_reason)?.finish_reason;
-    const terminal = data === "[DONE]" || (format === FORMATS.OPENAI && reason === "stop") ||
-      (format === FORMATS.CLAUDE && event === "message_stop") ||
-      (format === FORMATS.OPENAI_RESPONSES && ["response.completed", "response.done"].includes(event));
-    if (terminal && !released && !sawError && !hasOutput()) {
+    const kind = emittedFormatTerminalKind(format, frame);
+    // Same end as the client tracker: [DONE], message_stop, response.completed
+    // / failed, or a final Gemini candidate. finish_reason is not that end.
+    const terminal = kind === "success" || kind === "done";
+    // Hold an empty OpenAI stop until the real end so it can still be replaced
+    // together with [DONE]. The stop frame itself does not terminate the stream.
+    const pendingOpenAIStop = format === FORMATS.OPENAI && reason === "stop";
+    if ((terminal || pendingOpenAIStop) && !released && !sawError && !hasOutput()) {
       held += frame;
       if (!timer) {
         timer = setTimeout(() => { try { release(controller); } catch { clear(); } }, GRACE_MS);

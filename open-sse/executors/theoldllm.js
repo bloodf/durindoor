@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { createExecutorSender } from "./sendRequest.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const API_URL = "https://theoldllm.vercel.app/api/chatgpt";
@@ -98,28 +101,18 @@ export function generateRequestToken() {
 
 export const tokenCache = { value: "", expiresAt: 0 };
 
-async function directFetch(bodyStr, signal) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
-  const onSignal = signal ? () => controller.abort(signal.reason) : null;
-  if (signal && onSignal) signal.addEventListener("abort", onSignal, { once: true });
-
-  try {
-    return await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Client-Version": "3.8.4",
-        "X-Request-Token": generateRequestToken(),
-        "User-Agent": CHROME_UA
-      },
-      body: bodyStr,
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timer);
-    if (signal && onSignal) signal.removeEventListener("abort", onSignal);
-  }
+function sendChat(sendRequest, bodyStr, signal, proxyOptions) {
+  return sendRequest(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Client-Version": "3.8.4",
+      "X-Request-Token": generateRequestToken(),
+      "User-Agent": CHROME_UA
+    },
+    body: bodyStr,
+    signal
+  }, proxyOptions);
 }
 
 function isTokenRejected(status, body) {
@@ -202,7 +195,7 @@ export class TheOldLlmExecutor extends BaseExecutor {
   }
 
   async execute(input) {
-    const { model, stream, body, signal, log } = input;
+    const { model, stream, body, signal, log, proxyOptions = null } = input;
     const headers = this.buildHeaders();
 
     if (signal?.aborted) {
@@ -217,45 +210,44 @@ export class TheOldLlmExecutor extends BaseExecutor {
       };
     }
 
+    const sender = createExecutorSender(this, input);
+    let upstream;
+    const result = (response) => {
+      transferProviderAttemptDispatch(upstream, response);
+      return { response, url: API_URL, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const reqBody = { ...(body || {}), model: mapModel(model), stream: true };
       // Serialize a wire-only copy once so token retries cannot duplicate error markers.
       const bodyStr = JSON.stringify(this.prepareOpenAIToolMessagesForWire(reqBody));
-      let upstream = await directFetch(bodyStr, signal);
+      upstream = await sendChat(sender.sendRequest, bodyStr, signal, proxyOptions);
       let upstreamText = await upstream.text();
 
       if (isTokenRejected(upstream.status, upstreamText)) {
         log?.warn?.("THEOLDLLM", `Token rejected (${upstream.status}), retrying with fresh token`);
-        upstream = await directFetch(bodyStr, signal);
+        await settleProviderAttemptDispatch(upstream);
+        upstream = await sendChat(sender.sendRequest, bodyStr, signal, proxyOptions);
         upstreamText = await upstream.text();
       }
 
       if (upstream.status === 200 && upstreamText) {
         const payload = stream ? upstreamText : buildChatCompletion(parseSseContent(upstreamText), model);
-        return {
-          response: new Response(payload, {
-            status: 200,
-            headers: {
-              "Content-Type": stream ? "text/event-stream" : "application/json",
-              "Cache-Control": "no-cache"
-            }
-          }),
-          url: API_URL,
-          headers,
-          transformedBody: body
-        };
+        return result(new Response(payload, {
+          status: 200,
+          headers: {
+            "Content-Type": stream ? "text/event-stream" : "application/json",
+            "Cache-Control": "no-cache"
+          }
+        }));
       }
 
-      return {
-        response: new Response(buildErrorResponse(upstream.status, upstreamText), {
-          status: upstream.status,
-          headers: { "Content-Type": "application/json" }
-        }),
-        url: API_URL,
-        headers,
-        transformedBody: body
-      };
+      return result(new Response(buildErrorResponse(upstream.status, upstreamText), {
+        status: upstream.status,
+        headers: { "Content-Type": "application/json" }
+      }));
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      await settleProviderAttemptDispatch(upstream, { reason: signal?.aborted ? "abort" : "upstream_error" });
       const message = error instanceof Error ? error.message : String(error);
       log?.error?.("THEOLDLLM", `Executor error: ${message}`);
       return {

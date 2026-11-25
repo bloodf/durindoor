@@ -14,7 +14,15 @@ import { getCommittedTokenCount } from "../helpers/committedTokens.js";
  * - Expired keys remain visible in the dashboard/CLI but stop authenticating requests.
  * - Setting `expiresAt` to null clears an existing expiry.
  */
-import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isString } from "../../../shared/utils/typeChecks.js";
+
+// Invalid input must never silently remove a key's combo restriction.
+function validateAllowedCombos(value) {
+  if (!Array.isArray(value) || value.some((item) => !isString(item))) {
+    throw new TypeError("allowedCombos must be an array of strings");
+  }
+  return [...value];
+}
 
 function parseApiKeyPolicy(raw) {
   if (raw == null) return null;
@@ -121,6 +129,7 @@ export async function getApiKeyByKey(key) {
 
 export async function createApiKey(name, machineId, allowedCombos = [], dailyLimitTokens = null, expiresAt = null, optionsOrNow = {}) {
   if (!machineId) throw new Error("machineId is required");
+  const combos = validateAllowedCombos(allowedCombos == null ? [] : allowedCombos);
   const options = isNumber(optionsOrNow) ? { now: optionsOrNow } : optionsOrNow || {};
   const now = options.now ?? Date.now();
   const tokenLimit = normalizeDailyLimitTokens(dailyLimitTokens);
@@ -135,7 +144,7 @@ export async function createApiKey(name, machineId, allowedCombos = [], dailyLim
     key: result.key,
     machineId,
     isActive: true,
-    allowedCombos: Array.isArray(allowedCombos) ? allowedCombos : [],
+    allowedCombos: combos,
     dailyLimitTokens: tokenLimit ?? null,
     policy,
     expiresAt: expiry,
@@ -162,8 +171,11 @@ export async function updateApiKey(id, data, now = Date.now()) {
     if (!row) return;
     const merged = rowToKey(row);
     if (Object.hasOwn(data, "name")) merged.name = data.name;
-    if (Object.hasOwn(data, "isActive")) merged.isActive = data.isActive === true;
-    if (Object.hasOwn(data, "allowedCombos")) merged.allowedCombos = Array.isArray(data.allowedCombos) ? [...data.allowedCombos] : [];
+    if (Object.hasOwn(data, "isActive")) {
+      if (!isBoolean(data.isActive)) throw new TypeError("isActive must be a boolean");
+      merged.isActive = data.isActive;
+    }
+    if (Object.hasOwn(data, "allowedCombos")) merged.allowedCombos = validateAllowedCombos(data.allowedCombos);
     if (Object.hasOwn(data, "dailyLimitTokens")) merged.dailyLimitTokens = normalizeDailyLimitTokens(data.dailyLimitTokens);
     if (Object.hasOwn(data, "expiresAt")) merged.expiresAt = normalizeApiKeyExpiresAt(data.expiresAt, now);
     if (Object.hasOwn(data, "isAdmin")) merged.isAdmin = data.isAdmin === true;

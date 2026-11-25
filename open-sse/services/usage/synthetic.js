@@ -43,6 +43,15 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
     }
 
     const data = await response.json().catch(() => ({}));
+    // Search has its own hourly request bucket, independent of the plan.
+    const search = data?.search?.hourly;
+    const searchTotal = toFiniteNumber(search?.limit, 0);
+    const searchUsed = Math.max(0, Math.min(searchTotal, toFiniteNumber(search?.requests, 0)));
+    const searchQuota = searchTotal > 0 ? {
+      "Search (hourly)": { used: searchUsed, total: searchTotal, remaining: searchTotal - searchUsed,
+        remainingPercentage: Math.round((searchTotal - searchUsed) / searchTotal * 100),
+        resetAt: parseResetTime(search.renewsAt), unlimited: false },
+    } : {};
     // Weekly credit pool (what synthetic.new/billing shows). `subscription` is
     // the retired counter.
     const weekly = [data?.planWeeklyLimit, data?.weeklyTokenLimit].find(
@@ -54,6 +63,7 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
       return {
         plan: "Synthetic",
         quotas: {
+          ...searchQuota,
           Weekly: {
             name: "Weekly credits",
             used,
@@ -72,11 +82,13 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
 
     const sub = data?.subscription;
     if (!sub || !isObject(sub)) {
+      if (searchTotal > 0) return { plan: "Synthetic", quotas: searchQuota };
       return { plan: "Synthetic", message: "Synthetic returned no subscription quota." };
     }
 
     const total = toFiniteNumber(sub.limit, 0);
     if (total <= 0) {
+      if (searchTotal > 0) return { plan: "Synthetic", quotas: searchQuota };
       return { plan: "Synthetic", message: "No Synthetic subscription quota found for this key." };
     }
     const used = toFiniteNumber(sub.requests, 0);
@@ -85,6 +97,7 @@ export async function getSyntheticUsage(apiKey = null, proxyOptions = null) {
     return {
       plan: "Synthetic",
       quotas: {
+        ...searchQuota,
         Requests: {
           name: "Subscription requests",
           used,

@@ -124,7 +124,7 @@ export default function HeadroomPage({ initialRange = { preset: "7d" } }) {
         actions={
           <>
             <a
-              href="/dashboard/token-saver/settings"
+              href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/dashboard/token-saver/settings`}
               className="inline-flex min-h-11 min-w-11 items-center rounded-dd px-2 py-1 text-[13px] font-medium text-dd-accent outline-none hover:text-dd-accent-hover focus-visible:shadow-dd-focus"
             >
               Token Saver settings

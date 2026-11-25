@@ -28,9 +28,12 @@ function isResponsesErrorOutput(item) {
   return !!match && match[1] !== "0";
 }
 
-/** JSON documents and fenced code are structured payloads, never filtered. */
-function isProtectedPayload(text, maxJsonLength = Infinity) {
-  if (/```|~~~/.test(text)) return true;
+/** JSON object or array documents are never filtered (#2190).
+ *  Oversized brace-balanced text skips JSON.parse (Gemini's bound).
+ *  Fenced code is not a JSON document: chat role:tool and Claude tool_result
+ *  still compress it under the plain RTK toggle (#1454).
+ */
+function isJsonDocument(text, maxJsonLength = Infinity) {
   const t = text.trim();
   if (!(t.startsWith("{") || t.startsWith("["))) return false;
   if (t.length > maxJsonLength) return t.startsWith("{") ? t.endsWith("}") : t.endsWith("]");
@@ -40,6 +43,12 @@ function isProtectedPayload(text, maxJsonLength = Infinity) {
   } catch {
     return false;
   }
+}
+
+/** Responses and Gemini also leave fenced code alone. */
+function isProtectedPayload(text, maxJsonLength = Infinity) {
+  if (/```|~~~/.test(text)) return true;
+  return isJsonDocument(text, maxJsonLength);
 }
 
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
@@ -90,9 +99,12 @@ export function compressMessages(body, enabled) {
 
       // Shape 1: OpenAI tool message — { role:"tool", content: "string" }
       // Tool messages flagged is_error:true (bridged from Claude tool_result) keep error traces intact.
+      // JSON documents are never filtered. Fenced code still compresses (#1454).
       if (msg.role === "tool" && msg.is_error === true) continue;
       if (msg.role === "tool" && isString(msg.content)) {
-        msg.content = compressText(msg.content, stats, "openai-tool");
+        if (!isJsonDocument(msg.content, JSON_GUARD_MAX_LENGTH)) {
+          msg.content = compressText(msg.content, stats, "openai-tool");
+        }
         continue;
       }
 
@@ -102,7 +114,7 @@ export function compressMessages(body, enabled) {
       if (msg.role === "tool") {
         for (let k = 0; k < msg.content.length; k++) {
           const part = msg.content[k];
-          if (part && part.type === "text" && isString(part.text)) {
+          if (part && part.type === "text" && isString(part.text) && !isJsonDocument(part.text, JSON_GUARD_MAX_LENGTH)) {
             part.text = compressText(part.text, stats, "openai-tool-array");
           }
         }
@@ -117,12 +129,14 @@ export function compressMessages(body, enabled) {
 
         if (isString(block.content)) {
           // Shape 2: claude string form
-          block.content = compressText(block.content, stats, "claude-string");
+          if (!isJsonDocument(block.content, JSON_GUARD_MAX_LENGTH)) {
+            block.content = compressText(block.content, stats, "claude-string");
+          }
         } else if (Array.isArray(block.content)) {
           // Shape 3: claude array form — compress each text part
           for (let k = 0; k < block.content.length; k++) {
             const part = block.content[k];
-            if (part && part.type === "text" && isString(part.text)) {
+            if (part && part.type === "text" && isString(part.text) && !isJsonDocument(part.text, JSON_GUARD_MAX_LENGTH)) {
               part.text = compressText(part.text, stats, "claude-array");
             }
           }
@@ -306,6 +320,7 @@ export function normalizeTokenSaverEvent(event) {
   const rtk = e.rtk && isObject(e.rtk) ? e.rtk : {};
   const headroom = e.headroom && isObject(e.headroom) ? e.headroom : {};
   const pxpipe = e.pxpipe && isObject(e.pxpipe) ? e.pxpipe : {};
+  const compression = e.compression && isObject(e.compression) ? e.compression : {};
 
   const rtkBytesSaved = toNonNeg(rtk.bytesSaved);
   const hrState = ["compressed", "skipped", "disabled"].includes(headroom.state) ? headroom.state : "disabled";
@@ -345,6 +360,12 @@ export function normalizeTokenSaverEvent(event) {
       tokensAfterEst: toNonNeg(pxpipe.tokensAfterEst),
       tokensSavedEst: toNonNeg(pxpipe.tokensSavedEst),
       imageCount: toNonNeg(pxpipe.imageCount)
+    },
+    // Stack estimates exclude the preceding RTK and Headroom stages.
+    compression: {
+      tokensBefore: toNonNeg(compression.tokensBefore),
+      tokensAfter: toNonNeg(compression.tokensAfter),
+      tokensSaved: toNonNeg(compression.tokensSaved)
     },
     totals: {
       actualBytesSaved: rtkBytesSaved + hrBodyShrink

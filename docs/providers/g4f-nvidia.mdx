@@ -1,0 +1,14 @@
+---
+title: g4f NVIDIA
+description: Use g4f's hosted NVIDIA NIM proxy with an optional member key, separate from NVIDIA's direct API.
+---
+
+This is g4f's hosted NVIDIA NIM proxy, separate from NVIDIA's direct API. It uses OpenAI-compatible chat and model-list endpoints at `https://g4f.space/api/nvidia/v1`. The included catalog includes Nemotron 3 Nano, GLM 5.2, and MiniMax M2.7. g4f's [API documentation](https://g4f.dev/docs/ready_to_use.html) says this provider URL does not require a key; anonymous use may require proof-of-work credits. An optional g4f member key can be entered in the API key field.
+
+## Setup and limits
+
+Create a connection with an optional key from [g4f API keys](https://g4f.dev/api_key.html). Models and availability can change. g4f controls quotas and model availability.
+
+For browser-based setup, the cookie capture extension can capture a signed-in session. Alternatively paste a cURL command with its `Cookie` header or import a HAR file. Cookies are not required by the API; the optional member API key is the supported credential when needed.
+
+Sources: [g4f API endpoints](https://g4f.dev/docs/ready_to_use.html).

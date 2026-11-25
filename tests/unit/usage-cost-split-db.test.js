@@ -1,3 +1,4 @@
+import { convertLegacyUsageDaily } from "@/lib/db/migrations/037-usage-daily-rollups.js";
 // Review follow-up for the per-rate usage cost split (upstream 9router #4216):
 // the split is stored per request at insert, so long-context tiers land in the
 // right category, and daily account buckets keep one counter per model, so a
@@ -102,6 +103,7 @@ describe("stored per-request cost split", () => {
     const day = new Date(at(3, 12));
     const dateKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     adapter.run(`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?)`, [dateKey, JSON.stringify(legacyDay)]);
+    adapter.transaction(() => convertLegacyUsageDaily(adapter));
 
     const stats = await db.getUsageStats("7d");
     const [flatModel] = rowFor(stats.byModel, "gpt-flat");

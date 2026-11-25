@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { getEmbeddingAdapter } from "../../open-sse/handlers/embeddingProviders/index.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 
 describe("Morph provider (upstream de2da19a9 morph slice)", () => {
@@ -20,11 +21,20 @@ describe("Morph provider (upstream de2da19a9 morph slice)", () => {
     expect(PROVIDERS.morph.baseUrl).toBe("https://api.morphllm.com/v1/chat/completions");
   });
 
+  it("constructs authenticated Morph embedding requests", () => {
+    const adapter = getEmbeddingAdapter("morph");
+    expect(adapter.buildUrl()).toBe("https://api.morphllm.com/v1/embeddings");
+    expect(adapter.buildHeaders({ apiKey: "test-key" })).toEqual({ "Content-Type": "application/json", Authorization: "Bearer test-key" });
+    expect(adapter.buildBody("morph-embedding-v4", { input: "hello", encoding_format: "float" })).toEqual({ model: "morph-embedding-v4", input: "hello", encoding_format: "float" });
+  });
+
   it("exposes exactly the upstream morph model list", () => {
     const morph = REGISTRY.find((e) => e.id === "morph");
     expect(morph.models).toEqual([
       { id: "morph-v3-large", name: "Morph v3 Large" },
       { id: "morph-v3-fast", name: "Morph v3 Fast" },
+      { id: "morph-compactor", name: "Morph Compactor" },
+      { id: "morph-embedding-v4", name: "Morph Embedding V4", dimensions: 1536, kind: "embedding" },
       { id: "morph-qwen35-397b", name: "Qwen 3.5 397B (Morph)", contextLength: 262144 },
       { id: "morph-minimax27-230b", name: "MiniMax M2.7 (Morph)", contextLength: 200704 },
       { id: "morph-qwen36-27b", name: "Qwen 3.6 27B (Morph)", contextLength: 131072 },

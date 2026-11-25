@@ -1,0 +1,18 @@
+---
+title: "Z.ai Web"
+description: Route chat through a signed-in Z.ai consumer web session.
+---
+
+Z.ai Web routes chat requests through the consumer service at [chat.z.ai](https://chat.z.ai). This connection uses the session token issued by the website, not a Z.ai API key.
+
+## Setup
+
+Sign in at [chat.z.ai](https://chat.z.ai), then add a Z.ai Web connection and import the `token` session value. The cookie capture extension can capture the `token` cookie for `chat.z.ai`. You can also paste a `token=<value>` cookie pair, a full `Cookie:` header containing that pair, or the token value from the site's browser Local Storage. Treat the value as a password. Re-import it when the session expires.
+
+For DevTools, open Network after signing in, select a request to `chat.z.ai`, and copy its Cookie request header. For a HAR file, use the cookie entry named `token`. The importer accepts only the declared Z.ai domain and cookie name.
+
+## Models and limits
+
+The catalog includes GLM-5.3-Flash, GLM-5.3, and GLM-5.2. Availability, quotas, and model access are controlled by Z.ai. The web session flow may require CAPTCHA proof; requests rejected for missing or stale proof can fail even while the session token remains valid. HTTP 401/403 indicate a rejected or expired session, and HTTP 429 indicates quota or rate limiting.
+
+The integration supports chat creation, signed completion requests, and SSE frames.

@@ -1,10 +1,15 @@
+import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
+import { CLAUDE_FAST_MODE_BETA, claudeFunctionalBetas, claudeRequestedBetas, prepareClaudeOAuthBody } from "../utils/claudeProtocol.js";
 import crypto from "crypto";
+import { normalizeStrictChatHistory } from "../utils/strictChatHistory.js";
+import { normalizeKimiRequest } from "./kimiParity.js";
 import { normalizeNvidiaToolCallIds } from "../translator/concerns/toolCall.js";
-import { BaseExecutor } from "./base.js";
+import { BaseExecutor, normalizeAnthropicHeaders } from "./base.js";
+import { wantsGeminiLongDecode, withGeminiLongDecode } from "../utils/geminiLongDecode.js";
 import { PROVIDERS, PROVIDER_OAUTH, resolveHerokuBaseUrl } from "../config/providers.js";
 import { PROVIDER_DEFAULTS } from "../providers/schema.js";
 import { resolveProviderAlias } from "../services/model.js";
-import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
+import { ANTHROPIC_API_VERSION, FORWARDABLE_CLIENT_BETAS, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeForwardableClientBetas, buildClaudeOAuthAnthropicBeta, withoutClaudeCodeIdentityBetas } from "../providers/shared.js";
 import { OAUTH_ENDPOINTS, buildKimiHeaders, buildKimiDeviceHeaders, NOUS_ATTRIBUTION, CLAUDE_SYSTEM_PROMPT } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
@@ -15,7 +20,7 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
-import { refreshKimiToken } from "../services/tokenRefresh/providers.js";
+import { refreshClaudeOAuthToken, refreshKimiToken } from "../services/tokenRefresh/providers.js";
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.js";
 import { stripUnsupportedChatExtensions, stripUnsupportedParams, applyParamRenames } from "../translator/concerns/paramSupport.js";
 import { FORMATS } from "../translator/formats.js";
@@ -27,6 +32,23 @@ function isOfficialAnthropicApiKey(provider, credentials) {
   if (!isString(credentials?.apiKey) || !credentials.apiKey || credentials.accessToken || credentials.apiKey.startsWith("sk-ant-oat")) return false;
   const url = credentials.runtimeTransport?.baseUrl || (provider === "anthropic" ? ANTHROPIC_COMPAT_BASE : credentials.providerSpecificData?.baseUrl || ANTHROPIC_COMPAT_BASE);
   return isOfficialAnthropicBaseUrl(url);
+}
+
+// Kimi's Chat endpoint requires tool results to name the originating function.
+function completeKimiToolNames(body) {
+  if (!Array.isArray(body.messages)) return;
+  const names = new Map();
+  for (const message of body.messages) {
+    if (message?.role !== "assistant" || !Array.isArray(message.tool_calls)) continue;
+    for (const call of message.tool_calls) {
+      if (isString(call?.id) && isString(call.function?.name)) names.set(call.id, call.function.name);
+    }
+  }
+  for (const message of body.messages) {
+    if (message?.role === "tool" && !isString(message.name) && names.has(message.tool_call_id)) {
+      message.name = names.get(message.tool_call_id);
+    }
+  }
 }
 
 function stripClaudeIdentity(body) {
@@ -166,6 +188,42 @@ export function normalizeOpenAIToolCallIds(body) {
   return body;
 }
 
+// OpenAI's automatic prompt cache covers `input` (+ tools) but not the top-level
+// Responses `instructions` field, so a stateless Responses request re-bills its
+// system prompt every turn. Move non-empty string `instructions` to the front of
+// `input` as a developer message. Stateful continuations (previous_response_id /
+// conversation) and Chat Completions bodies (`messages`) are left untouched.
+// Source: OmniRoute #20854 (issue #20846).
+function hasResponsesContinuation(body) {
+  const prev = body.previous_response_id;
+  if (isString(prev) ? prev.trim().length > 0 : prev !== undefined && prev !== null) return true;
+  const conversation = body.conversation;
+  return isString(conversation) ? conversation.trim().length > 0 : isRecord(conversation);
+}
+
+function responsesInputItems(input) {
+  if (Array.isArray(input)) return input;
+  if (isString(input)) {
+    return input.length > 0 ? [{ type: "message", role: "user", content: [{ type: "input_text", text: input }] }] : [];
+  }
+  return isRecord(input) ? [input] : [];
+}
+
+export function hoistOpenAIResponsesInstructionsToInput(body) {
+  if (!isRecord(body) || Array.isArray(body.messages)) return body;
+  if (hasResponsesContinuation(body)) return body;
+  if (!isString(body.instructions) || body.instructions.trim().length === 0) return body;
+
+  const { instructions, ...rest } = body;
+  return {
+    ...rest,
+    input: [
+      { type: "message", role: "developer", content: [{ type: "input_text", text: instructions }] },
+      ...responsesInputItems(body.input)
+    ]
+  };
+}
+
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
 const XAPIKEY = { combined: true, header: "x-api-key", scheme: "raw" };
@@ -210,19 +268,27 @@ function setAuth(headers, spec, token) {
   headers[spec.header] = token;
 }
 
+// Header names are case-insensitive; preserve a configured version exactly once.
+function ensureAnthropicVersion(headers) {
+  const keys = Object.keys(headers).filter((key) => key.toLowerCase() === "anthropic-version");
+  const value = headers["anthropic-version"] ?? headers[keys[0]] ?? ANTHROPIC_API_VERSION;
+  for (const key of keys) delete headers[key];
+  headers["anthropic-version"] = value;
+}
+
 // Resolve auth onto headers from a descriptor.
 function applyAuth(headers, desc, credentials) {
   if (desc.combined) {
     setAuth(headers, desc, credentials.apiKey || credentials.accessToken);
     applyExtraHeaders(headers, desc.extraHeaders, credentials);
-    if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+    if (desc.anthropicVersion) ensureAnthropicVersion(headers);
     return;
   }
   // split apiKey/oauth: set only the matching branch (legacy: anthropic-compatible skips when both absent)
   if (credentials.apiKey) setAuth(headers, desc.apiKey, credentials.apiKey);else
   if (credentials.accessToken) setAuth(headers, desc.oauth, credentials.accessToken);
   applyExtraHeaders(headers, desc.extraHeaders, credentials);
-  if (desc.anthropicVersion && !headers["anthropic-version"]) headers["anthropic-version"] = ANTHROPIC_API_VERSION;
+  if (desc.anthropicVersion) ensureAnthropicVersion(headers);
 }
 
 function applyExtraHeaders(headers, extraHeaders, credentials) {
@@ -331,15 +397,12 @@ function applyGlmtModelAlias(provider, model, body) {
 // output budget and return finish_reason:"length" with empty content (#2332).
 export const THINKING_BUDGET_FLOOR = 4096;
 
-// Pure budget decision mirroring upstream #2332: returns the token count to
-// write, or null to leave as-is. Never lowers a positive budget; bumps an
-// undersized one only when the cap allows reaching the full floor.
+// Fill a missing/non-positive budget, but preserve positive client values.
+// The output cap limits default insertion only.
 export function computeThinkingBudget(current, cap) {
   const maxOutput = isNumber(cap) && cap > 0 ? cap : THINKING_BUDGET_FLOOR;
   const target = Math.min(THINKING_BUDGET_FLOOR, maxOutput);
   if (!isNumber(current) || current <= 0) return target;
-  // Never lower a positive budget; only bump when the cap can reach the floor.
-  if (current < THINKING_BUDGET_FLOOR && maxOutput >= THINKING_BUDGET_FLOOR) return THINKING_BUDGET_FLOOR;
   return null;
 }
 
@@ -348,6 +411,17 @@ export class DefaultExecutor extends BaseExecutor {
     const providerId = resolveProviderAlias(provider);
     // Dynamic nodes resolve their endpoint from credentials, never another vendor.
     super(providerId, PROVIDERS[providerId] || { ...PROVIDER_DEFAULTS });
+  }
+
+  // Gemini 4 long decode (upstream 9router 109e4816e3): a gemini-format request asking for more
+  // than one hop's output re-sends the same body with the top-level continuationToken until done.
+  async execute(args) {
+    const result = await super.execute(args);
+    if (this.config?.format !== "gemini" || !result?.response?.ok) return result;
+    if (!wantsGeminiLongDecode(this.provider, args.model, result.transformedBody?.generationConfig)) return result;
+    const nextHop = async (continuationToken) =>
+      (await super.execute({ ...args, body: { ...args.body, continuationToken } })).response;
+    return withGeminiLongDecode(result, { stream: args.stream, nextHop, signal: args.signal, log: args.log });
   }
 
   applyRequestDefaults(body) {
@@ -371,6 +445,9 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {
+    if (this.provider === "claude" && !credentials?.apiKey && credentials?.accessToken) {
+      body = prepareClaudeOAuthBody(body);
+    }
     this.applyRequestDefaults(body);
     // Provider-specific request hook (e.g. SenseNova Token Plan clamps
     // max_tokens / max_completion_tokens above its 65536 ceiling).
@@ -392,7 +469,8 @@ export class DefaultExecutor extends BaseExecutor {
 
 
     if (transformed && isObject(transformed)) {
-      // Cohere compatibility accepts only high when a reasoning effort is supplied.
+      // Cohere compatibility accepts only high when a reasoning effort is supplied;
+      // BaseExecutor returns any 422 unchanged instead of retrying this request.
       if (this.provider === "cohere" && isString(transformed.reasoning_effort)) {
         transformed.reasoning_effort = "high";
       }
@@ -410,7 +488,7 @@ export class DefaultExecutor extends BaseExecutor {
         }
       }
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field
-      if (this.config.quirks?.dropClientMetadata) {
+      if (this.config.quirks?.dropClientMetadata || (this.provider.startsWith("openai-compatible-") && getOpenAICompatibleType(this.provider, credentials) === "chat")) {
         delete transformed.client_metadata;
       }
       this.defaultResponsesTextFormat(transformed);
@@ -424,6 +502,7 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);
+        transformed = hoistOpenAIResponsesInstructionsToInput(transformed);
       }
       // NVIDIA rejects the long opaque tool-call IDs other providers mint.
       if (this.provider === "nvidia") {
@@ -441,12 +520,27 @@ export class DefaultExecutor extends BaseExecutor {
       }
       if (this.provider === "opencode-go" && credentials) {
         credentials._openCodeGoSession = openCodeGoSessionHeader(credentials, transformed);
+        // buildHeaders() never sees the body; record whether the Claude lane carries
+        // context_management so the paired beta flag can travel with it (#4876).
+        credentials._openCodeGoContextManagement = Boolean(transformed.context_management);
+      }
+      if (this.provider?.startsWith("openai-compatible-") &&
+        !this.provider.startsWith("openai-compatible-responses-") &&
+        transportFormat === FORMATS.OPENAI && credentials?.providerSpecificData?.strictChatHistory === true &&
+        Array.isArray(transformed.messages)) {
+        transformed.messages = normalizeStrictChatHistory(transformed.messages);
       }
       injectPromptCacheKey(this.provider, transformed, credentials);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
+      if (["kimi", "kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider) && transportFormat === FORMATS.OPENAI) {
+        completeKimiToolNames(transformed);
+        if (stream === true) {
+          transformed.stream_options = { ...transformed.stream_options, include_usage: true };
+        }
+      }
       // Messages always uses max_tokens, independently of OpenAI model-name rules.
-      if (this.provider === "kimi" && transportFormat === FORMATS.OPENAI) {
+      if (["kimi", "kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider) && transportFormat === FORMATS.OPENAI) {
         // Moonshot Chat uses max_completion_tokens and fixed sampling on these models.
         if (transformed.max_tokens !== undefined) {
           transformed.max_completion_tokens ??= transformed.max_tokens;
@@ -464,6 +558,16 @@ export class DefaultExecutor extends BaseExecutor {
         applyParamRenames(this.provider, model, transformed, requestContext?.modelCapabilities);
       }
       stripUnsupportedParams(this.provider, model, transformed, requestContext?.modelCapabilities, undefined, credentials);
+      if (["kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider)) {
+        normalizeKimiRequest(transformed, model, transportFormat);
+        if (transportFormat === FORMATS.OPENAI) completeKimiToolNames(transformed);
+      }
+      // Luna Chat Completions rejects function tools with reasoning enabled.
+      if (this.provider === "openai" && model === "gpt-5.6-luna" &&
+        transportFormat === FORMATS.OPENAI && ![FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE].includes(requestContext?.sourceFormat) &&
+        Array.isArray(transformed.tools) && transformed.tools.some((tool) => tool?.type === "function")) {
+        transformed.reasoning_effort = "none";
+      }
       // Native DeepSeek V4 rejects forced tool calls while thinking is enabled.
       const deepseekModel = String(model || "").split("/").pop();
       const thinking = transformed.thinking;
@@ -505,7 +609,9 @@ export class DefaultExecutor extends BaseExecutor {
     // reasoning_content is an OpenAI-compatibility field. Anthropic Messages
     // transports carry thinking blocks natively and may reject this extra key,
     // so skip the injection when the resolved transport speaks Claude (#2705).
-    if (credentials?.runtimeTransport?.format === "claude") {
+    // Compare the normalized wire format: runtime transports may carry an
+    // auth suffix such as "claude-apikey", which still means Messages.
+    if (credentials?.runtimeTransport?.format?.replace(/-(?:apikey|oauth)$/, "") === FORMATS.CLAUDE) {
       return this.ensureThinkingBudget(transformed, model, requestContext?.modelCapabilities);
     }
     const injected = injectReasoningContent({ provider: this.provider, model, body: transformed });
@@ -664,7 +770,7 @@ export class DefaultExecutor extends BaseExecutor {
     return BEARER;
   }
 
-  buildHeaders(credentials = {}, stream = true, requestContext = null, model = "") {
+  buildHeaders(credentials = {}, stream = true, requestContext = null, model = "", body = null, wireBody = body) {
     credentials ||= {};
     const rt = credentials?.runtimeTransport;
     const headers = { "Content-Type": "application/json", ...(rt ? rt.headers : this.config.headers) };
@@ -674,10 +780,12 @@ export class DefaultExecutor extends BaseExecutor {
     (!credentials.accessToken || credentials.accessToken === "public");
     if (credentials.authType === "none" && isSyntheticPublicCredential) {
       if (stream) headers["Accept"] = "text/event-stream";
+      normalizeAnthropicHeaders(headers);
       return headers;
     }
     if (!credentials.apiKey && !credentials.accessToken) {
       if (stream) headers["Accept"] = "text/event-stream";
+      normalizeAnthropicHeaders(headers);
       return headers;
     }
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
@@ -697,6 +805,15 @@ export class DefaultExecutor extends BaseExecutor {
     if (this.provider === "claude" && !credentials.apiKey && credentials.accessToken) {
       const betaKey = headers["anthropic-beta"] !== undefined ? "anthropic-beta" : "Anthropic-Beta";
       headers[betaKey] = buildClaudeOAuthAnthropicBeta(headers[betaKey]);
+      const flags = new Set(headers[betaKey].split(",").map((beta) => beta.trim()).filter(Boolean));
+      // Fast mode belongs to this request. An earlier client's cached beta
+      // must not enable it on unrelated requests.
+      flags.delete(CLAUDE_FAST_MODE_BETA);
+      for (const flag of claudeRequestedBetas(body, requestContext?.clientHeaders, FORWARDABLE_CLIENT_BETAS)) flags.add(flag);
+      for (const flag of claudeFunctionalBetas(wireBody)) flags.add(flag);
+      headers[betaKey] = [...flags].join(",");
+      headers.Accept = stream ? "text/event-stream" : "application/json";
+      if (stream) headers["Accept-Encoding"] = "identity";
     }
 
     // The plain `anthropic` provider is an API-key provider: it does not use
@@ -747,6 +864,18 @@ export class DefaultExecutor extends BaseExecutor {
       const modelBeta = selectAnthropicBeta(model, { firstParty: firstPartyHost });
       const runtimeBeta = officialApiKey && rt?.headers ? new Headers(rt.headers).get("anthropic-beta") : null;
       headers["Anthropic-Beta"] = [modelBeta, runtimeBeta].filter(Boolean).join(",");
+    }
+    // OpenCode Go's Claude lane is a strict Anthropic proxy: context_management is
+    // rejected (400) unless its paired beta flag is on the request. Forward the client's
+    // flags (minus Claude Code identity flags) and add the pair when the body needs it.
+    // Port of decolua/9router#4876; other opencode-go models keep no beta header.
+    if (this.provider === "opencode-go" && isClaudeModel) {
+      const clientBeta = withoutClaudeCodeIdentityBetas(
+        requestContext?.clientHeaders?.["anthropic-beta"] ?? requestContext?.clientHeaders?.["Anthropic-Beta"]
+      );
+      const flags = new Set([clientBeta, credentials?._openCodeGoContextManagement ? "context-management-2025-06-27" : null]
+        .filter(Boolean).flatMap((v) => v.split(",")).map((f) => f.trim()).filter(Boolean));
+      if (flags.size > 0) headers["Anthropic-Beta"] = Array.from(flags).join(",");
     }
     if (this.provider === "claude" || (this.provider === "anthropic" && officialApiKey) || compatibleClaudeModel) {
       mergeForwardableClientBetas(headers, requestContext?.clientHeaders, { firstParty: firstPartyHost });
@@ -806,6 +935,7 @@ export class DefaultExecutor extends BaseExecutor {
       if (filtered) headers["Anthropic-Beta"] = [...new Set(filtered.split(","))].join(",");
     }
     if (stream) headers["Accept"] = "text/event-stream";
+    normalizeAnthropicHeaders(headers);
     return headers;
   }
 
@@ -824,9 +954,8 @@ export class DefaultExecutor extends BaseExecutor {
 
     const refreshers = {
       openference: () => refreshOpenferenceToken(credentials, log, proxyOptions),
-      claude: () => this.refreshFromGrant(credentials, proxyOptions),
+      claude: () => refreshClaudeOAuthToken(credentials.refreshToken, log, proxyOptions),
       codex: () => this.refreshFromGrant(credentials, proxyOptions),
-      qwen: () => this.refreshWithForm(OAUTH_ENDPOINTS.qwen.token, { grant_type: "refresh_token", refresh_token: credentials.refreshToken, client_id: PROVIDERS.qwen.clientId }, proxyOptions),
       iflow: () => this.refreshIflow(credentials.refreshToken, proxyOptions),
       gemini: () => this.refreshFromGrant(credentials, proxyOptions),
       kiro: () => this.refreshKiro(credentials.refreshToken, proxyOptions),
@@ -835,7 +964,6 @@ export class DefaultExecutor extends BaseExecutor {
       clinepass: () => this.refreshCline(credentials.refreshToken, proxyOptions),
       "kimi-coding": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
       "kimi-ai": () => refreshKimiToken(this.provider, credentials, log, proxyOptions),
-      kilocode: () => this.refreshKilocode(credentials.refreshToken, proxyOptions)
     };
 
     const refresher = refreshers[this.provider];
@@ -843,7 +971,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     try {
       const result = await refresher();
-      if (result) log?.info?.("TOKEN", `${this.provider} refreshed`);
+      if (result && !result.error) log?.info?.("TOKEN", `${this.provider} refreshed`);
       return result;
     } catch (error) {
       log?.error?.("TOKEN", `${this.provider} refresh error: ${error.message}`);
@@ -888,7 +1016,7 @@ export class DefaultExecutor extends BaseExecutor {
   async refreshKiro(refreshToken, proxyOptions = null) {
     const response = await proxyAwareFetch(PROVIDERS.kiro.tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "kiro-cli/1.0.0" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json", ...buildKiroIdentityHeaders({ refreshToken }) },
       body: JSON.stringify({ refreshToken })
     }, proxyOptions);
     if (!response.ok) return null;
@@ -914,10 +1042,6 @@ export class DefaultExecutor extends BaseExecutor {
     return { accessToken, refreshToken: data?.refreshToken || refreshToken, expiresIn };
   }
 
-  async refreshKilocode(refreshToken, proxyOptions = null) {
-    // Kilocode uses device code flow, no refresh token support
-    return null;
-  }
 }
 
 export default DefaultExecutor;

@@ -62,6 +62,17 @@ describe("OIDC routes reject hostile forwarded origin headers", () => {
     expect(response.kind).toBe("redirect");
   });
 
+  it("keeps the prefix on the callback and login redirect without trusting forwarded hosts", async () => {
+    const start = request("http://durindoor.test/router/api/auth/oidc/start");
+    start.nextUrl = { basePath: "/router" };
+    await startModule.GET(start);
+    expect(mocks.buildOidcAuthorizationUrl.mock.lastCall[0].redirectUri).toBe("http://durindoor.test/router/api/auth/oidc/callback");
+    const callback = request("http://durindoor.test/router/api/auth/oidc/callback");
+    callback.nextUrl = { basePath: "/router" };
+    const response = await callbackModule.GET(callback);
+    expect(response.url).toBe("http://durindoor.test/router/login?error=oidc_missing_code");
+  });
+
   it("keeps the missing-code redirect on the request origin", async () => {
     const response = await callbackModule.GET(request("http://durindoor.test/api/auth/oidc/callback"));
     expect(response.kind).toBe("redirect");

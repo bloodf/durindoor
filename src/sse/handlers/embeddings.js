@@ -1,21 +1,15 @@
-import { modelKindError } from "./modelKind.js";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
-import {
-  getProviderCredentialsWithQuotaPreflight,
-  markAccountUnavailable,
-  clearAccountError,
-  resolveClientApiKey,
-} from "../services/auth.js";
+import { clearAccountError } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
+import { resolveTypedMediaModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -40,10 +34,14 @@ async function handleEmbeddingsHandler(request) {
 
   log.request("POST", `${url.pathname} | ${modelStr}`);
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  return runMediaEndpoint(request, {
+    kind: "embeddings",
+    pinConnection: true,
+    route: (admission, pinOptions) => routeEmbeddings(request, body, modelStr, admission, pinOptions),
   });
+}
+
+async function routeEmbeddings(request, body, modelStr, { settings, apiKey, auth: apiKeyAuth }, pinOptions) {
   // Keep the admission epoch, including null, across upstream retries.
   const { billingEpoch } = apiKeyAuth;
   if (apiKey) {
@@ -51,15 +49,6 @@ async function handleEmbeddingsHandler(request) {
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (!apiKeyAuth.ok) {
-    if (apiKeyAuth.reason === "missing") {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key"), "auth_missing");
-    }
-    log.warn("AUTH", "Invalid API key");
-    return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key"), "auth_invalid");
-  }
-
   if (!body.input) {
     log.warn("EMBEDDINGS", "Missing input");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: input");
@@ -73,17 +62,12 @@ async function handleEmbeddingsHandler(request) {
     modelStr = route.models[0];
   }
 
-  const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) {
-    log.warn("EMBEDDINGS", "Invalid model format", { model: modelStr });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
+  const modelInfo = await resolveTypedMediaModel(request, modelStr, body, apiKey, "embedding");
+  if (modelInfo.error) {
+    return modelInfo.error;
   }
 
   const { provider, model } = modelInfo;
-  const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-  if (resolvedPolicyError) return resolvedPolicyError;
-  const kindError = await modelKindError(provider, model, await getSettings(), "embedding");
-  if (kindError) return kindError;
 
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
@@ -91,19 +75,10 @@ async function handleEmbeddingsHandler(request) {
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
-  const connectionId = request.headers.get("x-connection-id") || null;
-  const pinOptions = connectionId ? { preferredConnectionId: connectionId, strictConnectionId: connectionId } : {};
-
-  // Credential + fallback loop (mirrors handleChat)
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
-
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(provider, excludeConnectionIds, model, { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId });
-
-    // All accounts unavailable or provider disabled
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+  return runMediaAccounts({
+    provider, model,
+    selectionOptions: { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId },
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("EMBEDDINGS", `[${provider}/${model}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${provider}' is disabled. Enable it in Settings > Providers.`);
@@ -114,21 +89,23 @@ async function handleEmbeddingsHandler(request) {
         log.warn("EMBEDDINGS", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) {
+      if (attempted === 0) {
         log.error("AUTH", `No credentials for provider: ${provider}`);
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       }
       log.warn("EMBEDDINGS", "No more accounts available", { provider });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
-
+    },
+    async runAttempt(credentials) {
     log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
 
     const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
 
+    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
     const result = await handleEmbeddingsCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
+      routingPolicy: (await getSettings()).openrouterRouting,
       credentials: refreshedCredentials,
       signal: request.signal,
       log,
@@ -140,39 +117,30 @@ async function handleEmbeddingsHandler(request) {
         });
       },
       onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+        await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       }
     });
 
     if (result.success) {
-      if (result.accounting?.state !== "complete") return result.response;
+      if (result.accounting?.state !== "complete") return { response: result.response };
       const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
-      return recordApiKeyUsageForResponse(apiKey, result.response, {
+      return { response: await recordApiKeyUsageForResponse(apiKey, result.response, {
         billingEpoch,
         usageEventId: JSON.stringify([getRequestId(request), "embedding", provider, model, credentials.connectionId ?? null]), provider, model,
         connectionId: credentials.connectionId ?? null, endpoint: "/v1/embeddings",
         modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
         // The stable id of the admitted key travels with the usage.
         apiKeyId: apiKeyAuth.apiKeyId,
-      });
+      }) };
     }
-    if (result.status === 499) return result.response;
-
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, {
-      // The credential this attempt actually presented, so a durable-key
-      // provider can mark exactly the generation that was rejected.
-      usedCredential: credentials.accessToken || credentials.apiKey || null
-    });
-
-    if (shouldFallback) {
+    return { result, dispatch };
+    },
+    onAttemptResult(result) {
+      return result.status === 499 ? result.response : null;
+    },
+    onFallback(result, credentials) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
     }
-
-    return result.response;
-  }
+  });
 }
 export const handleEmbeddings = withRequestCorrelation(handleEmbeddingsHandler);

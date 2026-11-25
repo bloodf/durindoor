@@ -9,6 +9,53 @@ import { ROLE } from "../schema/roles.js";
 // A param is removed only when it is present (!== undefined).
 import { isBoolean, isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
+/**
+ * Legacy OpenAI reasoning models that reject the standard sampling controls.
+ *
+ * OmniRoute #412 (head d79b55be5a, merge d261ae7883) declared an
+ * `unsupportedParams` list on the OpenAI registry rows `o1`, `o1-mini`,
+ * `o1-pro`, `o3` and `o3-mini`, and deleted the listed parameters from the
+ * translated body before the executor call. The upstream rows are the
+ * version-specific contract; this set is that list intersected with the live
+ * local OpenAI catalog:
+ *
+ * - `o1` and `o1-2024-12-17` (the documented snapshot of `o1`);
+ * - `o1-pro` and `o1-pro-2025-03-19` (the documented snapshot of `o1-pro`);
+ * - `o3`.
+ *
+ * `o1-mini` and `o3-mini` are deliberately absent: OpenAI shut them down on
+ * 2025-10-27 and 2026-10-23 and the local registry rows were retired (see
+ * internal/docs/port-reports/1072-retired-model-catalog-5781.md), so they are
+ * neither supported exact ids nor documented aliases here. `o3-pro` is a live
+ * local row that the upstream list does not contain, so extending the rule to
+ * it would generalize beyond the pinned contract. Neither o4, gpt-5.x nor
+ * gpt-6.x is in scope: those models accept sampling controls.
+ */
+const LEGACY_OPENAI_REASONING_MODELS = new Set([
+  "o1",
+  "o1-2024-12-17",
+  "o1-pro",
+  "o1-pro-2025-03-19",
+  "o3",
+]);
+
+/**
+ * Resolve the bare model id for a rule match.
+ *
+ * Upstream #412 also matched a provider-prefixed id (`openai/o3` → `o3`) and
+ * a cross-provider lookup. DurinDoor strips the provider prefix during
+ * routing, so the outbound path always carries the bare id; the prefixed form
+ * is only tolerated here. The lookup stays scoped to one provider: upstream's
+ * cross-provider map would also strip sampling fields on a third-party
+ * provider that merely serves a model named `o3`, which is not the upstream
+ * contract this port covers.
+ */
+function bareModelId(model) {
+  const id = isString(model) ? model.trim() : String(model ?? "").trim();
+  if (!id.includes("/")) return id;
+  return id.split("/").pop() || "";
+}
+
 const STRIP_RULES = [
 // 9router 7c42d8f: OpenAI accepts the modern completion cap. Keep explicit
 // destination values and scope this policy to the actual OpenAI provider.
@@ -18,6 +65,12 @@ const STRIP_RULES = [
  * telemetry with `diagnostics: Extra inputs are not permitted`.
  */
 { match: /claude/i, drop: ["temperature", "diagnostics"] },
+/**
+ * OpenCode Go's Claude lane (/messages) rejects output_config.task_budget even with its own
+ * beta flag (400 "Extra inputs are not permitted"). effort stays: adaptive thinking needs it.
+ * context_management is supported there once its beta flag travels (see default.js).
+ */
+{ provider: "opencode-go", match: /claude/i, dropOutputConfigFields: ["task_budget"] },
 /** Claude Opus 5.5 also rejects the remaining sampling controls. */
 { match: /claude-opus-5[-.]5/i, drop: ["top_p", "top_k"] },
 // GitHub Copilot GPT-5.4+ (within 5.x) and GPT-6.x: temperature unsupported.
@@ -25,6 +78,17 @@ const STRIP_RULES = [
 // OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.
 // Chat rejects `logprobs`; Responses rejects only its output-text include entry.
 { provider: "openai", match: /^gpt-6-astra$/i, drop: ["temperature", "top_p", "top_logprobs"], dropChat: ["logprobs"], dropInclude: ["message.output_text.logprobs"] },
+// OmniRoute #412: the legacy OpenAI reasoning models reject the standard
+// sampling controls with a 400. Upstream deleted them from the translated
+// body before the executor call; this table is the equivalent insertion point
+// and runs on the outbound path of both the Chat-to-Responses route and the
+// native Responses route. Reasoning, tool and token-limit fields are not
+// listed and stay untouched.
+{
+  provider: "openai",
+  match: (model) => LEGACY_OPENAI_REASONING_MODELS.has(bareModelId(model)),
+  drop: ["temperature", "top_p", "frequency_penalty", "presence_penalty", "logprobs", "top_logprobs", "n"],
+},
 // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
 { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
 // xAI Grok Composer: rejects reasoningEffort entirely (including "none") — omit param upstream.
@@ -122,6 +186,19 @@ export function stripUnsupportedChatExtensions(body, transport, defaultTransport
  */
 export function stripUnsupportedParams(provider, model, body, caps = null, rules = STRIP_RULES, credentials = null) {
   if (!model || !body || !isObject(body)) return body;
+  // Mistral Chat validates a closed schema; Responses requests use a different schema.
+  if (provider === "mistral" && Array.isArray(body.messages)) {
+    for (const [from, to] of [["seed", "random_seed"], ["max_completion_tokens", "max_tokens"]]) {
+      if (body[to] === undefined && body[from] != null) body[to] = body[from];
+      delete body[from];
+    }
+    for (const field of ["user", "logit_bias", "store", "verbosity"]) delete body[field];
+    if (isNumber(body.temperature) && body.temperature > 1.5) body.temperature = 1.5;
+    if (Object.hasOwn(body, "service_tier")) {
+      if (["default", "flex", "scale"].includes(body.service_tier)) body.service_tier = "standard_only";
+      else if (!["auto", "standard_only"].includes(body.service_tier)) delete body.service_tier;
+    }
+  }
   // LLMTR rejects Responses-style reasoning objects on its Chat endpoint.
   if (provider === "llmtr" && body.reasoning != null && !isBoolean(body.reasoning)) {
     const value = body.reasoning;
@@ -147,6 +224,13 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // Drop top-level params (guard: a rule may omit `drop`, e.g. message-only rules).
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
+    }
+    // Nested drops: keep the rest of output_config, remove it only when left empty.
+    for (const key of rule.dropOutputConfigFields || []) {
+      if (isObject(body.output_config) && body.output_config[key] !== undefined) {
+        delete body.output_config[key];
+        if (Object.keys(body.output_config).length === 0) delete body.output_config;
+      }
     }
     if (Array.isArray(rule.dropChat) && Array.isArray(body.messages)) {
       for (const key of rule.dropChat) {
@@ -183,7 +267,13 @@ export function stripUnsupportedParams(provider, model, body, caps = null, rules
     // the attachment vanished from the outgoing request with no error. Refuse instead
     // of silently dropping data — a plain Error here surfaces through chatCore's
     // executor error path (sanitizeErrorMessage) before reaching the client.
-    if (rule.flattenContent && Array.isArray(body.messages)) {
+    // Port of upstream #5811: the chat transport is the OpenAI-compatible
+    // /ai/v1/chat/completions endpoint, which accepts content-part arrays (image_url
+    // included) natively. Flattening deleted images for every vision-capable model,
+    // so content parts pass through unchanged when the model resolves vision: true.
+    // Non-vision models keep the flatten-or-refuse contract above.
+    if (rule.flattenContent && Array.isArray(body.messages) &&
+        !(caps || getCapabilitiesForModel(provider, model)).vision) {
       for (const msg of body.messages) {
         if (msg && Array.isArray(msg.content)) {
           msg.content = msg.content.

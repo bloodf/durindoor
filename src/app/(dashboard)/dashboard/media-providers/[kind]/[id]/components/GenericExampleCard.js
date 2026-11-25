@@ -20,6 +20,9 @@ const CLOUDFLARE_TEST_MASK_URL = "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r
 const HUGGINGFACE_TEST_IMAGE_URL = CLOUDFLARE_TEST_IMAGE_URL;
 
 function getImageEditDefaults(providerId, modelId) {
+  if (providerId === "nvidia" && ["black-forest-labs/flux.1-dev", "black-forest-labs/flux.1-kontext-dev"].includes(modelId)) {
+    return { image: "data:image/png;example_id,0" };
+  }
   if (providerId === "huggingface") {
     return { image: HUGGINGFACE_TEST_IMAGE_URL };
   }
@@ -156,6 +159,7 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
   safeProviderAlias :
   selectedModel ? `${safeProviderAlias}/${selectedModel}` : allowManualModel ? "" : safeProviderAlias;
   const imageEditDefaults = getImageEditDefaults(providerId, selectedModel);
+  const showRefImage = supportsEdit && !(providerId === "nvidia" && selectedModel === "black-forest-labs/flux.1-dev" && (extraValues.mode || "base") === "base");
   const effectiveRefImage = refImage.trim() || imageEditDefaults.image || "";
   const effectiveMaskImage = maskImage.trim() || imageEditDefaults.mask_image || "";
   const refImagePreviewSrc = toImagePreviewSrc(effectiveRefImage);
@@ -163,6 +167,7 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
 
   // Build request body with optional extra fields (only non-empty values)
   const extraBodyFromFields = Object.entries(extraValues).reduce((acc, [k, v]) => {
+    if (providerId === "nvidia" && kind === "image" && !selectedModelObj?.params?.includes(k)) return acc;
     if (v === "" || v === null || v === undefined) return acc;
     if (isNumber(v) && Number.isNaN(v)) return acc;
     acc[k] = v;
@@ -182,7 +187,7 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
     ...exConfig.extraBody,
     ...extraBodyFromFields,
     ...systemoneQuestions,
-    ...(supportsEdit && effectiveRefImage ? { image: effectiveRefImage } : null),
+    ...(showRefImage && effectiveRefImage ? { image: effectiveRefImage } : null),
     ...(supportsMask && effectiveMaskImage ? { mask_image: effectiveMaskImage } : null)
   };
 
@@ -340,7 +345,7 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
           </Row>
         )}
 
-        {supportsEdit && (
+        {showRefImage && (
           <Row label="Ref Image (URL)">
             <div className="flex flex-col gap-2">
               <div className="relative">
@@ -373,7 +378,7 @@ export function GenericExampleCard({ providerId, kind, providerAliasOverride }) 
               ) : f.type === "text" ? (
                 <Input aria-label={f.label} type="text" value={extraValues[f.key] ?? ""} placeholder={f.placeholder} onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value }))} />
               ) : (
-                <Input aria-label={f.label} type="number" value={extraValues[f.key] ?? ""} min={f.min} max={f.max} onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value === "" ? "" : Number(e.target.value) }))} />
+                <Input aria-label={f.label} type="number" value={extraValues[f.key] ?? ""} min={f.min} max={f.max} step={f.step} onChange={(e) => setExtraValues((s) => ({ ...s, [f.key]: e.target.value === "" ? "" : Number(e.target.value) }))} />
               )}
             </Row>
           ))}

@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, OPENAI_FINISH, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
@@ -9,6 +9,7 @@ import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
 import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
 import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Build chunk meta for current gemini state
@@ -29,7 +30,8 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   const rawName = functionCall.name;
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
-  const fcArgs = functionCall.args || {};
+  // Drop the compatibility-only `reason` the Gemini cleaner added to empty object schemas.
+  const fcArgs = geminiPlaceholderStripperFor(state)(rawName, functionCall.args || {});
   const toolCallIndex = state.functionIndex++;
   // Prefer the upstream-provided call id (Gemini 3 sends one) — it round-trips to
   // functionResponse without name reconstruction. Fall back to a generated id.
@@ -58,6 +60,23 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   // metadata; pre-populating it here makes Anthropic tool deltas lose index.
   state.geminiToolCallCount = (state.geminiToolCallCount || 0) + 1;
   return buildChunk(chunkMeta(state), { tool_calls: [toolCall] }, null);
+}
+
+// Emit an inline image part (data URI) as an OpenAI image delta. No-op for any other part.
+function pushInlineImage(part, state, results) {
+  const inlineData = part.inlineData || part.inline_data;
+  if (!inlineData?.data) return;
+  const mimeType = inlineData.mimeType || inlineData.mime_type || DEFAULT_IMAGE_MIME;
+  results.push(buildChunk(
+    chunkMeta(state),
+    {
+      images: [{
+        type: OPENAI_BLOCK.IMAGE_URL,
+        image_url: { url: encodeDataUri(mimeType, inlineData.data) }
+      }]
+    },
+    null
+  ));
 }
 
 // Convert Gemini response chunk to OpenAI format
@@ -128,8 +147,10 @@ export function geminiToOpenAIResponse(chunk, state) {
         const hasTextContent = part.text !== undefined && part.text !== "";
         const hasFunctionCall = !!part.functionCall;
 
-        // Standalone thoughtSignature part (no text, no functionCall): keep pending for next functionCall
-        if (!hasTextContent && !hasFunctionCall) {
+        const hasInlineImage = !!(part.inlineData || part.inline_data);
+
+        // Standalone thoughtSignature part (no text, no functionCall, no image): keep pending for next functionCall
+        if (!hasTextContent && !hasFunctionCall && !hasInlineImage) {
           continue;
         }
 
@@ -146,6 +167,9 @@ export function geminiToOpenAIResponse(chunk, state) {
           if (call) results.push(call);
           state.pendingThoughtSignature = null;
         }
+
+        // A signed image part is still an image: the signature must not swallow it.
+        pushInlineImage(part, state, results);
         continue;
       }
 
@@ -176,20 +200,7 @@ export function geminiToOpenAIResponse(chunk, state) {
       }
 
       // Inline data (images)
-      const inlineData = part.inlineData || part.inline_data;
-      if (inlineData?.data) {
-        const mimeType = inlineData.mimeType || inlineData.mime_type || DEFAULT_IMAGE_MIME;
-        results.push(buildChunk(
-          chunkMeta(state),
-          {
-            images: [{
-              type: OPENAI_BLOCK.IMAGE_URL,
-              image_url: { url: encodeDataUri(mimeType, inlineData.data) }
-            }]
-          },
-          null
-        ));
-      }
+      pushInlineImage(part, state, results);
     }
   }
 

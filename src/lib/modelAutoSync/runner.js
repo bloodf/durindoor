@@ -8,18 +8,23 @@ import {
   getSyncedModelCatalogs,
   saveSyncedModelCatalog
 } from "@/lib/localDb";
-import { AI_PROVIDERS, getProviderAlias, getProviderByAlias } from "@/shared/constants/providers";
-import { getModelsByProviderId, PROVIDER_ID_TO_ALIAS } from "@/shared/constants/models";
+import { AI_PROVIDERS, getProviderByAlias } from "@/shared/constants/providers";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import { checkAndRefreshToken } from "@/sse/services/tokenRefresh";
 import { PROVIDER_MODELS_CONFIG } from "@/app/api/providers/[id]/models/modelsConfig.js";
 import { fetchConnectionModels } from "@/app/api/providers/[id]/models/fetchConnectionModels.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { refreshSharedModelMetadata } from "./sharedMetadata.js";
+import { autoPruneStaleComboSteps, providerModelPrefixes } from "./staleComboSteps.js";
 import {
   effectiveSyncedModels,
   findPrunedReferences,
   getModelAutoSyncIntervalHours,
+  catalogEntryForConnection,
+  connectionCatalogKey,
+  connectionEndpoint,
+  isConnectionScopedSyncProvider,
   isModelAutoSyncEnabled,
   isSyncDue,
   markSyncFailure,
@@ -33,7 +38,8 @@ export const MODEL_AUTO_SYNC_FETCH_TIMEOUT_MS = 30_000;
 // OrcaRouter's catalog is capability-scoped; neither is a plain list to sync.
 // ollama-local is a local server that /v1/models already reads live.
 // Token Harbor catalogs belong to individual keys, not a provider-wide snapshot.
-const NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor"]);
+// DemonRoute's catalog is account-scoped for the same reason.
+const NOT_SYNCABLE = new Set(["openrouter", "orcarouter", "ollama-local", "tokenharbor", "demonroute"]);
 
 /** Providers with a list-models path the sync service can call. */
 export function isModelAutoSyncEligible(providerId) {
@@ -41,10 +47,7 @@ export function isModelAutoSyncEligible(providerId) {
   return Boolean(PROVIDER_MODELS_CONFIG[providerId]) || isString(AI_PROVIDERS[providerId]?.modelsFetcher?.url);
 }
 
-/** Every prefix a request or combo can use to name this provider's models. */
-export function providerModelPrefixes(providerId) {
-  return [...new Set([providerId, PROVIDER_ID_TO_ALIAS[providerId], getProviderAlias(providerId)].filter(isString))];
-}
+export { providerModelPrefixes };
 
 function withTimeout(promise, ms) {
   let timer;
@@ -90,9 +93,105 @@ export async function getPrunedModelReferences(settings = null) {
 }
 
 /**
+ * Fetch a connection's model list and merge it into `previous`. Throws on any
+ * failure so callers can record it and keep the previous catalog.
+ */
+async function fetchCatalogEntry(providerId, connection, previous, { now, fetchModels, timeoutMs, endpoint = null }) {
+  const controller = new AbortController();
+  let result;
+  try {
+    result = await withTimeout((async () => {
+      const prepared = await prepareConnection(providerId, connection);
+      if (controller.signal.aborted) throw new Error("Catalog refresh timed out");
+      return fetchModels(prepared, { signal: controller.signal });
+    })(), timeoutMs);
+  } finally {
+    controller.abort();
+  }
+  if (result?.error) throw new Error(`${result.status || ""} ${result.error}`.trim());
+
+  const staticModels = getModelsByProviderId(providerId);
+  // The native parsers return rows as supplied, including untyped responses.
+  // Keep the API protocol when row discriminators are missing or stripped.
+  const canonicalProvider = getProviderByAlias(providerId)?.id || providerId;
+  const protocol = PROVIDER_MODELS_CONFIG[canonicalProvider]?.type ??
+    AI_PROVIDERS[canonicalProvider]?.modelsFetcher?.type ??
+    (canonicalProvider === "anthropic" || canonicalProvider === "claude" ? "anthropic" :
+      canonicalProvider === "gemini" ? "gemini" : null);
+  const format = protocol === "anthropic" || protocol === "claude" ? "anthropic" :
+    protocol === "gemini" ? "gemini" : protocol === "openai" ? "generic" : "auto";
+  const models = normalizeSyncedModels(result?.models, staticModels, { format });
+  // An empty list is never trusted: pruning on it would wipe the provider.
+  if (models.length === 0) throw new Error(result?.warning || "Provider returned no models");
+
+  return mergeSyncedCatalog(previous, models, { now, staticModels, connectionId: connection.id, endpoint });
+}
+
+/**
+ * Sync a connection-scoped provider: every active
+ * connection is fetched and stored under its own key, so no connection's
+ * model IDs end up in another's catalog. The provider-keyed row is only a
+ * status summary (timestamps only); it never carries model IDs, which
+ * also replaces any provider-wide catalog stored before the split.
+ */
+async function syncConnectionScopedProvider(providerId, connections, { now, fetchModels, timeoutMs }) {
+  const catalogs = await getSyncedModelCatalogs();
+  const perConnection = [];
+  for (const connection of connections) {
+    const key = connectionCatalogKey(providerId, connection.id);
+    const endpoint = connectionEndpoint(providerId, connection);
+    // A catalog fetched from another endpoint is not a baseline for this one.
+    const previous = catalogEntryForConnection(catalogs, providerId, connection);
+    try {
+      const entry = await fetchCatalogEntry(providerId, connection, previous, { now, fetchModels, timeoutMs, endpoint });
+      await saveSyncedModelCatalog(key, entry);
+      perConnection.push({ connectionId: connection.id, status: "synced", entry });
+    } catch (error) {
+      const message = sanitizeErrorMessage(error?.message || String(error));
+      console.log(`[model-auto-sync] ${providerId} (${String(connection.id).slice(0, 8)}) failed, keeping previous catalog: ${message}`);
+      try {
+        await saveSyncedModelCatalog(key, markSyncFailure(previous || { endpoint, connectionId: connection.id }, message, now));
+      } catch {
+        // Recording the failure is best effort.
+      }
+      perConnection.push({ connectionId: connection.id, status: "failed", error: message });
+    }
+  }
+  const synced = perConnection.filter((r) => r.status === "synced");
+  const at = new Date(now).toISOString();
+  const newModelIds = [...new Set(synced.flatMap((r) => r.entry.newModelIds))];
+  const removedModelIds = [...new Set(synced.flatMap((r) => r.entry.removedModelIds))];
+  const error = synced.length === 0 ? perConnection.map((r) => r.error).filter(Boolean)[0] || "Sync failed" : null;
+  try {
+    await saveSyncedModelCatalog(providerId, {
+      connectionScoped: true,
+      syncedAt: synced.length ? at : null,
+      lastAttemptAt: at,
+      error,
+      newModelIds: [],
+      removedModelIds: [],
+      models: []
+    });
+  } catch {
+    // The summary is best effort; per-connection catalogs are already stored.
+  }
+  console.log(`[model-auto-sync] ${providerId}: ${synced.length}/${connections.length} connections synced`);
+  if (synced.length === 0) return { providerId, status: "failed", error };
+  return {
+    providerId,
+    status: "synced",
+    newModelIds,
+    removedModelIds,
+    modelCount: synced.reduce((total, r) => total + r.entry.models.length, 0)
+  };
+}
+
+/**
  * Fetch one provider's model list with its first active connection and store
  * it as the provider's synced catalog. Never throws: a failure is logged and
- * recorded on the entry, and the previous catalog stays in effect.
+ * recorded on the entry, and the previous catalog stays in effect. Providers
+ * whose models belong to one endpoint (see connectionScope.js) sync every
+ * active connection into its own catalog instead.
  *
  * @param {string} providerId
  * @param {{ now?: number, fetchModels?: Function, timeoutMs?: number }} [options]
@@ -110,38 +209,20 @@ export async function syncProviderModels(providerId, {
     const connection = connections[0];
     if (!connection) return { providerId, status: "skipped", error: "No active connection" };
 
+    if (isConnectionScopedSyncProvider(providerId)) {
+      return await syncConnectionScopedProvider(providerId, connections, { now, fetchModels, timeoutMs });
+    }
+
     previous = await getSyncedModelCatalog(providerId);
-    const prepared = await prepareConnection(providerId, connection);
-    const result = await withTimeout(fetchModels(prepared), timeoutMs);
-    if (result?.error) throw new Error(`${result.status || ""} ${result.error}`.trim());
-
-    const staticModels = getModelsByProviderId(providerId);
-    // The native parsers return rows as supplied, including untyped responses.
-    // Keep the API protocol when row discriminators are missing or stripped.
-    const canonicalProvider = getProviderByAlias(providerId)?.id || providerId;
-    const protocol = PROVIDER_MODELS_CONFIG[canonicalProvider]?.type ??
-      AI_PROVIDERS[canonicalProvider]?.modelsFetcher?.type ??
-      (canonicalProvider === "anthropic" || canonicalProvider === "claude" ? "anthropic" :
-        canonicalProvider === "gemini" ? "gemini" : null);
-    const format = protocol === "anthropic" || protocol === "claude" ? "anthropic" :
-      protocol === "gemini" ? "gemini" : protocol === "openai" ? "generic" : "auto";
-    const models = normalizeSyncedModels(result?.models, staticModels, { format });
-    // An empty list is never trusted: pruning on it would wipe the provider.
-    if (models.length === 0) throw new Error(result?.warning || "Provider returned no models");
-
-    const entry = mergeSyncedCatalog(previous, models, {
-      now,
-      staticModels,
-      connectionId: connection.id
-    });
+    const entry = await fetchCatalogEntry(providerId, connection, previous, { now, fetchModels, timeoutMs });
     await saveSyncedModelCatalog(providerId, entry);
-    console.log(`[model-auto-sync] ${providerId}: ${models.length} models, ${entry.newModelIds.length} new, ${entry.removedModelIds.length} removed`);
+    console.log(`[model-auto-sync] ${providerId}: ${entry.models.length} models, ${entry.newModelIds.length} new, ${entry.removedModelIds.length} removed`);
     return {
       providerId,
       status: "synced",
       newModelIds: entry.newModelIds,
       removedModelIds: entry.removedModelIds,
-      modelCount: models.length
+      modelCount: entry.models.length
     };
   } catch (error) {
     const message = sanitizeErrorMessage(error?.message || String(error));
@@ -189,14 +270,19 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
   const intervalHours = getModelAutoSyncIntervalHours(settings);
   const explicit = Array.isArray(providerIds) && providerIds.length > 0;
   let candidates = providerIds;
+  let connections = [];
   if (!explicit) {
-    const connections = await getProviderConnections({ isActive: true });
+    connections = await getProviderConnections({ isActive: true });
     candidates = [...new Set(connections.map((c) => c.provider))].
     filter((id) => isModelAutoSyncEnabled(id, settings));
   }
   const catalogs = force || explicit ? {} : await getSyncedModelCatalogs();
   const dueProviders = candidates.filter((providerId) => isModelAutoSyncEligible(providerId) &&
-    (force || explicit || isSyncDue(catalogs[providerId], intervalHours, now)));
+    (force || explicit || (intervalHours > 0 && (
+      isSyncDue(catalogs[providerId], intervalHours, now) ||
+      (isConnectionScopedSyncProvider(providerId) && connections.some((connection) =>
+        connection.provider === providerId && !catalogEntryForConnection(catalogs, providerId, connection)))
+    ))));
   // Enrich only when a roster is due, or an operator requests a refresh.
   // The HTTP dependency is independent of the roster fetch dependency.
   if (dueProviders.length || force || explicit) {
@@ -220,6 +306,16 @@ async function runModelAutoSyncImpl({ providerIds = null, force = false, now = D
     } catch (error) {
       console.log(`[model-auto-sync] reference check skipped: ${error?.message || error}`);
     }
+  }
+  // Opt-in only (settings.autoPruneStaleComboSteps); never throws into the sync run.
+  try {
+    await autoPruneStaleComboSteps({
+      settings,
+      now,
+      syncedProviderIds: results.filter((r) => r.status === "synced").map((r) => r.providerId)
+    });
+  } catch (error) {
+    console.log(`[model-auto-sync] auto-prune skipped: ${error?.message || error}`);
   }
   return results;
 }

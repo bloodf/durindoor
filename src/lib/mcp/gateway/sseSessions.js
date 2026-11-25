@@ -12,6 +12,8 @@ import { v4 as uuidv4 } from "uuid";
 const KEY = "__9routerGatewaySse";
 const SESSION_TTL_MS = 30 * 60_000;
 const SWEEP_INTERVAL_MS = 60_000;
+export const MAX_SESSIONS_PER_KEY = 5;
+export const MAX_SESSIONS_TOTAL = 100;
 
 /** @type {ReturnType<typeof setInterval> | null} lazily started sweeper */
 let sweepTimer = null;
@@ -50,11 +52,16 @@ function ensureSweeper() {
  * @param {(chunk: string) => void} sendFn
  * @returns {string} session id
  */
-export function registerSession(sendFn) {
+export function registerSession(sendFn, keyId) {
+  const store = getStore();
+  if (store.size >= MAX_SESSIONS_TOTAL) return null;
+  let keySessions = 0;
+  for (const entry of store.values()) if (entry.keyId === keyId) keySessions++;
+  if (keySessions >= MAX_SESSIONS_PER_KEY) return null;
   ensureSweeper();
   const sid = uuidv4();
   const now = Date.now();
-  getStore().set(sid, { send: sendFn, createdAt: now, lastSeenAt: now });
+  store.set(sid, { send: sendFn, keyId, createdAt: now, lastSeenAt: now });
   return sid;
 }
 

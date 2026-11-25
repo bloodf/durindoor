@@ -1,3 +1,4 @@
+import { FILTERS } from "../../suggested-models/filters.js";
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
@@ -18,6 +19,7 @@ import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import { META_MODEL_API_MODELS_URL } from "open-sse/config/museCode.js";
 import {
   ANTIGRAVITY_CATALOG_URL,
   buildAntigravityCatalogBody,
@@ -25,6 +27,9 @@ import {
   parseAntigravityCatalogModels
 } from "open-sse/services/antigravityCatalog.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
+import { discoverCursorApiModels, isCursorApiDispatchEnabled } from "open-sse/executors/cursor-api.js";
+import { discoverDevinDesktopModels, isDevinDesktopDispatchEnabled } from "open-sse/executors/devin-desktop.js";
+import { modelsConfig as workbuddyModelsConfig } from "open-sse/providers/registry/workbuddy.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
@@ -37,6 +42,7 @@ import {
   ORCAROUTER_MODALITIES,
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
+import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -158,7 +164,7 @@ export const parseGeminiCliModels = (data) => {
 };
 
 export const parseCodexModels = (data) => withCodexReviewModels(
-  parseOpenAIStyleModels(data).filter((model) => meetsMinimalCodexClientVersion(model?.minimal_client_version)).flatMap((model) => {
+  parseOpenAIStyleModels(data).filter((model) => model?.supported_in_api !== false && model?.visibility !== "hide" && meetsMinimalCodexClientVersion(model?.minimal_client_version)).flatMap((model) => {
     const id = model?.id || model?.slug || model?.model || model?.name;
     if (!id) return [];
     const name = model?.display_name || model?.displayName || model?.name || id;
@@ -336,6 +342,20 @@ export function buildClaudeModelsHeaders(token) {
   };
 }
 
+// The catalog includes media and embedding models; only advertise chat endpoints.
+export const parseEmpirioLabsChatModels = (data) => {
+  if (!Array.isArray(data?.data)) return [];
+  return data.data.filter((model) => isString(model?.id) && model.id &&
+    Array.isArray(model.supported_endpoints) && model.supported_endpoints.includes("POST /v1/chat/completions"))
+    .map((model) => {
+      const result = { id: model.id, name: model.display_name || model.id };
+      if (model.context_window) result.contextLength = model.context_window;
+      if (model.max_output_tokens) result.outputTokenLimit = model.max_output_tokens;
+      if (Array.isArray(model.input_modalities) && model.input_modalities.includes("image")) result.supportsVision = true;
+      return result;
+    });
+};
+
 /** Retain upstream vendor-qualified IDs and exclude non-chat-only rows. */
 export const parseLlmtrModels = (data) => parseOpenAIStyleModels(data).filter((model) =>
   model && isString(model.id) &&
@@ -400,6 +420,13 @@ export async function persistCopilotEndpointContract(connection, rows) {
 }
 
 export const PROVIDER_MODELS_CONFIG = {
+  // ChatPlayground's catalog is read with the session Cookie header and lists each bot by `botId`.
+  chatplayground: {
+    url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},
+    buildHeaders: (_token, connection) => ({ Cookie: connection.apiKey }),
+    parseResponse: (data) => (data?.data || data?.models || []).filter((row) => row?.botId).map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId })),
+  },
+  empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",
@@ -437,6 +464,10 @@ export const PROVIDER_MODELS_CONFIG = {
   "devin-cli-agentic": {
     customResolver: () => ({ models: getModelsByProviderId("devin-cli-agentic"), source: "local_catalog" }),
   },
+  // Meta Model API: `GET /v1/models` lists the models the account's own key
+  // can use, so discovery is account-scoped. The request is a documented
+  // Model API call and carries no Muse Code client fingerprint.
+  "muse-code": createOpenAIModelsConfig(META_MODEL_API_MODELS_URL),
   // Port of OmniRoute #15307: discover the live OpenAI-compatible catalogs.
   "xiaomi-mimo": createOpenAIModelsConfig("https://api.xiaomimimo.com/v1/models"),
   "xiaomi-mimo-token-plan": createOpenAIModelsConfig("https://token-plan-sgp.xiaomimimo.com/v1/models"),
@@ -523,6 +554,7 @@ export const PROVIDER_MODELS_CONFIG = {
   },
   codex: {
     url: `https://chatgpt.com/backend-api/codex/models?client_version=${CODEX_CLI_VERSION}`,
+    redirect: "error",
     method: "GET",
     headers: {
       "Content-Type": "application/json",
@@ -675,7 +707,7 @@ export const PROVIDER_MODELS_CONFIG = {
   bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
   ollama: createOpenAIModelsConfig("https://ollama.com/api/tags"),
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
-  chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
+  chutes: { ...createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"), parseResponse: (data) => FILTERS["chutes-all"](parseOpenAIStyleModels(data)) },
   nvidia: createOpenAIModelsConfig("https://integrate.api.nvidia.com/v1/models"),
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
@@ -721,6 +753,50 @@ export const PROVIDER_MODELS_CONFIG = {
       };
     }
   },
+  // Cursor API key connection: discovery exchanges the key for a session token, so a
+  // connection that has not opted in to dispatch never reaches the exchange.
+  "cursor-api": {
+    customResolver: async (connection, proxyOptions = null) => {
+      if (!isCursorApiDispatchEnabled(connection)) {
+        return { error: "Cursor API dispatch is disabled for this connection", status: 403 };
+      }
+      if (!connection.apiKey) return { error: "No valid token found", status: 401 };
+      try {
+        // Lazy: a static import of the executor map forms a cycle through the provider config.
+        const { getExecutor } = await import("open-sse/executors/index.js");
+        return await discoverCursorApiModels(connection, {
+          proxyOptions,
+          executor: getExecutor("cursor-api"),
+          staticModels: getStaticProviderModels("cursor-api")
+        });
+      } catch (error) {
+        return { error: sanitizeErrorMessage(error?.message || "Cursor API model discovery failed"), status: Number.isInteger(error?.status) ? error.status : 502 };
+      }
+    }
+  },
+  // Devin Desktop lists models over a Connect protobuf call. Live ids win membership;
+  // the registry catalog answers when discovery fails or returns nothing.
+  "devin-desktop": {
+    customResolver: async (connection, proxyOptions = null) => {
+      if (!isDevinDesktopDispatchEnabled(connection)) {
+        return { error: "Devin Desktop dispatch is disabled for this connection", status: 403 };
+      }
+      const token = connection.accessToken || connection.apiKey;
+      if (!token) return { error: "No valid token found", status: 401 };
+      const fallback = (warning) => ({ models: getStaticProviderModels("devin-desktop"), warning, source: "local_catalog" });
+      try {
+        const live = await discoverDevinDesktopModels(token, {
+          fetchImpl: (url, init) => guardedProbeFetch(url, init, getProviderValidationGuard(), (target, options) => proxyAwareFetch(target, options, proxyOptions))
+        });
+        if (live.length) return { models: live };
+        return fallback("Devin returned no live models; falling back to the static catalog.");
+      } catch {
+        return fallback("Devin model discovery failed; falling back to the static catalog.");
+      }
+    }
+  },
+  // WorkBuddy reads the authenticated /v3/config catalog.
+  workbuddy: workbuddyModelsConfig,
   cursor: {
     customResolver: async (connection, proxyOptions = null) => {
       const result = await resolveCursorModels({
@@ -903,5 +979,19 @@ export const PROVIDER_MODELS_CONFIG = {
   // resolver form rather than a registry-level modelsFetcher. The key stays here.
   [ORCAROUTER_ID]: {
     customResolver: resolveOrcaRouterModels
+  },
+  // Gisoo's catalog is public (`GET /api/v1/models` needs no key and answers
+  // 200 even for an invalid one), so discovery runs without an Authorization
+  // header: the stored key never leaves the server for a request that does not
+  // need it, and the request target is the registry constant rather than the
+  // connection's client-writable baseUrl.
+  gisoo: {
+    customResolver: async (connection, proxyOptions = null) => {
+      const result = await discoverGisooModels({
+        fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions),
+      });
+      if (result.error) return { error: result.error, status: result.status };
+      return { models: result.models };
+    }
   }
 };

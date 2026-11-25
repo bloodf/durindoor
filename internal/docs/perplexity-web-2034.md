@@ -9,3 +9,16 @@ This is an offline source comparison, not a claim that these private web endpoin
 DurinDoor validates pasted sessions using the read-only `/api/auth/session` probe, and its web executor accepts the supplied session cookie or bearer token. The executor retains its existing model and citation behavior and reports HTTP 401/403 as possible session expiry. Continuation cache keys use a digest of the effective credential and structured history, so identical conversations from different credentials cannot share a cached upstream thread. No secret is stored in the cache key. Missing credentials do not use the continuation cache.
 
 Validation is limited to closed mock requests; no live sign-in, account, model availability, network transport, cookie rotation or real provider stream was tested. Source differences alone do not establish current upstream service compatibility. The focused regression does not exercise the dashboard or OAuth connection persistence.
+
+## Saved-cookie lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-kimi-perplexity.test.js`. It uses the real database, provider routes (create, edit, validate, test), `/v1/models`, `handleChat`, the Messages and Responses entry points, account fallback, the Perplexity Web executor and the usage route; only credentials and outbound bytes are synthetic. Source pins are the ones above (CLIProxyAPI `6faa8d20`, EasyCLIProxyAPI `e4223d5`, OmniRoute `e3c1531`), reused and not re-fetched. The Kimi Web comparison pins OmniRoute at `fbd3396` instead; both are recorded exactly as each document took them. No Perplexity account, browser, provider request or Docker was used.
+
+Verified and covered: create with unordered chunked cookies, read-only validation (`/api/auth/session`, `{}` rejected, no conversation created by Validate or Test), discovery through `/v1/models`, JSON and SSE dispatch, Messages and Responses clients, per-connection cookie isolation, 401 fallback to a sibling with cooldown only on the expired one, re-paste recovery, an only-session 401 that names the cookie to re-paste, and a 429 that stays rate limiting.
+
+Gaps found and fixed in DurinDoor (not ports; no upstream file was copied):
+
+- The registry declared the wire format `perplexity-web`, which sent streamed chat down the translate path and dropped the upstream `[DONE]`. It now declares `openai` with an explicit `perplexity-web` executor, as Grok Web does. `open-sse/AGENT-INDEX.md` was regenerated; the registry index is unchanged.
+- `GET /api/usage/[connectionId]` returned "not available" for saved sessions. It now returns local 30-day history, with the estimated tokens the non-streamed reply already carried.
+
+Known limits, unchanged: no remote plan or quota API, no cookie rotation write-back, model preferences and the Pro/Max catalog follow the registry and may drift from the site, and no attestation is emulated.

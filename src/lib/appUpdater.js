@@ -1,7 +1,8 @@
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
-import os from "os";
+import { getDataDir } from "./dataDir.js";
+import { createHash } from "crypto";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import processExitCodes from "@/shared/constants/processExitCodes";
 import { getCachedPassword, loadEncryptedPassword, stopServer } from "@/mitm/manager";
@@ -30,15 +31,6 @@ function collectAppPids() {
   return processScan.collectAppPids({ appDir: process.cwd() });
 }
 
-// Copy updater.js into DATA_DIR so npm -g can overwrite node_modules safely
-function getDataDir() {
-  if (process.env.DATA_DIR) return process.env.DATA_DIR;
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router");
-  }
-  return path.join(os.homedir(), ".9router");
-}
-
 function resolveBundledUpdaterPath() {
   if (process.env.UPDATER_SCRIPT_PATH && fs.existsSync(process.env.UPDATER_SCRIPT_PATH)) {
     return process.env.UPDATER_SCRIPT_PATH;
@@ -52,14 +44,30 @@ function resolveBundledUpdaterPath() {
   return fromCwd;
 }
 
-function ensureRuntimeUpdater(bundledPath) {
+function fileSha256(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+/** Copy the bundled updater into DATA_DIR when missing or content-divergent. */
+export function ensureRuntimeUpdater(bundledPath) {
   try {
     if (!bundledPath || !fs.existsSync(bundledPath)) return bundledPath;
     const runtimeDir = path.join(getDataDir(), "runtime", "updater");
     const runtimePath = path.join(runtimeDir, "updater.js");
+    // The detached updater needs the same resolver after the package is replaced.
+    const resolverPath = path.join(path.dirname(bundledPath), "dataDir.cjs");
+    const runtimeResolver = path.join(runtimeDir, "dataDir.cjs");
+    const modeParserPath = path.join(path.dirname(bundledPath), "deploymentMode.cjs");
+    const runtimeModeParser = path.join(runtimeDir, "deploymentMode.cjs");
+    const statusCorsPath = path.join(path.dirname(bundledPath), "statusCors.cjs");
+    const runtimeStatusCors = path.join(runtimeDir, "statusCors.cjs");
+    fs.mkdirSync(runtimeDir, { recursive: true });
+    if (fs.existsSync(resolverPath)) fs.copyFileSync(resolverPath, runtimeResolver);
+    if (fs.existsSync(modeParserPath)) fs.copyFileSync(modeParserPath, runtimeModeParser);
+    if (fs.existsSync(statusCorsPath)) fs.copyFileSync(statusCorsPath, runtimeStatusCors);
     if (fs.existsSync(runtimePath)) {
       try {
-        if (fs.statSync(bundledPath).size === fs.statSync(runtimePath).size) return runtimePath;
+        if (fileSha256(bundledPath) === fileSha256(runtimePath)) return runtimePath;
       } catch { /* recopy */ }
     }
     fs.mkdirSync(runtimeDir, { recursive: true });
@@ -95,10 +103,11 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
   const isTray = process.env.TRAY_MODE === "1";
   const relaunch = resolveRelaunchCommand();
   const appPort = String(process.env.PORT || UPDATER_CONFIG.appPort);
+  const appHost = String(process.env.HOSTNAME || "0.0.0.0");
   // Relaunch matching original env: tray stays tray, foreground stays foreground
   const relaunchArgs = isTray
-    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort]
-    : [...relaunch.args, "--skip-update", "--port", appPort];
+    ? [...relaunch.args, "--tray", "--skip-update", "--port", appPort, "--host", appHost]
+    : [...relaunch.args, "--skip-update", "--port", appPort, "--host", appHost];
 
   spawn(process.execPath, [updaterPath], {
     detached: true,
@@ -117,6 +126,7 @@ export function spawnUpdaterAndExit(packageName = UPDATER_CONFIG.npmPackageName)
       UPDATER_WAIT_CHECK_MS: String(UPDATER_CONFIG.waitForExitCheckMs),
       // Prefer live server port so wait/relaunch match instance (not hardcoded default)
       UPDATER_APP_PORT: appPort,
+      UPDATER_DEPLOYMENT_MODE: process.env.DEPLOYMENT_MODE || "local",
       UPDATER_RELAUNCH: "1",
       UPDATER_RELAUNCH_CMD: relaunch.cmd,
       UPDATER_RELAUNCH_ARGS: JSON.stringify(relaunchArgs),

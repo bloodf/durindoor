@@ -1,11 +1,15 @@
 import { isObject } from "./typeChecks.js";
 const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
+"accountId",
 "authKind",
 "authMethod",
 "baseUrl",
 "clientId",
 "client_id",
 "clientSecret",
+"codexSelectedWorkspaceId",
+"chatgptAccountId",
+"chatgptWorkspaceId",
 "copilotToken",
 "profileArn",
 "provider",
@@ -14,7 +18,8 @@ const PROVIDER_REFRESH_CONTEXT_FIELDS = Object.freeze([
 "scope",
 "scopes",
 "tokenEndpoint",
-"token_endpoint"]
+"token_endpoint",
+"workspaceId"]
 );
 
 function providerData(connection) {
@@ -28,12 +33,21 @@ function cloneContextValue(value) {
 }
 
 /**
- * Capture only credential bytes and provider metadata that can affect an OAuth
- * refresh request or bind its result. Unrelated connection metadata is omitted
- * so concurrent display/policy edits can still merge safely.
+ * Capture the sending session for cookie rotation or the credentials and
+ * provider metadata that bind an OAuth refresh. Unrelated connection metadata
+ * is omitted so concurrent display and policy edits can merge safely.
  */
 export function providerRefreshContext(connection) {
   const data = providerData(connection);
+  if (connection?.authType === "cookie") {
+    return {
+      id: connection.id ?? null,
+      provider: connection.provider ?? null,
+      authType: connection.authType,
+      apiKey: connection.apiKey ?? null,
+      storageState: cloneContextValue(data.storageState)
+    };
+  }
   return {
     provider: connection?.provider ?? null,
     authType: connection?.authType ?? null,

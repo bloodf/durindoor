@@ -25,3 +25,13 @@ service compatibility or that any particular session is authorized.
 
 The focused regression uses fake credentials and closed outbound mocks. No live
 account, provider call, browser, or credential extraction was used.
+
+## Saved-cookie lifecycle (#2034)
+
+Offline lifecycle evidence is `tests/unit/provider-cookie-lifecycle-muse-yuanbao-hugging.test.js`. It uses the real database, provider routes, validate and test routes, `/v1/models`, `handleChat`, the Messages and Responses routes, account fallback, executors and the usage route; only credentials and outbound bytes are synthetic, and `fetch` is closed by default. The source pins above are the 2026-11-20 snapshot and were reused, not re-fetched. No provider request, real session, browser or Docker was used.
+
+Verified: create (secret not echoed), incomplete cookie rejected by Validate and at dispatch with 401 and no request, Validate and Test Connection skipped without any outbound request, static catalog in `/v1/models`, JSON and SSE through Chat Completions, Messages and Responses, only `hy_source`, `hy_user` and `hy_token` sent and only to `yuanbao.tencent.com`, per-account cookie isolation, 401 and 403 fallback to a sibling with the sibling's row untouched, actionable 401 or 403 without echoing the cookie when no sibling exists, 429 kept as rate limiting, and recovery after re-paste through `PUT /api/providers/[id]`.
+
+Gap found and fixed (DurinDoor-original; no upstream file was copied): `GET /api/usage/[connectionId]` reported "not available" for saved Yuanbao sessions although dispatch works. It now returns the local 30-day history, as for ChatGPT Web and Grok Web.
+
+Known limits, unchanged: redirects are refused, so a login redirect surfaces as a 502; no cookie rotation write-back; no remote quota; the OmniRoute `yuanbao-web.ts` pin remains the only parity reference.

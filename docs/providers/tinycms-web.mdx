@@ -1,0 +1,47 @@
+---
+title: TinyCMS Web
+description: Use the TinyCMS device UUID from local storage, the signed-challenge flow, limits and errors.
+---
+
+TinyCMS identifies a device by its UUID rather than a browser cookie. DurinDoor stores that UUID as the connection credential and, on every request, performs the same signed-challenge handshake the TinyCMS web client does.
+
+## Setup
+
+1. Open [site.tinycms.xyz](https://site.tinycms.xyz) in a browser.
+2. In the developer tools, open Application, then Local Storage, then `https://site.tinycms.xyz`, and copy the value of `app-config-uuid`. It starts with `R`.
+3. Add a **TinyCMS Web** connection and paste the value as the credential.
+4. Use models as `tcw/<model>`, for example `tcw/gpt-5.5` or `tcw/claude-sonnet-5`, on `/v1/chat/completions` or `/v1/messages`.
+
+## Credential capture
+
+There is no session cookie to capture. A pasted Cookie header, a cURL command, or a HAR contains nothing DurinDoor can use for this provider; only the `app-config-uuid` localStorage value counts. There are two ways to hand it over:
+
+- **Import session** on the provider page: paste the value into the `localStorage app-config-uuid` field. The dashboard checks that it starts with `R` before sending it. Or choose **Browser extension** and create a pairing.
+- **Cookie capture extension.** With the pairing, the extension asks for the `scripting` permission and the `https://site.tinycms.xyz/*` host permission, reads only `app-config-uuid` from the signed-in tab's local storage once, and posts it to the import API. It reads no cookie and writes nothing to the page. Both permissions are given back after the run.
+
+An imported UUID is stored in the connection's provider-specific data as `app-config-uuid` and is never returned by the connections API. A UUID pasted as the API key in the add dialog takes precedence over an imported one; replacing the session through import clears the pasted key.
+
+**Validate** asks `/api/challenge` for a challenge with the UUID; it never sends a chat request.
+
+The import profile exported from `open-sse/providers/registry/tinycms-web.js` (`TINYCMS_WEB_CREDENTIAL_PROFILE`) lists the origin, the two domains involved (`site.tinycms.xyz`, `gov.freegpt.win`), the localStorage key, the credential pattern, and the validation probe (`GET https://gov.freegpt.win/api/challenge` with the `uuid` header; a live device gets HTTP 200 and a challenge).
+
+## How a request works
+
+1. DurinDoor looks up the egress public IP (cached for five minutes per proxy setting).
+2. It requests a challenge from `/api/challenge` with the `uuid` and `x-origin` headers.
+3. The vendored WASM signer produces the signature and canvas fingerprint and solves the proof of work for the challenge. The challenge difficulty is the number of leading zero hex digits the hash needs. The solver runs synchronously, so a difficulty above 5 is refused with a 502 rather than stalling the gateway.
+4. The chat request goes to `gov.freegpt.win/api/openai/oneapi/v1/chat/completions` with the `x-secure-*` headers. The upstream speaks the OpenAI chat format, JSON or server-sent events, so a good response is passed through unchanged.
+
+## Errors and limits
+
+| Upstream | DurinDoor |
+| --- | --- |
+| 401 or 403 from the challenge or chat endpoint | 401 `invalid_session`: copy `app-config-uuid` again |
+| 429 | 429 `quota_exceeded`, with `Retry-After` when sent |
+| Malformed challenge, difficulty above 5, 5xx, network failure | 502 without upstream internals |
+
+Free tier and subscription availability, quotas, and rate limits are decided by TinyCMS and are not verified by DurinDoor. The catalog is the 22 model IDs in the pinned upstream provider (Claude, GPT, Gemini, Grok, DeepSeek, Kimi, GLM, Qwen, Mimo); there is no live model list. The server may rotate the device identity, the signing scheme, or the challenge version at any time, which shows up as 401 or 502 until the port is updated.
+
+## Sources
+
+- Vendored, MIT licensed, from the same pin:  (WASM binary and wasm-bindgen glue) and , now under `open-sse/providers/private/tinycms-web/`. The stub window, document, and canvas objects are shared singletons here, because fresh stubs on a later call make the fingerprint report `fp_error`.

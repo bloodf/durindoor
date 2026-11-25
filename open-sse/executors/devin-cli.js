@@ -1,6 +1,9 @@
 import { StringDecoder } from "node:string_decoder";
 import { extractChunkText, resolveDevinBin, rpc, spawnDevinAcp } from "./devin-acp-stdio.js";
 import { BaseExecutor } from "./base.js";
+import { bindsConnectionRoute, createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { errorResponse } from "../utils/error.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function buildPromptText(messages = []) {
@@ -55,14 +58,22 @@ export class DevinCliExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({ model, body, credentials = {}, signal, log }) {
+  async execute(input) {
+    const { model, body, credentials = {}, signal, log } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    if (bindsConnectionRoute(input.proxyOptions)) {
+      const response = errorResponse(400, "Devin CLI cannot use gateway proxy or relay settings");
+      return { response, url: this.buildUrl(), headers: {}, transformedBody: { model } };
+    }
+    const sender = createExecutorSender(this, input);
     const messages = Array.isArray(body?.messages) ? body.messages : [];
     const promptText = buildPromptText(messages);
     const apiKey = credentials.apiKey || credentials.accessToken || process.env.WINDSURF_API_KEY || "";
     const devinBin = resolveDevinBin();
     log?.info?.("DEVIN", `devin acp model=${model || "default"} bin=${devinBin}`);
 
-    const sseStream = new ReadableStream({
+    // Creating the stream spawns the CLI, which is the physical send.
+    const spawnTurn = () => new ReadableStream({
       start(controller) {
         const enc = new TextEncoder();
         const emitRaw = (data) => controller.enqueue(enc.encode(data));
@@ -234,17 +245,22 @@ export class DevinCliExecutor extends BaseExecutor {
       }
     });
 
+    const url = this.buildUrl();
+    const sseStream = await sender.sendRequest(url, { signal }, null, { transport: spawnTurn });
+    const response = new Response(sseStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive"
+      }
+    });
+    transferProviderAttemptDispatch(sseStream, response);
     return {
-      response: new Response(sseStream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive"
-        }
-      }),
-      url: this.buildUrl(),
+      response,
+      url,
       headers: {},
-      transformedBody: { model, promptLength: promptText.length }
+      transformedBody: { model, promptLength: promptText.length },
+      attemptStartedAt: sender.attemptStartedAt
     };
   }
 }

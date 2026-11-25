@@ -2,6 +2,7 @@
 
 import { useParams, notFound, useRouter } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { requestCollection, updateProviderConnections } from "../../providers/workflowRequests.js";
 import Link from "next/link";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -45,6 +46,7 @@ function ComboList({ combos }) {
 }
 
 export default function MediaProviderKindPage() {
+  const v5 = useUiV5();
   const { kind } = useParams();
   const router = useRouter();
   const [loadError, setLoadError] = useState("");
@@ -145,7 +147,7 @@ export default function MediaProviderKindPage() {
   if (!loaded && loadError) return <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger"><p>Provider configuration could not be loaded. {loadError}</p><Button icon="refresh" onClick={load}>Retry</Button></div>;
   if (!loaded && loading) return <p role="status">Loading provider configuration…</p>;
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className={`mx-auto flex w-full max-w-7xl flex-col gap-6${v5 ? " min-w-0 text-dd-text" : ""}`}>
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">Showing last confirmed configuration. {loadError}<Button icon="refresh" onClick={load}>Retry</Button></div>}
       {toggleError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger/30 bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger">{toggleError.message}<Button icon="refresh" onClick={toggleError.retry}>Retry</Button></div>}
       {warning && <p role="status" className="rounded-dd border border-dd-warning/30 px-4 py-3 text-[13px] text-dd-warning">{warning}</p>}
@@ -161,7 +163,7 @@ export default function MediaProviderKindPage() {
       {allProviders.length === 0 ? (
         <EmptyState icon="deployed_code" title={`No ${kindConfig.label} providers`} message={`No providers support ${kindConfig.label} yet.`} />
       ) : (
-        <section aria-label={`${kindConfig.label} providers`} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <section aria-label={`${kindConfig.label} providers`} className={`grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4${v5 ? " min-w-0" : ""}`}>
           {providers.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}
           {isEmbedding && discoveredProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}
           {(isEmbedding || isSystemone) && customProviders.map((provider) => <MediaProviderCard key={provider.id} provider={provider} kind={kind} connections={connections} isCustom onToggle={handleToggleProvider} saving={saving.includes(provider.id)} />)}

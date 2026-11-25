@@ -79,7 +79,7 @@ describe("EditConnectionModal failed save feedback", () => {
 // Run the actual caller function bodies with synthetic boundary dependencies.
 // No copied save implementation and no provider/database access.
 const callers = [
-  "src/app/(dashboard)/dashboard/providers/[id]/page.js",
+  "src/app/(dashboard)/dashboard/providers/[id]/hooks/useConnectionActions.js",
   "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
   "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
 ];

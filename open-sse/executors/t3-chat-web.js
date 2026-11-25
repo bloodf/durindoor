@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { FETCH_CONNECT_TIMEOUT_MS, MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { readBodyWithTimeout } from "../utils/bodyTimeout.js";
 import { errorResponse } from "../utils/error.js";
@@ -118,9 +119,23 @@ function textCompletion(metadata, content) {
   };
 }
 
-function completionResponse(completion, stream) {
-  if (!stream) return Response.json(completion);
-  const { id, created, model, choices, usage } = completion;
+/**
+ * T3 Chat reports no token counts. Estimate them the way the other web-cookie
+ * transports do (about four characters per token) so a non-streamed reply still
+ * reaches Usage. The streaming path is estimated by the gateway.
+ */
+function estimatedUsage(completion, requestBody) {
+  const promptChars = JSON.stringify(requestBody?.messages ?? []).length;
+  const completionChars = String(completion?.choices?.[0]?.message?.content ?? "").length;
+  const promptTokens = Math.ceil(promptChars / 4);
+  const completionTokens = Math.ceil(completionChars / 4);
+  return { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
+}
+
+function completionResponse(completion, stream, requestBody) {
+  const body = completion.usage ? completion : { ...completion, usage: estimatedUsage(completion, requestBody) };
+  if (!stream) return Response.json(body);
+  const { id, created, model, choices, usage } = body;
   const metadata = { id, created, model, object: "chat.completion.chunk" };
   const deltas = choices.map(({ index, message }) => ({ index, delta: message, finish_reason: null }));
   const terminal = choices.map(({ index, finish_reason }) => ({ index, delta: {}, finish_reason }));
@@ -144,7 +159,13 @@ export class T3ChatWebExecutor extends BaseExecutor {
     return CHAT_URL;
   }
 
-  async execute({ model, body, stream = true, credentials, signal, proxyOptions }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream = true, credentials, signal, proxyOptions }, sender, billed) {
     const headers = this.buildHeaders();
     const payload = { model, messages: body?.messages, stream };
     const result = { url: CHAT_URL, headers, transformedBody: payload };
@@ -157,18 +178,14 @@ export class T3ChatWebExecutor extends BaseExecutor {
     if (!cookie) return fail(400, SESSION_ERROR);
     if (proxyOptions?.vercelRelayUrl) return fail(400, "T3 Chat sessions require a route without an HTTP relay.");
 
-    const connect = new AbortController();
-    const requestSignal = signal ? AbortSignal.any([signal, connect.signal]) : connect.signal;
-    const timeout = setTimeout(() => connect.abort(), FETCH_CONNECT_TIMEOUT_MS);
     try {
-      const upstream = await proxyAwareFetch(CHAT_URL, {
+      const upstream = billed(await sender.sendRequest(CHAT_URL, {
         method: "POST",
         headers: { ...headers, Cookie: cookie, Accept: stream ? "text/event-stream, application/x-ndjson, application/json" : "application/json" },
         body: JSON.stringify(payload),
         redirect: "error",
-        signal: requestSignal,
-      }, proxyOptions);
-      clearTimeout(timeout);
+        signal,
+      }, proxyOptions));
       if (!upstream.ok) {
         void upstream.body?.cancel().catch(() => {});
         if (upstream.status >= 300 && upstream.status < 400) {
@@ -194,17 +211,17 @@ export class T3ChatWebExecutor extends BaseExecutor {
           const data = JSON.parse(raw);
           if (data?.error) return fail(502, "T3 Chat returned an error.");
           if (Array.isArray(data?.choices) && data.choices.length) {
-            return { ...result, response: completionResponse({ ...metadata, ...data }, stream) };
+            return { ...result, response: completionResponse({ ...metadata, ...data }, stream, payload) };
           }
           const content = textDelta(data);
-          if (content !== null) return { ...result, response: completionResponse(textCompletion(metadata, content), stream) };
+          if (content !== null) return { ...result, response: completionResponse(textCompletion(metadata, content), stream, payload) };
         } else {
           const parts = [];
           for (const line of raw.split("\n")) {
             if (!line.trim()) continue;
             const { content, done } = readTextEvent(line);
             if (content !== null) parts.push(content);
-            if (done) return { ...result, response: completionResponse(textCompletion(metadata, parts.join("")), false) };
+            if (done) return { ...result, response: completionResponse(textCompletion(metadata, parts.join("")), false, payload) };
           }
         }
       } else {
@@ -214,10 +231,8 @@ export class T3ChatWebExecutor extends BaseExecutor {
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (signal?.aborted) return fail(499, "T3 Chat request canceled.");
-      if (connect.signal.aborted) return fail(504, "T3 Chat request timed out.");
+      if (sender.timeoutReason) return fail(504, "T3 Chat request timed out.");
       return fail(502, "T3 Chat request failed.");
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

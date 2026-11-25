@@ -34,27 +34,17 @@ Translator tests that call `translateRequest` or `translateResponse` must import
 
 ## Scoped PR gates and full checkpoints
 
-The authoritative contract is `AGENTS.md`. `scripts/local-ci.mjs --base <full-sha> --head <full-sha>` defaults to full mode and retains the original job coverage. Bootstrap must earn a full exact-head checkpoint before scoped policy merges; the independently reviewed sequential-command amendment below replaces the superseded monolithic test command. Full checkpoints remain mandatory after upstream integration, every five merges, each stage boundary, final readiness, and shared-core/security/DB/dependency risk. No baseline additions or skipped security blockers.
-
-For `--mode scoped`, supply `--selection <reviewed-json> --policy-sha <sha256> --runner-sha <sha256>`. Selection JSON contains `base`, `head`, `policySha256`, `runnerSha256`, `reviewer`, and `tests` (literal paths relative to `tests/`). Obtain hashes and selection from an independent trusted reviewer, not the candidate author. Policy SHA256 binds the ordered base-commit contents of `AGENTS.md`, this testing guide and `agent-workflow.md`; runner SHA256 binds the executed script. Freeze its imported baseline helpers too. External review provenance is mandatory; a reviewer string alone cannot establish approval.
-
-Docs-only Markdown paths use lint/docs/baseline checks without pretending tests ran, except the three gate-policy documents and the local CI procedure, which always require full mode. Translator request/response implementations and translator test files require all base-inventory offline translator tests and mapped media/native/tool-result/streaming callers, plus reviewer additions. Missing mandatory callers, any deletion, registration/schema/shared-helper changes require full mode. Unknown/mixed paths, gate/policy/test-selector, registry, auth/crypto/money/admission, DB, dependencies/toolchain/build and website changes require full mode. Direct scoped Vitest invocation forwards explicit files and caps workers at two; `pnpm -C tests run test:ci` does not forward selectors.
-
-Evidence binds exact base/head, head tree, changed paths, policy, runner, selection, lockfiles, Node/npm/ABI/platform, command exit codes, log hashes and fresh report hashes. `evidence.sha256` hashes the final receipt. Independently validate receipt age (default one hour), required commands and on-disk hashes against the frozen review and live base/head before publication. Never self-approve a candidate gate. The trusted integration process alone publishes `V5 Local CI`; tests never receive GitHub or provider credentials. Full checkpoint failure blocks merges.
-
-Each command has a five-minute ceiling and emits progress. No output for three minutes fails the command. Snapshots, reports, npm/Vite caches, HOME and DATA_DIR stay private. Shared Node 24.22.2 dependencies require matching lockfiles, ABI and platform; never install or rebuild through their symlinks. Run ownership-map/toolchain/isolation checks in the same approved unprivileged invocation as bootstrap. If real root-owned shells appear as UID 65534, report the environmental blocker; do not change production trusted-shell checks, skip tests, use root/sudo or escape session permissions.
-
-Full mode executes the complete configured Vitest inventory in four sequential batches. Each batch is a separately supervised command with the same five-minute ceiling, at most four fork workers, and per-file isolation enabled. Discovery must include every eligible tracked head suite; batch reports must contain exactly their assigned files, without omissions or duplicates. All batches must pass before JSON/JUnit aggregation and receipt acceptance. This changes command boundaries, not test coverage or failure policy. The independently reviewed runner and its imported batch helper must be frozen together; candidate code cannot approve this amendment.
+The complete gate-selection, evidence and checkpoint policy is maintained in [the contributor contract](../../AGENTS.md#local-gate-authority). Use [local CI](./local-ci.md) for operational commands and workflow coverage.
 
 ## Full suite
 
 From `tests/`:
 
 ```bash
-npm test
+pnpm exec vitest run --reporter=verbose
 ```
 
-That is `vitest run --reporter=verbose`. The CI and baseline gate is:
+This runs Vitest directly. The CI and baseline gate is:
 
 ```bash
 cd tests && pnpm run test:ci
@@ -62,12 +52,16 @@ cd tests && pnpm run test:ci
 
 `test:ci` runs `tests/__baseline__/run-ci.mjs`. That script:
 
-1. Deletes stale `.test-results.json` and `.test-results.junit.xml`.
-2. Runs Vitest with `--reporter=json` and `--outputFile=./.test-results.json`.
-3. Writes `.test-results.junit.xml`.
-4. Fails closed on missing, stale, or unparseable reports, empty collection, collection failures, runtime errors, and exit/report mismatches.
-5. Feeds the JSON report to `tests/__baseline__/verify-no-regression.mjs`.
-6. Runs `tests/__baseline__/verify-baseline-diff.mjs` when `BASELINE_BASE_REF` is set (CI sets it to `HEAD^`).
+1. Deletes stale `.test-results.json`, `.test-results.junit.xml` and `.full-inventory.json`.
+2. Discovers the configured inventory with `vitest list --filesOnly`, and fails if any tracked `tests/**/*.test.js` file (minus the config exclusions) is missing from it.
+3. Splits the inventory into twelve sorted round-robin batches (`tests/__baseline__/full-batches.mjs`) and runs them as twelve sequential Vitest commands, each with `--maxWorkers=4 --isolate --pool=forks` and its own `.full-batch-N.json` report.
+4. Gives every command, discovery included, its own 300-second ceiling. At the ceiling it kills the command's whole process group, fork workers included, and the gate fails.
+5. Fails closed on missing, stale, or unparseable reports, empty collection, collection failures, runtime errors, exit/report mismatches, and a batch report that does not cover exactly its batch.
+6. Merges the batch reports into `.test-results.json` and writes `.test-results.junit.xml`.
+7. Feeds the merged report to `tests/__baseline__/verify-no-regression.mjs`.
+8. Runs `tests/__baseline__/verify-baseline-diff.mjs` when `BASELINE_BASE_REF` is set (CI sets it to `HEAD^`).
+
+A batch with failing assertions does not stop later batches, so one run reports every regression. A timeout or infrastructure failure stops the run at once. The whole inventory used to run as one Vitest command; at roughly 2,700 isolated files that one command could not finish inside the 300-second ceiling. `test:ci` needs a git checkout to read the tracked inventory.
 
 `verify-no-regression.mjs` compares failed assertions against `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression. Do not add entries. Remove an entry only when a listed failure is fixed. `verify-baseline-diff.mjs` refuses any added line in that file versus `BASELINE_BASE_REF`.
 
@@ -93,7 +87,7 @@ RUN_REAL=1 npx vitest run --config vitest.config.js translator/real/
 
 Optional filter: `REAL_PROVIDERS=gemini,kiro,codex`.
 
-These tests read connections from the local data dir (`~/.9router/db/data.sqlite` unless `DATA_DIR` is set). They consume quota. Run them only with credentials you intend to spend.
+These tests require `DATA_DIR` to point to a disposable copy of your data directory; they never fall back to `~/.9router`. They consume quota. Run them only with credentials you intend to spend.
 
 `describe.skipIf(!RUN_REAL)` wraps the suites. Account, plan, and quota errors (HTTP 401, 402, 403, 429, and matching error text) are skipped with `console.warn`. Protocol and translation failures remain failures.
 
@@ -104,3 +98,17 @@ Dashboard Playwright is on [Local development](./local-development.mdx).
 See [local CI](./local-ci.md) for the one-command full run, workflow coverage, manual fallbacks and external owner verification. Full runs require registry-index, docs and catalog checks even without a website change, plus standalone and packed CLI smoke checks. Website selection includes shared dashboard/runtime/build inputs. The trigger migration cannot merge until its exact reviewed head passes the externally frozen full gate.
 
 Report acceptance and JUnit generation share terminal-state validation for the locked Vitest 4.1.12 JSON schema. Suites must be `passed` or `failed`; assertions must be `passed`, `failed`, `skipped` or `todo`. Explicit skipped/todo assertions remain valid. Pending, unknown, missing and malformed states fail before aggregation or JUnit output; diagnostic infrastructure failures remain failures.
+
+## V5 Storybook browser evidence
+
+Use a private, disposable environment with synthetic fixture data only. Keep `HOME`, `DATA_DIR`, browser caches and reports private, and exclude provider and publisher credentials from the process. Install the root and test dependencies with their frozen lockfiles, build Storybook with `pnpm run storybook:build`, and install the Playwright browsers matching the test package (for example, `cd tests && node node_modules/playwright/cli.js install chromium firefox webkit`). Browser system libraries must be provided by the environment; do not use sudo from the test run.
+
+From `tests/`, select one engine per run and a registered fixture route, for example:
+
+```sh
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=chromium V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/chromium.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=firefox V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/firefox.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=webkit V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/webkit.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+```
+
+Omitting `V5_BROWSER_ENGINE` selects Chromium; other names fail validation. To use a compatible local browser, set `V5_CHROMIUM_EXECUTABLE`, `V5_FIREFOX_EXECUTABLE`, or `V5_WEBKIT_EXECUTABLE` for the selected engine. `V5_FIREFOX_DRIVER` can select a Playwright-compatible Firefox driver module. All engines use the repository font fallback when host fontconfig is unavailable. `V5_STORYBOOK_DIR` can point to a private built Storybook. Reports identify the engine per case. Screenshots retain the existing Chromium path under `.impeccable/review/v5/production/<route>/`; Firefox and WebKit use `<engine>/<route>/` beneath that directory. Keep these artifacts private and inspect them for sensitive data before sharing.

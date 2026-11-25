@@ -22,6 +22,8 @@
  * use www.kimi.com.
  */
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
@@ -410,7 +412,13 @@ export class KimiWebExecutor extends BaseExecutor {
    * @param {object|null} [input.proxyOptions]
    * @returns {Promise<{response: Response, url: string, headers: Record<string,string>, transformedBody: object}>}
    */
-  async execute({ body, credentials, stream: wantStream, signal, proxyOptions = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ body, credentials, stream: wantStream, signal, proxyOptions = null }, sender, billed) {
     const bodyObj = body || {};
 
     const { accessToken: jwt, origin } = resolveKimiTokens(credentials);
@@ -427,6 +435,19 @@ export class KimiWebExecutor extends BaseExecutor {
       };
     }
 
+    // The web protocol has no function-call channel; never silently discard tools.
+    for (const [field, label] of [["tools", "OpenAI"], ["functions", "legacy"]]) {
+      const value = bodyObj[field];
+      if (value != null && (!Array.isArray(value) || value.length > 0)) {
+        return {
+          response: errorResponse(400, `Kimi Web does not support ${label} function tools`),
+          url: chatUrl,
+          headers: {},
+          transformedBody: bodyObj
+        };
+      }
+    }
+
     const messages = bodyObj.messages || [];
     // Strip the repo-wide thinking suffix (e.g. `k2d6-thinking(high)`) that
     // getModelUpstreamId preserves, so resolveModelConfig resolves the correct
@@ -441,37 +462,23 @@ export class KimiWebExecutor extends BaseExecutor {
     const reqHeaders = this.buildKimiHeaders(jwt, origin);
     const framedBody = frameConnectMessage(reqBody);
 
-    // Combine chatCore's client-disconnect signal with a connect timeout so a
-    // stalled TCP/TLS/proxy handshake before response headers cannot hold the
-    // provider slot indefinitely (mirrors BaseExecutor's fetch guard).
-    const connectCtrl = new AbortController();
-    const connectTimer = setTimeout(
-      () => connectCtrl.abort(new Error("fetch connect timeout")),
-      FETCH_CONNECT_TIMEOUT_MS
-    );
-    const mergedSignal = signal ?
-    AbortSignal.any([signal, connectCtrl.signal]) :
-    connectCtrl.signal;
-
+    // The sender bounds the wait for response headers and then leaves the body alone.
     let upstream;
     try {
-      upstream = await proxyAwareFetch(chatUrl, {
+      upstream = billed(await sender.sendRequest(chatUrl, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
-        signal: mergedSignal
-      }, proxyOptions);
+        signal
+      }, proxyOptions));
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       return {
         response: errorResponse(502, `Kimi fetch failed: ${err instanceof Error ? err.message : "unknown"}`),
         url: chatUrl,
         headers: {},
         transformedBody: bodyObj
       };
-    } finally {
-      // Headers have arrived (or fetch rejected) — stop the connect timer so it
-      // cannot abort the body stream mid-read.
-      clearTimeout(connectTimer);
     }
 
     if (!upstream.ok) {
@@ -480,8 +487,14 @@ export class KimiWebExecutor extends BaseExecutor {
       // Authorization key) would slip past the generic sanitizer, so redact
       // the known credential first.
       const scrubbed = jwt ? errText.split(jwt).join("[redacted]") : errText;
+      // chatCore has already tried the refresh token on a 401 by the time this reaches a
+      // client, so a 401/403 here means the saved session cannot be renewed: say how to
+      // recover instead of echoing Kimi's bare "unauthenticated".
+      const message = upstream.status === 401 || upstream.status === 403 ?
+      `Kimi auth failed — session may be expired. Log in at ${origin} again, run the connect dialog's console snippet and re-paste the new tokens.` :
+      `Kimi error: ${sanitizeErrorMessage(scrubbed)}`;
       return {
-        response: errorResponse(upstream.status, `Kimi error: ${sanitizeErrorMessage(scrubbed)}`),
+        response: errorResponse(upstream.status, message),
         url: chatUrl,
         headers: reqHeaders,
         transformedBody: bodyObj
@@ -678,12 +691,18 @@ export class KimiWebExecutor extends BaseExecutor {
 
     const message = { role: "assistant", content: answer };
     if (reasoning) message.reasoning_content = reasoning;
+    // Kimi's web stream carries no token counts. Estimate them (about four characters per
+    // token, the same rule the other web-session executors use) so a non-streamed reply
+    // is recorded in Usage like a streamed one.
+    const promptTokens = Math.ceil(prompt.length / 4);
+    const completionTokens = Math.ceil((answer.length + reasoning.length) / 4);
     const completion = {
       id,
       object: "chat.completion",
       created,
       model: modelId,
-      choices: [{ index: 0, message, finish_reason: "stop" }]
+      choices: [{ index: 0, message, finish_reason: "stop" }],
+      usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }
     };
     return {
       response: new Response(JSON.stringify(completion), {

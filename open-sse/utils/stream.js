@@ -1,8 +1,10 @@
+import { antigravityGeminiResponse } from "../handlers/chatCore/antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
+import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -16,10 +18,12 @@ import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
 import { appendReasoningText } from "../translator/concerns/reasoning.js";
 import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
+import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
 import { normalizeOpenAIFinish } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "./streamTerminal.js";
 import { normalizeArrayContentChunk } from "./arrayContentDelta.js";
-import { advancePendingSseLineBytes } from "./pendingSseLine.js";
+import { advancePendingSseLineBytes, MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
+import { isProviderKeepaliveEvent } from "./providerKeepalive.js";
 import {
   createMinimaxThinkingStreamState,
   flushMinimaxThinkingStreamState,
@@ -30,7 +34,7 @@ import {
 "./minimaxThinkingStream.js";
 
 import { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
-import { isBoolean, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
@@ -51,6 +55,39 @@ const GEMINI_PASSTHROUGH_PROVIDERS = new Set(["antigravity", "agy", "gemini", "g
 // Bound finish_reason -> real usage deferral when the upstream never sends a
 // usage trailer or [DONE]. This is not a general stream inactivity timeout.
 const PENDING_COMPLETION_FLUSH_MS = 3000;
+
+// This transform forwards line by line (it also carries NDJSON), so it reads
+// each line's fields with the shared parser instead of waiting for whole frames.
+/** Trimmed value of a line's `data:` field, or null for any other line. */
+function sseLineData(line) {
+  const { hasData, data } = parseSseFrame(line);
+  // A bare `data` line (no colon) is forwarded untouched.
+  return hasData && line !== "data" ? data.trim() : null;
+}
+
+const sseLineEvent = (line) => parseSseFrame(line).eventName?.trim() || null;
+
+/** Forwarded `data:x` lines are written as `data: x`. */
+const spaceDataField = (line) => line.replace(/^data:(?! )/, "data: ");
+
+/** A `data:` line holding only the start of a JSON value split over several data lines. */
+function startsSplitData(line) {
+  const value = sseLineData(line);
+  if (!value?.startsWith("{") && !value?.startsWith("[")) return false;
+  try {JSON.parse(value);return false;} catch {return true;}
+}
+
+/** One `data:` line for held lines that form a single JSON value, else null. */
+function joinSplitData(lines) {
+  const { data } = parseSseFrame(lines.map((line) => line.trim()).join("\n"));
+  try {JSON.parse(data);} catch {return null;}
+  const eol = lines[0].endsWith("\r") ? "\r" : "";
+  return {
+    others: lines.filter((line) => sseLineData(line.trim()) === null),
+    // Newlines between JSON tokens are whitespace.
+    line: `data: ${data.replace(/\n/g, " ")}${eol}`
+  };
+}
 
 function normalizeStreamError(error, secrets = []) {
   // Public fields only: redact the selected credential values before they reach the client.
@@ -134,7 +171,7 @@ function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
     return `event: response.failed\ndata: ${JSON.stringify(failed)}\n\ndata: [DONE]\n\n`;
   }
   if (sourceFormat === FORMATS.CLAUDE) {
-    return `event: error\ndata: ${JSON.stringify({ type: "error", error: normalized })}\n\ndata: [DONE]\n\n`;
+    return formatClaudeSseError(normalized) + "data: [DONE]\n\n";
   }
   return `data: ${JSON.stringify({ error: normalized })}\n\ndata: [DONE]\n\n`;
 }
@@ -170,7 +207,8 @@ export function createSSEStream(options = {}) {
     providerBody = null,
     apiKey = null,
     claudeClassifierCompat = "off",
-    credentials = null
+    credentials = null,
+    nativeGemini = false
   } = options;
 
   // Selected/refreshed credential values redacted from the PUBLIC translated error only.
@@ -186,6 +224,16 @@ export function createSSEStream(options = {}) {
   // Responses passthrough: the upstream speaks the Responses protocol and the
   // client wants it unchanged, so the frames are forwarded as they arrive.
   const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  // Empty provider keepalive blocks can crash strict SDK JSON parsing.
+  // Filter only those blocks in Chat and Responses passthrough (OmniRoute
+  // #1146). Claude passthrough keeps its
+  // genuine `event: ping` frames, and the gateway-generated keepalives never
+  // travel through this transform.
+  const filterProviderKeepalive = mode === STREAM_MODE.PASSTHROUGH &&
+    (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES);
+  let keepaliveCandidate = [];
+  let keepaliveCandidateSize = 0;
+  let keepaliveFrameStart = true;
   // Replayed Responses events (a reconnect re-sending an already forwarded
   // sequence_number) are dropped before they reach the client.
   const responsesReplay = createResponsesSequenceReplayTracker();
@@ -234,7 +282,7 @@ export function createSSEStream(options = {}) {
   const omitStreamReasoning = sanitizeMinimaxThinking && shouldOmitStreamReasoning(provider);
 
   const state = mode === STREAM_MODE.TRANSLATE ?
-  { ...initState(sourceFormat, body || providerBody), searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
+  { ...initState(sourceFormat, body || providerBody), requestedModel: model, searchEnabled: provider === "codex" && sourceFormat === FORMATS.CLAUDE && body?.tools?.some(tool => tool?.type === "web_search_20250305"), provider, toolNameMap, clientTools: Array.isArray(body?.tools) ? body.tools : null, providerBody, model, dsmlModel: providerBody?.model || model, signatureNamespace: connectionId, sessionId: credentials?._clientSessionId || null, ...(claudeCompat && { claudeCompat: true }) } :
   null;
   // Keep a compact completion view while chunks flow. Unlike retained request
   // diagnostics, this sees terminal metadata even when callers cap raw events.
@@ -292,6 +340,8 @@ export function createSSEStream(options = {}) {
     let claudeRole = "assistant";
     let claudeStopReason = "end_turn";
     let claudeStopSequence = null;
+    let sawClaudeMessageStart = false;
+    let sawClaudeMessageStop = false;
     const geminiParts = [];
     let geminiRole = "model";
     let geminiFinishReason = "STOP";
@@ -342,6 +392,7 @@ export function createSSEStream(options = {}) {
           sawAny = true;
           if (chunk.type === "message_start") {
             const message = chunk.message || {};
+            sawClaudeMessageStart = Array.isArray(message.content);
             claudeId = bounded(message.id, MAX_ID) || claudeId;
             summaryModel = bounded(message.model, MAX_MODEL) || summaryModel;
             claudeRole = bounded(message.role, 32) || claudeRole;
@@ -365,7 +416,10 @@ export function createSSEStream(options = {}) {
             claudeStopReason = bounded(chunk.delta?.stop_reason, 64) || claudeStopReason;
             claudeStopSequence = bounded(chunk.delta?.stop_sequence, MAX_FIELD) || claudeStopSequence;
             if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
-          } else if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
+          } else {
+            if (chunk.type === "message_stop") sawClaudeMessageStop = true;
+            if (chunk.usage) summaryUsage = mergeUsage(summaryUsage, scalarUsage(chunk.usage));
+          }
           return;
         }
         if (isGemini) {
@@ -403,6 +457,9 @@ export function createSSEStream(options = {}) {
             if (tool.id) toolCalls.set(`id:${tool.id}`, tool);
           }
         }
+      },
+      hasClaudeTokenLimitReason() {
+        return sawClaudeMessageStart && sawClaudeMessageStop && claudeStopReason === CLAUDE_STOP.MAX_TOKENS;
       },
       finalize(finalUsage) {
         if (!sawAny) return undefined;
@@ -455,6 +512,8 @@ export function createSSEStream(options = {}) {
   const withTps = (usageObj) => attachTokensPerSecond(usageObj, ttftAt ? Date.now() - ttftAt : null);
   /** Tool-call frames are useful output even when providers omit usage and text. */
   let hadToolCalls = false;
+  // Claude output seen so far; refreshes a provisional message_start count.
+  let claudeOutputChars = 0;
   // Names only, for a readable log label — a turn that only calls tools accumulates
   // no content and would otherwise log as "[Empty streaming response]", indistinguishable
   // from a truncated stream. Dedup keeps a chatty multi-call turn's label short.
@@ -463,7 +522,14 @@ export function createSSEStream(options = {}) {
   let sseEmittedCount = 0;
   const eventTypeCounts = {};
   let onStreamCompleteFired = false; // guard so terminal-chunk completion + flush() both fire onStreamComplete only once
-  const recordCompletionData = (parsed, { summary = true, trackUsage = true, content = false } = {}) => {
+  let sawOpenAITokenLimit = false;
+  const isOpenAITokenLimitFrame = (chunk) => targetFormat === FORMATS.OPENAI &&
+    Array.isArray(chunk?.choices) && chunk.choices.some((choice) =>
+      choice?.finish_reason === OPENAI_FINISH.LENGTH && isRecord(choice.delta));
+  const recordCompletionData = (parsed, {
+    summary = true, trackUsage = true, content = false, tokenLimit = isOpenAITokenLimitFrame(parsed)
+  } = {}) => {
+    if (summary) sawOpenAITokenLimit ||= tokenLimit;
     if (targetFormat === FORMATS.OPENAI_RESPONSES && (mode === STREAM_MODE.PASSTHROUGH || sourceFormat === FORMATS.OPENAI_RESPONSES) && hasResponsesSnapshotOutput(parsed)) hasSnapshotOutput = true;
     if (summary) providerSummary.ingest(parsed);
     const geminiParts = parsed.candidates?.[0]?.content?.parts || parsed.response?.candidates?.[0]?.content?.parts || [];
@@ -499,6 +565,11 @@ export function createSSEStream(options = {}) {
       for (const call of parsed.message.tool_calls) {
         if (isString(call?.function?.name) && call.function.name) toolCallNames.add(call.function.name);
       }
+    }
+    if (summary && parsed.type === "content_block_delta") {
+      const delta = parsed.delta;
+      const piece = [delta?.text, delta?.thinking, delta?.partial_json].find((value) => isString(value) && value);
+      if (piece) claudeOutputChars += piece.length;
     }
     const extracted = extractUsage(parsed);
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
@@ -554,6 +625,8 @@ export function createSSEStream(options = {}) {
   };
 
   let streamDoneSent = false; // track duplicate [DONE] across transform + flush
+  // A forwarded data line still waiting for the blank line that ends its frame.
+  let dataFrameOpen = false;
   // OpenAI choices terminate independently. Suppress only repeated terminal
   // chunks for the same index; another choice may still finish later.
   const passthroughFinishedChoices = new Set();
@@ -601,29 +674,28 @@ export function createSSEStream(options = {}) {
     terminalBody?.generationConfig?.candidateCount ??
     terminalBody?.generation_config?.candidate_count
   });
-  const observeBufferedUpstream = (text, pendingEventName = null) => {
-    let eventName = pendingEventName;
-    for (const rawLine of String(text || "").split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim() || null;
-        continue;
-      }
-      if (!line.startsWith("data:") && !line.startsWith("{")) continue;
-      const parsed = parseSSELine(line, targetFormat);
-      if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName });else
-      if (parsed) {
-        upstreamTerminal.observe({ chunk: parsed, eventName });
-        if (
-        targetFormat === FORMATS.CLAUDE &&
-        parsed?.type === "message_stop" &&
-        upstreamTerminal.outcome === "success")
-        claudeTerminalSeen = true;
-      } else
-      if (line.startsWith("{") || line.slice(5).trim()) upstreamTerminal.fail();
-      eventName = null;
-    }
-    return eventName;
+  const hasTokenLimitTerminal = () => !streamErrorPayload && upstreamTerminal.outcome === "success" &&
+    (sawOpenAITokenLimit || providerSummary.hasClaudeTokenLimitReason());
+  const completionSummary = (usage) => {
+    const summary = providerSummary.finalize(usage);
+    return hasTokenLimitTerminal() ? { ...summary, hasTokenLimitTerminal: true } : summary;
+  };
+  const observeBufferedUpstream = (line, pendingEventName = null) => {
+    if (line.startsWith("event:")) return sseLineEvent(line);
+    const data = sseLineData(line);
+    if (data === null && !line.startsWith("{")) return pendingEventName;
+    const parsed = parseSSELine(line, targetFormat);
+    if (parsed?.done) upstreamTerminal.observe({ rawDone: true, eventName: pendingEventName });else
+    if (parsed) {
+      upstreamTerminal.observe({ chunk: parsed, eventName: pendingEventName });
+      if (
+      targetFormat === FORMATS.CLAUDE &&
+      parsed?.type === "message_stop" &&
+      upstreamTerminal.outcome === "success")
+      claudeTerminalSeen = true;
+    } else
+    if (line.startsWith("{") || data) upstreamTerminal.fail();
+    return null;
   };
 
   // The compatibility parser is enabled only by exact provider transport/model
@@ -710,7 +782,7 @@ export function createSSEStream(options = {}) {
    */
   // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
-    const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage;
+    const currentUsage = refreshProvisionalOutput(mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage, claudeOutputChars);
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
     provider !== "replicate" && totalContentLength > 0 ?
     estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
@@ -723,6 +795,8 @@ export function createSSEStream(options = {}) {
   };
 
   let completionFlushTimer = null;
+  let pendingClaudeFinish = null;
+  let releasingClaudeFinish = false;
   let translatedStreamFinalized = false;
   const clearCompletionFlushTimer = () => {
     clearTimeout(completionFlushTimer);
@@ -749,7 +823,7 @@ export function createSSEStream(options = {}) {
         ...(hadToolCalls ? { hadToolCalls: true } : null),
         ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
         ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-      }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+      }, state?.usage, ttftAt, completionSummary(state?.usage));
     }
   };
 
@@ -769,34 +843,89 @@ export function createSSEStream(options = {}) {
     finalizeTranslatedStream();
   };
 
-  const transformStream = new TransformStream({
-    transform(chunk, controller) {
-      if (!ttftAt) ttftAt = Date.now();
-      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
-      if (nextPendingLineBytes === null) {
-        buffer = "";
-        clearCompletionFlushTimer();
-        upstreamTerminal.fail();
-        const error = new Error("Upstream SSE line exceeded the size limit");
-        error.code = "invalid_sse_payload";
-        throw error;
+  // Candidates are held only until payload, another field, or the size limit
+  // proves they must follow the ordinary stream path. Empty candidates are
+  // discarded at their frame boundary (or at EOF).
+  const selectKeepaliveLines = (lines, eof = false) => {
+    if (!filterProviderKeepalive) return lines;
+    const selected = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const frameStart = keepaliveFrameStart;
+      keepaliveFrameStart = !trimmed;
+      if (!keepaliveCandidate.length && frameStart && isProviderKeepaliveEvent(line.replace(/\r$/, ""))) {
+        keepaliveCandidate.push(line);
+        keepaliveCandidateSize = line.length + 1;
+      } else if (keepaliveCandidate.length) {
+        keepaliveCandidate.push(line);
+        keepaliveCandidateSize += line.length + 1;
+        if (!trimmed) {
+          keepaliveCandidate = [];
+          keepaliveCandidateSize = 0;
+        } else if (!/^data: ?$/.test(line.replace(/\r$/, "")) || keepaliveCandidateSize >= 65536) {
+          selected.push(...keepaliveCandidate);
+          keepaliveCandidate = [];
+          keepaliveCandidateSize = 0;
+        }
+      } else {
+        selected.push(line);
       }
-      pendingLineBytes = nextPendingLineBytes;
-      const text = decoder.decode(chunk, { stream: true });
-      buffer += text;
-      reqLogger?.appendProviderChunk?.(text);
+    }
+    if (eof) {
+      keepaliveCandidate = [];
+      keepaliveCandidateSize = 0;
+    }
+    return selected;
+  };
 
-      const lastNewline = text.lastIndexOf("\n");
-      const splitAt = lastNewline < 0 ? -1 : buffer.length - text.length + lastNewline;
-      const lines = splitAt < 0 ? [] : buffer.slice(0, splitAt).split("\n");
-      if (splitAt >= 0) buffer = buffer.slice(splitAt + 1);
+  // Lines of a frame whose JSON spans several `data:` lines, held until the
+  // frame ends. Only a line that fails to parse on its own starts a hold.
+  let splitData = null;
+  // Held lines being processed again as they were; they must not be held twice.
+  let replayLines = 0;
+  const holdSplitData = (line) => {splitData = { lines: [line], size: line.length };};
 
-      for (const line of lines) {
+  const processLines = (lines, controller) => {
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
         const trimmed = line.trim();
+        // The synthetic Claude finish line is never part of an upstream frame.
+        const mayHold = !releasingClaudeFinish && replayLines === 0;
+        if (!releasingClaudeFinish && replayLines > 0) replayLines--;
+
+        if (splitData && !releasingClaudeFinish) {
+          if (trimmed && sseLineData(trimmed) !== "[DONE]" && splitData.size <= MAX_PENDING_SSE_LINE_BYTES) {
+            splitData.lines.push(line);
+            splitData.size += line.length;
+            continue;
+          }
+          const held = splitData.lines;
+          splitData = null;
+          const joined = joinSplitData(held);
+          if (!joined) replayLines = held.length;
+          const released = joined ? [...joined.others, joined.line] : held;
+          lines = [...lines.slice(0, lineIndex), ...released, ...lines.slice(lineIndex)];
+          lineIndex--;
+          continue;
+        }
+
+        const receipt = pendingClaudeFinish && trimmed ? parseSSELine(trimmed, targetFormat) : null;
+        // A usage trailer split over data lines is awaited until it is joined.
+        if (pendingClaudeFinish && trimmed && (receipt || !startsSplitData(trimmed))) {
+          const finish = pendingClaudeFinish;
+          pendingClaudeFinish = null;
+          clearCompletionFlushTimer();
+          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) {
+            finish.usage = receipt.usage;
+          }
+          releasingClaudeFinish = true;
+          try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
+        }
+
         if (isDebugEnabled && trimmed) {
           sseLineCount++;
           if (trimmed.startsWith("event:")) {
-            const evt = trimmed.slice(6).trim();
+            const evt = sseLineEvent(trimmed) || "";
             eventTypeCounts[evt] = (eventTypeCounts[evt] || 0) + 1;
           }
         }
@@ -805,7 +934,7 @@ export function createSSEStream(options = {}) {
         // next label in every mode/format so event/payload contradictions cannot
         // be hidden by passthrough normalization.
         if (trimmed.startsWith("event:")) {
-          currentUpstreamEvent = trimmed.slice(6).trim() || null;
+          currentUpstreamEvent = sseLineEvent(trimmed);
           if (mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.OPENAI_RESPONSES) {
             currentOpenAIResponsesEvent = currentUpstreamEvent;
           } else if (responsesPassthrough) {
@@ -824,8 +953,9 @@ export function createSSEStream(options = {}) {
           let pendingInlineThinkingOutput = "";
           const inlineThinkingRecoveryChoices = [];
 
-          const isDoneLine = /^data:\s*\[DONE\]\s*$/.test(trimmed);
-          const isDataLine = trimmed.startsWith("data:");
+          const dataValue = sseLineData(trimmed);
+          const isDoneLine = dataValue === "[DONE]";
+          const isDataLine = dataValue !== null;
           if (filterEmptyOpenAIFrames) {
             if (!trimmed) {
               pendingSSEFields = "";
@@ -854,9 +984,9 @@ export function createSSEStream(options = {}) {
             upstreamTerminal.observe({ rawDone: true, eventName: upstreamEventForLine });
           }
 
-          if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? trimmed.slice(5).trim() : trimmed)) {
+          if ((isDataLine || trimmed.startsWith("{")) && !isDoneLine && (isDataLine ? dataValue : trimmed)) {
             try {
-              const parsed = JSON.parse(isDataLine ? trimmed.slice(5).trim() : trimmed);
+              const parsed = JSON.parse(isDataLine ? dataValue : trimmed);
               // A replayed Responses frame re-sends a sequence_number that was
               // already forwarded. Forwarding it again duplicates its content,
               // and its held event label has to go with it.
@@ -881,6 +1011,7 @@ export function createSSEStream(options = {}) {
                 };
               }
 
+              const openAITokenLimitFrame = isOpenAITokenLimitFrame(parsed);
               const idFixed = fixInvalidId(parsed);
 
               // Decloak tool names in Claude content_block_start events.
@@ -977,7 +1108,7 @@ export function createSSEStream(options = {}) {
               parsed?.type === "message_stop" &&
               upstreamTerminal.outcome === "success")
               claudeTerminalSeen = true;
-              recordCompletionData(parsed, { trackUsage: false });
+              recordCompletionData(parsed, { trackUsage: false, tokenLimit: openAITokenLimitFrame });
 
 
               // Usage-only OpenAI chunks have choices:[] and would otherwise
@@ -1122,7 +1253,7 @@ export function createSSEStream(options = {}) {
               parsed.response?.candidates?.[0]?.finishReason;
               const formatLine = (obj) => isDataLine ? `data: ${JSON.stringify(obj)}\n` : `${JSON.stringify(obj)}\n`;
               const lateUsage = pendingUsageEstimate && hasValidUsage(parsed.usage);
-              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && body?.stream_options?.include_usage === true) {
+              if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && (providerBody?.stream_options?.include_usage === true || body?.stream_options?.include_usage === true)) {
                 pendingUsageEstimate = true;
               } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
                 const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
@@ -1161,7 +1292,7 @@ export function createSSEStream(options = {}) {
                   },
                   usage,
                   ttftAt,
-                  providerSummary.finalize(usage)
+                  completionSummary(usage)
                 );
               }
               if (toolNameDecloaked && !injectedUsage) {
@@ -1175,6 +1306,11 @@ export function createSSEStream(options = {}) {
                 injectedUsage = true;
               }
             } catch {
+              if (mayHold && startsSplitData(trimmed)) {
+                currentUpstreamEvent = upstreamEventForLine;
+                holdSplitData(line);
+                continue;
+              }
               upstreamTerminal.fail();
               // Skip non-JSON data lines silently — don't forward garbage to clients.
               // Upstream providers sometimes return plain-text errors (HTML, rate-limit
@@ -1184,11 +1320,7 @@ export function createSSEStream(options = {}) {
           }
 
           if (!injectedUsage) {
-            if (line.startsWith("data:") && !line.startsWith("data: ")) {
-              output = "data: " + line.slice(5) + "\n";
-            } else {
-              output = line + "\n";
-            }
+            output = spaceDataField(line) + "\n";
           }
 
           if (pendingInlineThinkingOutput) output = pendingInlineThinkingOutput + output;
@@ -1204,6 +1336,8 @@ export function createSSEStream(options = {}) {
             pendingSSEFields = "";
           }
 
+          if (isDataLine) dataFrameOpen = true;else
+          if (!trimmed) dataFrameOpen = false;
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           continue;
@@ -1214,7 +1348,27 @@ export function createSSEStream(options = {}) {
 
         const parsed = parseSSELine(trimmed, targetFormat);
         if (!parsed) {
-          if (trimmed.startsWith("data:") && trimmed.slice(5).trim()) upstreamTerminal.fail();
+          if (mayHold && targetFormat !== FORMATS.OLLAMA && startsSplitData(trimmed)) holdSplitData(line);else
+          if (sseLineData(trimmed)) upstreamTerminal.fail();
+          continue;
+        }
+
+        // Only wait when the actual upstream request asks for a usage trailer.
+        if (!releasingClaudeFinish && targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE &&
+            providerBody?.stream_options?.include_usage === true && parsed.id &&
+            parsed.choices?.some?.((choice) => choice.finish_reason) && !hasValidUsage(parsed.usage)) {
+          pendingClaudeFinish = parsed;
+          completionFlushTimer = setTimeout(() => {
+            completionFlushTimer = null;
+            const finish = pendingClaudeFinish;
+            pendingClaudeFinish = null;
+            if (!finish) return;
+            releasingClaudeFinish = true;
+            try { processLines([`data: ${JSON.stringify(finish)}`], controller); }
+            catch (error) { controller.error(error); }
+            finally { releasingClaudeFinish = false; }
+          }, PENDING_COMPLETION_FLUSH_MS);
+          completionFlushTimer.unref?.();
           continue;
         }
 
@@ -1230,11 +1384,11 @@ export function createSSEStream(options = {}) {
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
-        const terminalError = translatedTerminalError(parsed, sourceFormat);
+        const terminalError = translatedTerminalError(parsed, nativeGemini ? FORMATS.GEMINI : sourceFormat);
         if (terminalError) {
           streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets);
+          const output = formatTranslatedStreamError(terminalError, nativeGemini ? FORMATS.GEMINI : sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1283,12 +1437,18 @@ export function createSSEStream(options = {}) {
             sseEmittedCount++;
           }
 
-          if (keepsOpenAIResponsesFormat && !streamDoneSent) {
+          // A same-format OpenAI stream only enters this path for DeepSeek-family model ids
+          // (DSML tool-call recovery). Forward the wire terminator it would otherwise swallow.
+          const keepsOpenAIChatFormat = targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.OPENAI;
+          if ((keepsOpenAIResponsesFormat || keepsOpenAIChatFormat) && !streamDoneSent) {
             const doneOutput = "data: [DONE]\n\n";
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
-          streamDoneSent = true;
+          // A translated stream for an OpenAI chat client swallows the upstream
+          // sentinel; flush() emits the one terminator after the translator's
+          // own closing chunks (decolua/9router#4375).
+          if (keepsOpenAIResponsesFormat || keepsOpenAIChatFormat || sourceFormat !== FORMATS.OPENAI) streamDoneSent = true;
           if (keepsOpenAIResponsesFormat) openAIResponsesDoneSent = true;
           continue;
         }
@@ -1346,7 +1506,10 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        // Extract usage
+        // Preserve Cloud Code's hidden usage for accounting as well as the client.
+        if (nativeGemini && parsed.response?.cpaUsageMetadata) {
+          parsed.response.usageMetadata = parsed.response.cpaUsageMetadata;
+        }
         const extracted = extractUsage(parsed);
         if (extracted) state.usage = mergeUsage(state.usage, extracted);
 
@@ -1372,7 +1535,7 @@ export function createSSEStream(options = {}) {
             ...(hadToolCalls ? { hadToolCalls: true } : null),
             ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
             ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-          }, state.usage, ttftAt, providerSummary.finalize(state.usage));
+          }, state.usage, ttftAt, completionSummary(state.usage));
         }
 
         // Provider-specific normalization must also run in TRANSLATE mode:
@@ -1380,6 +1543,20 @@ export function createSSEStream(options = {}) {
         // openai-to-<target> translators (which only read reasoning_content)
         // don't drop reasoning-only chunks for Gemini/Antigravity/Vertex clients.
         PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
+
+        // A complete, immediately adjacent usage-only frame in this same read
+        // can be projected into the terminal without waiting for another read.
+        // Match response IDs so a neighbouring response cannot donate its usage.
+        if (targetFormat === FORMATS.OPENAI &&
+            (sourceFormat === FORMATS.CLAUDE || sourceFormat === FORMATS.OPENAI_RESPONSES) &&
+            parsed.id && parsed.choices?.some?.((choice) => choice?.finish_reason)) {
+          const nextLine = lines.slice(lineIndex + 1).find((candidate) => candidate.trim());
+          const next = nextLine && parseSSELine(nextLine.trim(), targetFormat);
+          if (next?.id === parsed.id && Array.isArray(next.choices) && next.choices.length === 0 && hasValidUsage(next.usage)) {
+            state.usage = mergeUsage(state.usage, next.usage);
+            parsed.usage = state.usage;
+          }
+        }
 
         // Translate: targetFormat -> openai -> sourceFormat
         const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
@@ -1392,7 +1569,13 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (translated?.length > 0) {
+        if (nativeGemini) {
+          const output = formatSSE(antigravityGeminiResponse(parsed, toolNameMap, true), FORMATS.GEMINI);
+          reqLogger?.appendConvertedChunk?.(output);
+          controller.enqueue(sharedEncoder.encode(output));
+          sseEmittedCount++;
+        }
+        if (!nativeGemini && translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
             // Filter empty chunks
@@ -1439,6 +1622,47 @@ export function createSSEStream(options = {}) {
           }
         }
       }
+  };
+
+  const transformStream = new TransformStream({
+    transform(chunk, controller) {
+      if (!ttftAt) ttftAt = Date.now();
+      const nextPendingLineBytes = advancePendingSseLineBytes(pendingLineBytes, chunk);
+      if (nextPendingLineBytes === null) {
+        buffer = "";
+        clearCompletionFlushTimer();
+        upstreamTerminal.fail();
+        const error = new Error("Upstream SSE line exceeded the size limit");
+        error.code = "invalid_sse_payload";
+        throw error;
+      }
+      pendingLineBytes = nextPendingLineBytes;
+      const text = decoder.decode(chunk, { stream: true });
+      const heldCR = buffer.endsWith("\r");
+      buffer += text;
+      reqLogger?.appendProviderChunk?.(text);
+
+      // Lines end at LF, CRLF or CR. A CR closing this read waits for the next
+      // one, which may start with its LF. Only the new text is searched.
+      const lastCR = text.length > 1 ? text.lastIndexOf("\r", text.length - 2) : -1;
+      const lastEnd = Math.max(text.lastIndexOf("\n"), lastCR);
+      const offset = buffer.length - text.length;
+      let splitAt = -1;
+      if (lastEnd >= 0) splitAt = offset + lastEnd;else
+      if (heldCR && text) splitAt = offset - 1;
+      let lines = [];
+      if (splitAt >= 0) {
+        const complete = buffer.slice(0, splitAt + 1);
+        // A CRLF line keeps its CR, so forwarded lines keep their bytes.
+        lines = complete.split(complete.includes("\r") ? /\r(?!\n)|\n/ : "\n");
+        lines.pop();
+        const endedAtCR = buffer[splitAt] === "\r";
+        buffer = buffer.slice(splitAt + 1);
+        // The byte cap above only resets at LF.
+        if (endedAtCR) pendingLineBytes = sharedEncoder.encode(buffer).byteLength;
+      }
+
+      processLines(selectKeepaliveLines(lines), controller);
     },
 
     flush(controller) {
@@ -1448,6 +1672,38 @@ export function createSSEStream(options = {}) {
       try {
         const remaining = decoder.decode();
         if (remaining) buffer += remaining;
+
+        // A held CR with nothing before it is the final frame's blank line.
+        if (buffer === "\r") {
+          buffer = "";
+          processLines(selectKeepaliveLines([""]), controller);
+        }
+        // The stream ended inside a split frame, with or without a final newline.
+        if (splitData) {
+          const held = splitData.lines;
+          splitData = null;
+          const tailData = sseLineData(buffer.trim());
+          const takesTail = tailData !== null && tailData !== "[DONE]";
+          const joined = joinSplitData(takesTail ? [...held, buffer] : held);
+          if (!joined) {
+            replayLines = held.length;
+            processLines(held, controller);
+          } else if (takesTail) {
+            processLines(joined.others, controller);
+            buffer = joined.line;
+          } else {
+            processLines([...joined.others, joined.line], controller);
+          }
+        }
+
+        if (pendingClaudeFinish) {
+          const finish = pendingClaudeFinish;
+          pendingClaudeFinish = null;
+          const receipt = buffer.trim() && parseSSELine(buffer.trim(), targetFormat);
+          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) finish.usage = receipt.usage;
+          releasingClaudeFinish = true;
+          try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
+        }
 
         if (mode === STREAM_MODE.PASSTHROUGH) {
           if (sanitizeMinimaxThinking) {
@@ -1485,6 +1741,18 @@ export function createSSEStream(options = {}) {
             controller.enqueue(sharedEncoder.encode(pendingInlineThinkingOutput));
           }
 
+          // Decide the unterminated candidate using its final partial line too.
+          if (filterProviderKeepalive && (keepaliveCandidate.length || (keepaliveFrameStart && isProviderKeepaliveEvent(buffer.replace(/\r$/, ""))))) {
+            const tail = buffer;
+            buffer = "";
+            const selected = selectKeepaliveLines(tail ? [tail] : [], true);
+            if (selected.length) {
+              // The final partial line retains the existing tail handling.
+              if (tail && selected[selected.length - 1] === tail) buffer = selected.pop();
+              processLines(selected, controller);
+            }
+          }
+
           if (buffer) {
             const trimmedBuffer = buffer.trim();
             const parsed = parseSSELine(trimmedBuffer, targetFormat);
@@ -1505,9 +1773,10 @@ export function createSSEStream(options = {}) {
               upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
               currentUpstreamEvent = null;
               recordCompletionData(parsed, { content: true });
-              const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+              const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
               output = `${prefix}${JSON.stringify(parsed)}\n\n`;
             } else if (parsed && targetFormat === FORMATS.OPENAI) {
+              const tokenLimit = isOpenAITokenLimitFrame(parsed);
               PROVIDERS[provider]?.normalizeStreamChunk?.(parsed);
               const normalized = normalizeOpenAIPassthroughChunk(parsed);
               if (normalized.keep) {
@@ -1517,8 +1786,8 @@ export function createSSEStream(options = {}) {
                 sanitizePublicErrorEnvelope(parsed, errorSecrets);
                 upstreamTerminal.observe({ chunk: parsed, eventName: currentUpstreamEvent });
                 currentUpstreamEvent = null;
-                recordCompletionData(parsed, { content: true });
-                const prefix = trimmedBuffer.startsWith("data:") ? "data: " : "";
+                recordCompletionData(parsed, { content: true, tokenLimit });
+                const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
                 output = `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
             } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
@@ -1528,13 +1797,10 @@ export function createSSEStream(options = {}) {
             } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
-              output = buffer;
-              if (buffer.startsWith("data:") && !buffer.startsWith("data: ")) {
-                output = "data: " + buffer.slice(5);
-              }
+              output = spaceDataField(buffer);
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
-            if (output && filterEmptyOpenAIFrames && trimmedBuffer.startsWith("data:")) {
+            if (output && filterEmptyOpenAIFrames && sseLineData(trimmedBuffer) !== null) {
               output = pendingSSEFields + output;
               pendingSSEFields = "";
             } else if (output && responsesPassthrough) {
@@ -1543,6 +1809,7 @@ export function createSSEStream(options = {}) {
               pendingSSEFields = "";
             }
             if (output) {
+              dataFrameOpen = false;
               reqLogger?.appendConvertedChunk?.(output);
               controller.enqueue(sharedEncoder.encode(output));
             }
@@ -1556,6 +1823,7 @@ export function createSSEStream(options = {}) {
           }
 
           emitPendingUsageEstimate(controller);
+          usage = refreshProvisionalOutput(usage, claudeOutputChars);
           if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
           }
@@ -1592,7 +1860,8 @@ export function createSSEStream(options = {}) {
           !isClaudeStream &&
           upstreamTerminal.outcome !== "failure")
           {
-            const doneOutput = "data: [DONE]\n\n";
+            // Close the open frame first, or [DONE] would join its data.
+            const doneOutput = `${dataFrameOpen ? "\n" : ""}data: [DONE]\n\n`;
             reqLogger?.appendConvertedChunk?.(doneOutput);
             controller.enqueue(sharedEncoder.encode(doneOutput));
           }
@@ -1604,7 +1873,7 @@ export function createSSEStream(options = {}) {
               ...(hadToolCalls ? { hadToolCalls: true } : null),
               ...(toolCallNames.size ? { toolCallNames: [...toolCallNames] } : null),
               ...(streamErrorPayload ? { upstreamError: streamErrorPayload } : null)
-            }, usage, ttftAt, providerSummary.finalize(usage));
+            }, usage, ttftAt, completionSummary(usage));
           }
           return;
         }
@@ -1638,7 +1907,7 @@ export function createSSEStream(options = {}) {
             onStreamComplete({
               ...getAccumulatedCompletion(),
               upstreamError: streamErrorPayload
-            }, state?.usage, ttftAt, providerSummary.finalize(state?.usage));
+            }, state?.usage, ttftAt, completionSummary(state?.usage));
           }
           return;
         }
@@ -1654,7 +1923,11 @@ export function createSSEStream(options = {}) {
             streamErrorPayload ??= extractStreamErrorPayload(parsed);
             sanitizePublicErrorEnvelope(parsed, errorSecrets);
             /** recordCompletionData owns provider-summary ingestion for each parsed frame. */
-            if (parsed && !parsed.done) recordCompletionData(parsed, { trackUsage: false });
+            if (parsed && !parsed.done) {
+              recordCompletionData(parsed, { trackUsage: false, content: true });
+              const extracted = extractUsage(parsed);
+              if (extracted) state.usage = mergeUsage(state.usage, extracted);
+            }
             if (parsed && (!parsed.done || targetFormat === FORMATS.OLLAMA)) {
               const translated = translateResponse(targetFormat, sourceFormat, parsed, state);
 
@@ -1665,7 +1938,10 @@ export function createSSEStream(options = {}) {
                 }
               }
 
-              if (translated?.length > 0) {
+              if (nativeGemini) {
+                controller.enqueue(sharedEncoder.encode(formatSSE(antigravityGeminiResponse(parsed, toolNameMap, true), FORMATS.GEMINI)));
+              }
+              if (!nativeGemini && translated?.length > 0) {
                 for (const item of translated) {
                   if (item === null || item === undefined) continue;
                   const output = formatSSE(item, sourceFormat);
@@ -1686,7 +1962,7 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        if (flushed?.length > 0) {
+        if (!nativeGemini && flushed?.length > 0) {
           for (const item of flushed) {
             if (item === null || item === undefined) continue;
             const output = formatSSE(item, sourceFormat);
@@ -1704,7 +1980,10 @@ export function createSSEStream(options = {}) {
           openAIResponsesTerminalSeen = true;
         }
 
-        if (keepsOpenAIResponsesFormat && !openAIResponsesDoneSent && !streamDoneSent) {
+        // Every OpenAI-shaped client stream ends with the [DONE] sentinel, whatever
+        // the upstream protocol: Gemini and Ollama upstreams close without one.
+        const needsOpenAIDone = !nativeGemini && (sourceFormat === FORMATS.OPENAI || keepsOpenAIResponsesFormat);
+        if (needsOpenAIDone && !openAIResponsesDoneSent && !streamDoneSent) {
           const doneOutput = "data: [DONE]\n\n";
           reqLogger?.appendConvertedChunk?.(doneOutput);
           controller.enqueue(sharedEncoder.encode(doneOutput));
@@ -1726,17 +2005,19 @@ export function createSSEStream(options = {}) {
     }
   });
   transformStream.getStreamSnapshot = getStreamSnapshot;
+  transformStream.hasTokenLimitTerminal = hasTokenLimitTerminal;
   // Keep interruption snapshots stable; terminal classification also needs
   // tool and error state that is not part of the accounting snapshot contract.
   transformStream.getEmptyStreamSnapshot = () => ({
     ...getStreamSnapshot(),
     hadToolCalls,
+    hasTokenLimitTerminal: hasTokenLimitTerminal(),
     upstreamError: streamErrorPayload
   });
   return transformStream;
 }
 
-export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null, claudeCloaked = false) {
+export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, provider = null, reqLogger = null, toolNameMap = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, claudeClassifierCompat = "off", onCoherentTerminal = null, providerBody = null, credentials = null, claudeCloaked = false, nativeGemini = false) {
   return createSSEStream({
     mode: STREAM_MODE.TRANSLATE,
     targetFormat,
@@ -1753,7 +2034,8 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
     apiKey,
     claudeClassifierCompat,
     credentials,
-    claudeCloaked
+    claudeCloaked,
+    nativeGemini
   });
 }
 

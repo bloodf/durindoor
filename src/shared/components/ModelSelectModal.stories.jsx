@@ -131,3 +131,17 @@ export const Closed = {
     await expect(within(document.body).queryByRole("dialog", { name: "Select Model" })).toBeNull();
   },
 };
+
+export const OwnerPlanCatalog = {
+  args: {
+    isOpen: true,
+    title: "Select Model",
+    activeProviders: [{ provider: "chatgpt-plan", id: "plan-owner", name: "Owner plan", isActive: true }],
+    ...callbacks,
+  },
+  parameters: { storyFixture: { scenario: "default", pathname: "/dashboard/providers", routes: {
+    ...buildRoutes(),
+    "GET /api/providers/plan-owner/models": { body: { models: [{ id: "private-model", name: "Private model" }] } },
+  } } },
+  render: (args) => <ModelSelectModal {...args} />,
+};

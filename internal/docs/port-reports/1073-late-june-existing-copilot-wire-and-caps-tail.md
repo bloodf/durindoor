@@ -1,0 +1,28 @@
+# #1073 late-June Copilot wire and output-cap tail
+
+Review scope: the four exact OmniRoute PR heads below, using each PR's enclosing merge only as the public merge pin. The merge diffs were not treated as PR diffs where that would include unrelated changes. No catalog, credential, auth, sign-in, or provider request changes are proposed.
+
+## Pins and dispositions
+
+| PR | Exact head | Enclosing merge | Disposition |
+|---|---|---|---|
+| [OmniRoute #4564](https://github.com/cheaper-inference/OmniRoute/pull/4564) | `bf26ccea27e225ba2e9a6d4e4546209bfda832f6` | `e6af1ed7435d65555ea00e5b218b7c92088ad775` | **Already covered, broader and route-complete.** The PR removes `temperature` on Copilot GPT-5.4. Local provider/model rules remove it for GitHub GPT-5.4+ and GPT-6, and both chat and Responses dispatch paths apply the rule. |
+| [OmniRoute #4626](https://github.com/cheaper-inference/OmniRoute/pull/4626) | `85c7672fb02301b9f52c2874c496b70d7166b645` | `cc8e1bedf50f7dbfd41b01214e2f2773da912b3f` | **Do not port the name-based fallback.** The PR routes any ID containing `codex` to Responses, even without model metadata. Local route ownership follows the account's discovered endpoint contract or a learned Copilot rejection route, while explicit registry format overrides remain authoritative. Keep endpoint capability as the owner; do not infer it from a substring. |
+| [OmniRoute #4627](https://github.com/cheaper-inference/OmniRoute/pull/4627) | `d442a155a4623be1c6a6b8cbf848660fd0987096` | `b5995778cbaeeaea4966d2cd1ab96e08f5385ef5` | **Already covered.** Local `supportsResponsesEndpoint` excludes Gemini and Claude, and both contract-directed routing and learned escalation consult this guard. Claude keeps its native Messages route. |
+| [OmniRoute #4636](https://github.com/cheaper-inference/OmniRoute/pull/4636) | `f1fb8a516a3140d9d78e39090ab9165776ac61c5` | `57de29a415071a28a17d0cce5d437192f848f372` | **Not accepted as a global cap change; backend ceiling remains unverified locally.** The PR's 16,384 ceiling is below the local Antigravity executor's 64,000 ceiling. Existing fixture evidence explicitly asserts 64,000. Do not silently lower all Antigravity models on the strength of this PR alone; a verified endpoint/model-scoped constraint would need its own narrow offline acceptance. |
+
+## Current behavior and fixture evidence
+
+Copilot sampling support is model-scoped. `open-sse/translator/concerns/paramSupport.js` strips `temperature` for GitHub GPT-5.4+ and GPT-6. `tests/unit/github-responses-temperature.test.js` exercises the transformed chat body and the actual serialized Responses body, including GPT-5.4, GPT-6, and a GPT-5.3 Codex control; each case also checks that the caller's input object remains unchanged. This covers #4564's behavior on both wire paths, with a broader rule aligned to the migrated model allowance.
+
+Copilot endpoint choice is capability-owned. `open-sse/services/copilotEndpointContract.js` normalizes discovered `supported_endpoints`; `open-sse/executors/github.js` honors explicit registry formats, discovered per-account contracts, and learned route results, while `supportsResponsesEndpoint` prevents Claude and Gemini from reaching Responses. `tests/unit/copilot-endpoint-contract-1073.test.js` uses synthetic catalogs and bodies to prove Responses-only models go directly to `/responses`, chat-only models stay on `/chat/completions`, Claude uses `/v1/messages`, and Gemini stays on chat even when its synthetic metadata says Responses. `tests/unit/github-responses-routing.test.js` additionally checks the exclusion guard and rejects a cached Gemini misclassification. These ordinary offline fixtures support #4627 and explain why #4626's blanket Codex-name routing is intentionally not adopted.
+
+The #4636 public patch adds a final `maxOutputTokens` clamp at 16,384 after its thinking-budget adjustment, for Antigravity requests. The current local `open-sse/executors/antigravity.js` clamps the provider request at 64,000. `tests/unit/antigravity-retry-hook.test.js` asserts that an oversized synthetic request becomes 64,000. This is concrete evidence of a different current contract, not proof that 64,000 is accepted by every Antigravity model or that 16,384 is required by every model. Preserve any smaller model-derived output limit already in effect; this report does not broaden or raise output allowance.
+
+## Narrow acceptance if a cap gap is established
+
+If independently established endpoint/model evidence shows that a particular Antigravity model rejects output above 16,384, acceptance should remain offline and model-scoped: a synthetic request fixture should show values below and at the ceiling unchanged, oversized values clamped only for that model, the clamp applied after any thinking-budget adjustment, and an absent `generationConfig` handled without inventing a higher cap. Keep the existing 64,000 behavior for other models unless their own capability evidence sets a lower limit. No such model-scoped evidence is present in the inspected local fixtures, so this review records no demonstrated cap gap and makes no product change.
+
+## Exact public patch review
+
+The PR heads were inspected directly in the public source repository. #4564 changes `open-sse/executors/github.ts` and its unit test; #4626 changes the Copilot URL builder and route test; #4627 adds a Responses capability guard and synthetic route tests; #4636 changes Antigravity's generation-config clamp and parity tests (plus its file-size baseline). The cited enclosing merge pins identify the public merge commits; the dispositions above follow the listed PR heads' changes.

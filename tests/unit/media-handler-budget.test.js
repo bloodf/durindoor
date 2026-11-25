@@ -68,13 +68,26 @@ afterEach(async () => {
 });
 
 describe("rerank handler through the durable ledger to the next policy decision", () => {
+  it("does not spend RPM on an unsupported OpenRouter restriction", async () => {
+    adapter.run("UPDATE apiKeys SET policy = ? WHERE id = ?", [JSON.stringify({ rpmLimit: 1 }), "rerank-key"]);
+    const send = (provider) => new Request("http://localhost/v1/rerank", {
+      method: "POST", body: JSON.stringify({ ...body, model: "openrouter/cohere/rank", ...(provider ? { provider } : {}) }),
+    });
+    mocks.core.mockResolvedValue(success(0));
+    expect((await handleRerank(send({ zdr: true }))).status).toBe(400);
+    expect(mocks.credentials).not.toHaveBeenCalled();
+    expect((await handleRerank(send())).status).toBe(200);
+    expect((await handleRerank(send())).status).toBe(429);
+    expect(mocks.core).toHaveBeenCalledOnce();
+  });
+
   it("persists an attributed paid record, then denies the next request before dispatch", async () => {
     mocks.core.mockResolvedValue(success(0.5));
     const first = await handleRerank(request());
     expect(first.status).toBe(200);
     expect(await first.text()).toBe('{"results":[]}');
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "rerank-secret", provider: "paid", model: "rank", connectionId: "account-r", endpoint: "/v1/rerank", cost: 0.5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "rerank-key", provider: "paid", model: "rank", connectionId: "account-r", endpoint: "/v1/rerank", cost: 0.5 });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: "rerank", nativeUnits: { operations: 1 }, costStatus: "known" });
     const denied = await handleRerank(request());
     expect(denied.status).toBe(429);
@@ -140,7 +153,7 @@ describe("rerank raw provider receipt through real core and SQLite policy", () =
 
   it.each([
     ["cost_usd", 0.5],
-    ["cost_in_usd_ticks", 500_000_000_000],
+    ["cost_in_usd_ticks", 5_000_000_000],
   ])("commits raw %s once and denies the next request before HTTP", async (field, value) => {
     const usage = { [field]: value, input_tokens: 7, total_tokens: 7 };
     const text = ranking(usage);
@@ -154,7 +167,7 @@ describe("rerank raw provider receipt through real core and SQLite policy", () =
     expect(JSON.parse(options.body)).toEqual({ ...body, model: "cohere/rerank-4-pro" });
     await reopen();
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "rerank-secret", provider: "openrouter", model: "cohere/rerank-4-pro", connectionId: "account-r", endpoint: "/v1/rerank", status: "ok", cost: 0.5, promptTokens: 7 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "rerank-key", provider: "openrouter", model: "cohere/rerank-4-pro", connectionId: "account-r", endpoint: "/v1/rerank", status: "ok", cost: 0.5, promptTokens: 7 });
     const totals = await database.getApiKeyUsageTotals("rerank-key");
     expect(totals).toMatchObject({ totalRequests: 1, totalCost: 0.5, unknownCostRequests: 0 });
     const denied = await handleRerank(send(`denied-${field}`));

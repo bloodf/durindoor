@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const WS_BASE_URL = "https://server.self-serve.windsurf.com";
@@ -470,7 +470,13 @@ export class WindsurfExecutor extends BaseExecutor {
     return null;
   }
 
-  async execute({
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({
     model = "swe-1",
     body = {},
     stream = true,
@@ -479,7 +485,7 @@ export class WindsurfExecutor extends BaseExecutor {
     log,
     proxyOptions = null,
     upstreamExtraHeaders
-  } = {}) {
+  }, sender, billed) {
     const apiKey = credentials.accessToken || credentials.apiKey || "";
     const wsModel = resolveWsModelId(model);
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
@@ -502,12 +508,12 @@ export class WindsurfExecutor extends BaseExecutor {
 
     log?.info?.("WS", `Windsurf -> ${wsModel} (${wsMessages.length} messages)`);
 
-    const upstream = await proxyAwareFetch(url, {
+    const upstream = billed(await sender.sendRequest(url, {
       method: "POST",
       headers,
       body: framedPayload,
       signal
-    }, proxyOptions);
+    }, proxyOptions));
 
     if (!upstream.ok) {
       return { response: upstream, url, headers, transformedBody: null };

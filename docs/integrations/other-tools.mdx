@@ -17,6 +17,10 @@ Production bind is port 20128. `npm run dev` listens on 20127. Remote deployment
 
 **CLI Tools** (`/dashboard/cli-tools`) is the apply and guide path for coding agents. This section documents Claude Code, Codex, Cursor, Cline, Roo, and Continue. The same grid also lists OpenCode, Cowork, Hermes, Droid, Kilo, DeepSeek TUI, jcode, Grok Build, Pi, Crush, ForgeCode, Smelt, CodeWhale, Qwen Code, Open Claw, GitHub Copilot, Amp, and others. Open those cards at `/dashboard/cli-tools/<toolId>`.
 
+When applying or resetting Hermes settings, comments within the model block do not prevent the rest of that block from being replaced or removed. Comments introducing the next section are preserved.
+
+Droid configurations created by DurinDoor use the generic chat-completion provider. Applying or resetting the configuration also recognizes legacy 9Router entries and leaves unrelated Droid models intact.
+
 **Auto-configure** probes local Headroom, PXPIPE, and Firecrawl services. Use **CLI Tools** for coding-tool settings.
 
 ## Install commands
@@ -29,9 +33,9 @@ Each CLI Tools card shows **How to install** when it cannot find the tool on thi
 | Codex | `npm install -g @openai/codex` | `codex` |
 | Cline | VS Code extension or CLI, see [docs.cline.bot](https://docs.cline.bot/) | |
 | OpenCode | `npm install -g opencode-ai` (macOS, Linux) | `opencode` |
-| Droid | `curl -fsSL https://app.factory.ai/cli \| sh` | `droid` |
+| Droid | [Factory Droid CLI installation](https://docs.factory.com/droid-cli/quickstart) | `droid` |
 | Kilo Code | [kilocode.ai](https://kilocode.ai) or the VS Code extension marketplace | |
-| Pi | `curl -fsSL https://pi.dev/install.sh \| sh`, or `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` ([pi.dev](https://pi.dev)) | `pi` |
+| Pi | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` ([official install options](https://docs.pi.dev/latest/quickstart)) | `pi` |
 | Crush | `brew install charmbracelet/tap/crush`, or `go install github.com/charmbracelet/crush@latest` ([repo](https://github.com/charmbracelet/crush)) | `crush` |
 | ForgeCode | `cargo install forgecode` ([repo](https://github.com/antinomyhq/forge)) | `forge` |
 | Smelt | `cargo install smelt` ([repo](https://github.com/leonardcser/smelt)) | `smelt` |

@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
+import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 import "../translator/registerAll.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 
@@ -137,11 +140,48 @@ describe("CodexExecutor tool normalization", () => {
       },
     ]);
 
+    expect(tools[0]).toEqual({ type: "tool_search", execution: "sync", description: "Discover deferred tools", parameters: { type: "object", properties: {} } });
+    expect(tools[1].tools[0].defer_loading).toBe(true);
     expect(tools.map((tool) => `${tool.type}:${tool.name || ""}`)).toEqual([
       "tool_search:",
       "namespace:codex_app",
       "function:plain_fn",
     ]);
+  });
+
+  it("preserves only boolean deferred metadata with outer precedence", () => {
+    for (const value of [true, false]) {
+      for (const tool of [
+        { type: "function", name: "plain_fn", defer_loading: value },
+        { type: "function", function: { name: "plain_fn", defer_loading: value } },
+        { type: "function", defer_loading: value, function: { name: "plain_fn", defer_loading: !value } },
+        { type: "function", defer_loading: "invalid", function: { name: "plain_fn", defer_loading: value } },
+      ]) {
+        expect(normalizeTools([tool])[0]).toMatchObject({ type: "function", name: "plain_fn", defer_loading: value });
+      }
+    }
+    for (const value of [undefined, null, "true", 1, {}]) {
+      const tool = { type: "function", name: "plain_fn", defer_loading: value, function: { defer_loading: value } };
+      expect(normalizeTools([tool])[0]).not.toHaveProperty("defer_loading");
+    }
+    expect(normalizeTools([{ type: "function", name: "plain_fn" }])[0]).not.toHaveProperty("defer_loading");
+  });
+
+  it("sends deferred function metadata without changing a frozen caller request", async () => {
+    const tool = Object.freeze({ type: "function", name: "plain_fn", strict: null, defer_loading: false });
+    const body = Object.freeze({ model: "gpt-5.5", input: Object.freeze([]), tools: Object.freeze([tool]) });
+    const before = structuredClone(body);
+    const fetchMock = vi.mocked(proxyAwareFetch).mockResolvedValue(new Response("", { status: 200 }));
+    try {
+      const executor = new CodexExecutor();
+      executor.config = { ...executor.config, baseUrl: "https://api.openai.test/v1/responses", baseUrls: undefined };
+      await executor.execute({ model: "gpt-5.5", body, stream: true, credentials: { apiKey: "fixture" } });
+      const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(sent.tools).toEqual([{ type: "function", name: "plain_fn", strict: null, defer_loading: false, parameters: { type: "object", properties: {} } }]);
+      expect(body).toEqual(before);
+    } finally {
+      fetchMock.mockReset();
+    }
   });
 
   it("preserves hosted Responses tools", () => {

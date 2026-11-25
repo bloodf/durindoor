@@ -1,0 +1,18 @@
+---
+title: TabiToken
+description: Connect the TabiToken NewAPI gateway through its Claude Messages endpoint with an x-api-key header.
+---
+
+TabiToken is a NewAPI gateway exposing Claude Messages and OpenAI-compatible chat endpoints. DurinDoor stages the Claude Messages endpoint as its native transport; the API key is sent in `x-api-key`, and the Anthropic version header is included. The `/v1/models` endpoint is used for credential validation and model discovery.
+
+## Setup
+
+Create an API key in your TabiToken account and save it as the connection credential. Model availability, rate limits, and pricing follow your TabiToken account. The staged model list is a fallback; live discovery is authoritative.
+
+## Cookie capture
+
+No browser cookie is used for this API-key provider. If reporting a transport issue, redact credentials from any pasted cURL command, `Cookie` header, or HAR before sharing it.
+
+## Sources
+
+- [TabiToken](https://tabitoken.com/)

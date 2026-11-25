@@ -1,0 +1,87 @@
+---
+title: NoTrack
+description: Connect a NoTrack developer API key and route chat through the documented OpenAI-compatible endpoint.
+---
+
+NoTrack (`notrack`) uses the developer API published at [notrack.ai/api/docs](https://notrack.ai/api/docs). The base URL is `https://api.notrack.ai/v1` and the credential is an API key you create yourself.
+
+This is a separate integration from the NoTrack consumer chat at notrack.ai/chat. DurinDoor never reads a browser session or a cookie for this provider, and the consumer web route is not implemented. If you have only a signed-in browser session, this provider cannot use it.
+
+## Connect
+
+<Steps>
+<Step>
+Open [notrack.ai/api-keys](https://notrack.ai/api-keys) and confirm your e-mail address. A confirmed e-mail is required before a key can be created.
+</Step>
+<Step>
+Create a key. It is shown once at creation; DurinDoor stores it encrypted and never rewrites it. The key starts as `sk-notrack-`.
+</Step>
+<Step>
+Optionally set a daily spending cap for the key. A cap is the cheapest way to stop a leaked key from draining the account.
+</Step>
+<Step>
+In DurinDoor open **Providers**, choose **NoTrack**, then Add. Paste the key and save.
+</Step>
+</Steps>
+
+Saving checks the key against `GET https://api.notrack.ai/v1/models`. A wrong, revoked or expired key answers 401 and the connection is rejected. The check proves the key is live at that moment. It does not prove that inference, streaming or tools work.
+
+## Models
+
+| Model | Name | Notes |
+| --- | --- | --- |
+| `notrack/notrack-uncensored` | NoTrack Uncensored | Text only. Prompt plus completion must fit the 100,000-token window. |
+
+The connection lists the provider catalog from `GET https://api.notrack.ai/v1/models` and seeds `notrack-uncensored` so the model is selectable before discovery runs. NoTrack publishes one model; any other model name is routed to it upstream, so use the public id so your logs match the provider's.
+
+## Supported
+
+- Chat Completions over `POST https://api.notrack.ai/v1/chat/completions`, both JSON and server-sent events.
+- Tools with `tool_choice` set to `auto`, `none`, `required`, or a named function.
+- `response_format` with `{"type": "json_object"}`.
+- The standard OpenAI sampling parameters: `temperature`, `top_p`, `stop`, `presence_penalty`, `frequency_penalty`, `seed`, `n`, and `max_tokens`.
+- Provider-reported usage. NoTrack always returns real token counts, and DurinDoor accounts those counts on the **Usage** page.
+
+## Not supported
+
+- Image input. NoTrack rejects image parts, so this provider is text only.
+- The Responses API. NoTrack serves Chat Completions only. Point clients that default to Responses at the Chat Completions endpoint instead.
+- `json_schema` response formats and the legacy `functions` field. Upstream rejects both.
+- Persona switching. The provider's persona (bare, notrack, concise, detailed, creative) is a per-key setting on the keys page. DurinDoor does not translate the provider's per-request persona field or its persona model suffix, so requests use the persona configured on the key.
+- Embeddings, image generation, speech, search and every other media route.
+
+## Limits and billing
+
+These are provider claims from the NoTrack API reference, not values DurinDoor verified.
+
+| Limit | Value |
+| --- | --- |
+| Concurrent requests per key | 8 (2 before the first top-up) |
+| Requests per minute per key | 300 (60 before the first top-up) |
+| Context window | 100,000 tokens for prompt plus completion |
+| Daily spend per key | Optional ceiling you set on the keys page |
+| Payment | Prepaid credit, charged on the token usage the provider reports |
+
+Refused requests and failed requests are reported as not billed by the provider.
+
+## Errors
+
+| You see | Meaning | What to do |
+| --- | --- | --- |
+| HTTP 401 `invalid_key`, `key_revoked`, `key_expired` | The key was rejected. | Replace the key on the connection. |
+| HTTP 402 `no_credit` | The account balance is zero. | Top up on the keys page. Requests resume immediately. |
+| HTTP 402 `key_daily_cap` | The key reached the daily ceiling you set. | Raise the ceiling or wait for 00:00 UTC. |
+| HTTP 400 `context_limit` | Prompt plus completion exceeds the window. | Trim older turns and retry. |
+| HTTP 400 `body` | Invalid JSON or an empty `messages` array. | Fix the request body. |
+| HTTP 429 `rate_limit`, `concurrency` | Per-key request or concurrency limit reached. | Back off and retry. |
+| HTTP 403 `content_policy` | The request was refused. | The provider enforces one safety rule and logs refusals by category. |
+| HTTP 502 `upstream` | The model did not answer. | Retry with backoff. |
+| HTTP 503 `billing`, `safety` | A provider dependency is down. | Retry in a few seconds. |
+
+A 401 or 403 cools the connection down like any other provider. A 429 is treated as a rate limit and can move on to another connection of the same provider.
+
+## What is verified
+
+The unit fixtures for this provider mock the upstream, so they prove the local wiring only: the base URL, the bearer header, per-connection key isolation, catalog discovery, JSON and streamed responses, provider-reported usage, and the status mapping above. They are not evidence that a NoTrack account works, that a key was accepted, or that the live catalog matches.
+
+After saving, send a short chat using `notrack/notrack-uncensored`, then confirm the provider, the account, and the token counts on **Usage**.

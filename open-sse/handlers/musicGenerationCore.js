@@ -5,10 +5,11 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
-import { extractCompleteSseFrames } from "../utils/streamHelpers.js";
+import { createSseFrameReader } from "../utils/sseFrames.js";
+import { createMediaRegistry, lookupMediaAdapter } from "./mediaRegistry.js";
 
 
-const MUSIC_PROVIDERS = {
+export const MUSIC_ADAPTERS = createMediaRegistry({
   suno: {
     baseUrl: "https://studio-api.suno.ai/api/generate/v2/",
     referer: "https://suno.ai/",
@@ -17,7 +18,7 @@ const MUSIC_PROVIDERS = {
     baseUrl: "https://www.udio.com/api/generate-proxy",
     referer: "https://www.udio.com/",
   },
-};
+});
 
 function cookieHeader(credentials) {
   const raw = credentials?.apiKey || credentials?.accessToken || "";
@@ -96,17 +97,13 @@ function musicStreamResult(response, provider, onComplete) {
   accounting.state = "pending";
   const sse = /text\/event-stream/i.test(response.headers.get("content-type") || "");
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
   let terminal = null;
   let failed = false;
   let bytes = 0;
-  const consume = (text) => {
-    buffer += text;
-    const { frames, remainder } = extractCompleteSseFrames(buffer);
-    buffer = remainder;
-    for (const frame of frames) {
-      const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
-      if (!data || data === "[DONE]") continue;
+  const consume = (frames) => {
+    for (const { data } of frames) {
+      if (!data.trim() || data.trim() === "[DONE]") continue;
       const value = JSON.parse(data);
       if (value.error || (value.base_resp?.status_code !== undefined && value.base_resp.status_code !== 0)) failed = true;
       if (value.data?.status === 2) terminal = value;
@@ -115,14 +112,21 @@ function musicStreamResult(response, provider, onComplete) {
   const stream = new TransformStream({
     transform(chunk, controller) {
       bytes += chunk.byteLength;
-      if (sse) consume(decoder.decode(chunk, { stream: true }));
+      if (sse) consume(frameReader.push(decoder.decode(chunk, { stream: true })));
       controller.enqueue(chunk);
     },
     async flush() {
-      if (sse) consume(decoder.decode());
+      let truncated = false;
+      if (sse) {
+        consume(frameReader.push(decoder.decode()));
+        // A final CR is held until EOF. Frames it closes carry `wire`; an unterminated tail does not.
+        const rest = frameReader.flush();
+        consume(rest.filter((frame) => frame.wire !== undefined));
+        truncated = rest.some((frame) => frame.wire === undefined && frame.raw.trim() !== "");
+      }
       // EOF alone is not a successful SSE terminal. Binary bytes pass untouched;
       // a failed/cancelled transport never reaches flush and never records usage.
-      if (failed || (sse ? !terminal || buffer.trim() !== "" : bytes === 0)) return;
+      if (failed || (sse ? !terminal || truncated : bytes === 0)) return;
       Object.assign(accounting, musicAccounting(terminal, provider), { state: "complete" });
       await onComplete?.(accounting);
     },
@@ -167,7 +171,7 @@ async function handleMinimaxMusicGeneration({ provider, model, body, credentials
 
 export async function handleMusicGenerationCore({ provider, model, body, credentials, requestId = null, signal, onComplete }) {
   if (provider === "minimax" || provider === "minimax-cn") return handleMinimaxMusicGeneration({ provider, model, body, credentials, signal, onComplete });
-  const config = MUSIC_PROVIDERS[provider];
+  const config = lookupMediaAdapter(MUSIC_ADAPTERS, provider);
   if (!config) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);
   if (!requestId && !body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
   if (requestId && !/^[\w-]+(?:,[\w-]+)*$/.test(requestId)) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Invalid music request id");

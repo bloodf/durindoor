@@ -50,7 +50,7 @@ export function detectImageMime(buf) {
  * Fetch a remote image URL and return it as a base64 data URI.
  * Hardened against SSRF (private/metadata IPs), memory DoS (size cap),
  * and disguised non-image payloads (magic-byte verification).
- * Returns null on any failure or rejection.
+ * The deadline or caller signal also bounds DNS resolution. Returns null on failure.
  *
  * @param {string} imageUrl - HTTP(S) URL of the image
  * @param {object} options - { signal, timeoutMs, maxBytes }
@@ -64,19 +64,32 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
 
   let url;
   try {url = new URL(imageUrl);} catch {return null;}
-  const pinnedIps = await resolvePinnedIps(url.hostname);
-  if (!pinnedIps) return null;
-
   const controller = new AbortController();
-  const timeout = signal ? null : setTimeout(() => controller.abort(), timeoutMs);
-  const fetchSignal = signal || controller.signal;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const fetchSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
 
-  // Pin connect to the validated IP so no second DNS resolution can rebind (TOCTOU fix).
-  const dispatcher = new Agent({
-    connect: { lookup: (_h, _o, cb) => cb(null, [{ address: pinnedIps[0].address, family: pinnedIps[0].family }]) }
-  });
-
+  let dispatcher;
   try {
+    if (fetchSignal.aborted) return null;
+    // DNS lookup itself cannot be cancelled; detach the listener when either side
+    // settles, and consume the lookup's eventual result after cancellation.
+    const pinnedIps = await new Promise((resolve) => {
+      const onAbort = () => {
+        fetchSignal.removeEventListener("abort", onAbort);
+        resolve(null);
+      };
+      fetchSignal.addEventListener("abort", onAbort, { once: true });
+      resolvePinnedIps(url.hostname).then((records) => {
+        fetchSignal.removeEventListener("abort", onAbort);
+        resolve(records);
+      });
+    });
+    if (!pinnedIps || fetchSignal.aborted) return null;
+
+    // Pin connect to the validated IP so no second DNS resolution can rebind (TOCTOU fix).
+    dispatcher = new Agent({
+      connect: { lookup: (_h, _o, cb) => cb(null, [{ address: pinnedIps[0].address, family: pinnedIps[0].family }]) }
+    });
     // redirect:"manual" prevents a public URL redirecting to a private one (SSRF bypass).
     const response = await fetch(imageUrl, { signal: fetchSignal, redirect: "manual", dispatcher });
     if (!response.ok || !response.body) return null;
@@ -109,6 +122,6 @@ export async function fetchImageAsBase64(imageUrl, options = {}) {
     return null;
   } finally {
     if (timeout) clearTimeout(timeout);
-    dispatcher.close().catch(() => {});
+    dispatcher?.close().catch(() => {});
   }
 }

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getDisabledModels: vi.fn(),
   getSettings: vi.fn(),
   getCodexModels: vi.fn(),
+  getSyncedModelCatalogs: vi.fn(),
 }));
 
 vi.mock("@/lib/localDb", () => ({
@@ -15,6 +16,7 @@ vi.mock("@/lib/localDb", () => ({
   getCombos: mocks.getCombos,
   getCustomModels: mocks.getCustomModels,
   getModelAliases: mocks.getModelAliases,
+  getSyncedModelCatalogs: mocks.getSyncedModelCatalogs,
 }));
 vi.mock("@/lib/enabledModelsDb", () => ({ getEnabledModels: vi.fn(async () => ({})) }));
 vi.mock("@/lib/disabledModelsDb", () => ({ getDisabledModels: mocks.getDisabledModels }));
@@ -58,6 +60,7 @@ beforeEach(() => {
   mocks.getDisabledModels.mockResolvedValue({});
   mocks.getSettings.mockResolvedValue({});
   mocks.getCodexModels.mockResolvedValue([]);
+  mocks.getSyncedModelCatalogs.mockResolvedValue({});
 });
 
 describe("provider live model discovery", () => {
@@ -255,4 +258,20 @@ describe("provider live model discovery", () => {
     expect(unknown.context_length).toBeUndefined();
     expect(unknown.max_completion_tokens).toBeUndefined();
   });
+});
+
+
+it("keeps the saved Codex roster within the selected account and client key scope", async () => {
+  const a = connection("codex", { id: "a" });
+  const b = connection("codex", { id: "b" });
+  mocks.getProviderConnections.mockResolvedValue([a, b]);
+  mocks.getSyncedModelCatalogs.mockResolvedValue({
+    codex: { models: [{ id: "legacy-private", kind: "llm" }] },
+    "codex#a": { connectionId: "a", endpoint: "https://chatgpt.com/backend-api/codex/responses", models: [{ id: "account-a-private", kind: "llm" }], syncedAt: "2026-01-01T00:00:00.000Z" }
+  });
+  const forA = await buildModelsList([LLM_KIND], undefined, { allowedConnectionIds: ["a"] });
+  expect(model(forA, "cx/account-a-private")).toBeDefined();
+  const forB = await buildModelsList([LLM_KIND], undefined, { allowedConnectionIds: ["b"] });
+  expect(model(forB, "cx/account-a-private")).toBeUndefined();
+  expect(model(forB, "cx/legacy-private")).toBeUndefined();
 });

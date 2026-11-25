@@ -41,6 +41,7 @@ export default async function Page(props) {
       breadcrumb={{ enabled: !isLanding }}
       tableOfContent={{
         enabled: hasToc,
+        container: { role: "navigation", "aria-label": "On this page" },
         footer: hasToc ? <EditOnGitHub href={githubFile} /> : undefined,
       }}
       tableOfContentPopover={{ enabled: hasToc }}

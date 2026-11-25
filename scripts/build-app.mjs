@@ -3,11 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { createIsolatedBuildEnvironment } from "./build-environment.mjs";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const require = createRequire(import.meta.url);
+// Concurrent package copies; bounded so the post-build step stays light on I/O.
+const COPY_CONCURRENCY = 8;
 
 /**
  * Rebuild only traced/runtime packages, never the shared node_modules pool.
@@ -16,7 +18,7 @@ const require = createRequire(import.meta.url);
  * Resolve dependencies at their source location and keep deduplicated links
  * relative to the artifact so nested versions and relocation remain safe.
  */
-export function materializeStandaloneDependencies(standaloneDir, distDir, sourceRoot, runtimePackages) {
+export async function materializeStandaloneDependencies(standaloneDir, distDir, sourceRoot, runtimePackages) {
   const modules = path.join(standaloneDir, "node_modules");
   const seeds = new Map();
   const findPackage = (name, from) => {
@@ -56,37 +58,23 @@ export function materializeStandaloneDependencies(standaloneDir, distDir, source
   // Rebuild traced directories too: their descendants can contain external links.
   fs.rmSync(modules, { recursive: true, force: true });
   fs.mkdirSync(modules, { recursive: true });
+  // Plan the closure first (manifests only), then copy packages concurrently.
+  // A serial copy waits on one cold store read at a time; on slow disks that
+  // alone exceeded the checkpoint's build budget. The plan is built in the
+  // same order as before, so every package keeps the same destination and
+  // every duplicate keeps the same relative link.
   const copied = new Map();
-  const install = (source, dest) => {
+  const roots = [];
+  const links = [];
+  const plan = (source, dest, siblings) => {
     const previous = copied.get(source);
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (previous) {
-      if (previous !== dest) fs.symlinkSync(path.relative(path.dirname(dest), previous), dest, "dir");
+      if (previous !== dest) links.push({ dest, target: path.relative(path.dirname(dest), previous) });
       return;
     }
     copied.set(source, dest);
-    // Dereference package-local links, but never recursively copy a dependency
-    // pool. Dependencies below are selected from manifests, not devDependencies.
-    fs.cpSync(source, dest, {
-      recursive: true,
-      dereference: true,
-      filter: (file) => {
-        if (file === source) return true;
-        if (path.basename(file) === "node_modules") return false;
-        const real = fs.realpathSync(file);
-        const relative = path.relative(source, real);
-        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
-          || relative.split(path.sep).includes("node_modules")) {
-          throw new Error(`Package link escapes its runtime package: ${file} -> ${real}`);
-        }
-        if (fs.lstatSync(file).isSymbolicLink() && fs.statSync(file).isDirectory()) {
-          // Directory aliases can recurse through ancestor links. Reject them
-          // rather than copying an unbounded tree; file aliases are materialized.
-          throw new Error(`Package directory symlink is not supported: ${file}`);
-        }
-        return true;
-      },
-    });
+    const node = { source, dest, children: [] };
+    siblings.push(node);
     const pkg = JSON.parse(fs.readFileSync(path.join(source, "package.json"), "utf8"));
     const optional = { ...pkg.optionalDependencies };
     for (const [name, meta] of Object.entries(pkg.peerDependenciesMeta || {})) {
@@ -101,13 +89,67 @@ export function materializeStandaloneDependencies(standaloneDir, distDir, source
         if (Object.hasOwn(optional, name)) continue;
         throw error;
       }
-      install(dependency, path.join(dest, "node_modules", name));
+      plan(dependency, path.join(dest, "node_modules", name), node.children);
     }
   };
-  for (const [name, source] of seeds) install(source, path.join(modules, name));
+  for (const [name, source] of seeds) plan(source, path.join(modules, name), roots);
+
+  // Dereference package-local links, but never recursively copy a dependency
+  // pool. Dependencies below are selected from manifests, not devDependencies.
+  const copyPackage = ({ source, dest }) => fs.promises.cp(source, dest, {
+    recursive: true,
+    dereference: true,
+    filter: (file) => {
+      if (file === source) return true;
+      if (path.basename(file) === "node_modules") return false;
+      const real = fs.realpathSync(file);
+      const relative = path.relative(source, real);
+      if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+        || relative.split(path.sep).includes("node_modules")) {
+        throw new Error(`Package link escapes its runtime package: ${file} -> ${real}`);
+      }
+      if (fs.lstatSync(file).isSymbolicLink() && fs.statSync(file).isDirectory()) {
+        // Directory aliases can recurse through ancestor links. Reject them
+        // rather than copying an unbounded tree; file aliases are materialized.
+        throw new Error(`Package directory symlink is not supported: ${file}`);
+      }
+      return true;
+    },
+  });
+  // A package is copied before its nested dependencies, as in a serial walk,
+  // so each package directory is created by its own copy and keeps its mode.
+  // After the first failure nothing new starts; in-flight copies settle so no
+  // write happens after this function rejects.
+  let failure = null;
+  let active = 0;
+  const waiting = [];
+  const settle = async (node) => {
+    if (failure) return;
+    if (active >= COPY_CONCURRENCY) await new Promise((resolve) => waiting.push(resolve));
+    else active += 1;
+    try {
+      if (!failure) {
+        fs.mkdirSync(path.dirname(node.dest), { recursive: true });
+        await copyPackage(node);
+      }
+    } catch (error) {
+      failure ??= error;
+    } finally {
+      const resume = waiting.shift();
+      if (resume) resume();
+      else active -= 1;
+    }
+    await Promise.all(node.children.map(settle));
+  };
+  await Promise.all(roots.map(settle));
+  if (failure) throw failure;
+  for (const { dest, target } of links) {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.symlinkSync(target, dest, "dir");
+  }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
 const nextBin = require.resolve("next/dist/bin/next");
 const buildRoot = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-build-"));
 
@@ -134,7 +176,7 @@ try {
     for (const name of Object.keys(runtimeManifest.optionalDependencies || {})) {
       if (fs.existsSync(path.join(process.cwd(), "node_modules", name))) runtimePackages.push(name);
     }
-    materializeStandaloneDependencies(standaloneDir, path.resolve(distDir), process.cwd(), runtimePackages);
+    await materializeStandaloneDependencies(standaloneDir, path.resolve(distDir), process.cwd(), runtimePackages);
 
     // Next's standalone trace includes the server bundle but (with this repo's
     // custom distDir/outputFileTracingRoot setup) does NOT copy the client static
@@ -159,6 +201,13 @@ try {
     }
 
     fs.copyFileSync(path.join(process.cwd(), "custom-server.js"), path.join(standaloneDir, "custom-server.js"));
+    // The wrapper and launcher share this resolver outside Next's server trace.
+    fs.mkdirSync(path.join(standaloneDir, "src/lib/startup"), { recursive: true });
+    fs.copyFileSync(path.join(process.cwd(), "src/lib/startup/listenConfig.cjs"), path.join(standaloneDir, "src/lib/startup/listenConfig.cjs"));
+    // The CLI launcher loads this data-directory policy from the app bundle.
+    fs.mkdirSync(path.join(standaloneDir, "src/lib/updater"), { recursive: true });
+    fs.copyFileSync(path.join(process.cwd(), "src/lib/updater/dataDir.cjs"), path.join(standaloneDir, "src/lib/updater/dataDir.cjs"));
+    fs.copyFileSync(path.join(process.cwd(), "realtime-upgrade.cjs"), path.join(standaloneDir, "realtime-upgrade.cjs"));
     // custom-server.js requires ./head-response-guard.cjs (OmniRoute #6908):
     // a root-level sidecar outside Next's NFT trace, so it must be copied by
     // hand or the standalone server crashes at boot with MODULE_NOT_FOUND.

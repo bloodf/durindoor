@@ -38,6 +38,7 @@ import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { REVIEWED_ORPHANS } from "../open-sse/config/catalogAllowlist.js";
 import { isString } from "../src/shared/utils/typeChecks.js";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -189,21 +190,27 @@ export async function localAudit(registryOverride, formatsOverride, pricingOverr
     //
     // Exceptions: some providers expose *wire-only* tier names that are
     // deliberately not catalog entries. Antigravity's tiered flash aliases use
-    // a parenthesised high/medium/low tier; Hydrogen's supported XHigh wire ID
-    // is the one exact additional form (runtime maps its XHigh intent to Gemini
-    // `thinkingLevel: "high"`). Keep this exact and provider-scoped so malformed
-    // or unresolved aliases still fail the audit.
+    // a parenthesised high/medium/low tier. Antigravity's XHigh and Max tier
+    // rows (upstream 9router 767d7aeb0b: Gemini 4 Hydrogen/Neon xhigh, Claude
+    // 5.5 max) use their own id plus the matching tier, e.g.
+    // `gemini-4-neon-xhigh(xhigh)`. Keep this exact and provider-scoped so
+    // malformed or unresolved aliases still fail the audit. An XHigh preset also
+    // resolves when its suffix-free base is a different catalog entry here.
     const WIRE_ONLY_UPSTREAM_ID = /\((?:high|medium|low)\)$/;
+    const isAntigravitySelfTierWireId = (m) => ["antigravity", "agy"].includes(provider) &&
+      isString(m.id) &&
+      ["xhigh", "max"].some((tier) => m.id.endsWith(`-${tier}`) && m.upstreamModelId === `${m.id}(${tier})`);
     for (let i = 0; i < models.length; i++) {
       const raw = models[i];
       const m = isString(raw) ? { id: raw } : raw || {};
-      const isHydrogenXhighWireId = ["antigravity", "agy"].includes(provider) &&
-        m.id === "gemini-4-hydrogen-xhigh" &&
-        m.upstreamModelId === "gemini-4-hydrogen-xhigh(xhigh)";
+      const isSelfTierWireId = isAntigravitySelfTierWireId(m);
+      const xhighBase = isString(m.upstreamModelId) && m.upstreamModelId.endsWith("(xhigh)")
+        ? m.upstreamModelId.slice(0, -"(xhigh)".length) : null;
       if (m.upstreamModelId != null &&
       !idSet.has(m.upstreamModelId) &&
       !WIRE_ONLY_UPSTREAM_ID.test(m.upstreamModelId) &&
-      !isHydrogenXhighWireId) {
+      !(xhighBase && xhighBase !== m.id && idSet.has(xhighBase)) &&
+      !isSelfTierWireId) {
         addFinding(
           `${provider}:${m.id}`,
           `[${provider}] model "${m.id}" upstreamModelId "${m.upstreamModelId}" resolves to no id in this provider`
@@ -604,7 +611,7 @@ async function main() {
   process.exit(1);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url)) {
   main().catch((err) => {
     console.error(err.message || err);
     process.exit(2);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -8,28 +8,42 @@ const handlersDir = join(here, "../../src/sse/handlers");
 
 // OmniRoute PR #6742 regression guard (its "issue-6686 quota preflight
 // coverage" test): every credentialed route that must route account selection
-// through the live quota preflight has to import AND call the wrapper, and
-// must not fall back to the bare selector. Best-effort single-attempt routes
+// through the live quota preflight has to call the wrapper directly or via
+// the shared media pipeline, and must not fall back to the bare selector. Best-effort single-attempt routes
 // (count_tokens, Gemini-native v1beta) intentionally keep the plain selector.
 const QUOTA_PREFLIGHT_ROUTES = [
-  "chat.js",
-  "embeddings.js",
+  "chat/singleModel.js",
   "fetch.js",
-  "imageEdit.js",
-  "imageGeneration.js",
-  "moderations.js",
+  "media/pipeline.js",
   "music.js",
-  "rerank.js",
   "search.js",
-  "stt.js",
-  "tts.js",
   "video.js",
 ];
 
 describe("quota preflight route coverage (OmniRoute #6742)", () => {
+  for (const file of ["stt.js", "tts.js", "embeddings.js", "moderations.js", "rerank.js"]) {
+    it(`${file} delegates account selection to the shared media pipeline`, () => {
+      const source = readFileSync(join(handlersDir, file), "utf8");
+      expect(source).toMatch(/runMediaAccounts\s*\(/);
+      expect(source).not.toMatch(/getProviderCredentials(?!WithQuotaPreflight)\s*\(/);
+    });
+  }
+
+  for (const file of ["imageEdit.js", "imageGeneration.js"]) {
+    it(`${file} delegates account selection to the shared media pipeline`, () => {
+      const source = readFileSync(join(handlersDir, file), "utf8");
+      expect(source).toMatch(/(?:getProviderCredentialsWithQuotaPreflight|runMediaAccounts)\s*\(/);
+      expect(source).not.toMatch(/getProviderCredentials(?!WithQuotaPreflight)\s*\(/);
+    });
+  }
+
   for (const file of QUOTA_PREFLIGHT_ROUTES) {
     it(`${file} selects credentials through getProviderCredentialsWithQuotaPreflight only`, () => {
-      const source = readFileSync(join(handlersDir, file), "utf8");
+      // chat/singleModel.js delegates its account loop to the singleModel/ stage modules.
+      const stageDir = join(handlersDir, "chat/singleModel");
+      const source = file === "chat/singleModel.js" ?
+        [readFileSync(join(handlersDir, file), "utf8"), ...readdirSync(stageDir).map((name) => readFileSync(join(stageDir, name), "utf8"))].join("\n") :
+        readFileSync(join(handlersDir, file), "utf8");
       expect(source, `${file} must call the quota-preflight wrapper`).toMatch(
         /getProviderCredentialsWithQuotaPreflight\s*\(/
       );

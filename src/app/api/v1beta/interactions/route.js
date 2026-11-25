@@ -1,3 +1,4 @@
+import { corsHeaders } from "@/lib/http/cors.js";
 import { randomUUID } from "node:crypto";
 import { OPTIONS, POST as chat } from "../../v1/chat/completions/route.js";
 import { copyClientAdmissionFailure, inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
@@ -7,13 +8,13 @@ import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { interactionEvent, mapInteractionEvents } from "open-sse/utils/interactionEvents.js";
 import { SSE_DONE, SSE_HEADERS_CORS } from "open-sse/utils/sseConstants.js";
 
-import { isBoolean, isString } from "@/shared/utils/typeChecks.js";
+import { isBoolean, isRecord, isString } from "@/shared/utils/typeChecks.js";
 
 export { OPTIONS };
 
-const fields = new Set(["model", "input", "stream", "store", "background"]);
+const fields = new Set(["model", "input", "stream", "store", "background", "generation_config"]);
 const models = new Set(geminiInteractions.models.map(({ id }) => id));
-const cors = { "Access-Control-Allow-Origin": "*" };
+const cors = { ...corsHeaders(["POST", "OPTIONS"]) };
 
 function errorResponse(status, message, headers = {}) {
   return Response.json({ error: { code: status, message } }, { status, headers: { ...cors, ...headers } });
@@ -51,7 +52,11 @@ async function createInteraction(request) {
       Object.keys(body).some((field) => !fields.has(field)) ||
       (body.stream !== undefined && !isBoolean(body.stream)) ||
       (body.store !== undefined && body.store !== false) ||
-      (body.background !== undefined && body.background !== false)) {
+      (body.background !== undefined && body.background !== false) ||
+      (body.generation_config !== undefined && (!isRecord(body.generation_config) ||
+        Object.keys(body.generation_config).some((key) => key !== "thinking_level") ||
+        model !== "gemini-4-hydrogen" ||
+        !["low", "medium", "high", "xhigh"].includes(body.generation_config.thinking_level)))) {
     return errorResponse(400, "Expected an Interactions text model and a nonempty text input with store=false");
   }
 
@@ -64,6 +69,7 @@ async function createInteraction(request) {
     messages: [{ role: ROLE.USER, content: body.input }],
     stream: body.stream === true,
   };
+  if (body.generation_config) chatBody.reasoning_effort = body.generation_config.thinking_level;
   if (body.stream) chatBody.stream_options = { include_usage: true };
   const adapted = new Request(request.url, {
     method: "POST",

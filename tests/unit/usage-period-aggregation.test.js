@@ -1,3 +1,4 @@
+import { convertLegacyUsageDaily } from "@/lib/db/migrations/037-usage-daily-rollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -231,6 +232,7 @@ describe("usage period aggregation", () => {
       `INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`,
       ["2023-01-01", JSON.stringify(legacy)],
     );
+    adapter.transaction(() => convertLegacyUsageDaily(adapter));
 
     const stats = await db.getUsageStats("all");
     expect(stats.byProvider.legacy).toMatchObject({
@@ -246,11 +248,13 @@ describe("usage period aggregation", () => {
 
   it("rebuilds the partial cutoff day after a reset without stale rollup totals", async () => {
     await seed();
-    await db.resetUsageHistory("1h");
+    await db.resetUsageHistory("1d");
 
     const stats = await db.getUsageStats("today");
     const chart = await db.getChartData("today");
     expect(stats.totalRequests).toBe(0);
     expect(chart.reduce((sum, point) => sum + point.tokens, 0)).toBe(0);
+    const cutoffDay = await db.getUsageStats("all", { startDate: "2026-07-09", endDate: "2026-07-09" });
+    expect(cutoffDay.totalRequests).toBe(2);
   });
 });

@@ -549,6 +549,13 @@
       }
     ]
   },
+  "demonroute": {
+    "baseUrl": "https://api.demonroute.com/v1/chat/completions",
+    "validateUrl": "https://api.demonroute.com/v1/models",
+    "format": "openai",
+    "timeoutMs": 120000,
+    "authType": "apikey"
+  },
   "devin-cli": {
     "baseUrl": "devin://acp/stdio",
     "format": "openai",
@@ -1272,6 +1279,13 @@
     },
     "format": "openai"
   },
+  "megabrain": {
+    "baseUrl": "https://getmegabrain.com/api/gateway/v1/chat/completions",
+    "validateUrl": "https://getmegabrain.com/api/gateway/v1/models",
+    "thinkingFormat": "openai",
+    "format": "openai",
+    "authType": "apikey"
+  },
   "meganova-ai": {
     "baseUrl": "https://api.meganova.ai/v1/chat/completions",
     "validateUrl": "https://api.meganova.ai/v1/models",
@@ -1765,6 +1779,12 @@
   "runcrate": {
     "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
     "validateUrl": "https://api.runcrate.ai/v1/models",
+    "format": "openai",
+    "authType": "apikey"
+  },
+  "grokified": {
+    "baseUrl": "https://api.grokified.com/v1/chat/completions",
+    "validateUrl": "https://api.grokified.com/v1/models",
     "format": "openai",
     "authType": "apikey"
   },

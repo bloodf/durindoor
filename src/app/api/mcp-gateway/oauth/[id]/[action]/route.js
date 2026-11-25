@@ -47,6 +47,12 @@ const CALLBACK_TIMEOUT_MS = 300_000;
 // Compute OAuth redirect/CIMD origin. Explicit env wins, then an active public
 // tunnel, then reverse-proxy headers and finally the request origin.
 async function appBase(request) {
+  const basePath = request.nextUrl?.basePath || "";
+  const withBasePath = (base) => {
+    const url = new URL(base);
+    if (basePath && !url.pathname.replace(/\/$/, "").endsWith(basePath)) url.pathname = url.pathname.replace(/\/$/, "") + basePath;
+    return url.href.replace(/\/$/, "");
+  };
   const envOverride =
   process.env.MCP_GATEWAY_OAUTH_PUBLIC_URL ||
   process.env.OAUTH_PUBLIC_BASE_URL;
@@ -57,10 +63,10 @@ async function appBase(request) {
     getTunnelStatus()]
     );
     const publicBase = selectOAuthPublicBase({ envOverride, tailscale, tunnel });
-    if (publicBase) return publicBase;
+    if (publicBase) return withBasePath(publicBase);
   } catch {
     const publicBase = selectOAuthPublicBase({ envOverride });
-    if (publicBase) return publicBase;
+    if (publicBase) return withBasePath(publicBase);
   }
 
   const url = new URL(request.url);
@@ -69,7 +75,7 @@ async function appBase(request) {
   split(",")[0].
   trim() || url.protocol.replace(":", "");
   const host = request.headers.get("x-forwarded-host") || url.host;
-  return `${proto}://${host}`;
+  return withBasePath(`${proto}://${host}`);
 }
 
 // Check if a base URL is suitable for OAuth redirect_uri.

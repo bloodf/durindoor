@@ -1,18 +1,25 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { requestSettings } from "@/store/settingsStore";
+
+import { useState, useMemo, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import CapabilityIcons from "@/shared/ui/v5/combos/CapabilityIcons.jsx";
+import "@/shared/ui/v5/combos/combos.css";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import { ProviderLogo } from "@/shared/ui/components/ProviderLogo.jsx";
 import { Chip } from "@/shared/ui/components/Chip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import CapacityBadges from "./CapacityBadges";
+import { passthroughAliasModels } from "../utils/passthroughAliasModels.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isHiddenProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias, LIVE_CATALOG_PROVIDERS } from "@/shared/constants/providers";
 import { mergeLiveCatalogs, liveCatalogModelEntries } from "@/shared/utils/liveCatalogModels";
+import { resolveProviderPrefix } from "@/shared/utils/providerPrefix";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 import { isString } from "../utils/typeChecks.js";
@@ -33,6 +40,16 @@ export const NO_AUTH_PROVIDER_IDS = [...new Set([
 ...Object.keys(FREE_TIER_PROVIDERS).filter((id) => FREE_TIER_PROVIDERS[id].noAuth && !isHiddenProvider(id))]
 )];
 
+/**
+ * Drop no-auth providers the operator disabled (settings.disabledFreeProviders).
+ * Ported from upstream PR #2650 (picker half); server gates already live in
+ * freeProviderGate.js.
+ */
+export function filterEnabledNoAuthIds(ids, disabledFreeProviders) {
+  const disabled = new Set(Array.isArray(disabledFreeProviders) ? disabledFreeProviders : []);
+  return ids.filter((id) => !disabled.has(id));
+}
+
 // kindFilter (UI service kind) → /api/v1/models slug. webSearch/webFetch share
 // the `web` slug server-side. null/absent → root LLM list.
 const KIND_TO_SLUG = {
@@ -51,7 +68,7 @@ const KIND_TO_SLUG = {
 // `<alias>/search` and `<alias>/fetch`; map the UI kind to its catalog suffix.
 const WEB_KIND_SUFFIX = { webSearch: "search", webFetch: "fetch" };
 
-/** Keeps empty-search feedback available to screen readers without moving keyboard focus. */
+/** V5 presents the same catalog and selection callbacks as rows; empty-search feedback remains announced. */
 export default function ModelSelectModal({
   isOpen,
   onClose,
@@ -87,12 +104,31 @@ export default function ModelSelectModal({
     [activeProviders]
   );
   const orcaCatalog = useOrcaRouterCatalog(isOpen, orcaConnectionIds, orcaCapability, null);
+  const v5 = useUiV5();
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [discoveryPending, setDiscoveryPending] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [planKey, setPlanKey] = useState("");
+  const [planConnection, setPlanConnection] = useState("");
+  const [planStatus, setPlanStatus] = useState("");
+  const planRequestVersion = useRef(0);
   const [combos, setCombos] = useState([]);
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
   const [fetchedModels, setFetchedModels] = useState({});
+  // Clear a transient credential when the parent closes the modal externally.
+  useEffect(() => {
+    if (!isOpen) {
+      planRequestVersion.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPlanKey("");
+      setPlanStatus("");
+      setFetchedModels((previous) => previous["chatgpt-plan"]?.length ? { ...previous, "chatgpt-plan": [] } : previous);
+    }
+    return () => { planRequestVersion.current++; };
+  }, [isOpen]);
   // Effective auto-synced model lists by provider id (/api/models/auto-sync);
   // a provider listed here shows its synced list instead of the registry.
   const [syncedModelLists, setSyncedModelLists] = useState({});
@@ -108,6 +144,7 @@ export default function ModelSelectModal({
   // models while still keeping custom/unknown entries visible.
   const [visibleModelIds, setVisibleModelIds] = useState(null);
   const [visibleCatalogReady, setVisibleCatalogReady] = useState(false);
+  const [disabledFreeProviders, setDisabledFreeProviders] = useState([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -121,10 +158,11 @@ export default function ModelSelectModal({
     const controller = new AbortController();
     (async () => {
       try {
-        const settingsRes = await fetch("/api/settings", { signal: controller.signal });
+        const settingsRes = await requestSettings({ signal: controller.signal });
         if (!settingsRes.ok) throw new Error(`settings ${settingsRes.status}`);
         const settingsData = await settingsRes.json();
         if (ignore) return;
+        setDisabledFreeProviders(Array.isArray(settingsData?.disabledFreeProviders) ? settingsData.disabledFreeProviders : []);
         if (settingsData?.hidePaidModels !== true) {
           setVisibleCatalogReady(true);
           return;
@@ -173,6 +211,8 @@ export default function ModelSelectModal({
   }, [isOpen]);
 
   const fetchProviderNodes = async () => {
+    setDiscoveryPending(true);
+    setCatalogError("");
     try {
       const res = await fetch("/api/provider-nodes");
       if (!res.ok) throw new Error(`Failed to fetch provider nodes: ${res.status}`);
@@ -181,6 +221,9 @@ export default function ModelSelectModal({
     } catch (error) {
       console.error("Error fetching provider nodes:", error);
       setProviderNodes([]);
+      setCatalogError("Provider details could not load. Reopen to retry.");
+    } finally {
+      setDiscoveryPending(false);
     }
   };
 
@@ -351,9 +394,10 @@ export default function ModelSelectModal({
     const activeConnectionIds = filteredActiveProviders.map((p) => p.provider);
 
     // No-auth providers: filter by kindFilter as well
+    const enabledNoAuthIds = filterEnabledNoAuthIds(NO_AUTH_PROVIDER_IDS, disabledFreeProviders);
     const noAuthIds = kindFilter ?
-    NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
-    NO_AUTH_PROVIDER_IDS;
+    enabledNoAuthIds.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter)) :
+    enabledNoAuthIds;
 
     // Show connected providers and no-auth providers. Custom compatible-provider
     // nodes are covered by activeConnectionIds (connection.provider === node id),
@@ -408,13 +452,7 @@ export default function ModelSelectModal({
       }
 
       if (providerInfo.passthroughModels) {
-        const aliasModels = Object.entries(modelAliases).
-        filter(([, fullModel]) => isString(fullModel) && fullModel.startsWith(`${alias}/`)).
-        map(([aliasName, fullModel]) => ({
-          id: fullModel.replace(`${alias}/`, ""),
-          name: aliasName,
-          value: fullModel
-        }));
+        const aliasModels = passthroughAliasModels(modelAliases, providerId, alias);
         const customRegisteredModels = customModels.
         filter((m) => m.providerAlias === alias).
         map((m) => ({
@@ -496,7 +534,14 @@ export default function ModelSelectModal({
         const connection = activeProviders.find((p) => p.provider === providerId);
         const matchedNode = providerNodes.find((node) => node.id === providerId);
         const displayName = matchedNode?.name || connection?.name || providerInfo.name;
-        const nodePrefix = connection?.providerSpecificData?.prefix || matchedNode?.prefix || providerId;
+        // The published prefix is the operator's configured prefix. Only
+        // provider nodes are remapped, so a stray `prefix` on a built-in
+        // connection never renames that provider's models.
+        const nodePrefix = resolveProviderPrefix({
+          providerId,
+          providerSpecificData: connection?.providerSpecificData,
+          node: matchedNode
+        });
 
         // Aliases are stored using the raw providerId as key (e.g. "openai-compatible-chat-<uuid>/glm-4.7"),
         // so we must filter by providerId, not by the display prefix.
@@ -657,7 +702,7 @@ export default function ModelSelectModal({
     }
 
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
+  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, activeProviders, disabledFreeProviders, fetchedModels, visibleModelIds, orcaCatalog, syncedModelLists]);
 
   // Filter combos by search query (and hide combos when kindFilter is set — combos are LLM-only by design)
   const filteredCombos = useMemo(() => {
@@ -705,6 +750,29 @@ export default function ModelSelectModal({
     return filtered;
   }, [groupedModels, searchQuery, addedModelValues]);
 
+  const planConnections = filteredActiveProviders.filter((p) => p.provider === "chatgpt-plan" && p.id);
+  const loadPlanModels = async () => {
+    if (!planConnection || !planKey) return;
+    const version = ++planRequestVersion.current;
+    setPlanStatus("Loading models…");
+    try {
+      const response = await fetch(`/api/providers/${encodeURIComponent(planConnection)}/models`, {
+        headers: { Authorization: `Bearer ${planKey}` }, cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Unavailable");
+      const data = await response.json();
+      if (version !== planRequestVersion.current) return;
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": data.models || [] }));
+      setPlanStatus("Models loaded for the selected connection.");
+    } catch {
+      if (version !== planRequestVersion.current) return;
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
+      setPlanStatus("Could not load models. Check the key and connection scope.");
+    } finally {
+      if (version === planRequestVersion.current) setPlanKey("");
+    }
+  };
+
   const handleSelect = (model) => {
     const value = model?.value || model?.name || model;
     const isAdded = addedModelValues.includes(value);
@@ -716,6 +784,9 @@ export default function ModelSelectModal({
     }
 
     if (closeOnSelect) {
+      planRequestVersion.current++;
+      setPlanKey("");
+      setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
       onClose();
       setSearchQuery("");
     }
@@ -725,19 +796,38 @@ export default function ModelSelectModal({
     <Modal
       open={isOpen}
       onClose={() => {
+        planRequestVersion.current++;
         onClose();
         setSearchQuery("");
+        setPlanKey("");
+        setPlanStatus("");
+        setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] }));
       }}
       title={title}
-      size="md"
+      size={v5 ? "xl" : "md"}
+      surfaceClassName={v5 ? "v5-model-picker" : undefined}
       className="p-0!"
       footer={null}
     >
       <div className="flex flex-col gap-4 px-1">
+        {v5 && catalogError ? <p role="alert">{catalogError}</p> : null}
         <div role="status" className="flex items-center gap-2 rounded-dd-lg border border-dd-accent/30 bg-dd-accent-soft px-3 py-2 text-xs text-dd-text">
           <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">info</span>
           <span>Click to add, click again to remove. Changes are saved automatically.</span>
         </div>
+        {planConnections.length > 0 && (!kindFilter || kindFilter === "llm") && (
+          <div className="flex flex-col gap-2 rounded-dd-lg border border-dd-border p-3">
+            <label htmlFor="plan-connection">ChatGPT plan connection</label>
+            <select id="plan-connection" value={planConnection} onChange={(event) => { planRequestVersion.current++; setPlanStatus(""); setPlanConnection(event.target.value); setFetchedModels((previous) => ({ ...previous, "chatgpt-plan": [] })); }}>
+              <option value="">Select a connection</option>
+              {planConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name || connection.id}</option>)}
+            </select>
+            <label htmlFor="plan-key">Gateway API key scoped to this connection</label>
+            <input id="plan-key" type="password" autoComplete="off" value={planKey} onChange={(event) => setPlanKey(event.target.value)} />
+            <button type="button" onClick={loadPlanModels} disabled={!planConnection || !planKey}>Load plan models</button>
+            <span role="status">{planStatus}</span>
+          </div>
+        )}
         {/* A degraded (fallback) OrcaRouter list is labelled rather than presented
             as live discovery. */}
         {orcaCatalog.models.length > 0 && orcaCatalog.degraded ? (
@@ -758,7 +848,24 @@ export default function ModelSelectModal({
           placeholder="Search..."
           aria-label="Search models"
         />
-        <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
+        {v5 ? <>
+          <label>Filter provider <select aria-label="Filter provider" value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}><option value="all">All providers</option><option value="combos">Nested combos</option>{Object.entries(groupedModels).map(([id, group]) => <option key={id} value={id}>{group.name}</option>)}</select></label>
+          <div className={`v5-model-picker-layout ${closeOnSelect ? "v5-model-picker-single" : ""}`}>
+            <div className="v5-model-picker-catalog" role="region" aria-label="Available model catalog" tabIndex={0}>
+              <div className="v5-model-picker-results" role="status">{discoveryPending || !visibleCatalogReady ? "Loading models…" : "Available models"}</div>
+              {(providerFilter === "all" || providerFilter === "combos") && filteredCombos.length > 0 ? <section aria-label="Combos"><h3>Nested combos <span>{filteredCombos.length}</span></h3>{filteredCombos.map((combo) => <button key={combo.id} type="button" className="v5-model-picker-row" aria-pressed={addedModelValues.includes(combo.name) || selectedModel === combo.name} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}>{combo.name}</button>)}</section> : null}
+              {Object.entries(filteredGroups).filter(([id]) => providerFilter === "all" || providerFilter === id).map(([id, group]) => <section key={id} aria-label={group.name}><h3><ProviderLogo provider={id} size={18} />{group.name}<span>{group.models.length}</span></h3>{group.models.map((model) => {
+                const custom = customModels.find((item) => item.id === model.id && (item.providerAlias === id || item.providerAlias === group.alias));
+                const caps = { ...getCaps(model.value) };
+                if (!Array.isArray(model.capabilities)) Object.assign(caps, model.capabilities);
+                Object.assign(caps, custom?.capabilities);
+                return <button key={model.value} type="button" className="v5-model-picker-row" aria-label={model.name === model.value ? model.name : `${model.name} (${model.value})`} aria-pressed={addedModelValues.includes(model.value) || selectedModel === model.value} onClick={() => handleSelect(model)}><span className="v5-model-check" aria-hidden="true">{addedModelValues.includes(model.value) || selectedModel === model.value ? "✓" : ""}</span><span className="v5-model-picker-identity"><strong>{model.name}</strong>{model.value !== model.name ? <code>{model.value}</code> : null}<CapabilityIcons caps={caps} />{model.isPlaceholder ? <span>Custom ID</span> : null}</span></button>;
+              })}</section>)}
+              {visibleCatalogReady && !discoveryPending && !Object.entries(filteredGroups).some(([id, group]) => (providerFilter === "all" || providerFilter === id) && group.models.length) && !((providerFilter === "all" || providerFilter === "combos") && filteredCombos.length) ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
+            </div>
+            {!closeOnSelect ? <aside className="v5-model-picker-selection" aria-label="Selected models"><h3>Selected <span>{addedModelValues.length}</span></h3>{addedModelValues.length === 0 ? <p>Select models from the catalog.</p> : <ol>{addedModelValues.map((value, index) => <li key={`${value}-${index}`}><span>{index + 1}</span><code>{value}</code>{onDeselect ? <button type="button" aria-label={`Remove ${value} from selection`} onClick={() => onDeselect({ id: value, name: value, value })}>×</button> : null}</li>)}</ol>}</aside> : null}
+          </div>
+        </> : <div className="max-h-[400px] space-y-3 overflow-y-auto pr-1">
           {filteredCombos.length > 0 ? <section aria-label="Combos"><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">layers</span><span className="text-xs font-semibold text-dd-accent">Combos</span><span className="text-[10px] text-dd-muted">({filteredCombos.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{filteredCombos.map((combo) => {
             const isSelected = selectedModel === combo.name;
             const isAdded = addedModelValues.includes(combo.name);
@@ -776,7 +883,7 @@ export default function ModelSelectModal({
           <div role="status" aria-atomic="true">
             {visibleCatalogReady && Object.keys(filteredGroups).length === 0 && filteredCombos.length === 0 ? <EmptyState icon="search_off" title="No models found" message="Try a different search or connect a new provider." /> : null}
           </div>
-        </div>
+        </div>}
       </div>
     </Modal>);
 

@@ -2,35 +2,7 @@
 import { useHomeLocale } from "@site/i18n/HomeLocaleProvider.jsx";
 import Link from "next/link";
 import { BrandMark } from "../ui/chrome.jsx";
-import { GITHUB_URL, NPM_URL } from "../data.js";
-const groups = [
-  {
-    label: "DurinDoor",
-    links: [
-      ["Live demo", "/demo-preview"],
-      ["Quick start", "#quick-start"],
-      ["Providers", "#providers"],
-      ["Features", "#features"],
-    ],
-  },
-  {
-    label: "Docs",
-    links: [
-      ["Docs", "/docs"],
-      ["Quick start", "/docs/getting-started"],
-      ["API key", "/docs/reference/api"],
-      ["Connect your tools", "/docs/integrations/other-tools"],
-    ],
-  },
-  {
-    label: "GitHub",
-    links: [
-      ["GitHub", GITHUB_URL],
-      ["npm", NPM_URL],
-      ["MIT License", `${GITHUB_URL}/blob/main/LICENSE`],
-    ],
-  },
-];
+import { FOOTER_GROUPS } from "../data.js";
 export default function Footer() {
   const { t } = useHomeLocale();
   return (
@@ -49,7 +21,7 @@ export default function Footer() {
             <p>{t("Speak, friend, and enter.")}</p>
           </div>
           <nav className="footer-nav" aria-label={t("Footer")}>
-            {groups.map((group) => (
+            {FOOTER_GROUPS.map((group) => (
               <div key={group.label}>
                 <h3>
                   {group.label === "DurinDoor" ? group.label : t(group.label)}

@@ -122,6 +122,8 @@ export function normalizeSessionCookieHeaders(values = [], defaultCookieName) {
 
 export function sanitizeErrorMessage(value = "") {
   return String(value || "").
+  replace(/(\bcookie\s*:\s*)[^\r\n,]+/gi, "$1[redacted]").
+  replace(/((?:__Secure-next-auth\.session-token|cookie)\s*=\s*)[^;\s,]+/gi, "$1[redacted]").
   replace(/(Bearer|token|cookie|api[_-]?key)\s+[^\s,;]+/gi, "$1 [redacted]").
   replace(/([?&](?:key|token|auth|cookie)=)[^&\s]+/gi, "$1[redacted]").
   slice(0, 2000);

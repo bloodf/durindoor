@@ -3,10 +3,10 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
-import { getThinkingLevels, getThinkingLevelsFromCapabilities, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
+import { getThinkingLevels, getThinkingLevelsFromCapabilities, getOpencodeGoEffortTiers, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
-import { LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
+import { GLM_ANTHROPIC_PROVIDERS, LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -28,7 +28,7 @@ const FORMAT_TO_NATIVE = {
 
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.
-export function extractThinking(body) {
+export function extractThinking(body, model = null, provider = null, modelCapabilities = null) {
   if (!body || !isObject(body)) return null;
 
   // Claude output_config.effort (explicit) — priority over adaptive thinking
@@ -40,7 +40,8 @@ export function extractThinking(body) {
     return { mode: "level", level: e };
   }
 
-  const effort = body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
+  // camelCase `reasoningEffort` (OpenCode provider options, port of 9router #1936) wins over snake_case.
+  const effort = body.reasoningEffort ?? body.reasoning_effort ?? (isObject(body.reasoning) ? body.reasoning?.effort : null);
 
   /**
    * Explicit Claude disable/budget intent wins over provider-injected effort.
@@ -82,15 +83,54 @@ export function extractThinking(body) {
     return value ? { mode: "auto" } : { mode: "none" };
   }
 
-  // Gemini shape (top-level, generationConfig, or request envelope)
-  const tc = body.thinkingConfig || body.generationConfig?.thinkingConfig || body.request?.generationConfig?.thinkingConfig;
-  if (tc && isObject(tc)) {
-    if (isString(tc.thinkingLevel)) return { mode: "level", level: tc.thinkingLevel.toLowerCase() };
+  // Gemini shape. Keep candidate order explicit so a blank or unsupported
+  // nested override does not hide a valid fallback at another spelling/path.
+  const geminiConfigs = [
+    body.thinkingConfig,
+    body.thinking_config,
+    body.generationConfig?.thinkingConfig,
+    body.generationConfig?.thinking_config,
+    body.generation_config?.thinkingConfig,
+    body.generation_config?.thinking_config,
+    body.request?.thinkingConfig,
+    body.request?.thinking_config,
+    body.request?.generationConfig?.thinkingConfig,
+    body.request?.generationConfig?.thinking_config,
+    body.request?.generation_config?.thinkingConfig,
+    body.request?.generation_config?.thinking_config,
+  ];
+  const explicitLevels = [
+    ...geminiConfigs.flatMap((config) => config && isObject(config)
+      ? [config.thinkingLevel, config.thinking_level] : []),
+    body.thinkingLevel,
+    body.thinking_level,
+  ];
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, model || "");
+  const nativeGeminiLevels = caps?.thinkingFormat === "gemini-level";
+  for (const candidate of explicitLevels) {
+    if (!isString(candidate) || !candidate.trim()) continue;
+    const trimmed = candidate.trim();
+    if (nativeGeminiLevels) {
+      const level = trimmed.toLowerCase();
+      if (["minimal", "low", "medium", "high"].includes(level)) return { mode: "level", level };
+      continue;
+    }
+    return { mode: "level", level: trimmed.toLowerCase() };
+  }
+  for (const tc of geminiConfigs) {
+    if (tc && isObject(tc)) {
     const tb = Number(tc.thinkingBudget);
     if (Number.isFinite(tb)) {
       if (tb === 0) return { mode: "none" };
       if (tb < 0) return { mode: "auto" };
       return { mode: "budget", budget: tb };
+    }
+    const tbSnake = Number(tc.thinking_budget);
+    if (Number.isFinite(tbSnake)) {
+      if (tbSnake === 0) return { mode: "none" };
+      if (tbSnake < 0) return { mode: "auto" };
+      return { mode: "budget", budget: tbSnake };
+    }
     }
   }
 
@@ -107,7 +147,9 @@ export function extractThinking(body) {
 
 // Capture thinking intent from a body. Alias of extractThinking, named for clarity
 // at the call-site where intent is snapshotted before format translation.
-export const captureThinking = extractThinking;
+export function captureThinking(body, model = null, provider = null, modelCapabilities = null) {
+  return extractThinking(body, model, provider, modelCapabilities);
+}
 
 // Resolve thinking format: provider override > capability > derive(targetFormat).
 function resolveFormat(targetFormat, model, provider, caps = null) {
@@ -121,6 +163,10 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   resolvedCaps.customKeys.has("thinkingFormat"))
   {
     return resolvedCaps.thinkingFormat;
+  }
+  // Antigravity uses the Gemini request envelope even for Claude models.
+  if (targetFormat === FORMATS.ANTIGRAVITY && resolvedCaps.reasoning) {
+    return resolvedCaps.thinkingFormat === "gemini-budget" ? "gemini-budget" : "gemini-level";
   }
   // Dynamic OpenAI-compatible gateways speak the OpenAI wire format regardless
   // of the underlying model family. A Qwen model served through such a gateway
@@ -295,9 +341,12 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
   for (const target of targets) {
     delete target.thinking;
     delete target.reasoning_effort;
+    // Nested objects below may be shared with the client's body or with another combo target
+    // (the per-target body copy is shallow): replace them, never delete inside them.
     if (preserveResponsesReasoning && target.reasoning && isObject(target.reasoning) && !Array.isArray(target.reasoning)) {
-      delete target.reasoning.effort;
-      if (Object.keys(target.reasoning).length === 0) delete target.reasoning;
+      const { effort: _effort, ...reasoning } = target.reasoning;
+      if (Object.keys(reasoning).length === 0) delete target.reasoning;
+      else target.reasoning = reasoning;
     } else {
       delete target.reasoning;
     }
@@ -312,8 +361,14 @@ function stripAll(body, preserveOutputConfig = false, preserveResponsesReasoning
       delete target.output_config;
     }
     delete target.think;
-    if (target.generationConfig) delete target.generationConfig.thinkingConfig;
-    if (target.request?.generationConfig) delete target.request.generationConfig.thinkingConfig;
+    if (target.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.generationConfig;
+      target.generationConfig = generationConfig;
+    }
+    if (target.request?.generationConfig?.thinkingConfig !== undefined) {
+      const { thinkingConfig: _thinking, ...generationConfig } = target.request.generationConfig;
+      target.request = { ...target.request, generationConfig };
+    }
   }
 }
 
@@ -326,6 +381,51 @@ const GPT_6_MINIMAL_FLOOR_PROVIDERS = new Set(["openai", "codex", "cx"]);
 const GPT_6_MINIMAL_FLOOR_MODELS = new Set(["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]);
 function isAstraMinimalFloorModel(provider, model) {
   return GPT_6_MINIMAL_FLOOR_PROVIDERS.has(provider) && GPT_6_MINIMAL_FLOOR_MODELS.has(model);
+}
+
+// Effort tier order used to fold an unsupported request onto the nearest
+// supported rung: the smallest supported tier at or above the request, else
+// the highest supported tier. Same rule the upstream registry-tier clamp uses.
+const EFFORT_TIER_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+
+/**
+ * Clamp one effort tier onto a model's declared tier set.
+ * @param {string} level
+ * @param {string[]} supported
+ * @returns {string} the requested tier when supported, else the nearest rung
+ */
+export function clampTierToSupported(level, supported) {
+  if (!Array.isArray(supported) || !supported.length) return level;
+  if (supported.includes(level)) return level;
+  const ranked = supported
+    .map((tier) => ({ tier, rank: EFFORT_TIER_ORDER.indexOf(tier) }))
+    .filter((entry) => entry.rank >= 0)
+    .sort((a, b) => a.rank - b.rank);
+  if (!ranked.length) return level;
+  const requestedRank = EFFORT_TIER_ORDER.indexOf(level);
+  const nearest = ranked.find((entry) => entry.rank >= requestedRank);
+  return nearest ? nearest.tier : ranked[ranked.length - 1].tier;
+}
+
+/**
+ * Fold a thinking intent onto a model's declared effort tiers.
+ *
+ * A disable request on a model whose declared tiers exclude "none" is floored
+ * onto the lowest declared tier instead of switching thinking off, and a tier
+ * the model does not declare is folded onto the nearest supported rung. The
+ * result is the same intent for every lane (chat, messages, responses).
+ */
+export function normalizeToDeclaredTiers(cfg, supported) {
+  if (!cfg || !Array.isArray(supported) || !supported.length) return cfg;
+  if (cfg.mode === "none") {
+    if (supported.includes("none")) return cfg;
+    return { ...cfg, mode: "level", level: supported[0] };
+  }
+  if (cfg.mode === "level") {
+    const level = clampTierToSupported(cfg.level, supported);
+    return level === cfg.level ? cfg : { ...cfg, mode: "level", level };
+  }
+  return cfg;
 }
 
 // Map requested OpenAI effort to a level the model accepts.
@@ -445,11 +545,20 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "gemini-level":{
-        let level = none ? "minimal" : toGeminiThinkingLevel(eff);
+        // Antigravity serves xhigh (Hydrogen, Neon) and max (Claude 5.5) natively; keep a
+        // tier the model declares, and fold max onto xhigh where only xhigh exists
+        // (upstream 9router 767d7aeb0b).
+        const agLevels = ["antigravity", "ag", "agy"].includes(provider) ?
+          (caps.thinkingEfforts || (/claude-(sonnet|opus)-5[.-]5/i.test(model || "") ? getThinkingLevels(provider, model) : null) || []) : [];
+        const requested = String(toLevel(eff) || "").toLowerCase();
+        let level = none ? "minimal" :
+          ["xhigh", "max"].includes(requested) && agLevels.includes(requested) ? requested :
+          requested === "max" && agLevels.includes("xhigh") ? "xhigh" : toGeminiThinkingLevel(eff);
         // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
         const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
-        if (Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
+        const nativeTopTier = ["xhigh", "max"].includes(level) && agLevels.includes(level);
+        if (!nativeTopTier && Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {
           level = ["none", "minimal"].includes(level) && allowed.includes("low") ?
             "low" : allowed.includes("high") ? "high" : allowed[0];
         }
@@ -471,6 +580,14 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         // upstreams require budget_tokens on a thinking block, so the redundant
         // marker is rejected there — omit it and keep the reasoning effort.
         if (canDisable || targetFormat !== FORMATS.CLAUDE) body.thinking = { type: "enabled" };
+        // The Anthropic wire requires budget_tokens on an enabled block, so a
+        // client's explicit budget must survive (even for always-on models,
+        // where it still caps reasoning). A missing budget is filled later by
+        // reconcileClaudeThinkingBudget, once max_tokens is final.
+        if (targetFormat === FORMATS.CLAUDE && GLM_ANTHROPIC_PROVIDERS.has(provider) && cfg.mode === "budget") {
+          const budget = toBudget(cfg, caps.thinkingRange);
+          if (Number.isFinite(budget) && budget > 0) body.thinking = { type: "enabled", budget_tokens: budget };
+        }
         // Z.ai reads scalar high|max; Ark-compatible wires read reasoning.effort.
         const level = toLevel(eff);
         const objectEffort = ["minimal", "low", "medium", "high"].includes(level) ?
@@ -495,6 +612,18 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         break;
       }
     case "deepseek":{
+        // OpenCode Go declares model-scoped DeepSeek effort tiers (the same rows
+        // the catalog advertises). The intent was already folded onto the
+        // declared set in applyThinking, so the tier is forwarded verbatim and
+        // a tier the model does not declare never reaches the wire.
+        const goTiers = getOpencodeGoEffortTiers(provider, model);
+        if (goTiers) {
+          const requested = eff.mode === "none" ? "none" : (toLevel(eff) || "high");
+          const tier = clampTierToSupported(requested === "auto" ? "high" : requested, goTiers);
+          body.reasoning_effort = tier;
+          body.thinking = { type: tier === "none" ? "disabled" : "enabled" };
+          break;
+        }
         if (none && canDisable) {body.thinking = { type: "disabled" };break;}
         body.thinking = { type: "enabled" };
         // Native DeepSeek V4 accepts reasoning_effort "max"; legacy V3.2 models
@@ -581,7 +710,8 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
       if (body.thinking) {
         delete body.reasoning_effort;
       } else {
-        body.output_config = body.output_config || {};
+        // Copy, not edit: output_config may be shared with another combo target.
+        body.output_config = { ...body.output_config };
         if (!body.output_config.effort) body.output_config.effort = body.reasoning_effort;
         delete body.reasoning_effort;
       }
@@ -599,20 +729,27 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
-  const cfg = override || intent || extractThinking(body);
   const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
+  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
+
+  // OpenCode Go publishes model-scoped DeepSeek effort tiers (the same rows the
+  // catalog advertises). Fold the requested tier onto the declared set once,
+  // before any lane renders it, so the chat, messages and responses lanes all
+  // carry a rung the model accepts.
+  const goTiers = getOpencodeGoEffortTiers(provider, cleanModel);
+  const tieredCfg = goTiers ? normalizeToDeclaredTiers(cfg, goTiers) : cfg;
 
   // Model cannot reason → strip any stray thinking fields.
   if (!caps.reasoning) {
     stripAll(body, targetFormat === FORMATS.CLAUDE);
     return body;
   }
-  if (!cfg) return body;
+  if (!tieredCfg) return body;
   if ((provider === "minimax" || provider === "minimax-cn") && /^MiniMax-M[23]/.test(cleanModel)) {
     const reasoningDetails = body.reasoning && isObject(body.reasoning) ? { ...body.reasoning } : {};
     stripAll(body, targetFormat === FORMATS.CLAUDE);
-    const disabled = cfg.mode === "none" && caps.thinkingCanDisable !== false;
-    const level = cfg.mode === "none" && !disabled ? "low" : toLevel(cfg);
+    const disabled = tieredCfg.mode === "none" && caps.thinkingCanDisable !== false;
+    const level = tieredCfg.mode === "none" && !disabled ? "low" : toLevel(tieredCfg);
     if (targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE) {
       if (disabled || level && level !== "auto") {
         body.reasoning = { ...reasoningDetails, effort: disabled ? "none" : level };
@@ -627,19 +764,29 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
+  // Interactions Hydrogen has a distinct documented enum; do not apply the
+  // generic Gemini xhigh-to-high conversion. Unsupported intents are omitted.
+  if (provider === "gemini-interactions" && cleanModel === "gemini-4-hydrogen") {
+    stripAll(body, false);
+    if (cfg.mode === "level" && ["low", "medium", "high", "xhigh"].includes(cfg.level)) {
+      body.reasoning_effort = cfg.level;
+    }
+    return body;
+  }
+
   const fmt = resolveFormat(targetFormat, cleanModel, provider, caps);
   // Anthropic's `display` (summarized | omitted) decides whether thinking text
   // comes back at all; capture what the client asked for before stripAll wipes
   // body.thinking, so an explicit client choice survives the reformat.
   const requestedDisplay = isString(body.thinking?.display) ? body.thinking.display : undefined;
-  const requestedThinkingType = body.thinking?.type || cfg.thinkingType;
+  const requestedThinkingType = body.thinking?.type || tieredCfg.thinkingType;
   stripAll(body, targetFormat === FORMATS.CLAUDE, targetFormat === FORMATS.OPENAI_RESPONSES || targetFormat === FORMATS.OPENAI_RESPONSE);
-  applyFormat(fmt, body, cfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType, targetFormat);
+  applyFormat(fmt, body, tieredCfg, caps, cleanModel, provider, requestedDisplay, requestedThinkingType, targetFormat);
   // A compatible DeepSeek gateway can validate the explicit source budget.
   if (targetFormat === FORMATS.OPENAI && provider?.startsWith("openai-compatible-") &&
     caps.thinkingFormat === "deepseek" && ["openai", "deepseek"].includes(fmt) &&
-    cfg.mode === "budget" && Number.isFinite(cfg.budget) && cfg.budget > 0) {
-    body.thinking = { type: "enabled", budget_tokens: cfg.budget };
+    tieredCfg.mode === "budget" && Number.isFinite(tieredCfg.budget) && tieredCfg.budget > 0) {
+    body.thinking = { type: "enabled", budget_tokens: tieredCfg.budget };
   }
   if (provider === "kimi" && targetFormat === FORMATS.CLAUDE) {
     // Moonshot Messages exposes effort through output_config, not OpenAI reasoning_effort.

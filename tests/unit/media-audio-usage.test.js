@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ key: "audio-client-key", combo: null, denied: false, ledgerFailure: false }));
 vi.mock("@/lib/localDb", async () => {
@@ -53,9 +53,34 @@ let previousDataDir;
 let previousEngine;
 let listeners;
 let adapter;
+const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+// Load the invariant handler graph once, under a private directory: dataDir and
+// databaseEnvFile capture DATA_DIR at import time. The driver retains its state
+// object, but resolves the SQLite file and engine when getAdapter() is called.
+const originalAdapterState = global._dbAdapter;
+const originalDataDir = process.env.DATA_DIR;
+const originalEnvSource = process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON;
+const importListeners = new Map(signals.map((signal) => [signal, new Set(process.listeners(signal))]));
+const importDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "audio-import-"));
+let getAdapter;
 let handleStt;
 let handleTts;
-const signals = ["beforeExit", "SIGINT", "SIGTERM", "exit"];
+try {
+  process.env.DATA_DIR = importDirectory;
+  delete global._dbAdapter;
+  ({ getAdapter } = await import("@/lib/db/driver.js"));
+  ({ handleStt } = await import("@/sse/handlers/stt.js"));
+  ({ handleTts } = await import("@/sse/handlers/tts.js"));
+} finally {
+  if (originalDataDir === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = originalDataDir;
+  if (originalEnvSource === undefined) delete process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON; else process.env.DURINDOOR_DATABASE_ENV_SOURCE_JSON = originalEnvSource;
+  for (const signal of signals) for (const listener of process.listeners(signal)) if (!importListeners.get(signal).has(listener)) process.removeListener(signal, listener);
+  fs.rmSync(importDirectory, { recursive: true, force: true });
+}
+const driverState = global._dbAdapter;
+afterAll(() => {
+  if (originalAdapterState === undefined) delete global._dbAdapter; else global._dbAdapter = originalAdapterState;
+});
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 function sttRequest(model = "openai/whisper-1", kind = "transcriptions") {
   const body = new FormData();
@@ -74,19 +99,15 @@ beforeEach(async () => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), "audio-usage-"));
   process.env.DATA_DIR = directory;
   process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
-  delete global._dbAdapter;
-  vi.resetModules();
   vi.clearAllMocks();
   state.key = "audio-client-key"; state.combo = null; state.denied = false; state.ledgerFailure = false;
   vi.stubGlobal("fetch", vi.fn());
-  adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+  adapter = await getAdapter();
   adapter.run("INSERT INTO apiKeys(id, key, name, isActive, allowedCombos, createdAt) VALUES(?, ?, ?, 1, '[]', ?)", ["audio-key-id", state.key, "Audio test", new Date().toISOString()]);
-  ({ handleStt } = await import("@/sse/handlers/stt.js"));
-  ({ handleTts } = await import("@/sse/handlers/tts.js"));
 });
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();
-  delete global._dbAdapter;
+  Object.assign(driverState, { instance: null, initPromise: null, logged: false, file: null, cacheKey: null });
   vi.unstubAllGlobals();
   vi.useRealTimers();
   for (const signal of signals) for (const listener of process.listeners(signal)) if (!listeners.get(signal).has(listener)) process.removeListener(signal, listener);
@@ -226,7 +247,7 @@ describe("audio handlers commit normalized native usage", () => {
         "assemblyai", new Set(), "universal-2", { apiKeyId: "audio-key-id" },
       );
       expect(markAccountUnavailable).toHaveBeenCalledExactlyOnceWith(
-        "account-a", 500, body.error.message, "assemblyai", "universal-2", null, { usedCredential: token },
+        "account-a", 500, body.error.message, "assemblyai", "universal-2", null, { usedCredential: token, credentialFingerprint: null, dispatchedAt: expect.any(Number) },
       );
       expect(rows()).toEqual([]);
       expect(responses).toEqual([]);
@@ -245,7 +266,7 @@ describe("audio handlers commit normalized native usage", () => {
     fetch.mockResolvedValue(json({ text: "translated", duration: 60 }));
     const response = await handleStt(sttRequest("openai/whisper-1", "translations"), { kind: "translation" });
     expect(await response.json()).toEqual({ text: "translated", duration: 60 });
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, endpoint: "/v1/audio/translations", cost: 0.006, usageEventId: `${response.headers.get("x-request-id")}:stt` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", endpoint: "/v1/audio/translations", cost: 0.006, usageEventId: `${response.headers.get("x-request-id")}:stt` });
     expect(metadata(rows()[0]).costStatus).toBe("estimated");
     expect(String(fetch.mock.calls[0][0])).toContain("/audio/translations");
   });
@@ -272,7 +293,7 @@ describe("audio handlers commit normalized native usage", () => {
     expect(response.bodyUsed).toBe(false);
     expect(rows()).toEqual([]);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(audio);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, provider: "openai", model: "tts-1/alloy", connectionId: "account-a", endpoint: "/v1/audio/speech", promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:tts` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", provider: "openai", model: "tts-1/alloy", connectionId: "account-a", endpoint: "/v1/audio/speech", promptTokens: 0, completionTokens: 0, usageEventId: `${response.headers.get("x-request-id")}:tts` });
     expect(rows()[0].cost).toBeCloseTo(7 * 15 / 1_000_000);
     expect(metadata(rows()[0])).toMatchObject({ modality: "tts", nativeUnits: { characters: 7 }, costStatus: "estimated" });
     expect(JSON.parse(fetch.mock.calls[0][1].body).input).toBe("hello 🌍");
@@ -337,7 +358,7 @@ describe("audio handlers commit normalized native usage", () => {
     const response = await handleTts(ttsRequest("openrouter/openai/gpt-4o-mini-tts/alloy"));
     expect(response.bodyUsed).toBe(false);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, connectionId: "account-a", cost, promptTokens: 3, completionTokens: 5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", connectionId: "account-a", cost, promptTokens: 3, completionTokens: 5 });
     expect(metadata(rows()[0])).toMatchObject({ costStatus: "known", costSource: "provider:openrouter", providerReceipt: { id: "receipt-id", usage } });
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2]));
   });
@@ -355,7 +376,7 @@ describe("audio handlers commit normalized native usage", () => {
       return;
     }
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: state.key, provider: "minimax", model: "speech-2.8-hd/English_expressive_narrator", connectionId: "account-a", endpoint: "/v1/audio/speech", usageEventId: `${response.headers.get("x-request-id")}:tts` });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "audio-key-id", provider: "minimax", model: "speech-2.8-hd/English_expressive_narrator", connectionId: "account-a", endpoint: "/v1/audio/speech", usageEventId: `${response.headers.get("x-request-id")}:tts` });
     expect(metadata(rows()[0])).toMatchObject({ nativeUnits: { characters: 6, audioSeconds: 1.25 }, providerReceipt: { trace_id: "stream-receipt" } });
   });
 

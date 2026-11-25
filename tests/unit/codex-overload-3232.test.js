@@ -47,6 +47,26 @@ describe("Codex fake 200 overload handling (#3232)", () => {
     expect(peek.replacementBody).toBeNull();
   });
 
+  it("routes an explicit failed response with a nested overload error to account fallback", async () => {
+    const executor = new CodexExecutor();
+    const frame = `event: response.failed\ndata: ${JSON.stringify({
+      type: "response.failed",
+      response: { status: "failed", error: { message: OVERLOAD_MESSAGE } },
+    })}\n\n`;
+    const response = new Response(streamFromChunks([frame]), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+
+    const peek = await executor._peekSseTransientError(response);
+
+    expect(peek.matched).toBe("currently overloaded");
+    expect(peek.message).toBe(OVERLOAD_MESSAGE);
+    expect(peek.accountFallback).toBe(true);
+    expect(peek.contextOverflow).toBe(false);
+    expect(peek.replacementBody).toBeNull();
+  });
+
   it("does not classify similar legitimate output as an overload", async () => {
     const executor = new CodexExecutor();
     const text = sseDelta("Our servers are currently processing your request.");

@@ -4,6 +4,43 @@ import { getCapabilitiesForModel } from "./capabilities.js";
 import { matchPattern } from "./pricing.js";
 import { PROVIDERS } from "./index.js";
 import { isKiroFamilyProvider } from "./models/kiroVariants.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
+
+// OpenCode Go and its `ocg` alias publish model-scoped DeepSeek effort tiers.
+// The OmniRoute provider catalog at upstream commit
+// 2b14379604d466005bb18640a898c2811757ef67 declares:
+//   deepseek-v4-pro / deepseek-v4-flash / deepseek-v4-flash-vision-exp
+//     -> none | low | high | max
+//   deepseek-v4.1-flash / deepseek-flash (the 1M DeepSeek V4.1 Flash)
+//     -> low | high | max   (OmniRoute #20436, PR #20465)
+// This table is the single declaration: the advertised catalog
+// (getThinkingLevels) and the request normalization
+// (getOpencodeGoEffortTiers, consumed by thinkingUnified.applyThinking) read
+// the same rows, so a tier the catalog advertises is a tier the gateway
+// accepts and a tier it does not advertise never reaches the wire.
+export const OPENCODE_GO_PROVIDERS = ["opencode-go", "ocg"];
+
+export const OPENCODE_GO_DEEPSEEK_EFFORT_TIERS = {
+  "deepseek-v4-pro": ["none", "low", "high", "max"],
+  "deepseek-v4-flash": ["none", "low", "high", "max"],
+  "deepseek-v4-flash-vision-exp": ["none", "low", "high", "max"],
+  "deepseek-v4.1-flash": ["low", "high", "max"],
+  "deepseek-flash": ["low", "high", "max"],
+};
+
+/**
+ * Declared OpenCode Go effort tiers for one model, or null when the provider
+ * or the model declares none. Model ids may carry a provider prefix.
+ * @param {string} provider
+ * @param {string} model
+ * @returns {string[]|null}
+ */
+export function getOpencodeGoEffortTiers(provider, model) {
+  if (!OPENCODE_GO_PROVIDERS.includes(provider)) return null;
+  if (!isString(model)) return null;
+  const id = model.includes("/") ? model.split("/").pop() : model;
+  return OPENCODE_GO_DEEPSEEK_EFFORT_TIERS[id] || null;
+}
 
 // Shared level sets (deduped) — verified against provider docs + wire in thinkingUnified.applyFormat.
 const L = {
@@ -45,6 +82,11 @@ const FORMAT_LEVELS = {
 // Model-name pattern overrides (glob, first match wins) — more precise than format default.
 // GPT-5.6 patterns must precede broad *codex* so Sol/Terra/Luna keep their matrix.
 const PATTERN_THINKING = [
+  { provider: "antigravity", pattern: "*claude*sonnet-5-5*", levels: ["low", "medium", "high", "max"] },
+  { provider: "antigravity", pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "max"] },
+  { provider: "ag", pattern: "*claude*sonnet-5-5*", levels: ["low", "medium", "high", "max"] },
+  { provider: "ag", pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "max"] },
+  { pattern: "*gemini-4-neon*", levels: ["low", "medium", "high", "xhigh"] },
   /** Claude Opus 5.5 accepts low..max including xhigh; it rejects disabled thinking and `ultra`. */
   { pattern: "*claude*opus-5-5*", levels: ["low", "medium", "high", "xhigh", "max"] },
   // Sol/Terra accept max + ultra on the wire.
@@ -88,10 +130,14 @@ const PATTERN_THINKING = [
   // above).
   { provider: "commandcode", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
   { provider: "cmc", pattern: "*deepseek-v4.*", levels: FORMAT_LEVELS.commandcode },
-  // OmniRoute #20465: Go's two Flash IDs accept only these efforts.
-  ...["opencode-go", "ocg"].flatMap((provider) =>
-    ["deepseek-v4.1-flash", "deepseek-flash"].map((pattern) =>
-      ({ provider, pattern, levels: ["low", "high", "max"] }))),
+  // OpenCode Go publishes model-scoped DeepSeek effort tiers (OmniRoute #20465
+  // / #20436). The rows come from the shared declaration above, so the
+  // advertised catalog and the normalized request cannot drift apart. Scoped
+  // to the OpenCode Go provider and its alias: the same model ids routed
+  // elsewhere keep their own effort sets.
+  ...OPENCODE_GO_PROVIDERS.flatMap((provider) =>
+    Object.entries(OPENCODE_GO_DEEPSEEK_EFFORT_TIERS).map(([pattern, levels]) =>
+      ({ provider, pattern, levels }))),
   // DeepSeek v4.* dotted releases (Alibaba MaaS, probed live): effort
   // low|medium|high|xhigh|max all 200 via output_config.effort; "none" is a 400
   // on the anthropic route (disable thinking instead). none kept for the picker

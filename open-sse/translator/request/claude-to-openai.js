@@ -1,4 +1,4 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -89,11 +89,14 @@ export function claudeToOpenAIRequest(model, body, stream, _credentials, opts = 
     }
   }
 
+  // Cap the total encoded nested tool-result images across the request at 1 MiB.
+  const imageBudget = { remaining: 1024 * 1024 };
+
   // Convert messages
   if (body.messages && Array.isArray(body.messages)) {
     for (let i = 0; i < body.messages.length; i++) {
       const msg = body.messages[i];
-      const converted = convertClaudeMessage(msg, opts);
+      const converted = convertClaudeMessage(msg, opts, imageBudget);
       if (converted) {
         // Handle array of messages (multiple tool results)
         if (Array.isArray(converted)) {
@@ -226,8 +229,7 @@ function attachNativeBlocks(message, nativeBlocks) {
   return message;
 }
 
-// Nested tool-result media cannot be forwarded as a data URI; retain only a
-// bounded media-type label so binary payloads never enter the upstream request.
+// Invalid or over-budget nested media retains only a bounded media-type label.
 function describeOmittedMedia(mediaType) {
   const label = isString(mediaType) && mediaType ? mediaType.slice(0, 100) : "image";
   return `[tool result omitted image: ${label}]`;
@@ -253,7 +255,7 @@ function urlImagePart(block) {
 }
 
 // Convert single Claude message - returns single message or array of messages
-function convertClaudeMessage(msg, opts) {
+function convertClaudeMessage(msg, opts, imageBudget) {
   // Tolerate clients that send one content block without the surrounding array.
   if (isObject(msg.content) && msg.content !== null && !Array.isArray(msg.content)) {
     msg.content = [msg.content];
@@ -276,7 +278,7 @@ function convertClaudeMessage(msg, opts) {
     const parts = [];
     const toolCalls = [];
     const toolResults = [];
-    // URL images found inside tool_result blocks, sent in the user message
+    // Images found inside tool_result blocks, sent in the user message
     // that follows the tool messages (OpenAI tool messages can't hold images).
     const toolResultImages = [];
     let reasoningContent = "";
@@ -358,15 +360,7 @@ function convertClaudeMessage(msg, opts) {
           if (isString(block.content)) {
             resultContent = block.content;
           } else if (Array.isArray(block.content)) {
-            // Text stays in the tool message. A nested binary media block
-            // (screenshot, etc.) becomes a bounded placeholder naming the media
-            // type instead of being lifted into a following user turn as a data
-            // URI: OpenAI `tool` messages can't carry images, and forwarding the
-            // raw base64 either way burns ~100KB+ tokens per screenshot and trips
-            // upstream validators on oversized payloads. This is scoped to
-            // *nested* tool_result media only — ordinary top-level user images
-            // (the CLAUDE_BLOCK.IMAGE case above) are untouched and still become
-            // real image_url parts.
+            // Text stays in tool messages; images follow all tool responses.
             const textParts = [];
             let hasOmittedMedia = false;
             for (const c of block.content) {
@@ -383,8 +377,18 @@ function convertClaudeMessage(msg, opts) {
                   throw unsupportedDocument(c.source?.type);
                 }
               } else if (c.type === CLAUDE_BLOCK.IMAGE && c.source?.type === "base64") {
-                textParts.push(describeOmittedMedia(c.source.media_type));
-                hasOmittedMedia = true;
+                const { data, media_type: mediaType } = c.source;
+                if (isString(data) && data.length > 0 && data.length <= imageBudget.remaining &&
+                    /^(?:image\/(?:jpeg|png|gif|webp))$/.test(mediaType) &&
+                    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
+                  imageBudget.remaining -= data.length;
+                  toolResultImages.push({ type: OPENAI_BLOCK.TEXT, text: `[Image from tool result ${block.tool_use_id}]` });
+                  toolResultImages.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: encodeDataUri(mediaType, data) } });
+                  textParts.push("[tool returned an image; see attached]");
+                } else {
+                  textParts.push(describeOmittedMedia(mediaType));
+                  hasOmittedMedia = true;
+                }
               } else if (c.type === CLAUDE_BLOCK.IMAGE && urlImagePart(c)) {
                 // A URL costs no tokens to forward, so it is lifted as a real image.
                 toolResultImages.push(urlImagePart(c));

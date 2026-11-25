@@ -148,6 +148,13 @@ describe("localAudit", () => {
     expect(findings.some((f) => /upstreamModelId "missing-parent" resolves to no id/.test(f))).toBe(true);
   });
 
+  it("resolves an xhigh preset only when its base is a sibling model", async () => {
+    const audit = (models) => localAudit([{ id: "demo", models }], FORMATS, { model: {}, provider: {}, pattern: [] });
+    expect(await audit([{ id: "base" }, { id: "variant", upstreamModelId: "base(xhigh)" }])).toEqual([]);
+    const findings = await audit([{ id: "variant", upstreamModelId: "missing(xhigh)" }]);
+    expect(findings.some((f) => f.includes('upstreamModelId "missing(xhigh)" resolves to no id'))).toBe(true);
+  });
+
   it("accepts only Antigravity Hydrogen's exact XHigh wire-only upstream id", async () => {
     const audit = (provider, id, upstreamModelId) => localAudit(
       [{ id: provider, models: [{ id, upstreamModelId }] }],
@@ -162,6 +169,30 @@ describe("localAudit", () => {
       ["antigravity", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)-typo"],
       ["other", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-xhigh(xhigh)"],
       ["antigravity", "gemini-4-hydrogen-typo", "gemini-4-hydrogen-xhigh(xhigh)"],
+    ]) {
+      const findings = await audit(provider, id, upstreamModelId);
+      expect(findings.some((f) => f.includes(`upstreamModelId "${upstreamModelId}" resolves to no id`))).toBe(true);
+    }
+  });
+
+  it("accepts Antigravity Neon XHigh and Claude 5.5 Max self-tier wire ids only", async () => {
+    const audit = (provider, id, upstreamModelId) => localAudit(
+      [{ id: provider, models: [{ id, upstreamModelId }] }],
+      FORMATS,
+      { model: {}, provider: {}, pattern: [] }
+    );
+
+    for (const provider of ["antigravity", "agy"]) {
+      expect(await audit(provider, "gemini-4-neon-xhigh", "gemini-4-neon-xhigh(xhigh)")).toEqual([]);
+      expect(await audit(provider, "claude-opus-5-5-max", "claude-opus-5-5-max(max)")).toEqual([]);
+      expect(await audit(provider, "claude-sonnet-5-5-max", "claude-sonnet-5-5-max(max)")).toEqual([]);
+    }
+    for (const [provider, id, upstreamModelId] of [
+      ["antigravity", "claude-opus-5-5-max", "claude-opus-5-5-max(xhigh)"],
+      ["antigravity", "claude-opus-5-5-high", "claude-opus-5-5-high(max)"],
+      ["antigravity", "claude-opus-5-5-max", "claude-opus-5-5-typo(max)"],
+      ["other", "claude-opus-5-5-max", "claude-opus-5-5-max(max)"],
+      ["agy", "gemini-4-neon-xhigh", "gemini-4-neon-xhigh(max)"],
     ]) {
       const findings = await audit(provider, id, upstreamModelId);
       expect(findings.some((f) => f.includes(`upstreamModelId "${upstreamModelId}" resolves to no id`))).toBe(true);

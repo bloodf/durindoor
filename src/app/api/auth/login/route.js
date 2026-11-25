@@ -5,9 +5,16 @@ import { cookies } from "next/headers";
 import { isUsingDefaultPassword, setDashboardAuthCookie, setMfaPendingCookie } from "@/lib/auth/dashboardSession";
 import { isMfaEnabled } from "@/lib/auth/mfa";
 import { issuePasswordChangeProof } from "@/lib/auth/passwordChangeProof";
-import { isOidcConfigured } from "@/lib/auth/oidc";
+import { isPasswordLoginAllowed } from "@/lib/auth/oidc";
 import { hasExactRequestOrigin, hasTrustedLocalOrigin } from "@/lib/auth/requestOrigin";
-import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
+import {
+  checkLock,
+  recordFail,
+  recordSuccess,
+  getClientIp,
+  reserveAttempt,
+  releaseReservation,
+} from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 
@@ -21,33 +28,44 @@ function isTunnelRequest(request, settings) {
   return (tunnelHost && host === tunnelHost) || (tailscaleHost && host === tailscaleHost);
 }
 
+function lockedResponse(lock) {
+  return NextResponse.json(
+    { error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
+    { status: 429, headers: { "Retry-After": String(lock.retryAfter) } }
+  );
+}
 
 export async function POST(request) {
+  let ip;
+  let settled = true;
   try {
-    const ip = getClientIp(request);
-    const lock = checkLock(ip);
-    if (lock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${lock.retryAfter}s. ${RESET_HINT}`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
-        { status: 429, headers: { "Retry-After": String(lock.retryAfter) } }
-      );
-    }
+    ip = getClientIp(request);
     if (!hasExactRequestOrigin(request)) {
       return NextResponse.json({ error: "Cross-origin login is not allowed" }, { status: 403, headers: NO_STORE_HEADERS });
     }
+
+    // Reserve synchronously before any await so concurrent bursts cannot all
+    // evaluate credentials then race recordFail (issue #2242).
+    const reserved = reserveAttempt(ip);
+    if (reserved.locked) return lockedResponse(reserved);
+    settled = false;
 
     const { password } = await request.json();
     const settings = await getSettings();
 
     // Block login via tunnel/tailscale if dashboard access is disabled
     if (isTunnelRequest(request, settings) && settings.tunnelDashboardAccess !== true) {
+      releaseReservation(ip);
+      settled = true;
       return NextResponse.json({ error: "Dashboard access via tunnel is disabled" }, { status: 403 });
     }
 
     // Default password is '123456' if not set
     const storedHash = settings.password;
 
-    if (settings.authMode === "oidc" && isOidcConfigured(settings)) {
+    if (!isPasswordLoginAllowed(settings)) {
+      releaseReservation(ip);
+      settled = true;
       return NextResponse.json({ error: "Password login is disabled. Use OIDC sign in." }, { status: 403 });
     }
 
@@ -67,24 +85,12 @@ export async function POST(request) {
       // change-password endpoint accepts.
       const mustChangePassword = await isUsingDefaultPassword(settings);
       if (mustChangePassword) {
-        if (!isLocalRequest(request) || !hasTrustedLocalOrigin(request) || !hasExactRequestOrigin(request)) {
-          recordFail(ip);
-          const postLock = checkLock(ip);
-          if (postLock.locked) {
-            return NextResponse.json(
-              { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-              { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-            );
-          }
-          return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
-        }
         recordFail(ip);
+        settled = true;
         const postLock = checkLock(ip);
-        if (postLock.locked) {
-          return NextResponse.json(
-            { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-            { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-          );
+        if (postLock.locked) return lockedResponse(postLock);
+        if (!isLocalRequest(request) || !hasTrustedLocalOrigin(request) || !hasExactRequestOrigin(request)) {
+          return NextResponse.json({ success: true, mustChangePassword: true }, { status: 403, headers: NO_STORE_HEADERS });
         }
         const proof = issuePasswordChangeProof(ip, settings.passwordSessionEpoch ?? "initial");
         if (!proof) {
@@ -95,8 +101,18 @@ export async function POST(request) {
           { status: 403, headers: NO_STORE_HEADERS }
         );
       }
+      // Concurrent confirmed failures may have locked the bucket while bcrypt ran.
+      const successLock = checkLock(ip);
+      if (successLock.locked) {
+        releaseReservation(ip);
+        settled = true;
+        return lockedResponse(successLock);
+      }
+
       const currentSettings = await getSettings();
       if ((currentSettings.passwordSessionEpoch ?? "initial") !== (settings.passwordSessionEpoch ?? "initial")) {
+        releaseReservation(ip);
+        settled = true;
         return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
       }
       const cookieStore = await cookies();
@@ -108,6 +124,8 @@ export async function POST(request) {
       // complete, and resetting it would hand an attacker a fresh lockout
       // budget for brute-forcing the second factor.
       if (isMfaEnabled(currentSettings)) {
+        releaseReservation(ip);
+        settled = true;
         await setMfaPendingCookie(cookieStore, request);
         return NextResponse.json(
           { success: false, mfaRequired: true, mustChangePassword: false },
@@ -118,24 +136,22 @@ export async function POST(request) {
       try {
         await setDashboardAuthCookie(cookieStore, request, { passwordSessionEpoch: settings.passwordSessionEpoch ?? "initial" }, settings.passwordSessionEpoch ?? "initial");
         recordSuccess(ip);
+        settled = true;
         return NextResponse.json({ success: true, mustChangePassword: false }, { headers: NO_STORE_HEADERS });
       } catch (error) {
         if (error && error.message === "AUTH_EPOCH_RACE") {
+          releaseReservation(ip);
+          settled = true;
           return NextResponse.json({ error: "Login state changed, please retry" }, { status: 409, headers: NO_STORE_HEADERS });
         }
         throw error;
       }
     }
 
-
     const { remainingBeforeLock } = recordFail(ip);
+    settled = true;
     const postLock = checkLock(ip);
-    if (postLock.locked) {
-      return NextResponse.json(
-        { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s. ${RESET_HINT}`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },
-        { status: 429, headers: { "Retry-After": String(postLock.retryAfter) } }
-      );
-    }
+    if (postLock.locked) return lockedResponse(postLock);
     return NextResponse.json(
       { error: `Invalid password. ${remainingBeforeLock} attempt(s) left before lockout.`, remainingBeforeLock },
       { status: 401 }
@@ -143,5 +159,7 @@ export async function POST(request) {
   } catch {
     console.error("[auth] login failed");
     return NextResponse.json({ error: "Login failed" }, { status: 500 });
+  } finally {
+    if (!settled) releaseReservation(ip);
   }
 }

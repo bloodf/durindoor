@@ -1,0 +1,33 @@
+# #1073 November existing Codex wire fidelity
+
+## Scope and pins
+
+Compared the named OmniRoute PR heads with this checkout's Codex executor and request fixtures. PRs #18274 and #19055 need the named public commit/diff because their enclosing merge includes other branch changes. Pins:
+
+| PR | Exact PR head | Enclosing merge | Public evidence |
+| --- | --- | --- | --- |
+| [OmniRoute #18274](https://github.com/cheaper-inference/OmniRoute/pull/18274) | `00a47340cd840a2f968a631351b3647a939a3e12` | `5f75aac25c6b36da086a19ddb22caff8a445dc10` | [head patch](https://github.com/cheaper-inference/OmniRoute/commit/00a47340cd840a2f968a631351b3647a939a3e12) |
+| [OmniRoute #18329](https://github.com/cheaper-inference/OmniRoute/pull/18329) | `abbadc4f20fb750b3b389e5e867083f98a9227af` | `c66fb539955dbab1da0a03460150643d7500059d` | [PR](https://github.com/cheaper-inference/OmniRoute/pull/18329) |
+| [OmniRoute #19055](https://github.com/cheaper-inference/OmniRoute/pull/19055) | `1713b345625a6dbe44ae525d02337c6cedf19f65` | `c9a5071279e689eaec82f9c5a5e965462746f00b` | [head patch](https://github.com/cheaper-inference/OmniRoute/commit/1713b345625a6dbe44ae525d02337c6cedf19f65) |
+
+For #18274 the enclosing merge contains the broader Codex wire-fidelity work (including removal of injected instructions and preservation of request fields), while the exact PR head patch itself adds `parallel_tool_calls` propagation in the Chat-to-Responses translator and its test. For #19055 the exact head adds a frozen-body translated-path test; it does not add a new transformation. #18329 is evaluated as the named PR head against its first parent, rather than treating the release merge as the PR patch.
+
+## Current local behavior and fixture evidence
+
+- Reasoning controls are already handled by the Codex executor. `open-sse/executors/codex.js` keeps `reasoning` in the allowed Responses request fields and maps legacy `reasoning_effort` into `reasoning.effort`; the model-aware policy applies explicit reasoning selection and legacy alias behavior. `tests/unit/codex-fast-capacity.test.js`, `codex-effort-wire.test.js`, and `codex-client-version-and-reasoning.test.js` assert nested and legacy inputs, explicit values, model-specific normalization, and the emitted wire effort. Preserve this precedence: explicit reasoning selection wins over fallback defaults, while server-forced choices and existing model suffix/catalog policy retain their established ordering.
+- The local Responses translator already carries `parallel_tool_calls` (`open-sse/translator/request/openai-responses.js`, assignment at the request mapping), and the Codex executor retains that field. `tests/unit/codex-executor.test.js` checks it on normal and compact requests. Therefore #18274's exact head is already covered locally; it does not demonstrate a remaining local gap.
+- Codex tools are normalized through `normalizeCodexTools` in `open-sse/executors/codex.js`. Existing fixtures cover declared tools and `tool_choice`; the current normalization sanitizes schemas and strictness. I found no local preservation assertion for `defer_loading` in the inspected Codex fixtures. #18329's Codex-specific narrow addition preserves a boolean `defer_loading` supplied at either the outer tool or nested function definition, with outer boolean precedence; invalid values are omitted. Its request-contract fixture also covers numeric safe-integer reasoning budgets, explicit future/disabled strings, summary delivery filtering, and non-mutation. These are wire-contract fidelity cases, not new modes or aliases.
+- The #18329 reasoning changes preserve nonnegative safe integer effort values (including zero), normalize known tier strings, keep unknown model-defined strings verbatim, and use nullish precedence so `0` is not treated as absent. They retain force/suffix/catalog precedence and the legacy alias cap. This protects numeric wire compatibility; the upstream test explicitly says it does not claim model acceptance. Local tests cover existing string controls and precedence but do not establish numeric budget preservation or the `defer_loading` boolean case.
+- Local request-copy behavior is tested by `tests/unit/codex-executor.test.js` and related executor fixtures for caller input preservation; #19055 adds a deep-frozen translated-body assertion, proving transformations do not write into the caller body while output conversion proceeds. This is stronger regression evidence for the existing immutable request contract, not a user-facing feature. Keep request transformation portable and copy-on-write; do not mutate caller-owned arrays, tool definitions, or reasoning objects.
+
+## Disposition
+
+| PR | Disposition | Port assessment |
+| --- | --- | --- |
+| #18274 | **Already present; no port.** | Exact head adds preservation of an explicit Chat `parallel_tool_calls` boolean, including `false`, and omission when unset. The local translator and Codex executor fixtures already preserve the field. Do not duplicate it. The enclosing merge's wider instruction-removal/request-pass-through changes are outside the exact head patch and are not attributed to this PR head here. |
+| #18329 | **Narrow fidelity gap; ordinary offline acceptance recommended.** | Add focused offline coverage, and implementation only if the current code fails it, for safe numeric reasoning effort, `defer_loading` booleans in both declaration locations, summary-delivery filtering, and frozen caller input. Preserve the current explicit reasoning precedence and portable immutable-copy behavior. Do not introduce new effort aliases, modes, or a claim that arbitrary budgets are accepted by every provider. |
+| #19055 | **Test-only reinforcement; no separate product port.** | Its exact head freezes a synthetic translated request and asserts caller input remains unchanged while the transformed output is normalized. Use the same shape as ordinary offline acceptance for the narrow #18329 gap. |
+
+## Acceptance for any demonstrated narrow gap
+
+Use an ordinary offline unit fixture under `tests/unit/` with synthetic request data and no credentials or live provider. Assert (1) input deep-freeze/input equality and correct transformed output, (2) reasoning `0` and safe nonnegative integer types survive JSON serialization, while invalid numbers fall back under existing policy, (3) existing string aliases and forced/suffix/catalog precedence remain unchanged, (4) `defer_loading` accepts only booleans with outer declaration precedence, and (5) only a valid nonempty `reasoning_summary_delivery` survives, without unrelated Chat stream options. Document any behavior change next to its code or in the docs. No public feature or new alias is warranted by these patches.

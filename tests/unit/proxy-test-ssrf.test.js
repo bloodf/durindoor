@@ -1,26 +1,11 @@
-/**
- * SEC-A-02: SSRF hardening on /api/settings/proxy-test.
- *
- * The route previously read `body.testUrl` and passed it straight to
- * `undiciFetch` with the caller's `proxyUrl` as dispatcher. A caller
- * could supply a metadata / link-local testUrl and probe it through
- * the configured proxy — the dispatcher was a red herring.
- *
- * Fix:
- *   - caller `testUrl` ignored; fixed `DEFAULT_TEST_URL` always fetched
- *   - URL re-validated via `assertPublicUrl` on EVERY 3xx hop
- *   - scheme pinned to https:
- *   - redirect:"manual" set so a hostile proxy cannot bounce the probe
- *
- * These tests mock `undici.fetch` and the `ProxyAgent` constructor so
- * they never touch the network.
- */
+/** Proxy probes must reject private destinations and redirects. */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const undiciFetchMock = vi.fn();
 const proxyAgentCloseMock = vi.fn();
 
-vi.mock("undici", () => ({
+vi.mock("undici", async (importOriginal) => ({
+  ...(await importOriginal()),
   // `ProxyAgent` is constructed via `new` in the module under test, so
   // the implementation must be a constructible function (not an arrow).
   ProxyAgent: vi.fn().mockImplementation(function ProxyAgentMock() {
@@ -29,8 +14,10 @@ vi.mock("undici", () => ({
   fetch: (...args) => undiciFetchMock(...args),
 }));
 
+vi.mock("node:dns/promises", () => ({ lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]) }));
+
 // Import after the mock is registered.
-const { testProxyUrl, DEFAULT_TEST_URL } = await import("@/lib/network/proxyTest.js");
+const { testProxyUrl } = await import("@/lib/network/proxyTest.js");
 
 beforeEach(() => {
   undiciFetchMock.mockReset();
@@ -46,33 +33,18 @@ function okResponse() {
   return { ok: true, status: 200, statusText: "OK", headers: { get: () => null } };
 }
 
-describe("proxyTest — caller testUrl is ignored; fixed DEFAULT_TEST_URL used", () => {
-  it("ignores caller testUrl; fetches ONLY DEFAULT_TEST_URL", async () => {
-    undiciFetchMock.mockResolvedValueOnce(okResponse());
-
-    const result = await testProxyUrl({
-      proxyUrl: "http://proxy:8080",
-      testUrl: "http://169.254.169.254/latest/meta-data",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.url).toBe(DEFAULT_TEST_URL);
-    expect(undiciFetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl] = undiciFetchMock.mock.calls[0];
-    expect(calledUrl).toBe(DEFAULT_TEST_URL);
+describe("proxyTest — caller destination", () => {
+  it("rejects a private caller destination", async () => {
+    const result = await testProxyUrl({ proxyUrl: "http://proxy:8080", testUrl: "https://169.254.169.254/" });
+    expect(result.ok).toBe(false);
+    expect(undiciFetchMock).not.toHaveBeenCalled();
   });
-
-  it("ignores caller testUrl even when it is a public https URL (still fixed target)", async () => {
+  it("pins a public caller destination", async () => {
     undiciFetchMock.mockResolvedValueOnce(okResponse());
-
-    await testProxyUrl({
-      proxyUrl: "http://proxy:8080",
-      testUrl: "https://attacker-controlled.example.com/secret",
-    });
-
-    expect(undiciFetchMock).toHaveBeenCalledTimes(1);
-    const [calledUrl] = undiciFetchMock.mock.calls[0];
-    expect(calledUrl).toBe(DEFAULT_TEST_URL);
+    const result = await testProxyUrl({ proxyUrl: "http://proxy:8080", testUrl: "https://example.com/secret" });
+    expect(result.url).toBe("https://example.com/secret");
+    expect(String(undiciFetchMock.mock.calls[0][0])).toBe("https://93.184.216.34/secret");
+    expect(undiciFetchMock.mock.calls[0][1].headers.Host).toBe("example.com");
   });
 });
 

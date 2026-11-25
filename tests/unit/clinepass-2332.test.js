@@ -4,8 +4,8 @@
  * Covers:
  *  - unwrapClinepassEnvelope pass-through + {success,data} + {success:false,error}
  *  - parseUpstreamError surfaces inner envelope message
- *  - DefaultExecutor.ensureThinkingBudget respects caps.maxOutput, bumps only when
- *    reasoning enabled, preserves caller's token field (max_tokens vs max_completion_tokens)
+ *  - DefaultExecutor.ensureThinkingBudget uses caps.maxOutput for defaults,
+ *    preserves positive client budgets and the selected token field
  *  - handleNonStreamingResponse does NOT call onRequestSuccess for a failure envelope
  */
 import { describe, it, expect, vi } from "vitest";
@@ -83,15 +83,15 @@ describe("DefaultExecutor.ensureThinkingBudget (clinepass)", () => {
     expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(128);
   });
 
-  it("bumps small max_tokens up to floor when reasoning enabled", () => {
+  it("preserves a positive max_tokens budget when reasoning is enabled", () => {
     const body = { reasoning_effort: "medium", max_tokens: 512, messages: [] };
-    expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(4096);
+    expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(512);
   });
 
   it("preserves max_completion_tokens field (does not introduce max_tokens)", () => {
     const body = { reasoning_effort: "high", max_completion_tokens: 256, messages: [] };
     const out = ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro");
-    expect(out.max_completion_tokens).toBe(4096);
+    expect(out.max_completion_tokens).toBe(256);
     expect(out.max_tokens).toBeUndefined();
   });
 
@@ -101,9 +101,14 @@ describe("DefaultExecutor.ensureThinkingBudget (clinepass)", () => {
     expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(4096);
   });
 
-  it("bumps an undersized existing budget when the model cap allows the floor", () => {
-    const body = { reasoning_effort: "high", max_tokens: 512, messages: [] };
+  it.each([0, -1])("fills non-positive max_tokens (%s) to the default", (value) => {
+    const body = { reasoning_effort: "high", max_tokens: value };
     expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(4096);
+  });
+
+  it("preserves a positive budget when the model cap allows the floor", () => {
+    const body = { reasoning_effort: "high", max_tokens: 512, messages: [] };
+    expect(ex.ensureThinkingBudget(body, "cline-pass/deepseek-v4-pro").max_tokens).toBe(512);
   });
 
   it("leaves a low-cap model's positive budget untouched (never lowers/exceeds cap)", async () => {
@@ -137,9 +142,9 @@ describe("computeThinkingBudget (pure)", () => {
     expect(computeThinkingBudget(-5, 50000)).toBe(4096);
     expect(computeThinkingBudget(undefined, 2048)).toBe(2048);
   });
-  it("bumps undersized current to floor when cap can reach it", () => {
-    expect(computeThinkingBudget(128, 50000)).toBe(4096);
-    expect(computeThinkingBudget(3000, 50000)).toBe(4096);
+  it("does not request a write for positive client budgets", () => {
+    expect(computeThinkingBudget(128, 50000)).toBeNull();
+    expect(computeThinkingBudget(3000, 50000)).toBeNull();
   });
   it("never lowers or exceeds a positive budget under a low cap", () => {
     // cap below floor: a positive budget is left untouched, never lowered or
@@ -152,6 +157,24 @@ describe("computeThinkingBudget (pure)", () => {
     expect(computeThinkingBudget(4096, 50000)).toBeNull();
     expect(computeThinkingBudget(8192, 50000)).toBeNull();
     expect(computeThinkingBudget(5000, 4096)).toBeNull();
+  });
+});
+
+describe("ClinePass transformRequest thinking budget", () => {
+  const ex = new DefaultExecutor("clinepass");
+  it.each([
+    ["max_tokens", 512],
+    ["max_completion_tokens", 256],
+  ])("preserves positive %s through the normal transform", (field, value) => {
+    const body = { model: "cline-pass/deepseek-v4-pro", reasoning_effort: "high", [field]: value };
+    const out = ex.transformRequest("cline-pass/deepseek-v4-pro", body, false, {});
+    // ClinePass's normal OpenAI-compatible transform may canonicalize the
+    // completion spelling to max_tokens; the caller's budget must survive.
+    expect(out.max_tokens ?? out.max_completion_tokens).toBe(value);
+  });
+  it("inserts the capped default for omitted values through the normal transform", () => {
+    const body = { model: "cline-pass/deepseek-v4-pro", reasoning_effort: "high" };
+    expect(ex.transformRequest("cline-pass/deepseek-v4-pro", body, false, {}).max_tokens).toBe(4096);
   });
 });
 

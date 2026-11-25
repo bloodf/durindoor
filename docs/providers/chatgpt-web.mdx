@@ -13,6 +13,9 @@ This drives the consumer ChatGPT web app, not the OpenAI API. It depends on chat
 
 | Id | ChatGPT UI choice |
 | --- | --- |
+| `gpt-6` | GPT-6 Sol, Instant (browser transport) |
+| `gpt-6-thinking` | GPT-6 Sol, Thinking (browser transport) |
+| `gpt-6-pro` | GPT-6 Astra, Pro (browser transport) |
 | `gpt-5-6` | GPT-5.6 Sol, Instant |
 | `gpt-5-6-thinking` | GPT-5.6 Sol, Thinking; `reasoning_effort` picks the level (alias `gpt-5-6-sol`) |
 | `gpt-5-6-pro` | GPT-5.6 Sol, Pro |
@@ -25,6 +28,8 @@ This drives the consumer ChatGPT web app, not the OpenAI API. It depends on chat
 Your plan decides which of these chatgpt.com accepts. This checkout exposes two Luna aliases for Free sessions. `chatgpt.com` decides which models your account currently accepts.
 
 ## Session cookie
+
+DurinDoor saves a rotated cookie only if the same connection still holds the session used by the request. If you import a replacement while a request is in flight, the imported cookie stays in place. When two requests try to rotate the same cookie, the first committed rotation wins.
 
 chatgpt.com keeps its NextAuth session in `__Secure-next-auth.session-token`. When the session is larger than about 4KB, NextAuth splits it into chunks named `__Secure-next-auth.session-token.0`, `.1`, and so on, each holding a different part of the value. DurinDoor accepts any of these pastes:
 
@@ -127,6 +132,17 @@ These optional `providerSpecificData` fields apply to a ChatGPT Web connection:
 | `headless` | `true` or `false`, overriding `DURINDOOR_CHATGPT_WEB_HEADLESS`. |
 | `customUserAgent`, `locale`, `timezone` | Browser context settings. |
 | `turnstileToken` | A Turnstile token for the HTTP transport. |
+
+## Session lifecycle and recovery
+
+- **Save**: paste the Cookie header or session token. Each saved connection keeps its own cookie; requests never mix cookies between connections.
+- **Check**: the Check button reads `https://chatgpt.com/api/auth/session` only (no conversation is created). A live session answers with an `accessToken` and DurinDoor never returns or stores that token. `{}` means expired or incomplete.
+- **Rotation**: after a browser turn, a rotated session cookie is written back to the connection that ran the turn, and to no other. It is not written back for `storageState` connections or for the HTTP transport.
+- **Expiry**: if chatgpt.com rejects the session, both transports answer HTTP 401 ("re-paste your `__Secure-next-auth.session-token` cookie"). The connection takes the normal cooldown and the request falls back to the next ChatGPT Web connection if there is one. Other 429 and Sentinel responses keep their own statuses.
+- **Re-import**: sign in again, copy a fresh cookie, open the connection with **Edit**, paste and save. The new value replaces the old one, the transport and other settings are kept, the cooldown is cleared, and the browser pool starts a context from the new cookie. Sibling connections are untouched.
+- **Usage**: the **Usage** card summarises requests DurinDoor recorded for that connection over 30 days, with estimated tokens. Plan limits are not available. Non-streamed browser replies carry an estimate too.
+
+Known limits: browser transport streams are produced after the turn completes, so there is no incremental text; the HTTP transport cannot solve Turnstile; image generation is available only through the HTTP transport. No attestation is emulated and no access control is bypassed; a session that chatgpt.com refuses has to be replaced.
 
 ## Connect and verify
 

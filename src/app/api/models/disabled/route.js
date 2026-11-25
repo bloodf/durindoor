@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDisabledModels, disableModels, enableModels } from "@/lib/disabledModelsDb";
+import { isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";
 
@@ -24,24 +25,29 @@ export async function POST(request) {
     if (!providerAlias || !Array.isArray(ids)) {
       return NextResponse.json({ error: "providerAlias and ids[] required" }, { status: 400 });
     }
-    await disableModels(providerAlias, ids);
+    await disableModels(providerAlias, ids.filter((id) => isString(id) && id.trim() !== "").map((id) => id.trim()));
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.log("Error disabling models:", error);
     return NextResponse.json({ error: "Failed to disable models" }, { status: 500 });
   }
 }
 
-// DELETE /api/models/disabled?providerAlias=xxx[&id=yyy]
+// DELETE /api/models/disabled?providerAlias=xxx[&id=yyy&id=zzz]
+// Omitting id enables every model; a supplied empty id is rejected.
 export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
-    const id = searchParams.get("id");
+    const ids = searchParams.getAll("id");
     if (!providerAlias) {
       return NextResponse.json({ error: "providerAlias required" }, { status: 400 });
     }
-    await enableModels(providerAlias, id ? [id] : []);
+    if (ids.some((id) => !id.trim())) {
+      return NextResponse.json({ error: "id must not be empty" }, { status: 400 });
+    }
+    await enableModels(providerAlias, ids);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error enabling models:", error);

@@ -222,12 +222,12 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       expect(await rows()).toEqual(before);
       expect(await markers()).toEqual(beforeMarkers);
       await sql.query(`DROP TRIGGER fail_second_repair ON "apiKeyUsageTotals"`);
-      expect((await state.call('migrate')).value).toMatchObject({ applied: 2, from: 27, to: 30 });
+      expect((await state.call('migrate')).value).toMatchObject({ applied: 7, from: 27, to: 35 });
       const repaired = await rows();
       expect(repaired.map(({ unknownCostRequests, ...row }) => row))
         .toEqual(before.map(({ unknownCostRequests, ...row }) => row));
       expect(repaired.map((row) => Number(row.unknownCostRequests))).toEqual([1, 1]);
-      expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30]);
+      expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30, 31, 32, 33, 34, 35]);
       // With repaired rows present, any repeat UPDATE would now throw.
       await sql.query(`CREATE TRIGGER fail_second_repair BEFORE UPDATE OF "unknownCostRequests" ON "apiKeyUsageTotals"
         FOR EACH ROW EXECUTE FUNCTION fail_second_repair()`);
@@ -235,8 +235,8 @@ describe.skipIf(!adminUrl)('PostgreSQL unknown-cost rebuild parity', () => {
       const again = await worker('upgrade-reopen');
       try {
         expect(await rows()).toEqual(repaired);
-        expect((await markers()).find((row) => row.key === 'schemaVersion').value).toBe('30');
-        expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30]);
+        expect((await markers()).find((row) => row.key === 'schemaVersion').value).toBe('35');
+        expect(JSON.parse((await markers()).find((row) => row.key === 'appliedMigrations').value)).toEqual([...applied, 28, 30, 31, 32, 33, 34, 35]);
       } finally {
         await closeWorker(again);
       }

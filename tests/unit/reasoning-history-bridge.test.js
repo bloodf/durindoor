@@ -119,11 +119,15 @@ describe("reasoning/thinking bridge", () => {
     expect(reasoningBlock?.text).toBe("cc reasoning");
   });
 
-  it("openai -> openai-responses: reasoning_content becomes a reasoning item", () => {
+  it("openai -> openai-responses: reasoning_content is not replayed as a reasoning item", () => {
     const body = { messages: [{ role: "user", content: "u" }, { role: "assistant", content: "a", reasoning_content: "responses reasoning" }] };
     const out = translateRequest(FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, "m", body, true);
-    const reasoningItem = out.input.find((i) => i.type === "reasoning");
-    expect(reasoningItem?.summary?.[0]?.text).toBe("responses reasoning");
+    // The Responses protocol only accepts a server-issued reasoning item: its
+    // `id` is required and continuity rides on `encrypted_content`, so the Chat
+    // pivot must not synthesize one (OmniRoute #231). The assistant answer
+    // itself still reaches the target.
+    expect(out.input.some((i) => i.type === "reasoning")).toBe(false);
+    expect(out.input.find((i) => i.role === "assistant")?.content?.[0]?.text).toBe("a");
   });
 
   it("gemini -> openai: a thought:true part maps to reasoning_content", () => {

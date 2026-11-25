@@ -1,8 +1,5 @@
 // Seam-B (#2254 GAP 2): chatCore classifier default-allow helpers + dispatch.
-// Verifies (1) the exported predicate/marker helper contract, (2) the error-path
-// default-allow where a throwing executor is converted into the ALLOW marker
-// instead of a propagated 502, and (3) the auto-mode short-circuit that skips the
-// executor entirely when the classifier marker is present.
+// Verifies the helpers, error propagation, and the explicit auto-mode shortcut.
 import "../translator/registerAll.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FORMATS } from "../../open-sse/translator/formats.js";
@@ -186,16 +183,14 @@ describe("chatCore classifier default-allow dispatch", () => {
     mocks.handleNonStreamingResponse.mockImplementation(async ({ providerResponse }) => ({ success: true, response: providerResponse }));
   });
 
-  it("error-path default-allow: throwing executor → ALLOW marker, no 502", async () => {
+  it("propagates executor errors even with compatibility enabled", async () => {
     mocks.execute.mockRejectedValueOnce(new Error("upstream boom"));
 
     const result = await handleChatCore(makeOptions({ claudeClassifierCompat: "always" }));
 
     expect(mocks.execute).toHaveBeenCalledTimes(1);
-    expect(result.success).toBe(true);
-    expect(result.response.status).toBe(200);
-    const json = await result.response.json();
-    expect(json.content[0]).toEqual({ type: "text", text: ALLOW_TEXT });
+    expect(result.success).toBe(false);
+    expect(result.response.status).toBe(502);
   });
 
   it("short-circuit: auto mode + marker → skips executor, returns ALLOW directly", async () => {

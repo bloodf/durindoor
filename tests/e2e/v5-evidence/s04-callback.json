@@ -1,0 +1,13 @@
+{
+  "route": "/callback",
+  "stories": [
+    "production-public-callback--live-success",
+    "production-public-callback--live-error",
+    "production-public-callback--live-manual",
+    "production-public-callback--processing",
+    "production-public-callback--success",
+    "production-public-callback--done",
+    "production-public-callback--error",
+    "production-public-callback--manual-fallback"
+  ]
+}

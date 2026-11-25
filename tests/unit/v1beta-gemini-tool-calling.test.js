@@ -8,6 +8,28 @@ const {
 } = await import("../../src/app/api/v1beta/models/[...path]/geminiBridge.js");
 
 describe("Gemini native v1beta tool calling", () => {
+  it("keeps replayed model thoughts separate from text, media and paired calls", () => {
+    const out = convertGeminiToInternal({
+      systemInstruction: { parts: [{ text: "Be helpful." }] },
+      contents: [
+        { role: "user", parts: [{ text: "Hello", thought: true }] },
+        { role: "model", parts: [{ text: "First ", thought: true }, { text: "second", thought: true }, { text: "Answer" }, { functionCall: { id: "call_1", name: "lookup", args: {} }, thoughtSignature: "signature" }] },
+        { role: "user", parts: [{ functionResponse: { name: "lookup", response: { result: "done" } } }] },
+        { role: "model", parts: [{ text: "Consider", thought: true }, { text: "Image" }, { inlineData: { mimeType: "image/png", data: "YWJj" } }] },
+        { role: "model", parts: [{ text: "Only thought", thought: true }] },
+      ],
+    }, "gemini-pro", false);
+
+    expect(out.messages).toEqual([
+      { role: "system", content: "Be helpful." },
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Answer", reasoning_content: "First second", tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call_1", content: '"done"' },
+      { role: "assistant", reasoning_content: "Consider", content: [{ type: "text", text: "Image" }, { type: "image_url", image_url: { url: "data:image/png;base64,YWJj" } }] },
+      { role: "assistant", reasoning_content: "Only thought" },
+    ]);
+  });
+
   it("maps functionDeclarations, functionCall, and functionResponse into OpenAI chat shape", () => {
     const out = convertGeminiToInternal(
       {

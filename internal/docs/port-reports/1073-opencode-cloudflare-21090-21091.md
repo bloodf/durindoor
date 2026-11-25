@@ -1,0 +1,11 @@
+# OmniRoute #21090 and #21091 catalog comparison
+
+Compared on 2026-11-24 against DurinDoor commit `d6196ed4f760674f3e24c44e03d336a809a83e62`. This is a local implementation report, not a claim of a completed port. No DurinDoor PR link is available yet.
+
+- [OmniRoute #21090](https://github.com/cheaper-inference/OmniRoute/pull/21090) merged at `264eb34420498d976ebeb4c607531a8209893346`, final head `aab9612b49532165cdcd06f730604878ea371309`. Its shared GLM rows specify reasoning support for both models and vision support only for `glm-5.3-flash`. DurinDoor already declared both Zen IDs; this change adds the flags there and adds both Go IDs with the same flags. Names follow each local catalog's existing GLM style. No endpoint or effort metadata is inferred. The Go default model remains first.
+- [OmniRoute #21091](https://github.com/cheaper-inference/OmniRoute/pull/21091) merged at `f992f5f6d32c6cadc55d9a394d16aef3fb8f19f0`, final head `4e447b6bf60db4e687cc2ab490449f0bdaa86ea9`. DurinDoor already declared the Cohere and Cloudflare IDs. The existing Mistral row now records the upstream 128000 context length. Its existing display name is retained, consistent with the local Cloudflare catalog. Upstream cites [Cloudflare's model page](https://developers.cloudflare.com/workers-ai/models/mistral-small-3.1-24b-instruct/).
+- The open DurinDoor PR file lists for #2484, #2483, #2481, #2430, #2112, #1809 and #1784 contained no matching OpenCode Go/Zen or Cloudflare registry paths when checked. Other upstream Zen declarations and routing differences are outside this change.
+
+The focused tests check both registry rows and flags, Go routing for all three client formats, the Cloudflare context value, and the existing Go catalog and Cloudflare registry tests. The registry and agent index generators produced no changes. No live provider requests or credentials were used.
+
+Verification: the three focused files passed together (40 tests) with a private HOME, DATA_DIR and cache and a cleared environment. The first combined run exited nonzero without a retained diagnostic; separate runs and the subsequent combined run passed. `git diff --check` passed. Full local CI and independent review have not run.

@@ -6,7 +6,7 @@
 // Delivered as-is the client receives a blank turn and silently halts
 // (#2188, #2229, #2250, #2259).
 //
-// Mirrors oh-my-pi: every byte — thinking included — streams to the client
+// Mirrors oh-my-pi: complete frames — thinking included — stream to the client
 // live; emptiness is judged per upstream attempt, after the fact. An attempt
 // that ends without meaningful content has its terminal event withheld and is
 // retried in place with the identical request; the retried attempt splices
@@ -33,7 +33,7 @@
 import { GEMINI_FINISH, GEMINI_ERROR_FINISH_REASONS, GEMINI_CONTENT_FILTER_FINISH_REASONS } from "../../translator/schema/finishReasons.js";
 import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
-import { advancePendingSseLineBytes } from "../../utils/pendingSseLine.js";
+import { createSseFrameReader, parseResponsesSseData } from "../../utils/sseFrames.js";
 
 // Mirrors oh-my-pi's empty-response policy: 2 retries, 500ms * 2^attempt backoff.
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -172,7 +172,8 @@ export function createEmptyRetryStream({
   stallTimeoutMs = STREAM_STALL_TIMEOUT_MS,
   baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
   onAttemptDiscarded,
-  onExhausted
+  onExhausted,
+  onInBandError
 }) {
   const encoder = new TextEncoder();
   let currentReader = null;
@@ -231,8 +232,7 @@ export function createEmptyRetryStream({
 
       for (let attempt = 0;; attempt++) {
         const decoder = new TextDecoder();
-        let lineBuffer = "";
-        let pendingLineBytes = 0;
+        const frameReader = createSseFrameReader();
         let held = null; // this attempt's withheld terminal
         let terminalForwarded = false;
         // Absolute deadline of the trailing-byte drain window. It is
@@ -244,6 +244,45 @@ export function createEmptyRetryStream({
         // re-sending it.
         let forwardedUsageSignature = null;
         let endReason = "empty";
+
+        // Classify whole frames so multi-line data and CRLF share the same
+        // interpretation as the other SSE consumers. Preserve their wire bytes.
+        const processFrame = (frame) => {
+          if (held) return;
+          const wire = frame.wire ?? frame.raw;
+          if (!frame.hasData || !frame.data || frame.data === "[DONE]") { emit(wire); return; }
+          // Some providers append a separate JSON trailer in the same frame.
+          let event;
+          try { event = parseResponsesSseData(frame); }
+          catch { emit(wire); return; }
+          if (event.rawDone) { emit(wire); return; }
+          const { parsed } = event;
+          if (hasErrorEnvelope(parsed)) onInBandError?.(parsed.error || parsed.response?.error, currentBody);
+          const decision = classifyEvent(parsed, meaningfulSeen);
+          if (decision.meaningful) meaningfulSeen = true;
+          if (decision.action === "hold") {
+            held = { kind: decision.kind, reason: decision.reason, error: decision.error || null, line: frame.raw };
+            lastHeld = held;
+            return;
+          }
+          if (decision.terminal) {
+            if (!terminalForwarded) {
+              terminalForwarded = true;
+              terminalDrainDeadline = Date.now() + terminalDrainTimeoutMs;
+            } else {
+              if (hasErrorEnvelope(parsed)) { emit(wire); return; }
+              const drained = usagePayload(parsed);
+              if (drained && drained.signature !== forwardedUsageSignature) {
+                forwardedUsageSignature = drained.signature;
+                emit(`data: ${JSON.stringify(drained.frame)}\n\n`);
+              }
+              return;
+            }
+          }
+          const forwarded = usagePayload(parsed);
+          if (forwarded) forwardedUsageSignature = forwarded.signature;
+          emit(wire);
+        };
 
         readAttempt: while (true) {
           if (signal?.aborted) return abortStream();
@@ -301,87 +340,26 @@ export function createEmptyRetryStream({
           }
 
           const { done, value } = readResult;
-          if (done) break readAttempt;
-
-          const nextPending = advancePendingSseLineBytes(pendingLineBytes, value);
-          if (nextPending === null) {
+          try {
+            const frames = frameReader.push(done ? decoder.decode() : decoder.decode(value, { stream: true }));
+            if (done) frames.push(...frameReader.flush());
+            for (const frame of frames) processFrame(frame);
+          } catch (error) {
             cancelUpstream();
-            const error = new Error("Upstream SSE line exceeded the size limit");
-            error.code = "invalid_sse_payload";
             controller.error(error);
             return;
           }
-          pendingLineBytes = nextPending;
-          const text = decoder.decode(value, { stream: true });
-          lineBuffer += text;
-          const lastNewline = text.lastIndexOf("\n");
-          const splitAt = lastNewline < 0 ? -1 : lineBuffer.length - text.length + lastNewline;
-          const lines = splitAt < 0 ? [] : lineBuffer.slice(0, splitAt).split("\n");
-          if (splitAt >= 0) lineBuffer = lineBuffer.slice(splitAt + 1);
-
-          for (const line of lines) {
-            // Empty-attempt tail: everything after the withheld terminal is
-            // part of the discarded attempt (usage trailers etc.) — drop it.
-            if (held) continue;
-
-            const trimmed = line.trim();
-            if (!trimmed.startsWith("data:")) {emit(line + "\n");continue;}
-            const payload = trimmed.slice(5).trim();
-            if (!payload || payload === "[DONE]") {emit(line + "\n");continue;}
-
-            let parsed;
-            try {
-              parsed = JSON.parse(payload);
-            } catch {
-              emit(line + "\n"); // not ours to judge — forward verbatim
-              continue;
-            }
-
-            const decision = classifyEvent(parsed, meaningfulSeen);
-            if (decision.meaningful) meaningfulSeen = true;
-            if (decision.action === "hold") {
-              held = { kind: decision.kind, reason: decision.reason, error: decision.error || null, line };
-              lastHeld = held;
-              continue;
-            }
-            if (decision.terminal) {
-              if (!terminalForwarded) {
-                terminalForwarded = true;
-                // The response is complete from here on. Start the trailing-byte
-                // drain window: trailing usage bytes may still arrive in the
-                // provider framing, but the attempt no longer waits for an
-                // upstream EOF that may never come. The deadline is absolute
-                // and established once — a later terminal frame cannot move it.
-                terminalDrainDeadline = Date.now() + terminalDrainTimeoutMs;
-              } else {
-                // The completion was already delivered. A repeated terminal
-                // frame must not produce a second terminal on the client
-                // wire; only its usage counters are drained. An error envelope
-                // is not a repeated completion and is forwarded as it is.
-                if (hasErrorEnvelope(parsed)) {
-                  emit(line + "\n");
-                  continue;
-                }
-                const drained = usagePayload(parsed);
-                if (drained && drained.signature !== forwardedUsageSignature) {
-                  forwardedUsageSignature = drained.signature;
-                  emit(`data: ${JSON.stringify(drained.frame)}\n`);
-                }
-                continue;
-              }
-            }
-            const forwarded = usagePayload(parsed);
-            if (forwarded) forwardedUsageSignature = forwarded.signature;
-            emit(line + "\n");
-          }
+          if (done) break readAttempt;
         }
 
         // Attempt over. Content or a forwarded terminal ends the stream here —
         // a truncated-with-content attempt is closed by the translator's flush
         // finalization and is never retried (replay-unsafe, as in oh-my-pi).
         if (meaningfulSeen || terminalForwarded) {
-          const remaining = lineBuffer + decoder.decode();
-          if (!held && remaining) emit(remaining);
+          if (!held) {
+            for (const frame of frameReader.push(decoder.decode())) processFrame(frame);
+            for (const frame of frameReader.flush()) processFrame(frame);
+          }
           // The attempt is complete: release the upstream reader so a relay
           // that holds the socket open after its terminal does not keep the
           // connection alive.

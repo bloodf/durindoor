@@ -103,7 +103,8 @@ describe("OmniRoute PR #51 web-session provider port artifacts", () => {
     });
     const result = createErrorResult(parsed.statusCode, parsed.message, undefined, parsed.errorBody);
     const body = await result.response.json();
-    expect(body).toEqual(parsed.errorBody);
+    expect(body).toMatchObject(parsed.errorBody);
+    expect(body.error.code).toBe("internal_server_error");
     expect(body.error.type).toBe("provider_port_pending");
     expect(body.error.sourceFiles).toEqual(expect.any(Array));
   });

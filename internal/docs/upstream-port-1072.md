@@ -1,5 +1,7 @@
 # 9router PR intake #1072
 
+Canonical intake workflow and current pointers: [upstream sync](./upstream-sync.mdx).
+
 Reviewed against upstream snapshot `1855aa44` on 2026-11-20.
 
 | PR | Disposition | DurinDoor evidence |

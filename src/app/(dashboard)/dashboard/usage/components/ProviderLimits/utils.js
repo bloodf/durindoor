@@ -142,10 +142,24 @@ export function getConnectionLabel(connection) {
 }
 
 export function getConnectionQuotaRemaining(connection, quotaData) {
-  const quota = quotaData[connection.id]?.quotas?.[0];
-  if (!quota) return Number.POSITIVE_INFINITY;
-  if (isNumber(quota.remaining)) return quota.remaining;
-  return Number.POSITIVE_INFINITY;
+  const values = getUsableQuotaPercentages(quotaData[connection.id]?.quotas);
+  return values.length ? Math.max(...values) : Number.POSITIVE_INFINITY;
+}
+
+// Ignore unreported rows; a zero total alone does not establish depletion.
+function getUsableQuotaPercentages(quotas = []) {
+  return quotas.filter((quota) => quota && !quota.notReported && !quota.unlimited && (
+    Number.isFinite(quota.remainingPercentage) ||
+    (!quota.isCredits && Number.isFinite(quota.remaining)) ||
+    (Number.isFinite(quota.total) && quota.total > 0 && Number.isFinite(quota.used))
+  )).map(getRemainingPercentage).filter(Number.isFinite);
+}
+
+/** A connection is depleted when every reported usable pool is below the threshold. */
+export function isQuotaCollectionDepleted(quotas, threshold = DEPLETED_QUOTA_THRESHOLD) {
+  if (quotas?.some((quota) => quota?.unlimited)) return false;
+  const values = getUsableQuotaPercentages(quotas);
+  return values.length > 0 && values.every((value) => value <= threshold);
 }
 
 export function sortVisibleConnections(
@@ -406,16 +420,31 @@ export function formatResetTime(date) {
   }
 }
 
+// The one place the quota status thresholds live. QuotaProgressBar, QuotaTable,
+// getStatusColor and getStatusEmoji each used to restate `> 70` / `>= 30`.
+export const QUOTA_STATUS_HEALTHY_ABOVE = 70;
+export const QUOTA_STATUS_WARNING_AT_OR_ABOVE = 30;
+
+/**
+ * @param {number} percentage - Remaining percentage (0-100)
+ * @returns {string} Level: "green" | "yellow" | "red"
+ */
+export function quotaStatusLevel(percentage) {
+  if (percentage > QUOTA_STATUS_HEALTHY_ABOVE) return "green";
+  if (percentage >= QUOTA_STATUS_WARNING_AT_OR_ABOVE) return "yellow";
+  return "red"; // 0-29% including 0% (out of quota) - show red
+}
+
 /**
  * Get Tailwind color class based on percentage
  * @param {number} percentage - Remaining percentage (0-100)
  * @returns {string} Color name: "green" | "yellow" | "red"
  */
 export function getStatusColor(percentage) {
-  if (percentage > 70) return "green";
-  if (percentage >= 30) return "yellow";
-  return "red"; // 0-29% including 0% (out of quota) - show red
+  return quotaStatusLevel(percentage);
 }
+
+const QUOTA_STATUS_EMOJI = { green: "🟢", yellow: "🟡", red: "🔴" };
 
 /**
  * Get status emoji based on percentage
@@ -423,9 +452,7 @@ export function getStatusColor(percentage) {
  * @returns {string} Emoji: "🟢" | "🟡" | "🔴"
  */
 export function getStatusEmoji(percentage) {
-  if (percentage > 70) return "🟢";
-  if (percentage >= 30) return "🟡";
-  return "🔴"; // 0-29% including 0% (out of quota) - show red
+  return QUOTA_STATUS_EMOJI[quotaStatusLevel(percentage)];
 }
 
 /**
@@ -1009,6 +1036,14 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "opendesign-go":
+      case "deeprelay":
+        for (const [name, quota] of Object.entries(data.quotas || {})) {
+          normalizedQuotas.push({ name: quota.name || name, used: quota.used ?? 0, total: quota.total ?? 0,
+            remainingPercentage: quota.remainingPercentage, resetAt: quota.resetAt || null,
+            unlimited: quota.unlimited, unit: quota.unit, windowStart: quota.windowStart });
+        }
+        break;
       default:
         // Generic fallback for unknown providers
         if (data.quotas) {

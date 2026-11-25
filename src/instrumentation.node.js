@@ -14,6 +14,8 @@
 // of the edge bundle. This module is only reachable through that guarded
 // import, so it may freely use Node-only modules.
 
+import { runStartupTasks } from "@/lib/startup/startupTasks.js";
+
 /**
  * Recreate the DurinDoor-managed Headroom proxy when the gateway boots.
  *
@@ -50,6 +52,17 @@ export async function ensureHeadroomProxy() {
  * Only ever called from the guarded block in instrumentation.js.
  */
 export function bootstrapNodejsRuntime() {
+  if (["phase-production-build", "phase-export", "phase-static"].includes(process.env.NEXT_PHASE) ||
+      process.env.DURINDOOR_BUILD === "1" || process.env.npm_lifecycle_event === "build") return;
+
+  const startupTasks = [
+    {
+      name: "runtime bootstrap",
+      loader: () => import("./shared/services/bootstrap.js"),
+      run: ({ bootstrapRuntime }) => bootstrapRuntime(),
+    },
+  ];
+
   // Rename process to distinguish 9router from generic next-server
   if (process.title.startsWith("next-server")) {
     process.title = process.title.replace("next-server", "9router");
@@ -57,48 +70,54 @@ export function bootstrapNodejsRuntime() {
 
   // The process-global recorder is idempotent across repeated boot calls and
   // module reloads. Its unref'd timer does not hold the process open at exit.
-  void import("../open-sse/services/operationalMetrics.js")
-    .then(({ startOperationalMetricsRuntime }) => startOperationalMetricsRuntime())
-    .catch(() => console.warn("[metrics] Runtime recorder not started"));
+  startupTasks.push({
+    name: "operational metrics",
+    loader: () => import("../open-sse/services/operationalMetrics.js"),
+    run: ({ startOperationalMetricsRuntime }) => startOperationalMetricsRuntime(),
+  });
 
   // Warn when the server that answers /v1 inference is bound to a
   // non-loopback interface (HOSTNAME=0.0.0.0 or a LAN/WAN address) while
   // "Require API key" is off — the anonymous proxy is then reachable from
   // every interface the host has. Runs early so it is not buried in the
   // boot log; never blocks startup (ported from OmniRoute #13820).
-  void import("@/lib/startup/nonLoopbackApiKeyGuard.js")
-    .then((m) => m.warnIfInferenceServerExposed())
-    .catch((error) => {
-      console.log(`[startup] exposure check failed: ${error?.message || error}`);
-    });
+  startupTasks.push({
+    name: "exposure check",
+    loader: () => import("@/lib/startup/nonLoopbackApiKeyGuard.js"),
+    run: ({ warnIfInferenceServerExposed }) => warnIfInferenceServerExposed(),
+  });
 
   // Not awaited on purpose. startHeadroomProxy holds an 8s startup probe, and
   // blocking `register()` on it would add that delay to every gateway boot.
   // Fail-open: a compression proxy must never keep the gateway from starting.
-  void ensureHeadroomProxy().catch((error) => {
-    console.log(`[headroom] proxy autostart skipped: ${error?.message || error}`);
+  startupTasks.push({
+    name: "Headroom proxy",
+    loader: async () => ({ ensureHeadroomProxy }),
+    run: ({ ensureHeadroomProxy: startProxy }) => startProxy(),
   });
 
   // Provider metadata imports are inert. Start release refresh only when the
   // Node server boots, across dev, production and the packaged CLI server.
-  void import("../open-sse/utils/kimchiUserAgent.js")
-    .then(({ startKimchiUserAgentUpdater }) => startKimchiUserAgentUpdater())
-    .catch((error) => {
-      console.error("[KimchiUA Error]", error);
-    });
+  startupTasks.push({
+    name: "Kimchi user agent updater",
+    loader: () => import("../open-sse/utils/kimchiUserAgent.js"),
+    run: ({ startKimchiUserAgentUpdater }) => startKimchiUserAgentUpdater(),
+  });
 
   // Hourly sweep of old local data; a no-op until the operator enables it.
-  void import("@/lib/dataRetention/scheduler.js")
-    .then(({ startDataRetentionScheduler }) => startDataRetentionScheduler())
-    .catch((error) => {
-      console.log(`[data-retention] scheduler not started: ${error?.message || error}`);
-    });
+  startupTasks.push({
+    name: "data retention scheduler",
+    loader: () => import("@/lib/dataRetention/scheduler.js"),
+    run: ({ startDataRetentionScheduler }) => startDataRetentionScheduler(),
+  });
 
   // Model auto-sync: refresh provider model catalogs shortly after boot and on
   // the configured interval. Failures stay per provider and never block boot.
-  void import("@/lib/modelAutoSync/scheduler.js")
-    .then(({ startModelAutoSyncScheduler }) => startModelAutoSyncScheduler())
-    .catch((error) => {
-      console.log(`[model-auto-sync] scheduler not started: ${error?.message || error}`);
-    });
+  startupTasks.push({
+    name: "model auto-sync scheduler",
+    loader: () => import("@/lib/modelAutoSync/scheduler.js"),
+    run: ({ startModelAutoSyncScheduler }) => startModelAutoSyncScheduler(),
+  });
+
+  runStartupTasks(startupTasks);
 }

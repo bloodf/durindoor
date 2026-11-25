@@ -1,6 +1,7 @@
 // Regression for upstream decolua/9router#3223 — Antigravity rejects Zed's Claude SDK marker.
 import { describe, expect, it } from "vitest";
 import { AntigravityExecutor } from "../../open-sse/executors/antigravity.js";
+import { ANTIGRAVITY_DEFAULT_SYSTEM } from "../../open-sse/config/appConstants.js";
 
 const MARKER = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 const transform = (request) => new AntigravityExecutor().transformRequest("gemini-2.5-pro", { request }, true, {
@@ -15,7 +16,7 @@ describe("port #3223: Antigravity system instruction sanitization", () => {
       systemInstruction: { parts: [{ text: `Keep this. ${MARKER} Continue.` }] },
     });
 
-    expect(out.request.systemInstruction.parts[0].text).toBe("Keep this.  Continue.");
+    expect(out.request.systemInstruction.parts.map((part) => part.text)).toEqual([ANTIGRAVITY_DEFAULT_SYSTEM, "Keep this.  Continue."]);
   });
 
   it("leaves unrelated system instructions untouched", () => {
@@ -25,14 +26,15 @@ describe("port #3223: Antigravity system instruction sanitization", () => {
       systemInstruction,
     });
 
-    expect(out.request.systemInstruction).toEqual(systemInstruction);
+    // 9router e37cb78e16: the Antigravity identity leads; client text is kept unchanged after it.
+    expect(out.request.systemInstruction).toEqual({ parts: [{ text: ANTIGRAVITY_DEFAULT_SYSTEM }, ...systemInstruction.parts] });
   });
 
-  it("keeps requests without a system instruction unaffected", () => {
+  it("gives requests without a system instruction only the Antigravity identity", () => {
     const out = transform({
       contents: [{ role: "user", parts: [{ text: "hello" }] }],
     });
 
-    expect(out.request).not.toHaveProperty("systemInstruction");
+    expect(out.request.systemInstruction).toEqual({ role: "user", parts: [{ text: ANTIGRAVITY_DEFAULT_SYSTEM }] });
   });
 });

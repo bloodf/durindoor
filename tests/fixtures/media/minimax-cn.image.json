@@ -1,0 +1,48 @@
+{
+  "vendor": "minimax-cn",
+  "kind": "image",
+  "model": "image-01",
+  "verifiedLive": false,
+  "source": "https://platform.minimax.io/docs/api-reference/image-generation",
+  "liveGap": "No live upstream call was made for this fixture. The China host, the request body and the response nesting are asserted offline against the adapter; the content-filter status codes and the upstream error bodies were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://api.minimax.cn/v1/image_generation",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer fixture-key"
+    },
+    "body": {
+      "model": "image-01",
+      "prompt": "a cat",
+      "aspect_ratio": "16:9",
+      "n": 1,
+      "response_format": "url"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "base_resp": {
+        "status_code": 0,
+        "status_msg": "success"
+      },
+      "data": {
+        "image_urls": [
+          "https://minimax.example/fixture-image.png"
+        ]
+      },
+      "metadata": {
+        "failed_count": 0
+      }
+    },
+    "normalized": {
+      "data": [
+        {
+          "url": "https://minimax.example/fixture-image.png",
+          "revised_prompt": "a cat"
+        }
+      ]
+    }
+  }
+}

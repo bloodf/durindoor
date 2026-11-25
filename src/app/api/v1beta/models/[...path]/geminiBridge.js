@@ -5,6 +5,7 @@
  */
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { encodeDataUri } from "open-sse/translator/concerns/image.js";
+import { buildGeminiUsageMetadata } from "open-sse/translator/response/geminiUsageMetadata.js";
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -38,6 +39,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
     model,
     messages,
     stream,
+    ...(geminiBody.reasoning_effort && { reasoning_effort: geminiBody.reasoning_effort }),
     max_tokens: geminiBody.generationConfig?.maxOutputTokens,
     temperature: geminiBody.generationConfig?.temperature,
     top_p: geminiBody.generationConfig?.topP
@@ -139,8 +141,11 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
     }
   }
 
+  // Model thought text uses the same reasoning field as the native translator.
+  const isThought = (part) => content.role === "model" && part.thought === true && isString(part.text);
+  const reasoningContent = remainingParts.filter(isThought).map((part) => part.text).join("");
   const text = remainingParts.
-  filter((part) => isString(part.text)).
+  filter((part) => isString(part.text) && !isThought(part)).
   map((part) => part.text).
   join("\n");
   // Inline images, PDFs and audio become data-URL image_url parts, the same
@@ -179,12 +184,19 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   if (toolCalls.length > 0) {
     const assistantMessage = { role: "assistant", tool_calls: toolCalls };
     if (text) assistantMessage.content = text;
+    if (reasoningContent) assistantMessage.reasoning_content = reasoningContent;
     messages.push(assistantMessage);
   } else if (inlineParts.length > 0) {
     const textParts = text ? [{ type: "text", text }] : [];
-    messages.push({ role: content.role === "model" ? "assistant" : "user", content: [...textParts, ...inlineParts] });
+    const message = { role: content.role === "model" ? "assistant" : "user", content: [...textParts, ...inlineParts] };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
+    messages.push(message);
   } else if (text) {
-    messages.push({ role: content.role === "model" ? "assistant" : "user", content: text });
+    const message = { role: content.role === "model" ? "assistant" : "user", content: text };
+    if (reasoningContent) message.reasoning_content = reasoningContent;
+    messages.push(message);
+  } else if (reasoningContent) {
+    messages.push({ role: "assistant", reasoning_content: reasoningContent });
   }
 
   return messages.length === 1 ? messages[0] : messages;
@@ -256,15 +268,7 @@ export function openAIChunkToGeminiChunk(parsed, model, state = {}) {
   const geminiChunk = { candidates: [candidate] };
 
   if (choice.finish_reason && parsed.usage) {
-    geminiChunk.usageMetadata = {
-      promptTokenCount: parsed.usage.prompt_tokens || 0,
-      candidatesTokenCount: parsed.usage.completion_tokens || 0,
-      totalTokenCount: parsed.usage.total_tokens || 0
-    };
-    const reasoningTokens = parsed.usage.completion_tokens_details?.reasoning_tokens;
-    if (reasoningTokens) {
-      geminiChunk.usageMetadata.thoughtsTokenCount = reasoningTokens;
-    }
+    geminiChunk.usageMetadata = buildGeminiUsageMetadata(parsed.usage);
     geminiChunk.modelVersion = parsed.model || model;
   }
 
@@ -410,15 +414,7 @@ export async function convertOpenAIResponseToGemini(response, model) {
   };
 
   if (body.usage) {
-    geminiResponse.usageMetadata = {
-      promptTokenCount: body.usage.prompt_tokens || 0,
-      candidatesTokenCount: body.usage.completion_tokens || 0,
-      totalTokenCount: body.usage.total_tokens || 0
-    };
-    const reasoningTokens = body.usage.completion_tokens_details?.reasoning_tokens;
-    if (reasoningTokens) {
-      geminiResponse.usageMetadata.thoughtsTokenCount = reasoningTokens;
-    }
+    geminiResponse.usageMetadata = buildGeminiUsageMetadata(body.usage);
   }
 
   return Response.json(geminiResponse, {

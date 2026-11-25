@@ -15,6 +15,7 @@
 // `vision`/`audioInput`/`videoInput` describe native input; hosted search and
 // image-generation tools belong in `search`/`supportedTools`, not modalities.
 
+import { isCursorProvider } from "./cursorProviders.js";
 import { matchPattern } from "./pricing.js";
 import {
   KIRO_GPT_5_6_FAMILY,
@@ -209,6 +210,10 @@ export const MODEL_CAPABILITIES = {
    */
   "glm-5.3": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-5.2": { reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  // Agnes AI (apihub.agnes-ai.com): both 3.0 models take text AND image URLs. Without these they
+  // fell through to DEFAULT_CAPABILITIES (vision:false, 200k) and the router stripped images.
+  "agnes-3.0-pro": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 512000, maxOutput: 65536 },
+  "agnes-3.0-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 512000, maxOutput: 65536 },
   // Upstream c61ee37d: z.ai docs say GLM-5.3-FLASH cannot disable thinking and carries the 1M window.
   "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   // OpenCode serves the same weights under this free id from its own inference
@@ -242,6 +247,17 @@ export const MODEL_CAPABILITIES = {
   "longcat-2.0": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.0-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.5-preview-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  // OpenCode free-model windows published by its live catalog.
+  "longcat-2.5-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 262144 },
+  "iceman-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 131072 },
+  "inkling-2-small-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "beam-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "flint-40b-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 },
+  "nemotron-3.5-super-vl-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "jev-1.13-free": { reasoning: false, thinkingFormat: "openai", contextWindow: 64000, maxOutput: 32000 },
+  "nemotron-3.5-lightning-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 262144 },
+  "hy4-flash-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 65536 },
+  "tidepool-alpha-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   "north-mini-code-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
   "ring-2.6-1t-free": { reasoning: true, thinkingFormat: "openai", contextWindow: 262000, maxOutput: 66000 },
 
@@ -274,7 +290,7 @@ const KIRO_GPT_5_6_PROVIDER_CAPS = Object.fromEntries(
   }])
 );
 
-// Copilot (github, GHE), NanoGPT and Kiro serve Claude 5.5 under dotted ids. Same models as the dashed
+// Copilot (github, GHE), NanoGPT, Kiro and OpenDesign Go serve Claude 5.5 under dotted ids. Same models as the dashed
 // rows (Opus 5.5 / Sonnet 5.5 reject thinking.type "disabled"; Sonnet takes "between_tools"),
 // scoped per provider so other gateways (e.g. OpenRouter) keep their own handling.
 const CLAUDE_5_5_DOTTED_BASE = { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 };
@@ -399,7 +415,37 @@ const GEMINI_FLASH_TIER_CAPABILITIES = { vision: true, audioInput: true, videoIn
 
 const SENSENOVA_INTL_CHAT = { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 262144, maxOutput: 65536 };
 
+const AG_NEON_CAPABILITIES = { vision: true, audioInput: true, videoInput: true, reasoning: true, search: true, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high", "xhigh"], contextWindow: 1048576, maxOutput: 65536 };
+// longDecode: a max_tokens above 64K runs CONTINUATION hops up to 1M (utils/geminiLongDecode.js, upstream 9router 109e4816e3).
+const AG_HYDROGEN_CAPABILITIES = { ...AG_NEON_CAPABILITIES, longDecode: true };
+const AG_HYDROGEN_ROWS = Object.fromEntries([...["gemini-4-hydrogen", "gemini-4-hydrogen-low", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"].map((id) => [id, AG_HYDROGEN_CAPABILITIES]),
+  // Neon also serves xhigh on Antigravity (upstream 9router 767d7aeb0b).
+  ...["gemini-4-neon", "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-high", "gemini-4-neon-xhigh"].map((id) => [id, AG_NEON_CAPABILITIES])]);
+
 export const PROVIDER_CAPABILITIES = {
+  // Alibaba Token Plan — same infrastructure as QwenCloud, same model specs.
+  "alitp-intl": {
+    "qwen4-max":         { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 393216 },
+    "qwen4-max-preview": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 393216 },
+    "qwen3.8-max":       { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.8-flash":     { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.7-max":       { vision: false, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.7-plus":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "deepseek-v4-pro-0813": { reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 393216 },
+  },
+  // QwenCloud Token Plan — model pages publish a 1M window for the Qwen4/Qwen3.7/
+  // Qwen3.8 lines (Qwen4 Max: 393K output, text+image+video in; others: 131K out),
+  // while the generic *qwen* patterns cap at 262K/65K.
+  "qwencloud": {
+    "qwen4-max":         { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 393216 },
+    "qwen4-max-preview": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 393216 },
+    "qwen3.8-max":       { vision: true, videoInput: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.8-flash":     { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.7-max":       { vision: false, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "qwen3.7-plus":      { vision: true, reasoning: true, thinkingFormat: "qwen", contextWindow: 1000000, maxOutput: 131072 },
+    "deepseek-v4-pro-0813": { reasoning: true, thinkingFormat: "deepseek", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 393216 },
+  },
+
   nan: {
     "deepseek-v4-flash": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
     "mimo-v2.5": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
@@ -417,7 +463,11 @@ export const PROVIDER_CAPABILITIES = {
     "sensenova-6.8-flash-lite": SENSENOVA_INTL_CHAT,
     "sensenova-6.7-flash-lite": SENSENOVA_INTL_CHAT,
   },
-  antigravity: Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
+  antigravity: {
+    ...AG_HYDROGEN_ROWS,
+    ...Object.fromEntries(["gemini-3.8-flash", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.7", "gemini-3.6"].map((id) => [id, ANTIGRAVITY_FLASH_TIER_CAPABILITIES])),
+  },
+  agy: AG_HYDROGEN_ROWS,
   // Native API metadata is separate from OAuth and reseller contracts.
   openai: AUDITED_PROVIDER_CAPABILITIES.openai,
   codex: { ...CODEX_ONLY_CAPABILITIES, ...AUDITED_PROVIDER_CAPABILITIES.codex },
@@ -437,7 +487,9 @@ export const PROVIDER_CAPABILITIES = {
     "gemini-3.8-flash": { vision: true, pdf: true, audioInput: true, videoInput: true, tools: true, reasoning: true, structuredOutput: true, promptCaching: true, search: true, imageOutput: false, audioOutput: false, videoOutput: false, thinkingFormat: "gemini-level", thinkingCanDisable: false, thinkingEfforts: ["low", "medium", "high"], contextWindow: 1048576, maxInput: 1048576, maxOutput: 65536 },
     // Same tiered family, same low|medium|high contract as the 3.8 Flash row above.
     "gemini-3.7-flash": GEMINI_FLASH_TIER_CAPABILITIES,
-    "gemini-3.6-flash": GEMINI_FLASH_TIER_CAPABILITIES
+    "gemini-3.6-flash": GEMINI_FLASH_TIER_CAPABILITIES,
+    // Gemini API Hydrogen: 1M window, 64K per hop, xhigh tier and long decode (upstream 9router 109e4816e3).
+    "gemini-4-hydrogen": { ...AG_HYDROGEN_CAPABILITIES, pdf: true }
   },
   dify: {
     "configured-app": { vision: false, tools: false, reasoning: false, contextWindow: null, maxOutput: null }
@@ -514,6 +566,8 @@ export const PROVIDER_CAPABILITIES = {
   github: CLAUDE_5_5_DOTTED_CAPS,
   "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
   ghe: CLAUDE_5_5_DOTTED_CAPS,
+  // OpenDesign Go lists the same dotted ids; its aliases (odg, opendesign) resolve through the registry id.
+  "opendesign-go": CLAUDE_5_5_DOTTED_CAPS,
   // NanoGPT lists the vendor-prefixed id and capability lookup keys on the full registry id.
   nanogpt: { "anthropic/claude-sonnet-5.5": CLAUDE_5_5_DOTTED_CAPS["claude-sonnet-5.5"] },
   "amazon-q": KIRO_GPT_5_6_PROVIDER_CAPS,
@@ -634,7 +688,8 @@ export const PROVIDER_CAPABILITIES = {
     "nvidia/ising-calibration-1-35b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nemotron-3-nano-30b-a3b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": { vision: true, audioInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
-    "nvidia/nemotron-3-ultra-550b-a55b": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
+    /** Upstream ba3bba4709: hosted endpoint accepted 1,000,057 prompt tokens and a streamed tool round (2026-11-13). */
+    "nvidia/nemotron-3-ultra-550b-a55b": { tools: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000 },
     "nvidia/nemotron-nano-12b-v2-vl": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "nvidia/nvidia-nemotron-nano-9b-v2": { reasoning: true, thinkingFormat: "openai", contextWindow: 128000 },
     "qwen/qwen3-next-80b-a3b-instruct": { reasoning: false, contextWindow: 262144 },
@@ -893,6 +948,8 @@ export const PATTERN_CAPABILITIES = [
 { pattern: "*gpt-6*image*", caps: { imageOutput: true } },
 { pattern: "*gpt-6.1-terra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-terra"] },
 { pattern: "*gpt-6.1-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.1-sol"] },
+{ pattern: "*gpt-6.2-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.2-sol"] },
+{ pattern: "*gpt-6.2-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6.2-astra"] },
 { pattern: "*gpt-6-astra*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-astra"] },
 { pattern: "*gpt-6-sol*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-sol"] },
 { pattern: "*gpt-6-luna*", caps: AUDITED_PROVIDER_CAPABILITIES.openai["gpt-6-luna"] },
@@ -1106,8 +1163,8 @@ export function aggregateComboCapabilities(comboModels, comboLookup = null, alia
     }
     const slash = fullId.indexOf("/");
     const provider = slash === -1 ? null : fullId.slice(0, slash);
-    const model = slash === -1 ? fullId : fullId.slice(slash + 1);
     const providerId = aliasToProviderId?.[provider] ?? provider;
+    const model = stripThinkingSuffix(slash === -1 ? fullId : fullId.slice(slash + 1), providerId);
     // Persisted custom-model overrides (keyed canonical "providerId/modelId")
     // merge over the static catalog so advertised combo capabilities match
     // routing. Members may use a static alias or a connection's custom output
@@ -1300,7 +1357,7 @@ function isCommandCodeTextOnly(model) {
 
 /** Apply Cursor's hard transport limit to an owned, fully overlaid capability object. */
 export function enforceCursorCapabilities(provider, capabilities) {
-  if (capabilities && (provider === "cursor" || provider === "cu")) capabilities.vision = false;
+  if (capabilities && isCursorProvider(provider)) capabilities.vision = false;
   return capabilities;
 }
 
@@ -1332,9 +1389,20 @@ const ADAPTIVE_HAIKU_CAPABILITIES = { vision: true, pdf: true, reasoning: true, 
  * @param {string} model
  * @returns {object} full capabilities object
  */
-export function getCapabilitiesForModel(provider, model) {
+/**
+ * @param {string} provider
+ * @param {string} model
+ * @param {string} [kind] Declared service kind of the row. An `image` row that
+ *   is not a registered image model keeps none of the chat-family tools,
+ *   reasoning, vision or token limits its id would match: an image id such as
+ *   `gpt-6.1-sol-image` starts with its chat sibling's id.
+ */
+export function getCapabilitiesForModel(provider, model, kind = undefined) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
+    if (provider === "gemini-interactions" && model === "gemini-4-hydrogen") {
+      result = { ...result, thinkingEfforts: ["low", "medium", "high", "xhigh"] };
+    }
     // Workers AI pages publish max_tokens defaults, never enforceable ceilings.
     if ((provider === "cloudflare-ai" || provider === "cf") && model?.startsWith("@cf/")) {
       result = { ...result, maxOutput: undefined };
@@ -1362,6 +1430,9 @@ export function getCapabilitiesForModel(provider, model) {
   const capabilityBaseModel = registryModel?.id || (/^glm-5\.3\[1m\]$/i.test(baseModel) ? "glm-5.3" :
     /^k3\[1m\]$/i.test(baseModel) ? "k3" : baseModel);
   const kindCaps = capabilitiesFromServiceKind(registryModel?.kind || registryModel?.type);
+  if (!kindCaps && kind === "image") {
+    return finalize({ ...DEFAULT_CAPABILITIES, ...capabilitiesFromServiceKind("image") });
+  }
   if (kindCaps && registryModel?.kind !== "imageToText" && registryModel?.type !== "imageToText") {
     const declaredCaps = PROVIDER_CAPABILITIES[registry.id]?.[capabilityBaseModel] || MODEL_CAPABILITIES[capabilityBaseModel] || {};
     return finalize({ ...DEFAULT_CAPABILITIES, ...kindCaps, ...declaredCaps });

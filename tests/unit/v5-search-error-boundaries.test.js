@@ -28,6 +28,7 @@ vi.mock("../../src/sse/utils/logger.js", () => ({
   request: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), maskKey: () => "masked",
 }));
 vi.mock("../../src/sse/services/model.js", () => ({
+  filterDisabledComboModels: async (models) => models,
   getAutoComboCatalog: () => { throw new Error("Unexpected automatic combo"); },
 }));
 vi.mock("open-sse/services/combo.js", () => ({
@@ -230,7 +231,7 @@ describe("E-12 selected search credential boundaries", () => {
     const response = await handleSearch(req);
     expect(response.status).toBe(200);
     expect(captured.map((call) => call.authorization)).toEqual([`Bearer ${REFRESHED}`, `Bearer ${REFRESHED}`]);
-    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith("e12-account", credentials, "websearch:perplexity", { provider: "perplexity", webSearch: true });
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith("e12-account", credentials, "websearch:perplexity", { provider: "perplexity", webSearch: true, credentialFingerprint: null, dispatchedAt: expect.any(Number) });
     expect(mocks.unavailable).not.toHaveBeenCalled();
     expect(mocks.record).toHaveBeenCalledTimes(1);
     const [key, recordedResponse, accounting] = mocks.record.mock.calls[0];

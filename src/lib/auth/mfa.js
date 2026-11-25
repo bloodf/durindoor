@@ -1,8 +1,9 @@
 // MFA state + second-factor verification shared by the login and enrollment routes.
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { consumeBackupCodeAtomic } from "@/lib/db/repos/settingsRepo.js";
-import { verifyTotpCode } from "./totp.js";
+import { findTotpCounter } from "./totp.js";
 import { findBackupCodeHashIndexSync } from "./backupCodes.js";
+import { rotateDashboardSessionEpoch } from "./dashboardSession.js";
 
 /** True when a second factor must be presented for password logins. */
 export function isMfaEnabled(settings) {
@@ -29,7 +30,17 @@ export async function verifySecondFactor(input) {
 
   // A bare 6-digit value is a TOTP; anything else can only be a backup code.
   if (/^\d{6}$/.test(candidate.replace(/\s/g, ""))) {
-    if (verifyTotpCode(settings.mfaSecret, candidate)) {
+    const counter = findTotpCounter(settings.mfaSecret, candidate);
+    if (counter !== null) {
+      let accepted = false;
+      // settingsRepo resolves updater functions inside its transaction, so two
+      // simultaneous submissions of the same code cannot both pass the check.
+      await updateSettings((current) => {
+        if (counter <= (current.mfaLastTotpCounter ?? -1)) return {};
+        accepted = true;
+        return { mfaLastTotpCounter: counter };
+      });
+      if (!accepted) return { ok: false, method: null };
       return {
         ok: true,
         method: "totp",
@@ -55,5 +66,5 @@ export async function verifySecondFactor(input) {
 
 /** Turn MFA off and wipe every stored secret/recovery hash. */
 export async function disableMfa() {
-  await updateSettings({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [] });
+  await rotateDashboardSessionEpoch({ mfaEnabled: false, mfaSecret: "", mfaBackupCodes: [], mfaLastTotpCounter: null });
 }

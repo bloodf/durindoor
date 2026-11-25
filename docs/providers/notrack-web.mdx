@@ -1,0 +1,26 @@
+---
+title: NoTrack Web
+description: Use a signed-in notrack.ai chat session cookie, the single dispatch model, limits and errors.
+---
+
+NoTrack Web connects to the consumer chat at [notrack.ai](https://notrack.ai) with a browser session cookie. The provider advertises the upstream's single `C` dispatch model as `notrack-c`.
+
+## Setup
+
+Sign in to notrack.ai, open a chat, and copy the complete `Cookie` request header from DevTools → Network → a `/api/dispatch` request. Paste it as the connection credential. `uid`, `si_usr_id`, and `si_ses_id` identify the session; `nt_session` is preserved when present. A raw Cookie header and a `Cookie:` prefixed header are accepted. Cookie sessions expire when the upstream invalidates them; replace the saved header after an authentication error.
+
+The provider forwards a chat envelope to `POST https://notrack.ai/api/dispatch`: `user_input`, mode `usual`, model `C`, persona `normal`, and optional chat metadata. Upstream `delta` events become OpenAI streaming chunks; full `message` events are used as a non-streaming fallback. OpenAI-compatible `/v1/chat/completions` and Anthropic-compatible `/v1/messages` requests pass through the shared gateway translation layer.
+
+## Cookie capture
+
+**Import cookies** and the cookie capture extension take `uid`, `si_usr_id` and `si_ses_id` from `https://notrack.ai`; all three are required. `nt_session` is optional: it is stored with the session when the browser or the pasted header has it, and the import works without it. A pasted cURL command or HAR also works as an import source; avoid sharing the original request elsewhere.
+
+NoTrack has no read-only session endpoint: its only request is the chat dispatch. **Validate** and **Test connection** therefore skip the network check rather than start a conversation, so a saved cookie is proven only by the first chat request.
+
+## Limits
+
+NoTrack controls anonymous and signed-in quotas, model behavior, and availability. HTTP 401/403 indicate an invalid or expired session; HTTP 429 indicates rate limiting. The upstream offers one assistant persona and dispatch model (`C`), not a selectable model catalog. Tool calls are represented in the prompt where supported by the upstream implementation and are not guaranteed to execute as native tools. Long inputs are bounded before dispatch.
+
+## Sources
+
+- [NoTrack](https://notrack.ai)

@@ -134,12 +134,24 @@ describe("#1089 Claude Messages client requests to Chat, Responses and Gemini", 
     expect(fromClaude(GEMINI, { tools }).tools[0].functionDeclarations[0].parameters.properties.n).toMatchObject({ minimum: 1, maximum: 5 });
   });
 
-  it("replaces inline tool_result image bytes with a media-type label for Chat and Responses (by contract)", () => {
-    const messages = claudeBody().messages.slice();
-    messages[2] = { role: "user", content: [{ type: "tool_result", tool_use_id: "tu1", content: [{ type: "text", text: "ok" }, { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }] }] };
-    const chat = fromClaude(CHAT, { messages });
-    expect(chat.messages[2].content).toBe("ok\n[tool result omitted image: image/png]");
-    expect(JSON.stringify(fromClaude(RESPONSES, { messages }))).not.toContain("AAAA");
+  // 9router #2123: valid tool_result images within the 1 MiB budget are forwarded after the
+  // tool turn; only bytes that are replaced (over budget/invalid) keep the media-type label.
+  it("forwards bounded tool_result images and labels replaced bytes with their media type for Chat and Responses", () => {
+    const withImage = (data) => {
+      const messages = claudeBody().messages.slice();
+      messages[2] = { role: "user", content: [{ type: "tool_result", tool_use_id: "tu1", content: [{ type: "text", text: "ok" }, { type: "image", source: { type: "base64", media_type: "image/png", data } }] }] };
+      return messages;
+    };
+    const chat = fromClaude(CHAT, { messages: withImage("AAAA") });
+    expect(chat.messages[2].content).toBe("ok\n[tool returned an image; see attached]");
+    expect(chat.messages[3].content).toContainEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } });
+    const large = "A".repeat(1048580);
+    const omitted = fromClaude(CHAT, { messages: withImage(large) });
+    expect(omitted.messages[2].content).toBe("ok\n[tool result omitted image: image/png]");
+    expect(JSON.stringify(omitted)).not.toContain(large);
+    const responses = JSON.stringify(fromClaude(RESPONSES, { messages: withImage(large) }));
+    expect(responses).toContain("[tool result omitted image: image/png]");
+    expect(responses).not.toContain(large);
   });
 });
 

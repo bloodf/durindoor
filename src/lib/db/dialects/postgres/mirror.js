@@ -17,6 +17,7 @@ const RUNNER_META_KEYS = ["schemaVersion", "appliedMigrations"];
 const SKIP_TABLES = new Set(["requestDetails"]);
 const SERIAL_TABLES = new Map([
   ["usageHistory", "id"],
+  ["usageDailyRollups", "id"],
   ["tokenSaverEvents", "id"],
   ["pgCutoverLog", "id"],
 ]);
@@ -40,9 +41,8 @@ async function countRows(adapter, tableName) {
 
 async function resetSerial(pg, tableName, col) {
   const sql =
-    `SELECT setval(pg_get_serial_sequence('${tableName.replace(/'/g, "''")}', '${col}'), ` +
-    `COALESCE((SELECT MAX(${quoteIdent(col)}) FROM ${quoteIdent(tableName)}), 1), ` +
-    `MAX(${quoteIdent(col)}) IS NOT NULL)`;
+    `SELECT setval(pg_get_serial_sequence('${quoteIdent(tableName)}', '${col}'), ` +
+    `COALESCE(MAX(${quoteIdent(col)}), 1), MAX(${quoteIdent(col)}) IS NOT NULL) FROM ${quoteIdent(tableName)}`;
   try {
     await Promise.resolve(pg.get(sql));
   } catch {
@@ -69,7 +69,7 @@ export async function runMirror(sqlite, pg, options = {}) {
     if (!cols || !cols.length) continue;
 
     const sourceCount = await countRows(sqlite, tableName);
-    if (tableName !== "_meta") {
+    if (tableName !== "_meta" && tableName !== "sessionCaptureTurns") {
       try {
         // CASCADE is required, not merely convenient: PG refuses to TRUNCATE a
         // table that other tables reference, and tables are truncated in
@@ -77,7 +77,10 @@ export async function runMirror(sqlite, pg, options = {}) {
         // quotaReservations, …) are emptied while their children still hold
         // rows. Every referencing table is itself mirrored and truncated here,
         // so cascading cannot discard data that is not about to be rewritten.
-        await Promise.resolve(pg.exec(`TRUNCATE TABLE ${quoteIdent(tableName)} CASCADE`));
+        // Clear captures atomically with their old owners. Source captures
+        // are copied after the corresponding keys have been mirrored.
+        const tables = tableName === "apiKeys" ? '"apiKeys", "sessionCaptureTurns"' : quoteIdent(tableName);
+        await Promise.resolve(pg.exec(`TRUNCATE TABLE ${tables} CASCADE`));
       } catch (err) {
         return {
           ok: false,

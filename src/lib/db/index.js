@@ -18,14 +18,39 @@ import {
 import { readQuotaPortableStateSync, writeQuotaPortableStateSync } from "./repos/quotaSnapshotsRepo.js";
 import { assertNoActiveQuotaReservationsSync } from "./repos/quotaReservationsRepo.js";
 import { SENSITIVE_CONNECTION_FIELDS } from "./repos/connectionsRepo.js";
-import { isEncryptedBlob, decryptField, encryptField } from "../crypto/columnCrypto.js";
+import { isEncryptedBlob } from "../crypto/columnCrypto.js";
+import { encryptConnectionSecret, decryptConnectionSecret } from "./helpers/connectionSecrets.js";
+import { EXPORT_SCRUBBED_SETTING_KEYS } from "../settings/settingsSchema.js";
+import { encryptProxyPoolSecrets, decryptProxyPoolSecrets } from "./repos/proxyPoolsRepo.js";
 import { isBoolean, isNumber, isObject, isString } from "../../shared/utils/typeChecks.js";
 import { mergeProviderSpecificData } from "./helpers/mergeProviderMetadata.js";
+import {
+  decryptProviderSpecificData,
+  encryptProviderSpecificData,
+  scrubProxyPoolForExport,
+  scrubProviderSpecificDataForExport,
+  scrubCredentialedUrl,
+  scrubSettingsSecretsForExport } from
+"./helpers/providerSpecificDataSecrets.js";
 import { validateComboInvariant } from "@/lib/combos/invariants.js";
 import { normalizeComboMembers } from "./repos/combosRepo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { validateGroupName, validateGroupDescription } from "./repos/connectionGroupsRepo.js";
 import { backfillUsageEventReceiptsSync, getBillingEpochSync } from "./repos/usageRepo.js";
+import { dropAntigravityRowsForMissingConnections, noteImportedAntigravityToken } from "../antigravity/leaseSql.js";
+
+const ANTIGRAVITY_IMPORT_FORBIDDEN_KEYS = Object.freeze([
+  "antigravityRecoveryCredentials",
+  "antigravityRefreshLeases",
+]);
+
+function rejectAntigravityRotationPayload(payload) {
+  for (const key of ANTIGRAVITY_IMPORT_FORBIDDEN_KEYS) {
+    if (payload && Object.hasOwn(payload, key)) {
+      throw new Error("Database import cannot carry Antigravity recovery or lease rows");
+    }
+  }
+}
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -253,7 +278,7 @@ export {
 // Provider connections
 export {
   getProviderConnections, getProviderConnectionById,
-  createProviderConnection, updateProviderConnection, claimProviderConnectionPing,
+  createProviderConnection, updateProviderConnection, claimProviderConnectionPing, compareAndSwapProviderSpecificData,
   recordProviderConnectionFallbackState, clearProviderConnectionFallbackState,
   deleteProviderConnection, deleteProviderConnectionsByProvider, setProviderConnectionAutoPing,
   reorderProviderConnections, reorderProviderConnectionsByIds, cleanupProviderConnections } from
@@ -262,7 +287,7 @@ export {
 // Provider nodes
 export {
   getProviderNodes, getProviderNodeById,
-  createProviderNode, updateProviderNode, deleteProviderNode } from
+  createProviderNode, updateProviderNode, deleteProviderNode, deleteProviderNodeWithConnections } from
 "./repos/nodesRepo.js";
 
 // Proxy pools
@@ -373,6 +398,18 @@ export {
   countRequestDetailsSince, iterateRequestDetailsSince } from
 "./repos/requestDetailsRepo.js";
 
+/** Settings keys dropped from scrubbed portable exports (issues #2208, #2440). */
+const SCRUBBED_SETTING_SECRET_KEYS = EXPORT_SCRUBBED_SETTING_KEYS;
+
+/** Auth settings importDb must keep from the live install (issue #2297). */
+const IMPORT_PRESERVED_AUTH_KEYS = Object.freeze([
+  "mfaEnabled",
+  "mfaSecret",
+  "mfaBackupCodes",
+  "password",
+  "passwordSessionEpoch",
+]);
+
 // Export/import full DB
 export async function exportDb({ now = Date.now(), includeSecrets = false } = {}) {
   const db = await getAdapter();
@@ -389,18 +426,29 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
           // explicitly opted-in. Encrypted blobs pass through but are still
           // scrubbed here — backups must never contain either form by default.
           for (const field of SENSITIVE_CONNECTION_FIELDS) delete conn[field];
+          // Nested PSD secrets (cookie/clientSecret/mimoPassToken/…) use an
+          // allowlist matching sanitizeProviderConnectionForClient.
+          if (conn.providerSpecificData) {
+            conn.providerSpecificData = scrubProviderSpecificDataForExport(conn.providerSpecificData);
+          }
         } else {
           // Opt-in mode: decrypt to plaintext so a backup can be re-imported
           // into a different DATA_DIR (which has a different master key).
           for (const field of SENSITIVE_CONNECTION_FIELDS) {
             const value = conn[field];
-            if (isEncryptedBlob(value)) conn[field] = decryptField(value, r.id);
+            if (isEncryptedBlob(value)) conn[field] = decryptConnectionSecret(value, r.id, field);
+          }
+          if (conn.providerSpecificData) {
+            conn.providerSpecificData = decryptProviderSpecificData(conn.providerSpecificData, r.id);
           }
         }
         return conn;
       }),
       providerNodes: db.all(`SELECT * FROM providerNodes`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, type: r.type, name: r.name, createdAt: r.createdAt, updatedAt: r.updatedAt })),
-      proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => {
+        const pool = decryptProxyPoolSecrets({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt }, r.id);
+        return includeSecrets ? pool : scrubProxyPoolForExport(pool);
+      }),
       apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => {
         let ac = [];
         try {ac = JSON.parse(r.allowedCombos);if (!Array.isArray(ac)) ac = [];} catch {}
@@ -420,8 +468,15 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         } catch {
           throw new Error(`API key ${r.id} has invalid expiresAt storage`);
         }
-        return { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, isAdmin: r.isAdmin === 1 || r.isAdmin === true, createdAt: r.createdAt };
+        const keyRow = { id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, allowedCombos: ac, dailyLimitTokens: r.dailyLimitTokens ?? null, policy, expiresAt, isAdmin: r.isAdmin === 1 || r.isAdmin === true, createdAt: r.createdAt };
+        // Scrubbed exports must not carry the bearer secret (issue #2208).
+        if (!includeSecrets) delete keyRow.key;
+        return keyRow;
       }),
+      apiKeyGroups: db.all(`SELECT id, name, description, createdAt, updatedAt FROM apiKeyGroups ORDER BY name COLLATE NOCASE ASC`),
+      apiKeyGroupMembers: db.all(
+        `SELECT groupId, apiKeyId, createdAt FROM apiKeyGroupMembers ORDER BY groupId ASC, apiKeyId ASC`
+      ),
       apiKeyProviderConnections: db.all(
         `SELECT apiKeyId, connectionId FROM apiKeyProviderConnections ORDER BY apiKeyId ASC, connectionId ASC`
       ),
@@ -433,13 +488,64 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
         unknownCostRequests: Number(r.unknownCostRequests) || 0,
         updatedAt: r.updatedAt || null
       })),
+      mcpInstances: db.all(`SELECT * FROM mcpInstances ORDER BY createdAt ASC`).map((r) => {
+        const row = {
+          id: r.id,
+          slug: r.slug,
+          title: r.title,
+          kind: r.kind,
+          transport: r.transport,
+          url: r.url,
+          command: r.command,
+          args: parseJson(r.args, null),
+          env: parseJson(r.env, null),
+          headers: parseJson(r.headers, null),
+          oauth: r.oauth === 1 || r.oauth === true,
+          oauthTokens: parseJson(r.oauthTokens, null),
+          providerConnectionId: r.providerConnectionId ?? null,
+          enabled: r.enabled === 1 || r.enabled === true,
+          createdAt: r.createdAt,
+        };
+        if (!includeSecrets) {
+          row.env = null;
+          row.headers = null;
+          row.oauthTokens = null;
+          if (scrubCredentialedUrl(row.url) === null) row.url = null;
+        }
+        return row;
+      }),
+      mcpGatewayKeys: db.all(`SELECT * FROM mcpGatewayKeys ORDER BY createdAt ASC`).map((r) => {
+        const row = {
+          id: r.id,
+          name: r.name ?? null,
+          key: r.key,
+          machineId: r.machineId,
+          isActive: r.isActive === 1 || r.isActive === true,
+          createdAt: r.createdAt,
+        };
+        if (!includeSecrets) delete row.key;
+        return row;
+      }),
+      mcpKeyGrants: db.all(
+        `SELECT keyId, instanceId, toolAllowlist FROM mcpKeyGrants ORDER BY keyId ASC, instanceId ASC`
+      ).map((r) => ({
+        keyId: r.keyId,
+        instanceId: r.instanceId,
+        toolAllowlist: r.toolAllowlist == null || r.toolAllowlist === "" ? null : parseJson(r.toolAllowlist, null),
+      })),
+      modelCapabilityOverrides: db.all(
+        `SELECT provider, modelId, overrideKey, overrideValue, refreshedAt FROM modelCapabilityOverrides`
+      ),
+      sessionCaptureTurns: db.all(
+        `SELECT "id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt" FROM "sessionCaptureTurns"`
+      ),
       usageEventReceipts: db.all(`SELECT key FROM kv WHERE scope = 'usageEventReceipts' ORDER BY key`).map((row) => row.key),
       billingEpoch: getBillingEpochSync(db),
       // Receipt presence/backfill proves individual events, not complete history.
       usageEventReceiptsVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'receiptsVersion'")?.value === "1" ? 1 : null,
       billingCutoverVersion: db.get("SELECT value FROM kv WHERE scope = 'billing' AND key = 'cutoverVersion'")?.value === "1" ? 1 : null,
       quota: readQuotaPortableStateSync(db, { now: quotaNow }),
-      combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+      combos: db.all(`SELECT * FROM combos`).map((r) => ({ noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", r.id, "true"]), id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), members: parseJson(r.members, null), invariant: r.invariant ? parseJson(r.invariant, null) : null, capabilities: r.capabilities ? parseJson(r.capabilities, null) : null, allowedConnectionIds: parseJson(r.allowedConnectionIds, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
       connectionGroups: db.all(`SELECT * FROM connectionGroups`).map((r) => ({ id: r.id, name: r.name, description: r.description, createdAt: r.createdAt, updatedAt: r.updatedAt })),
       connectionGroupMembers: db.all(`SELECT * FROM connectionGroupMembers`).map((r) => ({ groupId: r.groupId, connectionId: r.connectionId, createdAt: r.createdAt })),
       modelAliases: {},
@@ -453,7 +559,12 @@ export async function exportDb({ now = Date.now(), includeSecrets = false } = {}
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'mitmAlias'`)) out.mitmAlias[r.key] = parseJson(r.value);
     for (const r of db.all(`SELECT key, value FROM kv WHERE scope = 'pricing'`)) out.pricing[r.key] = parseJson(r.value);
 
-    if (!includeSecrets && out.settings) delete out.settings.postgresUrl;
+    if (!includeSecrets && out.settings) {
+      // #2281: scrub nested outboundProxyUrl / operatorWebhooks secrets.
+      out.settings = scrubSettingsSecretsForExport(out.settings);
+      // #2208: drop top-level settings credential keys from scrubbed exports.
+      for (const key of SCRUBBED_SETTING_SECRET_KEYS) delete out.settings[key];
+    }
 
     return out;
   });
@@ -463,6 +574,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   if (!payload || !isObject(payload) || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+  rejectAntigravityRotationPayload(payload);
   // Validate before opening the transaction or deleting any existing rows.
   // This makes duplicate keys, dangling totals, and malformed policies a hard
   // import error instead of silently collapsing or weakening enforcement.
@@ -503,6 +615,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     if (!combo || !isObject(combo) || Array.isArray(combo) || !Array.isArray(combo.models)) {
       throw new Error("Combo import row is invalid");
     }
+    if (Object.hasOwn(combo, "noLog") && !isBoolean(combo.noLog)) throw new Error("Combo noLog must be a boolean");
     return { ...combo, members: normalizeComboMembers(combo.models, combo.members) };
   });
   const db = await getAdapter();
@@ -513,10 +626,22 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     throw new Error("Database import requires a transactional engine with shared writer fencing; sql.js cutover is unsupported");
   }
 
+  const apiKeyGroups = Array.isArray(payload.apiKeyGroups) ? payload.apiKeyGroups : [];
+  const apiKeyGroupMembers = Array.isArray(payload.apiKeyGroupMembers) ? payload.apiKeyGroupMembers : [];
+  const mcpInstances = Array.isArray(payload.mcpInstances) ? payload.mcpInstances : [];
+  const mcpGatewayKeys = Array.isArray(payload.mcpGatewayKeys) ? payload.mcpGatewayKeys : [];
+  const mcpKeyGrants = Array.isArray(payload.mcpKeyGrants) ? payload.mcpKeyGrants : [];
+  const modelCapabilityOverrides = Array.isArray(payload.modelCapabilityOverrides) ? payload.modelCapabilityOverrides : [];
+  const sessionCaptureTurns = Array.isArray(payload.sessionCaptureTurns) ? payload.sessionCaptureTurns : [];
+
   db.transaction(() => {
     // Acquire SQLite's writer lock and recheck inside the destructive
     // transaction so another process cannot reserve between guard and wipe.
     assertNoActiveQuotaReservationsSync(db, { now: quotaNow });
+    // Keep live MFA/password material across restore (issue #2297). Read before
+    // the settings wipe so a backup cannot disable MFA or swap the password.
+    const priorSettingsRow = db.get(`SELECT data FROM settings WHERE id = 1`);
+    const priorSettings = priorSettingsRow ? parseJson(priorSettingsRow.data, {}) : {};
     const billingEpoch = randomUUID();
     db.run(`INSERT INTO kv(scope, key, value) VALUES('billing', 'epoch', ?)
       ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [stringifyJson(billingEpoch)]);
@@ -531,20 +656,25 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       db.run(`INSERT INTO kv(scope, key, value) VALUES('usageEventReceipts', ?, '1')
         ON CONFLICT(scope, key) DO NOTHING`, [key]);
     }
+    // Retain MCP credentials when importing a scrubbed export into the same
+    // installation, matching provider-connection secret preservation.
+    // Scrubbed exports drop relaySecret; keep the live (encrypted) value per pool id.
+    const priorPoolRelaySecrets = new Map(db.all(`SELECT id, data FROM proxyPools`).map((row) => [row.id, parseJson(row.data, {}).relaySecret]));
+    const priorMcpSecrets = new Map(db.all(`SELECT id, url, env, headers, oauthTokens FROM mcpInstances`).map((row) => [row.id, row]));
     // Wipe all tables (keep _meta)
     // Usage history is intentionally retained for operator analytics, but its
     // key associations belong to the pre-import key set. Clear both so
     // restored keys cannot inherit attribution from retained history.
     db.run(`UPDATE usageHistory SET apiKey = NULL, apiKeyId = NULL WHERE apiKey IS NOT NULL OR apiKeyId IS NOT NULL`);
-    for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
-      const day = parseJson(row.data, {});
-      if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {
-        // Preserve aggregate/provider/model analytics while removing the
-        // secret-derived per-key buckets from the pre-import identity set.
-        day.byApiKey = {};
-        db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), row.dateKey]);
-      }
-    }
+    // Preserve per-model/account/endpoint maxima while detaching old key identities.
+    db.run(`INSERT INTO usageLastSeen(dateKey, provider, model, connectionId, apiKey, endpoint, lastUsed)
+      SELECT dateKey, provider, model, connectionId, '', endpoint, MAX(lastUsed)
+      FROM usageLastSeen WHERE apiKey <> '' GROUP BY dateKey, provider, model, connectionId, endpoint
+      ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
+        lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`);
+    db.run("DELETE FROM usageLastSeen WHERE apiKey <> ''");
+    // Keep the totals and non-key dimensions from the pre-import rollups.
+    db.run("DELETE FROM usageDailyRollups WHERE dimension = 'byApiKey'");
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM quotaReservationItems`);
     db.run(`DELETE FROM quotaReservations`);
@@ -557,28 +687,61 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     db.run(`DELETE FROM proxyPools`);
     db.run(`DELETE FROM apiKeyUsageTotals`);
     db.run(`DELETE FROM apiKeyProviderConnections`);
+    db.run(`DELETE FROM apiKeyGroupMembers`);
+    db.run(`DELETE FROM apiKeyGroups`);
+    db.run(`DELETE FROM mcpKeyGrants`);
+    db.run(`DELETE FROM mcpGatewayKeys`);
+    db.run(`DELETE FROM mcpInstances`);
+    db.run(`DELETE FROM modelCapabilityOverrides`);
+    // Captures belong to the pre-import keys, even when an imported ID matches.
+    db.run('DELETE FROM "sessionCaptureTurns"');
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
+    db.run(`DELETE FROM kv WHERE scope = ?`, ["comboNoLog"]);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
 
-    // Settings
+    // Settings — re-apply live MFA/password fields so import cannot strip 2FA.
     if (payload.settings) {
-      db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(payload.settings)]);
+      const nextSettings = { ...payload.settings };
+      for (const key of IMPORT_PRESERVED_AUTH_KEYS) {
+        if (Object.hasOwn(priorSettings, key)) nextSettings[key] = priorSettings[key];
+        else delete nextSettings[key];
+      }
+      // A scrubbed export omits these; keep the live values (issue #2440).
+      for (const key of SCRUBBED_SETTING_SECRET_KEYS) {
+        if (!Object.hasOwn(nextSettings, key) && Object.hasOwn(priorSettings, key)) nextSettings[key] = priorSettings[key];
+      }
+      db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(nextSettings)]);
+    } else if (Object.keys(priorSettings).length > 0) {
+      const kept = {};
+      for (const key of [...IMPORT_PRESERVED_AUTH_KEYS, ...SCRUBBED_SETTING_SECRET_KEYS]) {
+        if (Object.hasOwn(priorSettings, key)) kept[key] = priorSettings[key];
+      }
+      if (Object.keys(kept).length > 0) {
+        db.run(`INSERT INTO settings(id, data) VALUES(1, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data`, [stringifyJson(kept)]);
+      }
     }
 
     for (const c of payload.providerConnections || []) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+      const importedRefresh = isString(c.refreshToken) && c.refreshToken && !isEncryptedBlob(c.refreshToken) ? c.refreshToken : null;
       for (const field of SENSITIVE_CONNECTION_FIELDS) {
         const value = rest[field];
+        if (isEncryptedBlob(value)) throw new Error(`Import field "${field}" must not contain an encrypted credential blob`);
         if (isString(value) && value.length > 0 && !isEncryptedBlob(value)) {
-          rest[field] = encryptField(value, id);
+          rest[field] = encryptConnectionSecret(value, id, field);
         }
+      }
+      if (rest.providerSpecificData) {
+        rest.providerSpecificData = encryptProviderSpecificData(rest.providerSpecificData, id);
       }
       db.run(
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
+      noteImportedAntigravityToken(db, { connectionId: id, provider, refreshToken: importedRefresh });
     }
+    dropAntigravityRowsForMissingConnections(db);
     for (const n of payload.providerNodes || []) {
       const { id, type, name, createdAt, updatedAt, ...rest } = n;
       db.run(
@@ -588,9 +751,14 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
     for (const p of payload.proxyPools || []) {
       const { id, isActive, testStatus, createdAt, updatedAt, ...rest } = p;
+      if (isEncryptedBlob(rest.relaySecret)) throw new Error(`Import field "relaySecret" must not contain an encrypted credential blob`);
+      let poolData = encryptProxyPoolSecrets(rest, id);
+      if (!Object.hasOwn(rest, "relaySecret") && priorPoolRelaySecrets.get(id)) {
+        poolData = { ...poolData, relaySecret: priorPoolRelaySecrets.get(id) };
+      }
       db.run(
         `INSERT OR REPLACE INTO proxyPools(id, isActive, testStatus, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?)`,
-        [id, isActive === false ? 0 : 1, testStatus || "unknown", stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
+        [id, isActive === false ? 0 : 1, testStatus || "unknown", stringifyJson(poolData), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
     }
     writeQuotaPortableStateSync(db, quota);
@@ -598,6 +766,20 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       db.run(
         `INSERT INTO apiKeys(id, key, name, machineId, isActive, allowedCombos, dailyLimitTokens, policy, expiresAt, isAdmin, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [k.id, k.key, k.name || null, k.machineId || null, k.isActive === false ? 0 : 1, JSON.stringify(k.allowedCombos || []), k.dailyLimitTokens ?? null, k.policy == null ? null : stringifyJson(normalizeApiKeyPolicy(k.policy)), k.expiresAt || null, k.isAdmin === true ? 1 : 0, k.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const group of apiKeyGroups) {
+      if (!group || !isString(group.id) || !isString(group.name)) continue;
+      db.run(
+        `INSERT INTO apiKeyGroups(id, name, description, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?)`,
+        [group.id, group.name, group.description ?? null, group.createdAt || new Date().toISOString(), group.updatedAt || new Date().toISOString()]
+      );
+    }
+    for (const member of apiKeyGroupMembers) {
+      if (!member || !isString(member.groupId) || !isString(member.apiKeyId)) continue;
+      db.run(
+        `INSERT OR IGNORE INTO apiKeyGroupMembers(groupId, apiKeyId, createdAt) VALUES(?, ?, ?)`,
+        [member.groupId, member.apiKeyId, member.createdAt || new Date().toISOString()]
       );
     }
     for (const relation of apiKeyProviderConnections) {
@@ -639,9 +821,74 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       );
     }
     for (const c of comboWrites) {
+      if (c.noLog === true) db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)`, ["comboNoLog", c.id, "true"]);
       db.run(
         `INSERT OR REPLACE INTO combos(id, name, kind, models, members, invariant, capabilities, allowedConnectionIds, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [c.id, c.name, c.kind || null, stringifyJson(c.models), c.members == null ? null : stringifyJson(c.members), c.invariant == null ? null : stringifyJson(c.invariant), c.capabilities == null ? null : stringifyJson(c.capabilities), stringifyJson(c.allowedConnectionIds || []), c.createdAt || new Date().toISOString(), c.updatedAt || new Date().toISOString()]
+      );
+    }
+    for (const inst of mcpInstances) {
+      if (!inst || !isString(inst.id) || !isString(inst.slug)) continue;
+      const prior = priorMcpSecrets.get(inst.id);
+      const env = inst.env == null && prior ? parseJson(prior.env, null) : inst.env;
+      const headers = inst.headers == null && prior ? parseJson(prior.headers, null) : inst.headers;
+      const oauthTokens = inst.oauthTokens == null && prior ? parseJson(prior.oauthTokens, null) : inst.oauthTokens;
+      const url = inst.url == null && prior ? prior.url : inst.url;
+      db.run(
+        `INSERT INTO mcpInstances(id, slug, title, kind, transport, url, command, args, env, headers, oauth, oauthTokens, providerConnectionId, enabled, createdAt)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          inst.id,
+          inst.slug,
+          inst.title ?? null,
+          inst.kind || "custom",
+          inst.transport || "stdio",
+          url ?? null,
+          inst.command ?? null,
+          inst.args == null ? null : stringifyJson(inst.args),
+          env == null ? null : stringifyJson(env),
+          headers == null ? null : stringifyJson(headers),
+          inst.oauth ? 1 : 0,
+          oauthTokens == null ? null : stringifyJson(oauthTokens),
+          inst.providerConnectionId ?? null,
+          inst.enabled === false ? 0 : 1,
+          inst.createdAt || new Date().toISOString(),
+        ]
+      );
+    }
+    for (const gk of mcpGatewayKeys) {
+      if (!gk || !isString(gk.id) || !isString(gk.key)) continue;
+      db.run(
+        `INSERT INTO mcpGatewayKeys(id, name, key, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?)`,
+        [gk.id, gk.name ?? null, gk.key, gk.machineId ?? null, gk.isActive === false ? 0 : 1, gk.createdAt || new Date().toISOString()]
+      );
+    }
+    for (const grant of mcpKeyGrants) {
+      if (!grant || !isString(grant.keyId) || !isString(grant.instanceId)) continue;
+      db.run(
+        `INSERT OR IGNORE INTO mcpKeyGrants(keyId, instanceId, toolAllowlist) VALUES(?, ?, ?)`,
+        [grant.keyId, grant.instanceId, grant.toolAllowlist == null ? null : stringifyJson(grant.toolAllowlist)]
+      );
+    }
+    for (const row of modelCapabilityOverrides) {
+      if (!row || !isString(row.provider) || !isString(row.modelId) || !isString(row.overrideKey)) continue;
+      db.run(
+        `INSERT INTO modelCapabilityOverrides(provider, modelId, overrideKey, overrideValue, refreshedAt)
+         VALUES(?, ?, ?, ?, ?)
+         ON CONFLICT(provider, modelId, overrideKey) DO UPDATE SET
+           overrideValue = excluded.overrideValue,
+           refreshedAt = excluded.refreshedAt`,
+        [row.provider, row.modelId, row.overrideKey, row.overrideValue ?? "", row.refreshedAt || new Date().toISOString()]
+      );
+    }
+    for (const turn of sessionCaptureTurns) {
+      if (!turn || !isString(turn.id) || !isString(turn.apiKeyId) || !isString(turn.sessionId)) continue;
+      const byteSize = Number(turn.byteSize);
+      if (!Number.isSafeInteger(byteSize) || byteSize < 1 || byteSize > 16384) continue;
+      db.run(
+        `INSERT OR REPLACE INTO "sessionCaptureTurns" ("id", "apiKeyId", "sessionId", "content", "byteSize", "createdAt", "expiresAt")
+         VALUES(?, ?, ?, ?, ?, ?, ?)`,
+        [turn.id, turn.apiKeyId, turn.sessionId, turn.content ?? "", byteSize, turn.createdAt || new Date().toISOString(), turn.expiresAt || new Date().toISOString()]
       );
     }
     for (const [a, m] of Object.entries(payload.modelAliases || {})) {
@@ -659,7 +906,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
     }
   });
 
-  return await exportDb({ now: quotaNow });
+  // Return a secret-preserving snapshot so in-process callers can re-import the
+  // post-restore state. HTTP handlers never forward this object to clients.
+  return await exportDb({ now: quotaNow, includeSecrets: true });
 }
 const TRANSFER_CONNECTION_FIELDS = new Set([
   "id", "provider", "authType", "name", "email", "priority", "isActive", "createdAt", "updatedAt",
@@ -677,7 +926,8 @@ const TRANSFER_SAFE_PSD_FIELDS = new Set([
 const TRANSFER_BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const TRANSFER_SECRET_LIKE_KEYS = new Set([
   "accessToken", "refreshToken", "apiKey", "idToken", "firecrawlHeaders",
-  "refresh_token", "proxyPassword", "proxyUrl", "password", "secret", "clientSecret", "copilotToken", "cookie", "authorization"
+  "refresh_token", "proxyPassword", "proxyUrl", "password", "secret", "clientSecret",
+  "copilotToken", "cookie", "authorization", "mimoPassToken", "dcaToken", "extraApiKeys", "BXAuth"
 ]);
 
 function isTransferObject(value) {
@@ -754,10 +1004,10 @@ export async function exportSelectiveDb(selection, { includeSecrets = false } = 
     version: 1,
     providerConnections: providers.length ? db.all(`SELECT * FROM providerConnections WHERE id IN (${providers.map(() => "?").join(",")})`, providers).map((row) => {
       const c = { ...parseJson(row.data, {}), id: row.id, provider: row.provider, authType: row.authType, name: row.name, email: row.email, priority: row.priority, isActive: row.isActive === 1, createdAt: row.createdAt, updatedAt: row.updatedAt };
-      if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptField(c[field], row.id);
+      if (includeSecrets) for (const field of SENSITIVE_CONNECTION_FIELDS) if (isEncryptedBlob(c[field])) c[field] = decryptConnectionSecret(c[field], row.id, field);
       return transferPublic(c, { includeSecrets });
     }) : [],
-    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map(transferCombo).map((combo) => {
+    combos: combos.length ? db.all(`SELECT * FROM combos WHERE id IN (${combos.map(() => "?").join(",")})`, combos).map((row) => ({ ...transferCombo(row), noLog: !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", row.id, "true"]) })).map((combo) => {
       const missing = (combo.allowedConnectionIds || []).filter((id) => !providers.includes(id));
       if (missing.length > 0) throw new Error(`Combo transfer "${combo.name}" requires selected provider connections: ${missing.join(", ")}`);
       return combo;
@@ -775,7 +1025,7 @@ export async function getSelectiveTransferCatalog() {
 
 const TRANSFER_COMBO_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
 const TRANSFER_COMBO_FIELDS = new Set([
-  "id", "name", "kind", "models", "members", "invariant", "capabilities", "allowedConnectionIds", "createdAt", "updatedAt"
+  "id", "name", "kind", "models", "members", "invariant", "capabilities", "allowedConnectionIds", "noLog", "createdAt", "updatedAt"
 ]);
 
 function transferCombo(row) {
@@ -799,6 +1049,7 @@ function validateTransferCombo(row) {
     if (TRANSFER_BLOCKED_KEYS.has(key) || !TRANSFER_COMBO_FIELDS.has(key)) throw new Error(`Combo transfer row has unsupported field: ${key}`);
   }
   if (!isString(row.name) || !TRANSFER_COMBO_NAME_REGEX.test(row.name) || !Array.isArray(row.models)) throw new Error("Combo transfer row is incomplete or has an invalid name");
+  if (Object.hasOwn(row, "noLog") && !isBoolean(row.noLog)) throw new Error("Combo transfer noLog must be a boolean");
   if (row.members != null && !Array.isArray(row.members)) throw new Error("Combo transfer members must be an array or null");
   if (row.invariant != null && !isTransferObject(row.invariant)) throw new Error("Combo transfer invariant must be an object or null");
   if (row.capabilities != null && !isTransferObject(row.capabilities)) throw new Error("Combo transfer capabilities must be an object or null");
@@ -814,6 +1065,7 @@ export async function importSelectiveDb(bundle, selection) {
     combos: Array.isArray(bundle?.combos) ? bundle.combos.map((row) => row?.id).filter(Boolean) : [],
   };
   if (!bundle || !isObject(bundle) || Array.isArray(bundle) || bundle.format !== "durindoor-selective-transfer" || bundle.version !== 1 || !Array.isArray(bundle.providerConnections) || !Array.isArray(bundle.combos)) throw new Error("Invalid selective transfer bundle");
+  rejectAntigravityRotationPayload(bundle);
   const selected = validateTransferSelection(effectiveSelection);
   const providerRows = bundle.providerConnections.filter((row) => selected.providers.includes(row?.id));
   const comboRows = bundle.combos.filter((row) => selected.combos.includes(row?.id));
@@ -867,6 +1119,7 @@ export async function importSelectiveDb(bundle, selection) {
     const existingRow = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     const existingData = existingRow ? parseJson(existingRow.data, {}) : {};
     const { id: _id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...incomingData } = remap(incoming);
+    const plaintextRefresh = isString(incoming.refreshToken) && incoming.refreshToken && !isEncryptedBlob(incoming.refreshToken) ? incoming.refreshToken : null;
     const data = {
       ...incomingData,
       // Secret-free exports include only safe PSD metadata. Merge it via
@@ -885,12 +1138,13 @@ export async function importSelectiveDb(bundle, selection) {
       // ciphertext whose AAD (source row id) no longer matches, so it must
       // be rejected rather than persisted as unreadable garbage.
       if (isEncryptedBlob(value)) throw new Error(`Transfer field "${field}" must not contain an encrypted credential blob`);
-      if (isString(value) && value) data[field] = encryptField(value, id);
+      if (isString(value) && value) data[field] = encryptConnectionSecret(value, id, field);
       else delete data[field];
     }
     return {
       id, provider, authType, name: name || null, email: email || null, priority: priority || null,
       isActive: isActive === false ? 0 : 1, data: stringifyJson(data),
+      plaintextRefresh,
       createdAt: existingRow?.createdAt || createdAt || new Date().toISOString(),
       updatedAt: updatedAt || new Date().toISOString(),
     };
@@ -928,6 +1182,7 @@ export async function importSelectiveDb(bundle, selection) {
       invariant: combo.invariant ? stringifyJson(combo.invariant) : null,
       capabilities: capabilities === null ? null : stringifyJson(capabilities),
       allowedConnectionIds: stringifyJson(allowedConnectionIds),
+      noLog: Object.hasOwn(combo, "noLog") ? combo.noLog : !!db.get(`SELECT value FROM kv WHERE scope = ? AND key = ? AND value = ?`, ["comboNoLog", id, "true"]),
       createdAt: existingRow?.createdAt || combo.createdAt || new Date().toISOString(),
       updatedAt: combo.updatedAt || new Date().toISOString(),
     };
@@ -941,6 +1196,7 @@ export async function importSelectiveDb(bundle, selection) {
          ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, authType=excluded.authType, name=excluded.name, email=excluded.email, priority=excluded.priority, isActive=excluded.isActive, data=excluded.data, updatedAt=excluded.updatedAt`,
         [w.id, w.provider, w.authType, w.name, w.email, w.priority, w.isActive, w.data, w.createdAt, w.updatedAt]
       );
+      noteImportedAntigravityToken(db, { connectionId: w.id, provider: w.provider, refreshToken: w.plaintextRefresh });
       imported.providers.push(w.id);
     }
     for (const w of comboWrites) {
@@ -949,6 +1205,8 @@ export async function importSelectiveDb(bundle, selection) {
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, models=excluded.models, members=excluded.members, invariant=excluded.invariant, capabilities=excluded.capabilities, allowedConnectionIds=excluded.allowedConnectionIds, updatedAt=excluded.updatedAt`,
         [w.id, w.name, w.kind, w.models, w.members, w.invariant, w.capabilities, w.allowedConnectionIds, w.createdAt, w.updatedAt]
       );
+      db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, ["comboNoLog", w.id]);
+      if (w.noLog) db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?)`, ["comboNoLog", w.id, "true"]);
       imported.combos.push(w.id);
     }
   });

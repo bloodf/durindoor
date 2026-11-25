@@ -1,24 +1,24 @@
 # V5 interface integration (#1300)
 
-PR #1313 delivered review-only compositions, not production or release acceptance. The current dashboard has continued to evolve since that merge. Its live provider, key, routing, usage and data-management workflows remain the authority when reconciling each composition; review fixtures and Storybook transforms are not evidence of live behavior.
+PR #1313 delivered compositions for review. The dashboard has continued to evolve since that merge. Use the live provider, key, routing, usage and data-management workflows as the source of truth when reconciling each composition.
 
 This increment carries the provider detail RPM label from the review into the production control at all viewport widths. The existing value, limits, change handler and blur-to-save behavior are retained. The matching Storybook-only override is removed so the review uses the production label.
 
+Recent requests now include a non-secret API key identity and label; the Requests panel displays the label. Deleted keys use installation-scoped identities, while local and MCP requests retain their own labels.
+
 ## Storybook inventory
 
-The rebuilt Storybook catalog contains 2,264 stories, including 1,078 scenarios across 187 generated V5 review compositions. The regenerated compositions add Playground Compare, Network Node Status and LAN Discovery, plus the synced image model, custom speech-to-text model and unavailable batch provider states.
-
-The [surface manifest](../../tests/e2e/storybook-surfaces.json) matches the current source and built catalog. It records 612 source rows, with 332 pending review and 280 retaining prior source approvals. Another 1,273 reference stories are pending review. The manifest preserves prior review records where source changes require another review. Pending entries need independent verification of classification and scenario ownership before they can receive coverage credit.
+The [surface manifest](../../tests/e2e/storybook-surfaces.json) records the current source and catalog reconciliation, including the inventory basis, source and reference review status, scenario mappings and runtime status. Final coverage credit requires approved classifications, mappings and evidence.
 
 ## Remaining V5 scope
 
-- Address the provider-detail composition gaps for `AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`. Each has a pending source row with no scenario association.
-- Reconcile the remaining review compositions against live dashboard workflows and confirm ownership with the integration owner.
-- Review the integrated surfaces visually and record interaction, loading, empty, error, responsive and accessibility evidence. Final coverage requires approved associations and candidate-bound runtime evidence. Final V5 candidate acceptance and release readiness remain open.
+The five provider-detail rows in S05 (`AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`) record proposed scenario mappings and supporting source-story evidence. Independent source review and approval of those mappings and evidence remain pending. This guide records no new approved coverage.
 
-## Evidence
+Reconcile the remaining review compositions against live dashboard workflows and confirm ownership with the integration owner. Visual, interaction, loading, empty, error, responsive and accessibility coverage still requires approved scenario associations. Final V5 candidate acceptance and release readiness remain open under #1067.
 
-Rebuild from the current source and validate inventory consistency from the repository root.
+## Evidence and validation commands
+
+Run the following commands from the repository root to regenerate the story catalog and check the inventory.
 
 ```sh
 node scripts/gen-v5-stories.mjs
@@ -27,11 +27,29 @@ node scripts/sync-storybook-inventory.mjs --check
 node scripts/check-storybook-coverage.mjs --manifest tests/e2e/storybook-surfaces.json --index storybook-static/index.json --mode inventory
 ```
 
-Run the focused evidence from `tests/`.
+Run the following focused unit tests from `tests/`.
 
 ```sh
 node node_modules/vitest/vitest.mjs run unit/1300-v5-storybook-inventory.test.js --maxWorkers=2
 node node_modules/vitest/vitest.mjs run unit/1300-v5-ui.test.js --maxWorkers=2
 ```
 
-The inventory test checks current source hashes, the review scenario inventory and the final gate's rejection of pending rows and references. The UI test checks the RPM label, input bounds and blur-to-save behavior. Visual and runtime evidence remain pending.
+The inventory test checks current source hashes, review scenario inventory and that the final gate rejects pending rows and references. The UI test checks the RPM label, input bounds and blur-to-save behavior.
+
+Follow the local browser prerequisites in the [testing guide](./testing.mdx#v5-storybook-browser-evidence). Run the registered route evidence test from `tests/` with one browser engine per run. This example uses Chromium and the registered `dialog/Modal` fixture.
+
+```sh
+RUN_V5_EVIDENCE=1 V5_BROWSER_ENGINE=chromium V5_EVIDENCE_ROUTES=dialog/Modal V5_EVIDENCE_REPORT=/private/path/chromium.json node node_modules/vitest/vitest.mjs run unit/v5-route-evidence.browser.test.js --maxWorkers=2
+```
+
+The [November 22 production acceptance audit](./audits/v5-production-2026-11-22/README.md) records 1,640 passing historical Chromium cases for tested checkout `78aef4edadc5`.
+
+The scoped provider catalog fixture run recorded 60 passing cases, 20 each in Chromium, Firefox and WebKit. [PR #2422](https://github.com/bloodf/durindoor/pull/2422)
+
+The Firefox and WebKit matrix for the exact integrated release candidate remains open under [#1067](https://github.com/bloodf/durindoor/issues/1067).
+
+## Production integration status
+
+The [production integration plan](./v5-production-integration.md#1-acceptance-status) says S20 made V5 the default and retained the documented `DURINDOOR_UI_V5=0` opt-out. It defers S21 removal of legacy branches, the switch and the Storybook boundary until #1067 accepts the release candidate.
+
+The plan's surface status table still labels S05 and S09–S19 as Planned. The `tests/unit/v5-int-*.test.js` slice suites record the implemented behavior, including [S01 foundation](../../tests/unit/v5-int-01-foundation.test.js), [S08 model picker](../../tests/unit/v5-int-08-model-picker.test.js) and the dashboard surfaces from [S09 combos](../../tests/unit/v5-int-09-combos.test.js) through [S19 settings](../../tests/unit/v5-int-19-settings.test.js). The [S05 provider-story suite](../../tests/unit/v5-int-05-provider-stories.test.js) checks the source stories and inventory entries. Approval of the five mappings remains subject to source review.

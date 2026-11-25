@@ -1,20 +1,21 @@
-import { modelKindError } from "./modelKind.js";
+import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
+import { getApiKeyByKey } from "@/lib/localDb";
+import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { refreshMediaCredentials, resolveTypedMediaModel, runMediaEndpoint } from "./media/pipeline.js";
 import { randomUUID } from "node:crypto";
 import { createMediaJob, getMediaJob, finishMediaJob } from "@/lib/db/repos/mediaJobsRepo.js";
 import { getAdapter } from "@/lib/db/driver.js";
 import { assertBillingEpochSync, retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
-import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError, resolveClientApiKey } from "../services/auth.js";
-import { getSettings, getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
+import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
+import { getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
-import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
-import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 import { handleComboChat } from "open-sse/services/combo.js";
@@ -27,11 +28,8 @@ import {
   providerOfModelId,
   supportsVideoJobs
 } from "../services/mediaRoutes.js";
+import { mediaEndpointSupport } from "../services/mediaTransport.js";
 
-
-async function enforceVideoPolicy(request, provider, model, apiKey) {
-  return enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
-}
 
 // Success settles the accepted row from job creation; a provider failure removes it.
 async function recordVideoJobUsage(job, apiKey) {
@@ -77,23 +75,38 @@ async function handleVideoGenerationHandler(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  return runMediaEndpoint(request, {
+    kind: "video",
+    rejectAborted: true,
+    route: (admission) => routeVideoGeneration(request, body, billingEpoch, admission),
   });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+}
+
+async function routeVideoGeneration(request, body, billingEpoch, { settings, apiKey, auth: apiKeyAuth }) {
+  const selector = parseAutoModel(body.model, "video");
+  if (selector && selector.kind === "video") {
+    const key = apiKey ? await getApiKeyByKey(apiKey) : null;
+    if (key?.policy?.allowAutoCombos === false || (key?.allowedCombos?.length && !key.allowedCombos.includes(selector.name))) {
+      return errorResponse(HTTP_STATUS.FORBIDDEN, "Access denied: auto combo is not allowed for this API key");
+    }
+    const candidates = await getAutoModelCandidates(body.model, "video", request, apiKeyAuth.apiKeyId);
+    return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId, body, models: candidates.models,
+      handleSingleModel: (b, m) => handleSingleModelVideo(b, m, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, selector.name),
+      log, signal: request.signal, ...defaultRouteComboOptions("video"), comboName: selector.name
+    });
+  }
 
   if (wantsDefaultRoute(body.model)) {
     const route = await resolveMediaRoute("video", { settings, supports: supportsVideoGeneration, apiKeyId: apiKeyAuth.apiKeyId });
     if (route.error) return route.error;
     return handleComboChat({
+      apiKeyId: apiKeyAuth.apiKeyId,
       body,
       models: route.models,
       handleSingleModel: (b, m) => handleSingleModelVideo(b, m, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch, "media-route:video"),
       log,
+      signal: request.signal,
       ...defaultRouteComboOptions("video")
     });
   }
@@ -101,12 +114,12 @@ async function handleVideoGenerationHandler(request) {
 }
 
 async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId, billingEpoch, comboName = null) {
-  const modelInfo = await getModelInfo(modelStr);
-  if (!modelInfo.provider) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");
-  const policyError = await enforceVideoPolicy(request, modelInfo.provider, modelInfo.model, apiKey);
-  if (policyError) return policyError;
-  const kindError = await modelKindError(modelInfo.provider, modelInfo.model, await getSettings(), "video");
-  if (kindError) return kindError;
+  const modelInfo = await resolveTypedMediaModel(request, modelStr, body, apiKey, "video", { routingKind: "video" });
+  if (modelInfo.error) return modelInfo.error;
+  // The sync endpoint runs only the providers with a synchronous generator; a
+  // job-only provider is not "unsupported at video", it is a different endpoint.
+  const endpointSupport = mediaEndpointSupport("video", "/v1/video/generations", modelInfo.provider, modelInfo.model);
+  if (!endpointSupport.supported) return errorResponse(HTTP_STATUS.BAD_REQUEST, endpointSupport.reason);
   const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
@@ -213,12 +226,6 @@ async function resolveVideoProvider(requestedModel, settings, apiKeyId) {
   if (!modelInfo.provider) {
     return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, "Combos are not supported for video generation") };
   }
-  if (!getVideoConfig(modelInfo.provider)) {
-    const message = modelStr.includes("/")
-      ? `Provider '${modelInfo.provider}' does not support video generation`
-      : `No connected video provider serves model '${modelStr}'`;
-    return { error: errorResponse(HTTP_STATUS.BAD_REQUEST, message) };
-  }
   return { provider: modelInfo.provider, model: modelInfo.model };
 }
 
@@ -247,7 +254,7 @@ function withConnectionHeader(response, connectionId) {
  * loop here: one credential is selected (honoring a preferred `x-connection-id`)
  * and the upstream result is returned. A network error or 5xx is surfaced as-is
  * rather than re-sent, because the job may already exist upstream.
- * Ported from decolua/9router#2593, adapted to fork auth (`resolveClientApiKey`
+ * Ported from decolua/9router#2593, adapted to fork auth (`admit`
  * + `enforceApiKeyModelPolicy`) and single-credential dispatch.
  */
 async function handleVideoCreateHandler(request, action) {
@@ -256,14 +263,15 @@ async function handleVideoCreateHandler(request, action) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown video action: ${action}`);
   }
 
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  return runMediaEndpoint(request, {
+    kind: "video",
+    pinConnection: "preferred",
+    rejectAborted: true,
+    route: (admission, pinOptions) => submitVideoJob(request, action, billingEpoch, admission, pinOptions),
   });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+}
+
+async function submitVideoJob(request, action, billingEpoch, { settings, apiKey, auth: apiKeyAuth }, pinOptions) {
   // Anonymous/operator requests have no durable caller key identity. Reject
   // before submission rather than creating a job anyone could later claim.
   if (!apiKeyAuth.apiKeyId) return errorResponse(HTTP_STATUS.FORBIDDEN, "Video jobs require a stored caller API key");
@@ -274,12 +282,16 @@ async function handleVideoCreateHandler(request, action) {
   const requestedModel = bodyInfo.parsed ? bodyInfo.parsed.model : bodyInfo.formModel;
   const resolved = await resolveVideoProvider(requestedModel, settings, apiKeyAuth.apiKeyId);
   if (resolved.error) return resolved.error;
-  const { provider, model } = resolved;
-
-  const policyError = await enforceVideoPolicy(request, provider, model, apiKey);
-  if (policyError) return policyError;
-  const kindError = await modelKindError(provider, model, settings, "video");
-  if (kindError) return kindError;
+  const { provider, model, error } = await resolveTypedMediaModel(
+    request, requestedModel, bodyInfo.parsed || {}, apiKey, "video", { routingKind: "video", target: resolved },
+  );
+  if (error) return error;
+  // Only providers with an async job API can serve /v1/videos. A sync-only
+  // provider serves the other video endpoint, so say which one it serves.
+  const endpointSupport = mediaEndpointSupport("video", "/v1/videos", provider, model);
+  if (!endpointSupport.supported) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, endpointSupport.reason);
+  }
 
   // Strip the provider prefix (e.g. "xai/grok-imagine-video") before forwarding;
   // otherwise forward the original bytes untouched.
@@ -293,10 +305,9 @@ async function handleVideoCreateHandler(request, action) {
     ({ body: forwardBody, contentType: forwardContentType } = await withMultipartModel(bodyInfo.raw, bodyInfo.contentType, model));
   }
 
-  const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const idempotencyKey = request.headers.get("idempotency-key") || null;
 
-  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId, apiKeyId: apiKeyAuth.apiKeyId });
+  const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, model, { preferredConnectionId: null, ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId });
   if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
     if (credentials?.providerDisabled) {
       log.warn("VIDEO", `[${provider}/${model}] free no-auth provider disabled by settings`);
@@ -314,7 +325,8 @@ async function handleVideoCreateHandler(request, action) {
   }
 
   const usageEventId = `video:${randomUUID()}`;
-  const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+  const { refreshed: refreshedCredentials, persist } = await refreshMediaCredentials(provider, credentials);
+  const dispatch = credentialDispatchSnapshot(refreshedCredentials);
 
   const result = await handleVideoProxyCore({
     provider,
@@ -325,18 +337,11 @@ async function handleVideoCreateHandler(request, action) {
     credentials: refreshedCredentials,
     signal: request.signal,
     log,
-    onCredentialsRefreshed: async (newCreds) => {
-      await updateProviderCredentials(credentials.connectionId, {
-        accessToken: newCreds.accessToken,
-        refreshToken: newCreds.refreshToken,
-        providerSpecificData: newCreds.providerSpecificData,
-        testStatus: "active",
-      });
-    },
+    onCredentialsRefreshed: persist,
   });
 
   if (result.success) {
-    await clearAccountError(credentials.connectionId, credentials, model);
+    await clearAccountError(credentials.connectionId, credentials, model, dispatch);
     log.info("VIDEO", `${provider.toUpperCase()} | ${action} accepted (connection ${credentials.connectionId})`);
     if (!result.job?.resourceId) return errorResponse(HTTP_STATUS.BAD_GATEWAY, "Video provider did not return a job identity");
     await createMediaJob({
@@ -352,13 +357,15 @@ async function handleVideoCreateHandler(request, action) {
     return withConnectionHeader(result.response, credentials.connectionId);
   }
 
-  // Record the failure (dashboard shows lastError/errorCode → user sees re-auth is needed)
-  if (shouldMarkAccountUnavailable(result.status)) {
+  // Record the failure (dashboard shows lastError/errorCode → user sees re-auth is needed).
+  // A caller disconnect says nothing about the account.
+  if (!request.signal?.aborted && shouldMarkAccountUnavailable(result.status)) {
     await markAccountUnavailable(
       credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, model, null, {
         // The credential this attempt actually presented, so a durable-key
         // provider can mark exactly the generation that was rejected.
-        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null,
+        ...dispatch
       }
     );
   }
@@ -373,18 +380,18 @@ async function handleVideoCreateHandler(request, action) {
  */
 async function handleVideoGetHandler(request, requestId) {
   await captureRequestBillingEpoch(request);
-  const settings = await getSettings();
-  const { apiKey, auth: apiKeyAuth } = await resolveClientApiKey(request, {
-    required: settings.requireApiKey === true,
+  return runMediaEndpoint(request, {
+    kind: "video",
+    pinConnection: "job",
+    rejectAborted: true,
+    route: (admission, pinOptions) => pollVideoJob(request, requestId, admission, pinOptions),
   });
-  if (!apiKeyAuth.ok) return annotateClientAdmissionFailure(errorResponse(
-    HTTP_STATUS.UNAUTHORIZED,
-    apiKeyAuth.reason === "missing" ? "Missing API key" : "Invalid API key",
-  ), apiKeyAuth.reason === "missing" ? "auth_missing" : "auth_invalid");
+}
 
+async function pollVideoJob(request, requestId, { apiKey, auth: apiKeyAuth }, pinOptions) {
   if (!requestId) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing video request id");
 
-  const preferredConnectionId = request.headers.get("x-9router-connection-id") || request.headers.get("x-connection-id") || null;
+  const { preferredConnectionId } = pinOptions;
   if (!apiKeyAuth.apiKeyId || !preferredConnectionId) {
     return errorResponse(HTTP_STATUS.FORBIDDEN, "Video polling requires durable ownership and x-9router-connection-id");
   }
@@ -413,8 +420,7 @@ async function handleVideoGetHandler(request, requestId) {
   // chat and every other modality. Scope poll cooldowns to their own key, and
   // never substitute another account for a job that only exists on this one.
   const credentials = await getProviderCredentialsWithQuotaPreflight(provider, null, null, {
-    preferredConnectionId,
-    strictConnectionId: preferredConnectionId,
+    ...pinOptions,
     apiKeyId: apiKeyAuth.apiKeyId,
     videoPoll: true,
   });
@@ -434,7 +440,8 @@ async function handleVideoGetHandler(request, requestId) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
   }
 
-  const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
+  const { refreshed: refreshedCredentials, persist } = await refreshMediaCredentials(provider, credentials);
+  const dispatch = credentialDispatchSnapshot(refreshedCredentials);
   const db = await getAdapter();
   db.transaction(() => assertBillingEpochSync(db, job.billingEpoch));
 
@@ -444,18 +451,11 @@ async function handleVideoGetHandler(request, requestId) {
     credentials: refreshedCredentials,
     signal: request.signal,
     log,
-    onCredentialsRefreshed: async (newCreds) => {
-      await updateProviderCredentials(credentials.connectionId, {
-        accessToken: newCreds.accessToken,
-        refreshToken: newCreds.refreshToken,
-        providerSpecificData: newCreds.providerSpecificData,
-        testStatus: "active",
-      });
-    },
+    onCredentialsRefreshed: persist,
   });
 
   if (result.success) {
-    await clearAccountError(credentials.connectionId, credentials, null, { videoPoll: true });
+    await clearAccountError(credentials.connectionId, credentials, null, { videoPoll: true, ...dispatch });
     if (result.job?.resourceId && result.job.resourceId !== job.resourceId) {
       return errorResponse(HTTP_STATUS.BAD_GATEWAY, "Video provider returned a different job identity");
     }
@@ -474,11 +474,12 @@ async function handleVideoGetHandler(request, requestId) {
     return withConnectionHeader(result.response, credentials.connectionId);
   }
 
-  if (shouldMarkAccountUnavailable(result.status)) {
+  if (!request.signal?.aborted && shouldMarkAccountUnavailable(result.status)) {
     await markAccountUnavailable(
       credentials.connectionId, result.status, sanitizeSecrets(result.error, refreshedCredentials), provider, null, null, {
         videoPoll: true,
-        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null
+        usedCredential: refreshedCredentials.accessToken || refreshedCredentials.apiKey || null,
+        ...dispatch
       }
     );
   }

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/localDb", () => ({
+  getSettings: vi.fn().mockResolvedValue({ proxyTestUrl: "https://example.com/" }),
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
 }));
@@ -211,8 +212,8 @@ describe("testApiKeyConnection generic fallback (new batch providers)", () => {
   });
 
   it.each([
-    ["antigravity", "antigravity/hub/2.24.0 darwin/arm64"],
-    ["agy", "antigravity/hub/2.24.0 darwin/arm64"],
+    ["antigravity", "antigravity/hub/2.33.0 darwin/arm64"],
+    ["agy", "antigravity/hub/2.33.0 darwin/arm64"],
     ["gemini-cli", "google-api-nodejs-client/9.15.1 gemini-cli/0.34.0"],
   ])("probes %s Cloud Code access with the provider client identity", async (provider, userAgent) => {
     mocks.getProviderConnectionById.mockResolvedValue({

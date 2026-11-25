@@ -35,6 +35,7 @@ vi.mock("../../src/sse/services/model.js", () => ({
   }),
   getComboModels: vi.fn(async () => null),
   getComboCanonicalName: vi.fn(async () => null),
+  filterDisabledComboModels: async (models) => models,
   getAutoComboCatalog: vi.fn(async () => []),
 }));
 

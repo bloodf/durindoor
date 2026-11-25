@@ -67,9 +67,30 @@ export function parseTimeMs(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toExpiresAt(expiresIn, nowMs = Date.now()) {
-  if (!expiresIn) return null;
-  return new Date(nowMs + expiresIn * 1000).toISOString();
+// Largest instant a Date can represent.
+const MAX_DATE_MS = 8.64e15;
+
+/**
+ * Normalize any accepted expiry shape to the ISO string the app stores.
+ *
+ * @param {unknown} value
+ * @returns {string|null} null when there is no usable time.
+ */
+export function toIsoTime(value) {
+  const ms = parseTimeMs(value);
+  return ms !== null && ms > 0 && ms <= MAX_DATE_MS ? new Date(ms).toISOString() : null;
+}
+
+/**
+ * ISO expiry for a relative lifetime in seconds. Never throws: a throw here
+ * would discard a refresh token the provider has already rotated.
+ *
+ * @param {unknown} expiresIn
+ * @returns {string|null} null when the lifetime is unusable.
+ */
+export function expiryFromLifetime(expiresIn, nowMs = Date.now()) {
+  const seconds = Number(expiresIn);
+  return seconds > 0 ? toIsoTime(nowMs + seconds * 1000) : null;
 }
 
 export function getCredentialExpiryMs(credentials) {
@@ -93,7 +114,7 @@ export function shouldRefreshCredentials(provider, credentials, nowMs = Date.now
   if (!credentials) return false;
 
   const expiresAtMs = getCredentialExpiryMs(credentials);
-  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider)) {
+  if (expiresAtMs !== null && expiresAtMs - nowMs < getRefreshLeadMs(provider, credentials.providerSpecificData)) {
     return true;
   }
 
@@ -131,11 +152,15 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
   const idToken = refreshedCredentials.idToken ?? currentCredentials?.idToken;
   if (idToken) next.idToken = idToken;
 
-  if (refreshedCredentials.expiresIn) {
+  const lifetimeExpiresAt = expiryFromLifetime(refreshedCredentials.expiresIn, nowMs);
+  if (lifetimeExpiresAt) {
     next.expiresIn = refreshedCredentials.expiresIn;
-    next.expiresAt = toExpiresAt(refreshedCredentials.expiresIn, nowMs);
-  } else if (refreshedCredentials.expiresAt) {
+    next.expiresAt = lifetimeExpiresAt;
+  } else if (toIsoTime(refreshedCredentials.expiresAt)) {
     next.expiresAt = refreshedCredentials.expiresAt;
+  } else {
+    // Providers that omit expiry get a conservative one-hour refresh horizon.
+    next.expiresAt = expiryFromLifetime(3600, nowMs);
   }
 
   if (refreshedCredentials.projectId) next.projectId = refreshedCredentials.projectId;
@@ -147,6 +172,7 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
     );
   }
 
+  if (refreshedCredentials.rotationCommitted === true) next.rotationCommitted = true;
   if (refreshedCredentials.copilotToken) next.copilotToken = refreshedCredentials.copilotToken;
   if (refreshedCredentials.copilotTokenExpiresAt) {
     next.copilotTokenExpiresAt = refreshedCredentials.copilotTokenExpiresAt;

@@ -40,7 +40,7 @@ const redirectUri = "http://localhost:1455/auth/callback";
 const authUrl = `https://auth.openai.com/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
 function response(data) {
-  return { ok: true, status: 200, json: async () => data };
+  return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
 }
 
 function renderModal(root) {
@@ -66,6 +66,7 @@ describe("OAuthModal hosted Codex flow", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     fetchMock = vi.fn(async (url) => {
+      if (url === "/api/deployment-mode") return response({ hosted: window.location.hostname !== "localhost" });
       if (url === "/api/oauth/codex/authorize") {
         return response({ authUrl, flowId: "flow-1", state });
       }
@@ -89,6 +90,16 @@ describe("OAuthModal hosted Codex flow", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows a non-JSON authorization error", async () => {
+    window.happyDOM.setURL("https://dashboard.example/providers");
+    fetchMock.mockImplementation(async (url) => url === "/api/deployment-mode"
+      ? response({ hosted: true })
+      : { ok: false, status: 503, text: async () => "Service unavailable" });
+    await act(async () => { renderModal(root); });
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    expect(container.textContent).toContain("Service unavailable");
+  });
+
   it("uses manual callback immediately on a hosted dashboard", async () => {
     window.happyDOM.setURL("https://dashboard.example/providers");
 
@@ -103,7 +114,7 @@ describe("OAuthModal hosted Codex flow", () => {
       body: expect.any(String),
     }));
     const authorizeRequest = fetchMock.mock.calls.find(([url]) => url === "/api/oauth/codex/authorize")[1];
-    expect(JSON.parse(authorizeRequest.body)).toEqual(expect.objectContaining({ redirectUri }));
+    expect(JSON.parse(authorizeRequest.body)).toEqual(expect.objectContaining({ redirectUri: "https://dashboard.example/callback" }));
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/oauth/codex/start-proxy")).toBe(false);
     expect(openMock).toHaveBeenCalledWith(authUrl, "_blank", "noopener,noreferrer");
     expect(new URL(openMock.mock.calls[0][0]).searchParams.get("redirect_uri")).toBe(redirectUri);

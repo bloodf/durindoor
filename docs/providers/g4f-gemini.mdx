@@ -1,0 +1,14 @@
+---
+title: g4f Gemini
+description: Use g4f's hosted Gemini proxy with an optional member key, separate from Google's native Gemini API.
+---
+
+This is g4f's hosted Gemini proxy, separate from Google's native Gemini API. Its OpenAI-compatible endpoints are `https://g4f.space/api/gemini/v1/chat/completions` and `/v1/models`. The included catalog lists Gemini 2.5 Flash and Pro. g4f's [API documentation](https://g4f.dev/docs/ready_to_use.html) says these provider URLs do not require an API key; anonymous use may require proof-of-work credits. An optional g4f member key can be entered in the API key field.
+
+## Setup and limits
+
+Create a connection with an optional key from [g4f API keys](https://g4f.dev/api_key.html). The live model list and provider availability can change. g4f controls usage limits and service availability; DurinDoor does not verify account quotas.
+
+For browser-based setup, the cookie capture extension can capture a signed-in session. Alternatively paste a cURL command containing its `Cookie` header or import a HAR file. Cookies are not required by this API; use the optional member API key where authentication is needed.
+
+Sources: [g4f API endpoints](https://g4f.dev/docs/ready_to_use.html).

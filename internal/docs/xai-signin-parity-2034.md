@@ -9,3 +9,19 @@ DurinDoor's `src/app/api/oauth/[provider]/[action]/route.js` binds flows to serv
 `open-sse/handlers/chatCore.js` selects the connection transport and `open-sse/executors/xai.js` executes it. CLIProxyAPI `internal/runtime/executor/xai_executor_request.go` removes `stop` from Responses requests because xAI does not support it. DurinDoor now removes it for OAuth Responses, including streaming, while leaving API-key chat requests unchanged. The closed-fetch executor regression covers both modes; it does not establish parity for other request transformations or WebSocket transport.
 
 DurinDoor's `open-sse/providers/registry/xai.js` has curated and passthrough models. CLIProxyAPI uses a static catalog; EasyCLIProxyAPI delegates runtime behavior to its core. OmniRoute's `open-sse/services/usage/xaiOauth.ts` uses OAuth billing with a connection-scoped fallback, whereas DurinDoor's `open-sse/services/usage.js` combines connection-local usage with `src/lib/usage/xaiQuotaAdapter.js`. Catalog and quota parity, including live OAuth billing, remains unverified. No live provider calls were made.
+
+## Behavior comparison (partial)
+
+The following compares CLIProxyAPI `6eb8554f0ede` and OmniRoute `5ffa68e83544`. This is not a completed function-by-function audit.
+
+| Behavior | Upstream source | DurinDoor state |
+| --- | --- | --- |
+| Client ID and scopes | CLIProxyAPI `internal/auth/xai/types.go` | Already matched. |
+| Authorization | CLIProxyAPI `internal/auth/xai/xai.go`; OmniRoute `src/lib/oauth/providers/xai-oauth.ts` | Loopback PKCE matches OmniRoute; CLIProxyAPI device authorization and polling remain unported. |
+| Token exchange and refresh | CLIProxyAPI `internal/auth/xai/xai.go`; OmniRoute `open-sse/executors/xai.ts` | Missing access tokens are rejected here; full error and concurrency parity remains to be checked. |
+| Responses `stop` | CLIProxyAPI `internal/runtime/executor/xai_executor_request.go` | Removed for OAuth and registered native Responses models; native API-key case ported here. |
+| OAuth inference endpoint | CLIProxyAPI `internal/auth/xai/types.go` | CLIProxyAPI defaults to `cli-chat-proxy.grok.com`; DurinDoor uses `api.x.ai`; transport parity remains open. |
+| Responses input and tools | OmniRoute `open-sse/executors/xai.ts` | Chat-style text and images, function/custom/namespace tools and web search filters normalized here. Full conversion and history-cap parity remains open. |
+| OAuth weekly credits | OmniRoute `open-sse/services/usage/xaiOauth.ts`, `xaiOauthQuotaFetcher.ts` | Live connection-scoped billing lookup ported here; unavailable or malformed billing falls back to local usage. API-key prepaid credit still requires a separate management credential. |
+| Account identity, retries, models and error classification | CLIProxyAPI `internal/auth/xai/`, `internal/runtime/executor/` | Detailed comparison and route-level evidence remain open. |
+| Identity cloaking and detection evasion | CLIProxyAPI executor headers | Intentionally out of scope. |

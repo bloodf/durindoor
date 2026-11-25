@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // unregistered target here would turn this route into an SSRF primitive.
 const ALLOWED_FETCHERS = new Set(
   Object.values(AI_PROVIDERS).
-  map((provider) => provider?.modelsFetcher).
+  flatMap((provider) => [provider?.modelsFetcher, ...Object.values(provider?.modelsFetchers || {})]).
   filter((fetcher) => fetcher && isString(fetcher.url) && isString(fetcher.type)).
   map((fetcher) => `${fetcher.type}\n${fetcher.url}`)
 );
@@ -43,13 +43,13 @@ export async function GET(request) {
     // Never follow a registry target's redirect to a private/internal host.
     const res = await fetch(url, { redirect: "error" });
     if (!res.ok) {
-      return NextResponse.json({ data: [] });
+      return NextResponse.json({ data: [], error: `Failed to fetch provider models: ${res.status}` });
     }
     const json = await res.json();
     const raw = json.data ?? json.models ?? json;
     const data = filter(Array.isArray(raw) ? raw : []);
     return NextResponse.json({ data });
   } catch {
-    return NextResponse.json({ data: [] });
+    return NextResponse.json({ data: [], error: "Failed to fetch provider models" });
   }
 }

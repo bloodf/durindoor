@@ -1,0 +1,52 @@
+{
+  "vendor": "fal-ai",
+  "kind": "image",
+  "model": "fal-ai/flux/schnell",
+  "verifiedLive": false,
+  "source": "https://docs.fal.ai/",
+  "liveGap": "No live upstream call was made for this fixture. The submit request, the queue poll and the result body are asserted offline against the adapter; the upstream error bodies, the queue poll interval and the account limits were not re-read from the vendor documentation.",
+  "request": {
+    "method": "POST",
+    "url": "https://queue.fal.run/fal-ai/flux/schnell",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "Key fixture-key"
+    },
+    "body": {
+      "prompt": "a cat",
+      "num_images": 1
+    }
+  },
+  "response": {
+    "submit": {
+      "status": 200,
+      "body": {
+        "status_url": "https://queue.fal.run/fal-ai/flux/schnell/requests/req-fixture/status",
+        "response_url": "https://queue.fal.run/fal-ai/flux/schnell/requests/req-fixture"
+      }
+    },
+    "poll": {
+      "status": 200,
+      "body": {
+        "status": "COMPLETED"
+      }
+    },
+    "result": {
+      "status": 200,
+      "body": {
+        "images": [
+          {
+            "url": "https://fal.media/files/fixture-image.png"
+          }
+        ]
+      }
+    },
+    "normalized": {
+      "data": [
+        {
+          "url": "https://fal.media/files/fixture-image.png"
+        }
+      ]
+    }
+  }
+}

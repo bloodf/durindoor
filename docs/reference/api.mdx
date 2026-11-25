@@ -58,7 +58,7 @@ image data. This applies to both streaming and non-streaming requests.
 
 Format follows the path: `/v1/chat/completions` is OpenAI chat (a body with `input[]` still counts as OpenAI, for Cursor CLI). `/v1/messages` is always Claude. `/v1/responses` and `/v1/responses/compact` are OpenAI Responses. The gateway translates that format to the selected upstream provider.
 
-For ordinary Chat Completions requests, omitting `stream` requests JSON, and an explicit `stream: false` asks for the same JSON completion. Providers that require streaming still receive a streaming request; DurinDoor converts their SSE response to JSON, and also accepts a JSON completion if the provider returns one. Send `stream: true` to request SSE. Claude CLI warmup and naming bypasses retain their existing response behavior.
+For ordinary Chat Completions requests, omitting `stream` requests JSON, and an explicit `stream: false` asks for the same JSON completion. Providers that require streaming still receive a streaming request; DurinDoor converts their SSE response to JSON, and also accepts a JSON completion if the provider returns one, including when the provider labels that completion `text/event-stream`. A corrupt event stream still fails with 502. Send `stream: true` to request SSE. Claude CLI warmup and naming bypasses retain their existing response behavior. existing response behavior.
 
 ```bash
 curl http://localhost:20128/v1/chat/completions \
@@ -231,7 +231,16 @@ Provider is the model. Send `provider` or `model`. Catalog ids look like `tavily
 
 Search body: `query` (required), plus `model` or `provider`. Fetch body: `url` (required), optional `format` and `max_characters`. Fetch failures use fallback scope `webfetch:<provider>` (for Ollama, `webfetch:ollama`), so a fetch cooldown does not lock that connection for chat.
 
-Search `searchConfig` providers in the registry today: `serper`, `youcom`, `searxng`, `linkup`, `exa`, `perplexity`, `glm`, `brave-search`, `searchapi`, `google-pse`, `tavily`, `ollama`. Fetch `fetchConfig` providers: `exa`, `tinyfish`, `jina-reader`, `tavily`, `firecrawl`, `firecrawl_custom`, `ollama`. Combos work on both routes when every member is that kind.
+Search `searchConfig` providers in the registry today: `serper`, `youcom`, `searxng`, `linkup`, `exa`, `perplexity`, `glm`, `brave-search`, `searchapi`, `google-pse`, `tavily`, `ollama`, `keenable`. Fetch `fetchConfig` providers: `exa`, `tinyfish`, `jina-reader`, `tavily`, `firecrawl`, `firecrawl_custom`, `ollama`, `keenable`. Combos work on both routes when every member is that kind.
+
+### Keenable (keyless, explicit only)
+
+`keenable` is a keyless provider for Keenable's public tier. It is used only when a request or combo names it (`provider: "keenable"`, `model: "keenable/search"` or `"keenable/fetch"`). It is never added to default routes, auto combos or automatic fallback, and it does not appear in `/v1/models/web` unless you save a `keenable` connection. Account setup is not needed.
+
+- Search sends `POST https://api.keenable.ai/v1/search/public` with `query` and `max_results`. `time_range` (`day`, `week`, `month`, `year`) becomes a `published_after` date. One include domain maps to `site`; `-domain` entries map to `exclude_domains`. Hosts only; no paths or wildcards. Two or more include domains, `offset`, `search_type` other than `web`, and an unknown `time_range` return 400 instead of being dropped.
+- Fetch sends `GET https://api.keenable.ai/v1/fetch/public` and returns markdown only (`format: "html"` returns 400). `max_characters` must be a positive integer and is forwarded as `max_chars`.
+- Both endpoints are fixed. `provider_options.baseUrl` and saved connection URLs are ignored, redirects are never followed (a redirect is returned as an error), and no credential is sent.
+- Limits: the public tier is rate limited per IP, so a 429 is returned with its status. Keenable's keyed endpoints, modes, `live` fetch, extraction prompts and other options are not used. Search is not served for `news` or `x` types. Requests cannot be cancelled by the client; each one stops at its provider timeout (search 15 s, fetch 30 s) and returns 504.
 
 | Method | Path | Request | Stream | Providers |
 | --- | --- | --- | --- | --- |
@@ -303,6 +312,16 @@ curl "http://localhost:20128/v1beta/models/gemini/gemini-2.5-flash:generateConte
 | POST, OPTIONS | `/v1beta/models/{model}:generateContent` | Gemini `contents` body | no | any chat model; Gemini TTS goes to Google |
 | POST, OPTIONS | `/v1beta/models/{model}:streamGenerateContent` | Gemini `contents` body | yes | any chat model; Gemini TTS goes to Google |
 
+## Additional API routes
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/v1/me/sessions` | List sessions associated with the authenticated API key. |
+| GET, DELETE | `/v1/session-captures/{session}` | Read or delete a captured session. |
+| POST | `/v1/alpha/search` | Codex alpha search endpoint. |
+| POST | `/v1beta/interactions` | Create a Gemini interaction. |
+| POST | `/backend-api/codex/alpha/search` | Codex backend alpha search endpoint. |
+
 ## Unknown paths
 
 Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_route", path } }` with HTTP 404, not the dashboard HTML shell. Registered routes take precedence over that fallback.
@@ -316,3 +335,7 @@ Unmatched `/v1/*` returns JSON `{ error: { type: "not_found", code: "unknown_rou
 Dashboard REST under `/api/*` is on [Management API](./management-api.mdx). The same DurinDoor API key that calls `/v1` can call most of those routes; exclusions, redaction, and curl examples live there. MCP tools for the same work: [MCP control](../features/mcp-control.mdx).
 
 See [MCP gateway](../features/mcp-gateway.mdx) and [compression](../features/compression.mdx) for gateway features that are not `/v1` routes.
+
+OpenAI image generation forwards `complexity` and `moderation`. It forwards
+`output_compression` for JPEG and WebP output; GIF requests with compression
+are rejected before contacting the provider.

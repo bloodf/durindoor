@@ -1,55 +1,15 @@
 import { NextResponse } from "next/server";
+import { buildCloudflareWorkerUploadRequest } from "@/lib/cloudflare-worker-upload";
 import { createProxyPool } from "@/models";
+import {
+  buildRelayWorkerCode,
+  generateRelaySecret,
+} from "../relaySource.js";
+import { sanitizePoolResponse } from "../sanitizePoolResponse.js";
+import { isOperatorRequest } from "@/dashboardGuard";
 
-// Relay worker source code deployed to Cloudflare
-export const RELAY_WORKER_CODE = `
-export default {
-  async fetch(request, env, ctx) {
-    const target = request.headers.get("x-relay-target");
-    const relayPath = request.headers.get("x-relay-path") || "/";
-    
-    if (!target) {
-      return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    const targetUrl = target.replace(/\\/$/, "") + relayPath;
-    const newRequestInit = {
-      method: request.method,
-      headers: new Headers(request.headers),
-      redirect: "manual",
-    };
-
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      newRequestInit.body = request.body;
-      newRequestInit.duplex = "half";
-    }
-
-    newRequestInit.headers.delete("x-relay-target");
-    newRequestInit.headers.delete("x-relay-path");
-    newRequestInit.headers.delete("host");
-
-    try {
-      /** Keep redirect handling portable across workerd and Fetch runtimes. */
-      const response = await fetch(targetUrl, newRequestInit);
-      if (response.status >= 300 && response.status < 400) {
-        throw new Error("Upstream redirects are not allowed");
-      }
-      return new Response(response.body, {
-        status: response.status,
-        headers: response.headers,
-      });
-    } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 502,
-        headers: { "content-type": "application/json" },
-      });
-    }
-  },
-};
-`;
+// Empty-secret fixture for unit tests and pre-secret behavioural parity.
+export const RELAY_WORKER_CODE = buildRelayWorkerCode("");
 
 // POST /api/proxy-pools/cloudflare-deploy
 export async function POST(request) {
@@ -63,24 +23,20 @@ export async function POST(request) {
       return NextResponse.json({ error: "Cloudflare Account ID and API Token are required" }, { status: 400 });
     }
 
+    const relaySecret = generateRelaySecret();
+    const workerCode = buildRelayWorkerCode(relaySecret);
+
     // 1. Upload Worker Script
     const workerScriptUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${projectName}`;
     
-    // Cloudflare requires multipart/form-data for worker script upload
-    const formData = new FormData();
-    formData.append("index.js", new Blob([RELAY_WORKER_CODE], { type: "application/javascript+module" }), "index.js");
-    formData.append("metadata", new Blob([JSON.stringify({
-      main_module: "index.js",
-      compatibility_date: "2024-03-20",
-      observability: { enabled: true }
-    })], { type: "application/json" }), "metadata.json");
-
+    const { body: uploadBody, contentType } = buildCloudflareWorkerUploadRequest(workerCode);
     const uploadRes = await fetch(workerScriptUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${apiToken}`,
+        "Content-Type": contentType,
       },
-      body: formData,
+      body: uploadBody,
     });
 
     if (!uploadRes.ok) {
@@ -140,9 +96,14 @@ export async function POST(request) {
       noProxy: "",
       isActive: true,
       strictProxy: false,
+      relaySecret,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    const privileged = await isOperatorRequest(request);
+    return NextResponse.json(
+      { proxyPool: sanitizePoolResponse(proxyPool, privileged), deployUrl },
+      { status: 201 }
+    );
   } catch (error) {
     console.log("Error deploying Cloudflare relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });

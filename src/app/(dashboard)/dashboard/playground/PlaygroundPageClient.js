@@ -1,5 +1,8 @@
 "use client";
 
+import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
+import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
+
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -12,12 +15,12 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import Pagination from "@/shared/ui/components/Pagination.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import PlaygroundCompare from "./PlaygroundCompare.jsx";
-import { getModelsByProviderId, isChatModel } from "@/shared/constants/models";
+import { getModelsByProviderId } from "@/shared/constants/models";
 import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
-import { createSseParser } from "@/lib/playground/sse";
+import { readChatStream, throwIfStreamFailed } from "@/lib/playground/compare";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { getConnectionOptions, getModelReasoningOptions, groupModelsByProvider, normalizeReasoningEffort, paginateSessions } from "./playgroundHelpers";
+import { buildModelIndex, getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions, resolveSavedModel } from "./playgroundHelpers";
 import { isBrowser, isObject, isString } from "../../../../shared/utils/typeChecks.js";
 
 const STORAGE_KEYS = {
@@ -100,16 +103,6 @@ function buildUserContent(message) {
   return content.length > 0 ? content : text;
 }
 
-function readAssistantText(chunk) {
-  if (!chunk || !isObject(chunk)) return "";
-  const choice = chunk.choices?.[0];
-  const delta = choice?.delta || {};
-  const pieces = [delta.content, choice?.message?.content, chunk.output_text, chunk.text].
-  map(textValue).
-  filter(Boolean);
-  return pieces[0] || "";
-}
-
 async function fileToDataUrl(file) {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -126,50 +119,6 @@ function cloneSession(session) {
   };
 }
 
-function getProviderLabel(connection) {
-  return connection?.name || humanize(connection?.provider || connection?.id || "provider");
-}
-
-function normalizeStaticModel(model, connection) {
-  if (!model?.id) return null;
-  // Agent-only static models (e.g. Devin) are not chat candidates; skip them.
-  if (!isChatModel(model)) return null;
-  const providerId = connection.providerId || connection.provider || connection.id;
-  return {
-    id: `${providerId}/${model.id}`,
-    requestModel: `${providerId}/${model.id}`,
-    name: model.name || model.id,
-    providerId,
-    providerName: connection.providerName || getProviderLabel(connection),
-    source: "static"
-  };
-}
-
-function normalizeLiveModel(model, connection) {
-  const rawId = isString(model) ? model : model?.id || model?.name || model?.model || "";
-  if (!rawId) return null;
-
-  const displayName = isString(model) ?
-  model :
-  model?.name || model?.displayName || rawId;
-
-  const providerId = connection.providerId || connection.provider || connection.id;
-  let requestModel = rawId;
-  const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
-  if (isCompatible && !rawId.includes("/")) {
-    requestModel = `${providerId}/${rawId}`;
-  }
-
-  return {
-    id: requestModel,
-    requestModel,
-    name: displayName,
-    providerId,
-    providerName: connection.providerName || getProviderLabel(connection),
-    source: "live"
-  };
-}
-
 function parseProviderModelsPayload(data) {
   if (Array.isArray(data?.models)) return data.models;
   if (Array.isArray(data?.data)) return data.data;
@@ -180,6 +129,7 @@ function parseProviderModelsPayload(data) {
 
 
 export default function PlaygroundPageClient() {
+  const v5 = useUiV5();
   const [providerGroups, setProviderGroups] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -353,32 +303,27 @@ export default function PlaygroundPageClient() {
   // navigation away mid-stream can't setState on an unmounted tree.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const modelIndex = useMemo(() => {
-    const map = new Map();
-    for (const group of providerGroups) {
-      for (const model of group.models) {
-        map.set(model.id, {
-          ...model,
-          providerId: group.providerId,
-          providerName: group.providerName
-        });
-      }
-    }
-    return map;
-  }, [providerGroups]);
+  // Rows are addressed by the node id; the configured prefix (and a raw
+  // upstream id saved before node binding) are legacy aliases. A saved
+  // selection resolves only to a row of its own provider and never through an
+  // ambiguous alias; an unresolved one has to be selected again.
+  const modelLookup = useMemo(() => buildModelIndex(providerGroups), [providerGroups]);
+  const findSavedModel = (savedId, savedProviderId) => resolveSavedModel(modelLookup, savedId, savedProviderId);
 
   const activeProviderGroup = useMemo(() => {
     return providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0] || null;
   }, [providerGroups, activeProviderId]);
 
   const activeModel = useMemo(() => {
-    if (activeModelId && modelIndex.has(activeModelId)) return modelIndex.get(activeModelId);
-    if (activeSessionId) {
-      const session = sessions.find((item) => item.id === activeSessionId);
-      if (session?.modelId && modelIndex.has(session.modelId)) return modelIndex.get(session.modelId);
-    }
+    // A saved session is bound to the model it was saved with. When that model
+    // can no longer be resolved there is no active model until one is chosen.
+    const session = activeSessionId ? sessions.find((item) => item.id === activeSessionId) : null;
+    if (session) return findSavedModel(session.modelId, session.providerId);
+    const active = findSavedModel(activeModelId, activeProviderId);
+    if (active) return active;
     return activeProviderGroup?.models?.[0] || null;
-  }, [activeModelId, modelIndex, activeProviderGroup, sessions, activeSessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModelId, activeProviderId, modelLookup, activeProviderGroup, sessions, activeSessionId]);
 
   const reasoningOptions = useMemo(() => {
     if (!activeModel) return null;
@@ -429,19 +374,21 @@ export default function PlaygroundPageClient() {
     if (providerGroups.length === 0) return;
 
     const savedProvider = providerGroups.find((group) => group.providerId === activeProviderId) || providerGroups[0];
-    const savedModel = activeModelId && modelIndex.has(activeModelId) ?
-    modelIndex.get(activeModelId) :
-    savedProvider.models[0];
+    const savedModel = findSavedModel(activeModelId, activeProviderId) || savedProvider.models[0];
 
     if (sessions.length > 0) {
       const session = sessions.find((item) => item.id === activeSessionId) || sessions[0];
-      const sessionModel = session?.modelId && modelIndex.has(session.modelId) ?
-      modelIndex.get(session.modelId) :
-      savedModel;
+      const sessionModel = findSavedModel(session?.modelId, session?.providerId);
       initializedRef.current = true;
       setActiveSessionId(session.id);
-      setActiveProviderId(sessionModel?.providerId || savedProvider.providerId);
-      setActiveModelId(sessionModel?.id || savedModel.id);
+      if (sessionModel) {
+        setActiveProviderId(sessionModel.providerId);
+        setActiveModelId(sessionModel.id);
+      } else {
+        // The saved model cannot be resolved: leave it unselected so the
+        // history is not sent to a different model.
+        setActiveModelId("");
+      }
       return;
     }
 
@@ -462,7 +409,8 @@ export default function PlaygroundPageClient() {
     setActiveSessionId(session.id);
     setActiveProviderId(savedProvider.providerId);
     setActiveModelId(savedModel.id);
-  }, [isHydrated, loadingData, providerGroups, modelIndex, sessions, activeSessionId, activeProviderId, activeModelId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, loadingData, providerGroups, modelLookup, sessions, activeSessionId, activeProviderId, activeModelId]);
 
   const updateSession = (sessionId, updater) => {
     setSessions((prev) => prev.map((session) => session.id === sessionId ? updater(cloneSession(session)) : session));
@@ -502,7 +450,7 @@ export default function PlaygroundPageClient() {
     if (!session) return;
     setActiveSessionId(sessionId);
     setActiveProviderId(session.providerId || activeProviderId);
-    setActiveModelId(session.modelId || activeModelId);
+    setActiveModelId(session.modelId || "");
     setHistoryOpen(false);
   };
 
@@ -522,13 +470,17 @@ export default function PlaygroundPageClient() {
     }
   };
 
-  const handleSelectModel = (modelId) => {
-    const model = modelIndex.get(modelId);
+  const handleSelectModel = (modelId, providerId) => {
+    const model = resolveSavedModel(modelLookup, modelId, providerId);
     if (!model) return;
     setActiveConnectionId("auto");
 
     const current = sessions.find((session) => session.id === activeSessionId);
-    if (current && current.messages.length > 0) {
+    // A session whose saved model cannot be resolved is rebound in place by an
+    // explicit selection; a resolved one keeps its history under its model and
+    // the switch starts a new chat.
+    const currentModelResolved = !!current && !!findSavedModel(current.modelId, current.providerId);
+    if (current && current.messages.length > 0 && currentModelResolved) {
       const session = ensureSessionForModel(model);
       if (!session) return;
       setSessions((prev) => [session, ...prev]);
@@ -593,12 +545,16 @@ export default function PlaygroundPageClient() {
     }));
   };
 
-  const sendMessage = async () => {
-    const model = activeModel || activeProviderGroup?.models?.[0] || null;
+  // Retrying reuses the failed turn, retaining its model addressing and attachments.
+  const sendMessage = async (retry = false) => {
+    const model = activeModel;
     if (!model) return;
 
-    const userText = draft.trim();
-    if (!userText && attachments.length === 0) return;
+    const failedSession = retry ? sessions.find((item) => item.id === activeSessionId) : null;
+    const failedUser = retry ? [...(failedSession?.messages || [])].reverse().find((item) => item.role === "user") : null;
+    const userText = retry ? textValue(failedUser?.content) : draft.trim();
+    const requestAttachments = retry ? (failedUser?.attachments || []) : attachments;
+    if (!userText && requestAttachments.length === 0) return;
 
     let sessionId = activeSessionId;
     let session = sessions.find((item) => item.id === sessionId);
@@ -614,7 +570,7 @@ export default function PlaygroundPageClient() {
       id: createId(),
       role: "user",
       content: userText,
-      attachments: attachments.map((attachment) => ({
+      attachments: requestAttachments.map((attachment) => ({
         id: attachment.id,
         name: attachment.name,
         type: attachment.type,
@@ -632,7 +588,8 @@ export default function PlaygroundPageClient() {
       status: "streaming"
     };
 
-    const nextMessages = [...(session.messages || []), userMessage, assistantMessage];
+    const priorMessages = retry ? (session.messages || []).slice(0, -2) : (session.messages || []);
+    const nextMessages = [...priorMessages, userMessage, assistantMessage];
     setSessions((prev) => prev.map((item) => item.id === sessionId ? {
       ...item,
       providerId: model.providerId,
@@ -643,8 +600,7 @@ export default function PlaygroundPageClient() {
       updatedAt: new Date().toISOString(),
       title: item.title === "New chat" ? makeSessionTitle(userText) : item.title
     } : item));
-    setDraft("");
-    setAttachments([]);
+    if (!retry) { setDraft(""); setAttachments([]); }
     setIsSending(true);
     setStreamingMessageId(assistantMessageId);
     setStreamingText("");
@@ -701,35 +657,19 @@ export default function PlaygroundPageClient() {
         return;
       }
 
-      const decoder = new TextDecoder();
-      let assistantText = "";
-
-      const parser = createSseParser(({ data }) => {
-        let chunk;
-        try {
-          chunk = JSON.parse(data);
-        } catch {
-          return; // Ignore malformed chunks.
+      const { text: assistantText, streamError } = await readChatStream(reader, {
+        onText: (text) => {
+          setStreamingText(text);
+          updateSession(sessionId, (currentSession) => ({
+            ...currentSession,
+            messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: text, status: "streaming" } : message),
+            updatedAt: new Date().toISOString()
+          }));
         }
-        const text = readAssistantText(chunk);
-        if (!text) return;
-
-        assistantText += text;
-        setStreamingText(assistantText);
-        updateSession(sessionId, (currentSession) => ({
-          ...currentSession,
-          messages: currentSession.messages.map((message) => message.id === assistantMessageId ? { ...message, content: assistantText, status: "streaming" } : message),
-          updatedAt: new Date().toISOString()
-        }));
       });
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        parser.push(decoder.decode(value, { stream: true }));
-      }
-      parser.push(decoder.decode()); // flush any pending multibyte fragment
-      parser.flush();
+      // An error frame inside a 200 stream, or a stream that closed without
+      // content, is reported as a failed turn instead of an empty "done" bubble.
+      throwIfStreamFailed({ text: assistantText, streamError });
 
       updateSession(sessionId, (currentSession) => ({
         ...currentSession,
@@ -763,14 +703,14 @@ export default function PlaygroundPageClient() {
   };
 
   const modelLabel = activeModel ? `${activeModel.name}` : "Select model";
-  const modelSubLabel = activeModel ? activeModel.requestModel : "Choose from connected providers";
+  const modelSubLabel = activeModel ? activeModel.displayModel || activeModel.requestModel : "Choose from connected providers";
   const activeConnectionOptions = useMemo(() => getConnectionOptions(activeProviderGroup), [activeProviderGroup]);
 
   const connectionValue = activeConnectionOptions.some((opt) => opt.value === activeConnectionId) ?
   activeConnectionId :
   "auto";
   const modelOptions = useMemo(() => providerGroups.flatMap((group) => group.models), [providerGroups]);
-  const selectedModelIndex = Math.max(0, modelOptions.findIndex((model) => model.id === activeModel?.id));
+  const selectedModelIndex = Math.max(0, modelOptions.findIndex((model) => model.id === activeModel?.id && model.providerId === activeModel?.providerId));
   const openModelMenu = () => {
     setActiveModelIndex(selectedModelIndex);
     setModelMenuOpen(true);
@@ -793,7 +733,7 @@ export default function PlaygroundPageClient() {
     else if (event.key === "End") nextIndex = modelOptions.length - 1;
     else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      handleSelectModel(modelOptions[nextIndex].id);
+      handleSelectModel(modelOptions[nextIndex].id, modelOptions[nextIndex].providerId);
       modelTriggerRef.current?.focus();
       return;
     } else return;
@@ -845,7 +785,7 @@ export default function PlaygroundPageClient() {
                   <div role="listbox" id={modelListboxId} tabIndex={0} onKeyDown={handleModelListKeyDown} aria-label="Available models" className="max-h-[60vh] space-y-2 overflow-y-auto p-2">
                     {providerGroups.map((group) => <div key={group.providerId} role="group" aria-label={group.providerName} className="rounded-dd border border-dd-border-subtle bg-dd-bg p-2">
                       <div className="flex items-center justify-between px-1.5 py-1.5"><div className="flex min-w-0 items-center gap-2"><ProviderLogo provider={group.providerId} size={20} /><p className="truncate text-[13px] font-semibold text-dd-text">{group.providerName}</p></div><Badge size="sm">{group.models.length}</Badge></div>
-                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModelId; const isActiveOption = optIndex === activeModelIndex; return <button key={model.id} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.id}</span></button>; })}</div>
+                      <div className="grid gap-1.5 sm:grid-cols-2">{group.models.map((model) => { const optIndex = modelOptions.indexOf(model); const isSelected = model.id === activeModel?.id && model.providerId === activeModel?.providerId; const isActiveOption = optIndex === activeModelIndex; return <button key={`${model.providerId}/${model.id}`} id={`${modelListboxId}-opt-${optIndex}`} type="button" role="option" tabIndex={-1} onClick={() => { handleSelectModel(model.id, model.providerId); modelTriggerRef.current?.focus(); }} onMouseEnter={() => setActiveModelIndex(optIndex)} aria-selected={isSelected} className={isActiveOption ? "rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : isSelected ? "rounded-dd border border-dd-border bg-dd-surface-2 px-3 py-2.5 text-left outline-none transition-colors focus-visible:shadow-dd-focus" : "rounded-dd border border-transparent px-3 py-2.5 text-left outline-none transition-colors hover:border-dd-border hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="block truncate text-[13px] font-medium text-dd-text">{model.name}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{model.displayModel || model.id}</span></button>; })}</div>
                     </div>)}
                   </div>
                 </Card> : null}
@@ -861,15 +801,15 @@ export default function PlaygroundPageClient() {
           </div>
         </header>
         {historyOpen ? <div ref={historyMenuRef} role="dialog" aria-label="Chat history" className="absolute end-3 top-[76px] z-30 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-dd-lg border border-dd-border bg-dd-surface shadow-dd-elevated sm:end-4 lg:end-6"><div className="flex items-center justify-between border-b border-dd-border-subtle px-3 py-2"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-dd-subtle">Recent chats</p><IconButton icon="close" label="Close history" size="sm" onClick={() => setHistoryOpen(false)} /></div><div role="region" tabIndex={0} aria-label="Chat history conversations" className="max-h-[48vh] space-y-1.5 overflow-y-auto p-1.5">{sessionItems.length === 0 ? <EmptyState icon="forum" title="No conversations yet" message="Start a message to create chat history." /> : paginatedSessions.items.map((session) => { const isActive = session.id === activeSessionId; const latestMessage = [...(session.messages || [])].reverse().find((message) => message.role === "user") || session.messages?.[0]; return <button key={session.id} type="button" onClick={() => handleSelectSession(session.id)} aria-pressed={isActive} className={isActive ? "w-full rounded-dd border border-dd-accent bg-dd-accent-soft px-3 py-2.5 text-left outline-none focus-visible:shadow-dd-focus" : "w-full rounded-dd border border-dd-border-subtle bg-dd-surface px-3 py-2.5 text-left outline-none transition-colors hover:bg-dd-surface-2 focus-visible:shadow-dd-focus"}><span className="flex items-start justify-between gap-3"><span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium text-dd-text">{session.title}</span><span className="mt-0.5 block truncate text-xs text-dd-muted">{textValue(latestMessage?.content) || "Empty chat"}</span></span><span className="shrink-0 text-[10px] text-dd-subtle">{formatRelativeTime(session.updatedAt)}</span></span></button>; })}</div>{sessionItems.length > paginatedSessions.items.length ? <div className="border-t border-dd-border-subtle px-2 py-2"><Pagination page={paginatedSessions.page} pageCount={paginatedSessions.totalPages} total={sessionItems.length} rowsLabel={`${sessionItems.length} chats`} onPage={setHistoryPage} /></div> : null}</div> : null}
-        {loadError ? <div role="alert" className="mx-3 mt-3 rounded-dd-lg border border-dd-danger bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger sm:mx-4 lg:mx-6"><div className="flex items-start gap-3"><span aria-hidden="true" className="material-symbols-outlined mt-0.5 text-[18px] leading-none text-dd-danger">error</span><p className="leading-6">{loadError}</p></div></div> : null}
+        {loadError ? <div role="alert" className="mx-3 mt-3 rounded-dd-lg border border-dd-danger bg-dd-danger/10 px-4 py-3 text-[13px] text-dd-danger sm:mx-4 lg:mx-6"><div className="flex items-start gap-3">{v5 ? <MotionIcon name="error" size={18} className="mt-0.5 text-dd-danger" /> : <span aria-hidden="true" className="material-symbols-outlined mt-0.5 text-[18px] leading-none text-dd-danger">error</span>}<p className="leading-6">{loadError}</p></div></div> : null}
         <div className="flex min-h-0 flex-1 flex-col" inert={historyOpen || modelMenuOpen || undefined}>
-          {mode === "compare" ? <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-4 sm:px-4 lg:px-6"><PlaygroundCompare providerGroups={providerGroups} modelOptions={modelOptions} content={buildUserContent({ content: draft, attachments })} reasoningEffort={reasoningEffort} /></div> : <div role="region" tabIndex={0} aria-label="Conversation messages" className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 lg:px-6">
+          {mode === "compare" ? <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-4 sm:px-4 lg:px-6"><PlaygroundCompare providerGroups={providerGroups} modelOptions={modelOptions} content={buildUserContent({ content: draft, attachments })} reasoningEffort={reasoningEffort} /></div> : <div role={v5 ? "log" : "region"} tabIndex={0} aria-label="Conversation messages" className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 lg:px-6">
             {currentMessages.length === 0 ? <EmptyState icon="forum" title="Start a conversation" message={activeModel ? `Chat with ${activeProviderGroup?.providerName || activeModel.providerName} · ${activeModel.name}` : "Chat against connected provider models after they load."} /> : null}
-            <ol className="mx-auto flex w-full max-w-3xl flex-col gap-5">{currentMessages.map((message) => { const isUser = message.role === "user"; const isAssistant = message.role === "assistant"; const isStreaming = isAssistant && message.id === streamingMessageId && message.status === "streaming"; const isError = message.status === "error"; const content = textValue(message.content) || (isAssistant ? streamingText : ""); const assistantName = activeModel?.name || "Assistant"; return <li key={message.id} className={isUser ? "flex w-full justify-end gap-3" : "flex w-full justify-start gap-3"}>{!isUser ? <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-dd border border-dd-border-subtle bg-dd-surface" aria-hidden="true">{activeProviderGroup ? <ProviderLogo provider={activeProviderGroup.providerId} size={20} /> : <span className="material-symbols-outlined text-[18px] leading-none text-dd-muted">smart_toy</span>}</span> : null}<div className={isUser ? "flex min-w-0 max-w-[min(88%,42rem)] flex-col items-end" : "flex min-w-0 max-w-[min(88%,42rem)] flex-col items-start"}><div className={isUser ? "mb-1 flex flex-row-reverse items-center gap-2 px-1" : "mb-1 flex items-center gap-2 px-1"}><span className="text-xs font-semibold text-dd-text">{isUser ? "You" : assistantName}</span>{isStreaming ? <Badge tone="accent" size="sm" icon="progress_activity">Streaming</Badge> : null}{isError ? <Badge tone="danger" size="sm" icon="error">Error</Badge> : null}</div>{message.attachments?.length ? <div className={isUser ? "mb-2 grid grid-cols-2 justify-items-end gap-2 sm:grid-cols-3" : "mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3"}>{message.attachments.map((attachment) => <a key={attachment.id} href={attachment.dataUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-dd-lg border border-dd-border-subtle bg-dd-surface outline-none transition-colors hover:border-dd-accent focus-visible:shadow-dd-focus"><img src={attachment.dataUrl} alt={attachment.name} className="h-28 w-full object-cover" /></a>)}</div> : null}<div className={isUser ? "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tr-sm bg-dd-accent-soft px-4 py-3 text-[13px] leading-6 text-dd-text" : isError ? "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tl-sm border border-dd-danger bg-dd-danger/10 px-4 py-3 text-[13px] leading-6 text-dd-text" : "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tl-sm border border-dd-border-subtle bg-dd-surface px-4 py-3 text-[13px] leading-6 text-dd-text"}>{content}{isAssistant && isStreaming && !streamingText ? <span aria-label="Streaming response" className="ms-1 inline-block size-2 animate-pulse rounded-full bg-dd-accent" /> : null}</div></div></li>; })}</ol>
+            <ol className="mx-auto flex w-full max-w-3xl flex-col gap-5">{currentMessages.map((message) => { const isUser = message.role === "user"; const isAssistant = message.role === "assistant"; const isStreaming = isAssistant && message.id === streamingMessageId && message.status === "streaming"; const isError = message.status === "error"; const content = textValue(message.content) || (isAssistant ? streamingText : ""); const assistantName = activeModel?.name || "Assistant"; return <li key={message.id} className={isUser ? "flex w-full justify-end gap-3" : "flex w-full justify-start gap-3"}>{!isUser ? <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-dd border border-dd-border-subtle bg-dd-surface" aria-hidden="true">{activeProviderGroup ? <ProviderLogo provider={activeProviderGroup.providerId} size={20} /> : <span className="material-symbols-outlined text-[18px] leading-none text-dd-muted">smart_toy</span>}</span> : null}<div className={isUser ? "flex min-w-0 max-w-[min(88%,42rem)] flex-col items-end" : "flex min-w-0 max-w-[min(88%,42rem)] flex-col items-start"}><div className={isUser ? "mb-1 flex flex-row-reverse items-center gap-2 px-1" : "mb-1 flex items-center gap-2 px-1"}><span className="text-xs font-semibold text-dd-text">{isUser ? "You" : assistantName}</span>{isStreaming ? <Badge tone="accent" size="sm" icon="progress_activity">Streaming</Badge> : null}{isError ? <Badge tone="danger" size="sm" icon="error">Error</Badge> : null}</div>{message.attachments?.length ? <div className={isUser ? "mb-2 grid grid-cols-2 justify-items-end gap-2 sm:grid-cols-3" : "mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3"}>{message.attachments.map((attachment) => <a key={attachment.id} href={attachment.dataUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-dd-lg border border-dd-border-subtle bg-dd-surface outline-none transition-colors hover:border-dd-accent focus-visible:shadow-dd-focus"><img src={attachment.dataUrl} alt={attachment.name} className="h-28 w-full object-cover" /></a>)}</div> : null}<div className={isUser ? "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tr-sm bg-dd-accent-soft px-4 py-3 text-[13px] leading-6 text-dd-text" : isError ? "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tl-sm border border-dd-danger bg-dd-danger/10 px-4 py-3 text-[13px] leading-6 text-dd-text" : "w-full whitespace-pre-wrap break-words rounded-dd-lg rounded-tl-sm border border-dd-border-subtle bg-dd-surface px-4 py-3 text-[13px] leading-6 text-dd-text"}>{content}{v5 && isError && message.id === currentMessages.at(-1)?.id ? <div className="mt-2"><Button variant="secondary" size="sm" onClick={() => sendMessage(true)} disabled={isSending}>Retry</Button></div> : null}{isAssistant && isStreaming && !streamingText ? <span aria-label="Streaming response" className="ms-1 inline-block size-2 animate-pulse rounded-full bg-dd-accent" /> : null}</div></div></li>; })}</ol>
           </div>}
           <div className="shrink-0 border-t border-dd-border-subtle bg-dd-bg-alt/95 px-3 py-3 backdrop-blur sm:px-4 lg:px-6">
             {attachments.length > 0 ? <div className="mx-auto mb-2.5 flex w-full max-w-3xl flex-wrap gap-2">{attachments.map((attachment) => <div key={attachment.id} className="flex items-center gap-2 rounded-full border border-dd-border-subtle bg-dd-surface py-1 ps-2 pe-1"><img src={attachment.dataUrl} alt={attachment.name} className="size-7 rounded-full object-cover" /><span className="max-w-40 truncate text-xs text-dd-text">{attachment.name}</span><IconButton icon="close" label={`Remove ${attachment.name}`} size="sm" onClick={() => removeAttachment(attachment.id)} /></div>)}</div> : null}
-            <div className="mx-auto w-full max-w-3xl rounded-dd-lg border border-dd-border bg-dd-surface p-2 transition-colors focus-within:border-dd-accent focus-within:shadow-dd-focus"><Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={`Message ${activeModel?.name || "model"}`} rows={1} aria-label="Message input" className="max-h-[25vh] min-h-11 resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-6 shadow-none hover:border-0 focus:border-0 focus:shadow-none" /><div className="flex items-center justify-between gap-3 pt-1"><div className="flex min-w-0 items-center gap-1"><IconButton icon="attach_file" label="Attach image" disabled={!activeModel || loadingData} onClick={() => fileInputRef.current?.click()} /><input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} /><span className="truncate ps-1 text-xs font-medium text-dd-subtle">{activeModel ? activeModel.name : "No model"}</span></div><div className="flex shrink-0 items-center gap-2">{isSending ? <Button variant="secondary" size="sm" icon="stop" onClick={handleStop}>Stop</Button> : null}{mode === "chat" ? <Button variant="primary" size="sm" icon="arrow_upward" onClick={sendMessage} disabled={!canSend} aria-label="Send message" className="min-w-11">Send</Button> : null}</div></div></div>
+            <div className="mx-auto w-full max-w-3xl rounded-dd-lg border border-dd-border bg-dd-surface p-2 transition-colors focus-within:border-dd-accent focus-within:shadow-dd-focus"><Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={activeModel ? `Message ${activeModel.name}` : currentSession && providerGroups.length > 0 ? "Select a model to continue this chat" : "Message model"} rows={1} aria-label="Message input" className="max-h-[25vh] min-h-11 resize-none border-0 bg-transparent px-2 py-2 text-[13px] leading-6 shadow-none hover:border-0 focus:border-0 focus:shadow-none" /><div className="flex items-center justify-between gap-3 pt-1"><div className="flex min-w-0 items-center gap-1"><IconButton icon="attach_file" label="Attach image" disabled={!activeModel || loadingData} onClick={() => fileInputRef.current?.click()} /><input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAttachFiles} /><span className="truncate ps-1 text-xs font-medium text-dd-subtle">{activeModel ? activeModel.name : "No model"}</span></div><div className="flex shrink-0 items-center gap-2">{isSending ? <Button variant="secondary" size="sm" icon="stop" onClick={handleStop}>Stop</Button> : null}{mode === "chat" ? <Button variant="primary" size="sm" icon="arrow_upward" onClick={() => sendMessage()} disabled={!canSend} aria-label="Send message" className="min-w-11">Send</Button> : null}</div></div></div>
             <p className="mt-2 px-1 text-center text-[11px] text-dd-subtle">{mode === "chat" ? "Enter to send · Shift+Enter for newline · Model list is filtered from connected providers." : "Compare uses this prompt and its images · Run each column or Run all above."}</p>
           </div>
         </div>

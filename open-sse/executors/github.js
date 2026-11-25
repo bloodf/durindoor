@@ -20,14 +20,23 @@ import { GITHUB_CLAUDE_MAX_PROMPT_TOKENS } from "../config/github.js";
 import { estimateInputTokens } from "../utils/usageTracking.js";
 import { checkGitHubCreditLimit } from "../services/githubCreditLimit.js";
 import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
-import { resolveCopilotEndpointRoute } from "../services/copilotEndpointContract.js";
+import { resolveCopilotEndpointRoute, computeCopilotRouteGeneration } from "../services/copilotEndpointContract.js";
+import { CopilotLearnedRoutes } from "../services/copilotLearnedRoutes.js";
 import crypto from "crypto";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { containsMediaKind } from "../utils/mediaParts.js";
 
 export class GithubExecutor extends BaseExecutor {
   constructor(provider = "github", config = PROVIDERS[provider]) {
     super(provider, config);
-    this.knownCodexModels = new Set();
+    /**
+     * Learned route hints, keyed by account and API host. The entries carry
+     * the routing-metadata generation they were learned under, so a
+     * refreshed catalog expires them (see services/copilotLearnedRoutes.js).
+     * `knownCodexModels` is the store's map, kept under its historical name.
+     */
+    this.learnedRoutes = new CopilotLearnedRoutes();
+    this.knownCodexModels = this.learnedRoutes.entries;
   }
 
   /**
@@ -50,13 +59,26 @@ export class GithubExecutor extends BaseExecutor {
     return /claude/i.test(model || "");
   }
 
+  /**
+   * Whether an upstream response is an event stream. The Claude Messages and
+   * Responses routes convert the upstream stream through an SSE transformer;
+   * that transform is only valid for an event-stream response (OmniRoute
+   * #937). A successful response with another media type keeps its body.
+   */
+  isEventStreamResponse(response) {
+    const contentType = (response?.headers?.get?.("content-type") || "").toLowerCase();
+    return contentType.includes("text/event-stream");
+  }
+
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
     return this.endpointUrl("baseUrl", credentials);
   }
 
-  buildHeaders(credentials, stream = true) {
-    const token = credentials.copilotToken || credentials.accessToken;
-    return {
+  buildHeaders(credentials, stream = true, requestContext = null) {
+    const token = credentials.copilotToken || credentials.providerSpecificData?.copilotToken || credentials.accessToken;
+    // The latest turn identifies a continuation; earlier assistant turns do not.
+    const lastRole = requestContext?.copilotMessages?.at(-1)?.role;
+    const headers = {
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
       "copilot-integration-id": "vscode-chat",
@@ -67,11 +89,47 @@ export class GithubExecutor extends BaseExecutor {
       "x-github-api-version": GITHUB_COPILOT.API_VERSION,
       "x-request-id": crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       "x-vscode-user-agent-library-version": "electron-fetch",
-      "X-Initiator": "user",
+      "X-Initiator": lastRole === "assistant" || lastRole === "tool" ? "agent" : "user",
       // Harmless no-op on /chat/completions and /responses; required by /v1/messages.
       "anthropic-version": ANTHROPIC_API_VERSION,
       "Accept": stream ? "text/event-stream" : "application/json"
     };
+    if (containsMediaKind([{ content: [requestContext?.copilotMessages, requestContext?.copilotInput] }], "image")) {
+      headers["copilot-vision-request"] = "true";
+    }
+    return headers;
+  }
+
+  /**
+   * Drop the reasoning fields GitHub Copilot rejects on assistant history.
+   *
+   * Copilot turns `reasoning_text` / `reasoning_content` on an assistant turn
+   * into Anthropic thinking blocks it cannot sign, and the upstream then
+   * answers 400 ("Invalid signature in thinking block"). Both fields are
+   * response-only artifacts, so a replayed history must not carry them.
+   *
+   * Assistant turns only: that is where clients replay the previous turn's
+   * reasoning. Every other role keeps its fields, and the message content,
+   * the tool calls and the tool results are left exactly as they were.
+   *
+   * The copy preserves the original property descriptors, so the
+   * non-enumerable Claude native blocks a message may carry survive the
+   * rewrite (see translator/schema/blocks.js).
+   */
+  stripAssistantReasoningFields(message) {
+    if (!message || message.role !== "assistant") return message;
+    const descriptors = Object.getOwnPropertyDescriptors(message);
+    if (!Object.hasOwn(descriptors, "reasoning_text") && !Object.hasOwn(descriptors, "reasoning_content")) {
+      return message;
+    }
+    // Keep only the OTHER descriptors on the new object. An own descriptor that
+    // is not configurable — a frozen or otherwise read-only message — cannot be
+    // deleted after construction, so dropping the field from the copy would
+    // throw instead of stripping it. Building the object from the remaining
+    // descriptors gives the same result for every message, mutable or not.
+    delete descriptors.reasoning_text;
+    delete descriptors.reasoning_content;
+    return Object.create(Object.getPrototypeOf(message), descriptors);
   }
 
   // Sanitize messages for GitHub Copilot /chat/completions endpoint (gpt/gemini/grok models —
@@ -93,13 +151,14 @@ export class GithubExecutor extends BaseExecutor {
       if (Array.isArray(msg.content)) {
         const cleanContent = msg.content.
         map((part) => {
+          if (!part || !isObject(part)) return part;
           if (part.type === "text") return part;
           if (part.type === "image_url") return part;
           // Serialize tool_use, tool_result, thinking, etc. as text
-          const text = part.text || part.content || JSON.stringify(part);
+          const text = part.text || part.thinking || part.content || JSON.stringify(part);
           return { type: "text", text: isString(text) ? text : JSON.stringify(text) };
         }).
-        filter((part) => part.text !== ""); // remove empty text parts
+        filter((part) => !(part?.type === "text" && part.text === ""));
 
         // If all content was stripped (e.g. only tool_result with no text), drop content
         return { ...msg, content: cleanContent.length > 0 ? cleanContent : null };
@@ -107,6 +166,11 @@ export class GithubExecutor extends BaseExecutor {
 
       return msg;
     });
+
+    // Reasoning fields are response-only artifacts the chat endpoint rejects on
+    // assistant history (OmniRoute #923). Strip them here, on the one route that
+    // forwards assistant reasoning to Copilot's OpenAI-shaped endpoint.
+    sanitized.messages = sanitized.messages.map((msg) => this.stripAssistantReasoningFields(msg));
 
     // GitHub Copilot's /chat/completions rejects a conversation that ends with an
     // assistant message ("does not support assistant message prefill. The conversation
@@ -187,6 +251,10 @@ export class GithubExecutor extends BaseExecutor {
 
   async execute(options) {
     const { model, log } = options;
+    const body = Array.isArray(options.body?.tools) && options.body.tools.length > 128
+      ? { ...options.body, tools: options.body.tools.slice(0, 128) }
+      : options.body;
+    options = { ...options, body, requestContext: { ...options.requestContext, copilotMessages: body?.messages, copilotInput: body?.input } };
 
     // Local AI Credits cutoff runs before any route selection so every GitHub
     // path (messages shim, /responses, /chat/completions) is gated identically.
@@ -214,11 +282,21 @@ export class GithubExecutor extends BaseExecutor {
     }
 
     // Only use /responses for models that are explicitly known to need it — the
-    // account's discovered endpoint contract, or a cached escalation after
+    // account's discovered endpoint contract, or a learned escalation after
     // Copilot's own error — and that the /responses endpoint actually serves
     // (excludes Gemini/Claude, see #1062).
+    // Keep learned fallbacks per connection and API host; anonymous calls retry
+    // normally but cannot safely share a learned route with another account.
+    // A learned route is also bound to the generation of the routing metadata
+    // it was learned under: a refreshed catalog expires it, so the account
+    // probes its routes again instead of trusting a stale guess.
+    const accountId = options.connectionId || options.credentials?.connectionId || options.credentials?.id;
+    const cacheKey = accountId ? JSON.stringify([accountId, this.endpointUrl("baseUrl", options.credentials)]) : null;
+    const route = this.copilotEndpointRoute(model, options.credentials);
+    const generation = computeCopilotRouteGeneration(options.credentials?.providerSpecificData?.copilotEndpointContract);
+    const learned = cacheKey ? this.learnedRoutes.has(cacheKey, model, generation) : false;
     if (this.supportsResponsesEndpoint(model) &&
-      (this.knownCodexModels.has(model) || this.usesResponsesRoute(model, options.credentials))) {
+      (route === "responses" || (route === null && learned))) {
       log?.debug("GITHUB", `Using /responses route for ${model}`);
       return this.executeWithResponsesEndpoint(options);
     }
@@ -244,7 +322,7 @@ export class GithubExecutor extends BaseExecutor {
 
       if (errorBody.includes("not accessible via the /chat/completions endpoint") || errorBody.includes("The requested model is not supported")) {
         log?.warn("GITHUB", `Model ${model} requires /responses. Switching...`);
-        this.knownCodexModels.add(model);
+        this.learnedRoutes.learn(cacheKey, model, generation);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "fallback" });
         try {
           const cancellation = result.response.body?.cancel?.("switching GitHub route");
@@ -281,7 +359,7 @@ export class GithubExecutor extends BaseExecutor {
     // same as executeWithResponsesEndpoint below — chatCore's non-streaming handler
     // already knows how to buffer an SSE response into a single JSON reply when the
     // client asked for stream:false.
-    const headers = this.buildHeaders(credentials, true);
+    const headers = this.buildHeaders(credentials, true, requestContext);
 
     // Strip params GitHub's Claude route rejects (temperature, and thinking/
     // reasoning_effort for non-4.6 Claude) BEFORE translating — the normal
@@ -379,8 +457,9 @@ export class GithubExecutor extends BaseExecutor {
         const countSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
         const countResponse = await proxyAwareFetch(this.config.countTokensUrl, {
           method: "POST",
-          headers: this.buildHeaders(credentials, false),
+          headers: this.buildHeaders(credentials, false, requestContext),
           body: JSON.stringify(transformedBody),
+          redirect: "error",
           signal: countSignal
         }, proxyOptions);
         if (countResponse.ok) {
@@ -467,6 +546,7 @@ export class GithubExecutor extends BaseExecutor {
           method: "POST",
           headers,
           body: JSON.stringify(transformedBody),
+          redirect: "error",
           signal: mergedSignal
         }, proxyOptions));
       } catch (error) {
@@ -528,6 +608,24 @@ export class GithubExecutor extends BaseExecutor {
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+
+    /**
+     * OmniRoute #937: the SSE transform runs only on a successful event-stream
+     * response. A successful response that is NOT an event stream (a JSON or
+     * plain-text body) keeps its status, headers and readable body, so the
+     * gateway classifies the upstream answer instead of the executor rewriting
+     * it into a `stream_error` frame with the upstream body lost.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
     }
 
     const state = initState(FORMATS.CLAUDE);
@@ -689,7 +787,7 @@ export class GithubExecutor extends BaseExecutor {
     // below. Keep the upstream Responses request streaming even when the
     // original Chat Completions client requested a non-streaming response.
     const responsesStream = true;
-    const headers = this.buildHeaders(credentials, responsesStream);
+    const headers = this.buildHeaders(credentials, responsesStream, requestContext);
 
     const transformedBody = openaiToOpenAIResponsesRequest(model, body, responsesStream, credentials);
     // This route bypasses transformRequest(), so the unsupported-parameter filter
@@ -706,11 +804,28 @@ export class GithubExecutor extends BaseExecutor {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
+      redirect: "error",
       signal
     }, proxyOptions));
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };
+    }
+
+    /**
+     * OmniRoute #937: same event-stream precondition as the /v1/messages
+     * route above — a successful non-SSE response keeps its status, headers and
+     * readable body instead of being parsed as an event stream.
+     */
+    if (!this.isEventStreamResponse(response)) {
+      return {
+        response,
+        url,
+        headers,
+        transformedBody,
+        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
+        terminalProvenance: "upstream"
+      };
     }
 
     const state = initState("openai-responses");
@@ -832,6 +947,10 @@ export class GithubExecutor extends BaseExecutor {
         return null;
       }
       const data = await response.json();
+      if (!isString(data.token) || !data.token || !Number.isFinite(data.expires_at) || data.expires_at <= Date.now() / 1000) {
+        log?.error?.("TOKEN", "Copilot token refresh returned an invalid or expired token");
+        return null;
+      }
       log?.info?.("TOKEN", "Copilot token refreshed");
       return { token: data.token, expiresAt: data.expires_at };
     } catch {
@@ -877,14 +996,14 @@ export class GithubExecutor extends BaseExecutor {
       if (githubTokens?.accessToken) {
         copilotResult = await this.refreshCopilotToken(githubTokens.accessToken, log, proxyOptions);
         if (copilotResult) {
-          return { ...githubTokens, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt };
+          return { ...githubTokens, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt, providerSpecificData: { ...credentials.providerSpecificData, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt } };
         }
         return githubTokens;
       }
     }
 
     if (copilotResult) {
-      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt };
+      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt, providerSpecificData: { ...credentials.providerSpecificData, copilotToken: copilotResult.token, copilotTokenExpiresAt: copilotResult.expiresAt } };
     }
 
     return null;
@@ -892,11 +1011,12 @@ export class GithubExecutor extends BaseExecutor {
 
   needsRefresh(credentials) {
     // Always refresh if no copilotToken
-    if (!credentials.copilotToken) return true;
+    if (!(credentials.copilotToken || credentials.providerSpecificData?.copilotToken)) return true;
 
-    if (credentials.copilotTokenExpiresAt) {
+    const copilotTokenExpiresAt = credentials.copilotTokenExpiresAt || credentials.providerSpecificData?.copilotTokenExpiresAt;
+    if (copilotTokenExpiresAt) {
       // Handle both Unix timestamp (seconds) and ISO string
-      let expiresAtMs = credentials.copilotTokenExpiresAt;
+      let expiresAtMs = copilotTokenExpiresAt;
       if (isNumber(expiresAtMs) && expiresAtMs < 1e12) {
         expiresAtMs = expiresAtMs * 1000; // Convert seconds to ms
       } else if (isString(expiresAtMs)) {

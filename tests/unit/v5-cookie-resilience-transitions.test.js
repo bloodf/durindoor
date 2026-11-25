@@ -45,7 +45,10 @@ beforeEach(async () => {
   });
   originalA = await db.getProviderConnectionById(a.id);
   originalB = await db.getProviderConnectionById(b.id);
-});
+  // The fresh SQLite database and auth imports can exceed Vitest's default
+  // hook ceiling under concurrent load, so use the bounded allowance shared
+  // by the other database-backed suites in this package.
+}, 60_000);
 
 afterEach(async () => {
   await global._dbAdapter?.instance?.close?.();

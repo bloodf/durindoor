@@ -17,6 +17,7 @@
  */
 
 import { isNumber, isObject, isString } from "@/shared/utils/typeChecks";
+import { assertSocksProxyUrl } from "../../open-sse/utils/socksCredential.js";
 
 const ACCOUNT_HOST = "account.xiaomi.com";
 export const SESSION_COOKIE = "dd_mimo_login";
@@ -333,7 +334,7 @@ export async function ensureServiceSession(sess) {
     return false;
   }
   try {
-    const mod = await import("../../open-sse/shared/mimoAccount.js");
+    const mod = await import("../../open-sse/utils/mimoAccount.js");
     const proxyOptions = sess.proxyUrl ? { enabled: true, url: sess.proxyUrl } : null;
     log("exchange_start");
     const serviceCookie = await mod.getMimoAccountCookie(
@@ -497,6 +498,7 @@ async function socksFetch(url, init, proxyUrl, sess) {
   }
   const SocksProxyAgent = await _socksPromise;
   if (!SocksProxyAgent) throw new Error("socks agent unavailable");
+  assertSocksProxyUrl(proxyUrl);
 
   const nodeUrl = new URL(url);
   // Literal specifiers on both branches — webpack forbids fully dynamic import().

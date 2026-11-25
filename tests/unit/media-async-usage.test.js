@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -59,7 +60,8 @@ async function reload() {
 
 async function importCutover() {
   const { exportDb, importDb } = await import("@/lib/db/index.js");
-  const backup = await exportDb();
+  // SEC-B-02 / #2208: scrubbed exports omit apiKeys[].key; cutover needs secrets.
+  const backup = await exportDb({ includeSecrets: true });
   await importDb({ ...backup, billingCutoverVersion: 1, billingEpoch: backup.billingEpoch || "imported-generation" });
 }
 // Transforming the handler and DB graph is the slow part. Warm it once so
@@ -154,7 +156,7 @@ describe("durable video jobs use the existing ledger", () => {
   it("records an accepted unknown-cost row at submission, then settles it once across concurrent and restarted polls", async () => {
     await submit();
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, provider: "xai", model: "grok-imagine-video", connectionId: "account-a", apiKey: "owner-secret", endpoint: "/v1/videos/generations" });
+    expect(rows()[0]).toMatchObject({ status: "accepted", cost: null, provider: "xai", model: "grok-imagine-video", connectionId: "account-a", apiKey: null, apiKeyId: "owner", endpoint: "/v1/videos/generations" });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ modality: "video", costStatus: "unknown", costSource: "accepted-job", jobState: "accepted" });
     expect(rows()[0].tokens).not.toContain("secret");
     const stored = adapter.get("SELECT value FROM kv WHERE scope = 'mediaJobs'").value;
@@ -168,7 +170,7 @@ describe("durable video jobs use the existing ledger", () => {
     adapter = await (await import("@/lib/db/driver.js")).getAdapter();
     await poll(pollRequest(), "shared-id");
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ status: "ok", cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: "owner-secret" });
+    expect(rows()[0]).toMatchObject({ status: "ok", cost: null, promptTokens: 0, completionTokens: 0, connectionId: "account-a", apiKey: null, apiKeyId: "owner" });
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ nativeUnits: { videoSeconds: 4.5 }, costStatus: "unknown" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, unknownCostRequests: 1 });
@@ -183,7 +185,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect(JSON.parse(rows()[0].meta)).toMatchObject({ costStatus: "known", costSource: "provider" });
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 1, totalCost: 0.4, unknownCostRequests: 0 });
-    const day = JSON.parse(adapter.get("SELECT data FROM usageDaily").data);
+    const day = [...readUsageDailyRollups(adapter)][0].day;
     expect(day).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
     expect(Object.values(day.byProvider)[0]).toMatchObject({ requests: 1, cost: 0.4, unknownCostRequests: 0 });
     expect(adapter.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'").value).toBe("1");
@@ -385,7 +387,7 @@ describe("durable video jobs use the existing ledger", () => {
     expect(rows()).toEqual([]);
     const { getApiKeyUsageTotals } = await import("@/lib/db/repos/apiKeyUsageTotalsRepo.js");
     expect(await getApiKeyUsageTotals("owner")).toMatchObject({ totalRequests: 0, totalCost: 0, unknownCostRequests: 0 });
-    expect(JSON.parse(adapter.get("SELECT data FROM usageDaily").data)).toMatchObject({ requests: 0, unknownCostRequests: 0 });
+    expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 0, unknownCostRequests: 0 });
     expect(adapter.all("SELECT * FROM usageLastSeen")).toEqual([]);
   });
 });

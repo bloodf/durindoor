@@ -29,9 +29,25 @@ Save, then send a request using one of the connection's models. A duplicate prov
 </Step>
 </Steps>
 
-`ollama-local` and other `noAuth` providers may omit the key. Compatible nodes still require a value even when the upstream ignores it; use a placeholder such as `local-dev-key`. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
+`ollama-local` and other `noAuth` providers may omit the key. OpenAI-compatible nodes also allow a keyless connection when the upstream does not require authentication. See [OpenAI-compatible nodes](./openai-compatible-nodes.mdx).
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
+
+## DemonRoute
+
+Add a DemonRoute API key in Providers, then discover models for that connection. Its `/v1/models` catalog is account-specific; the bundled model list is only an offline starting point. Use the exact, case-sensitive model ID returned by DemonRoute, including its vendor prefix. Model availability and pricing may change. See the [DemonRoute documentation](https://demonroute.com/docs).
+
+## Gisoo
+
+Gisoo ([gisoo.pro](https://gisoo.pro)) is a prepaid, OpenAI-compatible relay. DurinDoor sends chat requests to `https://gisoo.pro/api/v1/chat/completions` with `Authorization: Bearer <key>`; one key covers the whole catalog.
+
+Three details differ from most API-key providers:
+
+- **Model discovery is keyless.** `GET https://gisoo.pro/api/v1/models` is public and answers 200 without a key, so the dashboard fetches the catalog without sending the stored key. The request always targets the built-in Gisoo host, never a per-connection base URL.
+- **The connection test uses the account endpoint.** The catalog answers 200 even for a rejected key, so it cannot prove a credential. DurinDoor validates the key against `GET https://gisoo.pro/api/v1/me` instead, which answers 401 for a missing, revoked or expired key.
+- **Credit and identity verification are separate failures.** A `402` means the account's credit or its spend cap is exhausted; a `403` that names identity verification means the account spent past the $2 pre-verification allowance and must be verified in the Gisoo app. Both bench the connection for a day and are reported as terminal, so no `Retry-After` is advertised. A rejected key (`401`) instead benches the connection briefly so another key can serve the request.
+
+Gisoo publishes 60 requests per minute per key by default; DurinDoor paces connections to that rate unless you override it in the settings.
 
 ## Anthropic API-key requests
 
@@ -102,6 +118,14 @@ For OpenAI-format responses from an effective DeepSeek model, DurinDoor converts
 
 Buffered responses are decoded the same way before they are projected into the format the client asked for, so a JSON reply to Chat Completions, Claude Messages, Gemini or Responses requests carries the tool call instead of the raw frame. The same reply still arrives as a single JSON body.
 
+## DeepSeek thinking history
+
+DeepSeek's thinking mode requires the `reasoning_content` of earlier assistant turns to be sent back with later requests that carry `tools`; omitting it makes the API answer HTTP 400. OpenAI Chat clients usually drop that field, so on the OpenAI Chat wire DurinDoor adds a single-space `reasoning_content` placeholder to every prior assistant message that has none, or has an empty one.
+
+- A non-empty `reasoning_content` that the client already sent is never replaced, and tool calls, tool call IDs, tool results and message order are left as received. The client's own history object is not modified.
+- The Anthropic-compatible DeepSeek endpoint carries thinking as `thinking` content blocks with signatures. DurinDoor forwards those blocks unchanged and sends no `reasoning_content` on that transport, including when the transport is selected as `claude-apikey`.
+- Another provider that serves a model with the same ID keeps its own endpoint and credentials. On an Anthropic-format transport it never receives `reasoning_content`. On an OpenAI Chat transport, other providers with a `deepseek` model ID receive the same placeholder, as before, because gateways that front DeepSeek enforce the same rule; models with other IDs are untouched.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:
@@ -147,11 +171,11 @@ This is field normalization, not validation of arbitrary reasoning value types.
 
 ## Qoder model queue
 
-When Qoder reports code `10605` (a model queue, not a billing block), DurinDoor holds the request and replays it with a fresh signature after the delay Qoder asks for (15 to 60 seconds). It stops after 6 attempts or `QODER_MODEL_QUEUE_MAX_WAIT_MS` milliseconds (default 180000), whichever comes first, and then returns a retryable `503` with code `qoder_model_queued` so a combo can move on. Billing signatures (`110`, `112`, `pricingUrl`) still return `403` immediately and are never replayed. A closed client connection ends the wait.
+When Qoder reports code `10605` (a model queue, not a billing block), DurinDoor polls Qoder's queue-status endpoint and replays with a fresh signature as soon as the status reports that the queue cleared. If the status endpoint errors or returns an unknown response, DurinDoor falls back to the retry delay Qoder supplied (15 to 60 seconds). It stops after 6 inference attempts or `QODER_MODEL_QUEUE_MAX_WAIT_MS` milliseconds (default 180000), whichever comes first, and then returns a retryable `503` with code `qoder_model_queued` so a combo can move on. Billing signatures (`110`, `112`, `pricingUrl`) still return `403` immediately and are never replayed. A closed client connection ends the wait.
 
 ### Unverified
 
-- No live Qoder call was made. The `10605` payload shape and queue timings come from upstream commit text. Upstream also polls a queue-status endpoint; that is not ported.
+- No live Qoder call was made. The `10605` payload shape and queue-status contract are ported from upstream Qoder client behavior; tests use synthetic responses only.
 
 ## DeepAI
 
@@ -188,3 +212,5 @@ Omit `stream` or set it to `false` for JSON. In SSE, read text from `step.delta`
 The same provider-qualified model works on `POST /v1/chat/completions` with one text-only user message. DurinDoor always sends `store: false`. Interaction IDs identify the current response only. This integration supports foreground creation with text input and output. The existing **Gemini** connection still serves GenerateContent and the Gemini media endpoints.
 
 See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).
+
+Mistral Chat requests map `seed` to `random_seed` and `max_completion_tokens` to `max_tokens`, remove unsupported OpenAI-only fields, and cap temperature at 1.5. Explicit Mistral field values take precedence. Unsupported `service_tier` values are normalized or omitted; Responses requests retain their own schema.

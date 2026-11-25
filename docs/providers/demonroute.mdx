@@ -1,0 +1,9 @@
+---
+title: DemonRoute
+description: Connect a DemonRoute API key and discover the models your account can use.
+---
+
+
+Add a DemonRoute connection using a key from the [DemonRoute console](https://demonroute.com/login). DurinDoor reads the account-scoped `/v1/models` catalog with that connection's key. That authenticated catalog is authoritative for the selected account. A small seed list of chat model channel IDs ships offline as a starting point only, so use the exact returned channel ID, including its vendor prefix and letter case; DemonRoute can retire an ID. Prices are not hardcoded.
+
+Chat requests use DemonRoute's OpenAI-compatible `/v1/chat/completions` endpoint, and usage is taken from the upstream response. The provider recommends a timeout of at least 120 seconds because reasoning models stream slowly, so DurinDoor's transport allows for that first byte. Upstream statuses keep their meaning: `401` means the key was rejected, `402` means the key is out of credit, and `429` is a per-key rate limit rather than an upstream failure. See [DemonRoute's API documentation](https://demonroute.com/docs) for key limits and the stability policy.

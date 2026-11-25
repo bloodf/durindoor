@@ -3,14 +3,12 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { ALIASES, resolveAliases, siteRoot } from "../aliases.mjs";
 
-const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const repoRoot = join(siteRoot, "..");
-const ALIASES = [
-  ["@site/", join(siteRoot, "src") + "/"],
-  ["@/", join(repoRoot, "src") + "/"],
-  ["open-sse/", join(repoRoot, "open-sse") + "/"],
-];
+const paths = resolveAliases();
+const NODE_ALIASES = Object.keys(ALIASES)
+  .filter((name) => name === "@site" || name === "@" || name === "open-sse")
+  .map((name) => [`${name}/`, `${paths[name]}/`]);
 
 function withExtension(path) {
   if (existsSync(path) && statSync(path).isFile()) return path;
@@ -24,7 +22,7 @@ export async function resolve(specifier, context, next) {
   if (specifier.endsWith("/kimchiUserAgent.js") && !specifier.includes("/mock/server/")) {
     return next(pathToFileURL(join(siteRoot, "src/mock/server/kimchiUserAgent.js")).href, context);
   }
-  const alias = ALIASES.find(([prefix]) => specifier.startsWith(prefix));
+  const alias = NODE_ALIASES.find(([prefix]) => specifier.startsWith(prefix));
   if (alias) return next(pathToFileURL(withExtension(alias[1] + specifier.slice(alias[0].length))).href, context);
   if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {
     const target = join(dirname(fileURLToPath(context.parentURL)), specifier);

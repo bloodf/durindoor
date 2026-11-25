@@ -65,7 +65,7 @@ describe("missing API-key usage totals table", () => {
     };
     const snapshot = () => ({
       history: db.all("SELECT * FROM usageHistory"),
-      daily: db.all("SELECT * FROM usageDaily"),
+      daily: db.all("SELECT * FROM usageDailyRollups ORDER BY id"),
       lastSeen: db.all("SELECT * FROM usageLastSeen"),
       receipts: db.all("SELECT * FROM kv WHERE scope = 'usageEventReceipts'"),
       lifetime: db.get("SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'"),

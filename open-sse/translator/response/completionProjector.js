@@ -1,12 +1,13 @@
 import { FORMATS } from "../formats.js";
 import {
-  fromOpenAIFinish,
+  claudeStopReasonWithToolCalls,
   isUpstreamErrorObject,
   readUpstreamErrorMessage,
   responsesIncompleteDetailsOrOmit,
   responsesTerminalFromChatFinish
 } from "../concerns/finishReason.js";
 import { toResponsesUsage } from "../concerns/usage.js";
+import { buildGeminiUsageMetadata } from "./geminiUsageMetadata.js";
 import { CLAUDE_BLOCK, CLAUDE_STOP, GEMINI_FINISH, MODEL_FALLBACK, OPENAI_FINISH, RESPONSES_ITEM, ROLE } from "../schema/index.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { isCodexMultiAgentPlaintextTool } from "../concerns/codexMultiAgent.js";
@@ -59,7 +60,8 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
   if (isString(message.content) && message.content.length > 0) {
     content.push({ type: CLAUDE_BLOCK.TEXT, text: message.content });
   }
-  for (const toolCall of getToolCalls(completion)) {
+  const toolCalls = getToolCalls(completion);
+  for (const toolCall of toolCalls) {
     const fn = toolCall.function || {};
     content.push({
       type: CLAUDE_BLOCK.TOOL_USE,
@@ -78,12 +80,28 @@ function openAICompletionToClaudeMessage(completion, { claudeCompat = false, mod
     role: ROLE.ASSISTANT,
     model: model || completion.model || MODEL_FALLBACK,
     content,
-    stop_reason: fromOpenAIFinish(choice.finish_reason, FORMATS.CLAUDE) || CLAUDE_STOP.END_TURN,
+    // Same rule as the OpenAI → Claude projections: an ordinary stop that
+    // carried tool calls ends the turn with "tool_use" (#18270), so an agentic
+    // Claude client keeps the loop running.
+    stop_reason:
+      claudeStopReasonWithToolCalls(
+        choice.finish_reason || OPENAI_FINISH.STOP,
+        toolCalls.length > 0
+      ) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: {
       input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
       output_tokens: (usage.completion_tokens || usage.output_tokens || 0) + (usage.completion_tokens_details?.reasoning_tokens || 0)
     }
+  };
+}
+
+// A non-stream body without total_tokens still reports a total.
+function geminiUsageWithTotal(usage) {
+  const metadata = buildGeminiUsageMetadata(usage);
+  return {
+    ...metadata,
+    totalTokenCount: metadata.totalTokenCount || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
   };
 }
 
@@ -115,11 +133,7 @@ function openAICompletionToGeminiResponse(completion) {
         finishReason: openAIToGeminiFinish(getChoice(completion).finish_reason),
         index: 0
       }],
-      usageMetadata: {
-        promptTokenCount: usage.prompt_tokens || usage.input_tokens || 0,
-        candidatesTokenCount: usage.completion_tokens || usage.output_tokens || 0,
-        totalTokenCount: usage.total_tokens || (usage.prompt_tokens || 0) + (usage.completion_tokens || 0)
-      },
+      usageMetadata: geminiUsageWithTotal(usage),
       modelVersion: completion.model || "unknown",
       responseId: completion.id || `resp_${Date.now()}`
     }
@@ -267,12 +281,10 @@ function openAICompletionToResponsesOutput(completion, { customToolNames = new S
   let idx = 0;
 
   const reasoning = message.reasoning_content || message.provider_specific_fields?.reasoning_content || "";
-  if (reasoning) {
-    output.push({
-      type: "reasoning",
-      id: `rs_${completion.id || Date.now()}_${idx}`,
-      summary: [{ type: "summary_text", text: reasoning }]
-    });
+  if (reasoning || message.reasoning_encrypted_content) {
+    const item = { type: "reasoning", id: `rs_${completion.id || Date.now()}_${idx}`, summary: [{ type: "summary_text", text: reasoning || "" }] };
+    if (message.reasoning_encrypted_content) item.encrypted_content = message.reasoning_encrypted_content;
+    output.push(item);
     idx++;
   }
 

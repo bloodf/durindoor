@@ -1,6 +1,6 @@
-import { register } from "../index.js";
+import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
-import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult, normalizeGeminiParameterRoot } from "../formats/gemini.js";
+import { applyGemini4RequestRules, DEFAULT_SAFETY_SETTINGS, tryParseJSON, sanitizeFunctionResponseResult, normalizeGeminiParameterRoot, liftGeminiNonStringEnums } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, CLAUDE_BLOCK, DEFAULT_IMAGE_MIME } from "../schema/index.js";
 import { buildGeminiThoughtSignatureKey, resolveGeminiThoughtSignature } from "../../services/geminiThoughtSignatureStore.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -113,7 +113,7 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
     if (parts.length) result.contents.push({ role: message.role === ROLE.ASSISTANT ? GEMINI_ROLE.MODEL : GEMINI_ROLE.USER, parts });
   }
 
-  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: normalizeGeminiParameterRoot(normalizeToolSchema(tool.input_schema, tool.name)) }] : []);
+  const declarations = (body.tools || []).flatMap((tool) => tool?.name && tool.input_schema ? [{ name: sanitize(tool.name), description: tool.description || "", parameters: liftGeminiNonStringEnums(structuredClone(normalizeGeminiParameterRoot(normalizeToolSchema(tool.input_schema, tool.name)))) }] : []);
   if (declarations.length) result.tools = [{ functionDeclarations: declarations }];
   const choice = body.tool_choice;
   if (declarations.length && choice) {

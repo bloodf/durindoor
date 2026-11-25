@@ -1,4 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { vi } from "vitest";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +10,11 @@ import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/in
 import { PROVIDERS } from "../../open-sse/config/providers.js";
 import { PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 import { FREE_PROVIDERS } from "../../src/shared/constants/providers.js";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
 
 const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-auggie-test-"));
 
@@ -54,6 +62,30 @@ describe("AuggieExecutor", () => {
     expect(resolveAuggieModel("claude-haiku-4.5")).toEqual({ ok: true, model: "claude-haiku-4.5" });
     expect(resolveAuggieModel("-bad").ok).toBe(false);
     expect(resolveAuggieModel("not-a-model").ok).toBe(false);
+  });
+
+  it.each([false, true])("passes compatible argv to spawn (stream=%s)", async (stream) => {
+    const child = new EventEmitter();
+    child.stdin = Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() });
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from("answer"));
+        child.emit("close", 0);
+      });
+      return child;
+    });
+    const { response } = await new AuggieExecutor().execute({
+      model: "claude-opus-4.6",
+      body: { messages: [{ role: "user", content: "hello" }] },
+      stream,
+    });
+    await response.text();
+    expect(spawn).toHaveBeenLastCalledWith(expect.any(String),
+      ["--print", "--model", "claude-opus-4.6", "--"],
+      expect.objectContaining({ stdio: ["pipe", "pipe", "pipe"] }));
+    expect(child.stdin.write).toHaveBeenCalledWith("[User]\nhello");
   });
 
   it("returns non-streaming chat completion output from the fake CLI", async () => {

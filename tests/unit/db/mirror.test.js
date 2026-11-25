@@ -39,8 +39,8 @@ function makeMem(seed = {}) {
       return { changes: 1 };
     },
     exec(sql) {
-      const tr = sql.match(/TRUNCATE TABLE "(\w+)"/);
-      if (tr) tables[tr[1]] = [];
+      const tr = sql.match(/TRUNCATE TABLE ((?:"\w+"(?:, )?)+)/);
+      if (tr) for (const [, table] of tr[1].matchAll(/"(\w+)"/g)) tables[table] = [];
     },
     transaction(fn) { return fn(); },
   };
@@ -70,6 +70,23 @@ describe("postgres mirror", () => {
     expect(out.ok).toBe(true);
     expect(pg.tables.providerConnections.some((r) => r.id === "stale")).toBe(false);
     expect(pg.tables.providerConnections.some((r) => r.id === "a" && r.isActive === 1)).toBe(true);
+  });
+
+  it("replaces prior target captures when mirroring the owning keys", async () => {
+    const turn = {
+      id: "new-turn", apiKeyId: "owner", sessionId: "session",
+      content: '{"user":["hello"]}', byteSize: 18, createdAt: "start", expiresAt: "end",
+    };
+    const sqlite = makeMem({ apiKeys: [{ id: "owner" }], sessionCaptureTurns: [turn] });
+    const pg = makeMem({ apiKeys: [{ id: "previous-owner" }], sessionCaptureTurns: [{ ...turn, id: "stale" }] });
+    const exec = pg.exec;
+    pg.exec = (sql) => {
+      exec(sql);
+      if (sql.includes('"apiKeys"')) expect(pg.tables.sessionCaptureTurns).toEqual([]);
+    };
+    expect((await runMirror(sqlite, pg)).ok).toBe(true);
+    expect(pg.tables.apiKeys.map(({ id }) => id)).toEqual(["owner"]);
+    expect(pg.tables.sessionCaptureTurns).toEqual([turn]);
   });
 
   it("copies _meta keys except the migration runner keys", async () => {
@@ -116,13 +133,13 @@ describe("postgres mirror", () => {
       pg.tables[name] = [];
     }
     // Model PG's actual behavior: a bare TRUNCATE of a referenced table throws.
+    const exec = pg.exec;
     pg.exec = (sql) => {
-      const tr = sql.match(/TRUNCATE TABLE "(\w+)"(\s+CASCADE)?/);
-      if (!tr) return;
-      if (referenced.has(tr[1]) && !tr[2]) {
+      const tr = sql.match(/TRUNCATE TABLE "(\w+)"/);
+      if (tr && referenced.has(tr[1]) && !sql.endsWith(" CASCADE")) {
         throw new Error(`cannot truncate a table referenced in a foreign key constraint`);
       }
-      pg.tables[tr[1]] = [];
+      exec(sql);
     };
 
     const out = await runMirror(sqlite, pg);

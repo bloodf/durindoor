@@ -276,7 +276,7 @@ describe("image handler paths into the dollar budget", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).data[0].b64_json).toBe("aGk=");
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "media-secret", provider: "openrouter", model: "img", connectionId: "account-i", endpoint: "/v1/images/generations", cost: 0.5 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "media-key", provider: "openrouter", model: "img", connectionId: "account-i", endpoint: "/v1/images/generations", cost: 0.5 });
     expect(meta(rows()[0])).toMatchObject({ modality: "image", nativeUnits: { images: 1 }, costStatus: "known", costSource: "provider" });
     await expectDeniedBeforeDispatch(() => handleImage(imageRequest()));
   });
@@ -357,7 +357,7 @@ describe("embedding handler into the dollar budget", () => {
     const response = await handleEmbeddings(embedRequest());
     expect(response.status).toBe(200);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "media-secret", provider: "paid", model: "embed", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "media-key", provider: "paid", model: "embed", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
     expect(meta(rows()[0])).toMatchObject({ modality: "embedding", costStatus: "known" });
     const denied = await handleEmbeddings(embedRequest());
     expect(denied.status).toBe(429);
@@ -423,7 +423,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
   }));
   afterEach(() => vi.useRealTimers());
 
-  it.for([["cost_usd", 0.5], ["cost_in_usd_ticks", 500_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async ([field, value], context) => {
+  it.for([["cost_usd", 0.5], ["cost_in_usd_ticks", 5_000_000_000]])("persists raw %s and denies before the next provider HTTP call", async ([field, value], context) => {
     const usage = { [field]: value, prompt_tokens: 9, total_tokens: 9 };
     const payload = raw(usage);
     fetch.mockResolvedValueOnce(json(payload));
@@ -434,7 +434,7 @@ describe("embedding raw provider receipt through real core and SQLite policy", (
     expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: "openai/text-embedding-3-small", input: ["first", "second"] });
     await reopen(context);
     expect(rows()).toHaveLength(1);
-    expect(rows()[0]).toMatchObject({ apiKey: "media-secret", provider: "openrouter", model: "openai/text-embedding-3-small", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
+    expect(rows()[0]).toMatchObject({ apiKey: null, apiKeyId: "media-key", provider: "openrouter", model: "openai/text-embedding-3-small", connectionId: "account-i", endpoint: "/v1/embeddings", cost: 0.5, promptTokens: 9 });
     expect(meta(rows()[0])).toMatchObject({ modality: "embedding", costStatus: "known", costSource: "provider",
       providerUsage: { path: "usage", value: usage }, providerCost: { path: `usage.${field}`, value } });
     const totals = await database.getApiKeyUsageTotals("media-key");

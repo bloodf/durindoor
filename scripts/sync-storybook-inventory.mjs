@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanSource } from "./check-storybook-coverage.mjs";
 import { isString } from "../src/shared/utils/typeChecks.js";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const SOURCE = /\.(?:js|jsx|mjs|ts|tsx)$/;
@@ -134,7 +135,7 @@ function argumentsFor(argv) {
   }
   return options;
 }
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     const options = argumentsFor(process.argv.slice(2));
     const original = JSON.parse(readFileSync(options.manifest, "utf8"));

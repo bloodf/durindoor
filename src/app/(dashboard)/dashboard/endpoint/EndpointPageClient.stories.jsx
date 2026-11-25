@@ -145,7 +145,14 @@ export const ExternalEndpoints = {
   },
 };
 
+let resolveSettingsPatch;
+let settingsPatch;
+
 export const EnabledEndpointsPolicy = {
+  beforeEach: () => {
+    settingsPatch = null;
+    return () => { resolveSettingsPatch?.(); resolveSettingsPatch = null; };
+  },
   parameters: {
     storyFixture: {
       scenario: "default",
@@ -160,7 +167,11 @@ export const EnabledEndpointsPolicy = {
             tailscale: { enabled: false, tunnelUrl: "" },
           },
         },
-        "PATCH /api/settings": { body: { success: true } },
+        "PATCH /api/settings": async (request) => {
+          settingsPatch = await request.json();
+          await new Promise((resolve) => { resolveSettingsPatch = resolve; });
+          return { body: { ...safeSettings, ...settingsPatch } };
+        },
       },
     },
   },
@@ -169,7 +180,10 @@ export const EnabledEndpointsPolicy = {
     const dashboardAccess = await canvas.findByRole("switch", { name: "Allow dashboard access via tunnel" });
     await expect(dashboardAccess).not.toBeChecked();
     await userEvent.click(dashboardAccess);
-    await expect(dashboardAccess).toBeChecked();
+    await waitFor(() => expect(settingsPatch).toEqual({ tunnelDashboardAccess: true }));
+    await expect(dashboardAccess).not.toBeChecked();
+    resolveSettingsPatch();
+    await waitFor(() => expect(dashboardAccess).toBeChecked());
   },
 };
 

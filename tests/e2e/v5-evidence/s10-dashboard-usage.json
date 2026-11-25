@@ -1,0 +1,14 @@
+{
+  "route": "/dashboard/usage",
+  "stories": [
+    "production-usage-usage-surfaces--usage-trend",
+    "production-usage-usage-surfaces--usage-trend-empty",
+    "production-usage-usage-surfaces--usage-trend-error",
+    "production-usage-usage-surfaces--request-details-default",
+    "production-usage-usage-surfaces--request-details-error",
+    "production-usage-provider-limits--default",
+    "production-usage-provider-limits--loading",
+    "production-usage-provider-limits--error",
+    "production-usage-provider-limits--connection-catalog-unavailable"
+  ]
+}

@@ -3,8 +3,7 @@ import { CLAUDE_BLOCK } from "../schema/blocks.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../schema/finishReasons.js";
 import { MODEL_FALLBACK } from "../schema/defaults.js";
 import { extractReasoningText } from "../concerns/reasoning.js";
-import { fromOpenAIFinish } from "../concerns/finishReason.js";
-import { FORMATS } from "../formats.js";
+import { claudeStopReasonWithToolCalls } from "../concerns/finishReason.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 /**
@@ -40,7 +39,8 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
   }
 
   // Tool calls
-  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+  const hasToolCalls = Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0;
+  if (hasToolCalls) {
     for (const tc of msg.tool_calls) {
       let input = {};
       if (isString(tc.function?.arguments)) {
@@ -79,7 +79,12 @@ export function translateOpenAIToClaudeIfNeeded(responseBody, sourceFormat, opti
     role: ROLE.ASSISTANT,
     content,
     model: options.model || responseBody.model || MODEL_FALLBACK,
-    stop_reason: fromOpenAIFinish(finishReason, FORMATS.CLAUDE) || CLAUDE_STOP.END_TURN,
+    // Some OpenAI-compatible upstreams report finish_reason "stop" together
+    // with tool_calls. A Claude client stops its agent loop unless the turn
+    // ends with stop_reason "tool_use" (#18270), so an ordinary stop that
+    // carried tool calls is promoted. Truncation, safety and refusal results
+    // keep their own reason (see claudeStopReasonWithToolCalls).
+    stop_reason: claudeStopReasonWithToolCalls(finishReason, hasToolCalls) || CLAUDE_STOP.END_TURN,
     stop_sequence: null,
     usage: claudeUsage
   };

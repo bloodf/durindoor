@@ -1,0 +1,18 @@
+---
+title: HyperAgent
+description: Unofficial HyperAgent browser-session integration using its thread API.
+---
+
+HyperAgent is an unofficial browser-session integration for `hyperagent.com`. Chat dispatch creates a thread, applies the selected model, and sends the latest user message to the thread chat endpoint with the saved browser `Cookie` header. HyperAgent's SSE text events are converted to OpenAI-compatible responses, including streams consumed through the Anthropic Messages route. Thread and session IDs can be supplied as `hyperagent_thread_id` and `hyperagent_session_id`, or with the matching `X-HyperAgent-*` headers, to continue a conversation.
+
+## Setup and limits
+
+This integration depends on a reverse-engineered web session and may break when the site changes. Session access and credits are controlled by HyperAgent. A local catalog is provided for Fable, Opus and Sonnet variants; no vendor-documented API-key validation or model-discovery endpoint is identified by the pinned provider contract. Expired cookies map to an authentication error and HTTP 429 responses map to quota/rate-limit errors.
+
+## Cookie capture
+
+Copy the Cookie header from an authenticated `hyperagent.com` request and paste it into the connection as its credential. The browser extension and the dashboard cookie import do not cover this provider: the integration accepts the full Cookie header rather than naming a single cookie. Treat the value as a password and remove it before sharing logs or support reports. Credentialed requests reject cross-origin redirects.
+
+## Sources
+
+- [HyperAgent](https://hyperagent.com/)

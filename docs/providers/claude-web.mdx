@@ -1,0 +1,20 @@
+---
+title: "Claude Web"
+description: Connect a signed-in Claude.ai session without an Anthropic API key.
+---
+
+Claude Web uses a session from your own Claude.ai account. It does not use an Anthropic API key. DurinDoor sends requests to Claude.ai with the session cookie you import.
+
+## Setup
+
+Create a `Claude Web` cookie connection and import cookies with the provider cookie capture extension while signed in at [claude.ai](https://claude.ai). You can also paste a `Cookie:` header, a `sessionKey=value` cookie, or a cURL/HAR request containing that cookie into the dashboard's cookie import flow. Keep the `sessionKey` value private; anyone who obtains it may use your signed-in session.
+
+DurinDoor checks the session against Claude.ai's organization endpoint and discovers the account's organization before sending chat requests. The provider exposes the model IDs listed below; Claude.ai may change availability, model access, rate limits, and account quotas at any time. A 401/403 indicates an expired or rejected session, and a 429 indicates a rate or quota limit.
+
+## Models
+
+The provider catalog includes Claude Fable 5.1, Claude Fable 5, Claude Opus 5, Claude Opus 4.8/4.7/4.6, Claude Sonnet 5/5.5/4.6, and Claude Haiku 4.5.
+
+## Sources
+
+- [Claude.ai](https://claude.ai/)

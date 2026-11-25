@@ -318,25 +318,29 @@ async function createDefaultSession(input) {
     .update(JSON.stringify(input.storageState))
     .update("\0")
     .update(input.proxyUrl || "")
+    .update(input.sameOriginRedirects ? "\0guarded" : "")
     .digest("hex");
   const pooled = await acquireBrowserContext(`chatgpt-web-cleanroom:${digest}`, {
     cookieDomain: "chatgpt.com",
+    blockServiceWorkers: input.sameOriginRedirects === true,
     proxyUrl: input.proxyUrl,
     storageState: input.storageState,
     userAgent: input.userAgent,
     locale: input.locale,
     timezone: input.timezone,
-      warmupUrl: CHATGPT_WEB_PAGE_URL,
+    warmupUrl: input.sameOriginRedirects ? undefined : CHATGPT_WEB_PAGE_URL,
     headless: input.headless === true,
     executablePath: input.chromeExecutablePath,
   });
   const page =
-    pooled.warmupPage && !pooled.warmupPage.isClosed() ? pooled.warmupPage : await openPage(pooled);
-  if (pooled.warmupPage !== page) pooled.warmupPage = page;
+    !input.sameOriginRedirects && pooled.warmupPage && !pooled.warmupPage.isClosed()
+      ? pooled.warmupPage : await openPage(pooled);
+  if (!input.sameOriginRedirects && pooled.warmupPage !== page) pooled.warmupPage = page;
   return new PlaywrightChatGptWebBrowserSession(page, {
     pageUrl: CHATGPT_WEB_PAGE_URL,
     selection: input.selection,
-    closePageOnCleanup: false,
+    closePageOnCleanup: input.sameOriginRedirects === true,
+    sameOriginRedirects: input.sameOriginRedirects,
   });
 }
 
@@ -344,6 +348,11 @@ export function buildChatGptWebOpenAiResponse(model, result, stream, metadata = 
   const id = metadata.id ?? `chatcmpl-${randomUUID()}`;
   const created = metadata.created ?? Math.floor(Date.now() / 1000);
   if (!stream) {
+    // The page reports no token counts. Estimate them the way the HTTP transport
+    // does (about four characters per token) so the request reaches Usage; the
+    // streaming path is estimated by the gateway's stream transform.
+    const promptTokens = Number.isFinite(metadata.promptLength) ? Math.ceil(metadata.promptLength / 4) : null;
+    const completionTokens = Math.ceil(String(result.text ?? "").length / 4);
     return Response.json({
       id,
       object: "chat.completion",
@@ -356,6 +365,9 @@ export function buildChatGptWebOpenAiResponse(model, result, stream, metadata = 
           finish_reason: "stop",
         },
       ],
+      ...(promptTokens === null
+        ? null
+        : { usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens } }),
     });
   }
 
@@ -431,6 +443,7 @@ export async function executeChatGptWebCleanRoom(input, deps = {}) {
   const providerData = input.credentials.providerSpecificData;
   const session = await (deps.createSession ?? createDefaultSession)({
     connectionId,
+    sameOriginRedirects: input.sameOriginRedirects,
     storageState,
     selection: prepared.selection,
     userAgent: optionalString(providerData?.customUserAgent),
@@ -451,5 +464,6 @@ export async function executeChatGptWebCleanRoom(input, deps = {}) {
   return buildChatGptWebOpenAiResponse(input.model, result, input.stream, {
     id: deps.id?.(),
     created: deps.now ? Math.floor(deps.now() / 1000) : undefined,
+    promptLength: prepared.prompt.length,
   });
 }

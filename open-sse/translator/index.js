@@ -1,8 +1,9 @@
+import { isOpenRouterAnthropicModel, capOpenAICacheBreakpoints } from "./concerns/openrouterAnthropicCache.js";
 import { responsesToClaudeResponse } from "./response/responses-to-claude.js";
 import { FORMATS } from "./formats.js";
 import { normalizeDsmlChunks } from "./concerns/dsml.js";
 import { validateCursorImages } from "./request/openai-to-cursor.js";
-import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, salvageOrphanedToolResults } from "./concerns/toolCall.js";
+import { composeToolNameMaps, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, repairDisplacedToolResults, salvageOrphanedToolResults } from "./concerns/toolCall.js";
 import { enforceClaudeToolChoiceThinking, normalizeClaudePassthrough, prepareClaudeRequest, removeNamelessOpenAIToolHistory } from "./formats/claude.js";
 import { normalizeDeferredTools } from "./concerns/deferredTools.js";
 import { cloakClaudeTools } from "../utils/claudeCloaking.js";
@@ -12,29 +13,17 @@ import { normalizeThinkingConfig } from "../services/provider.js";
 import { applyThinking, applyTransportRequestDefaults, captureThinking, parseSuffix } from "./concerns/thinkingUnified.js";
 import { captureSessionId } from "../utils/sessionManager.js";
 import { ensurePoeUserTurnHasText } from "./concerns/poeImageOnlyUserTurn.js";
-import { mergeHistoricalToolIdentities } from "./response/openai-responses/historyToolIdentity.js";
 import { PROVIDERS } from "../providers/index.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { ROLE, GEMINI_ROLE } from "./schema/roles.js";
+import { RESPONSES_ITEM } from "./schema/blocks.js";
+import { ownMessages } from "./concerns/callerMessages.js";
+import { requestRegistry, responseRegistry, register } from "./registry.js";
 
-// Registry for translators. Lazy-init guards against circular-import order:
-// translator modules call register() (side-effect) before this module's body runs.
-// var (not let): hoisted as undefined so register() can run during circular import (no TDZ).
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";var requestRegistry;
-var responseRegistry;
-
-// Register translator
-export function register(from, to, requestFn, responseFn) {
-  requestRegistry ??= new Map();
-  responseRegistry ??= new Map();
-  const key = `${from}:${to}`;
-  if (requestFn) {
-    requestRegistry.set(key, requestFn);
-  }
-  if (responseFn) {
-    responseRegistry.set(key, responseFn);
-  }
-}
+// Keep the registry in a leaf module so side-effect registrants never import
+// this entry point and registry initialization order is independent of it.
+import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+export { register };
 
 // No-op: translators self-register via the static imports at the bottom of this file.
 function ensureInitialized() {}
@@ -51,9 +40,36 @@ function stripContentTypes(body, stripList = []) {
   };
   for (const msg of body.messages) {
     if (!Array.isArray(msg.content)) continue;
-    msg.content = msg.content.filter((part) => !shouldStrip(part.type));
+    msg.content = msg.content.filter((part) => part != null && !shouldStrip(part.type));
     if (msg.content.length === 0) msg.content = "";
   }
+}
+
+// OpenAI's `developer` role is a system turn. The OpenAI target normalizes it in
+// filterToOpenAIFormat and the Responses/Codex targets speak it natively; every
+// other target only knows system/user/assistant, so left alone the per-target
+// translator drops the turn (Gemini, Kiro, Cursor). Normalize once on the
+// request-local copy before any translator runs (decolua/9router#5636).
+const DEVELOPER_ROLE_TARGETS = new Set([FORMATS.OPENAI, FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSE, FORMATS.CODEX]);
+
+function developerToSystem(item) {
+  return item?.role === ROLE.DEVELOPER ? { ...item, role: ROLE.SYSTEM } : item;
+}
+
+function normalizeDeveloperRole(body) {
+  if (!isRecord(body)) return body;
+  const hasMessages = Array.isArray(body.messages);
+  const hasInput = Array.isArray(body.input);
+  if (!hasMessages && !hasInput) return body;
+  const next = { ...body };
+  if (hasMessages) next.messages = body.messages.map(developerToSystem);
+  // Message-shaped Responses items only: Responses Lite `additional_tools`
+  // prefixes also carry role "developer" and must keep their shape.
+  if (hasInput) {
+    next.input = body.input.map((item) =>
+      item?.type === RESPONSES_ITEM.MESSAGE || (!item?.type && item?.role) ? developerToSystem(item) : item);
+  }
+  return next;
 }
 
 // Capture the source-format tail before translation drops empty turns. Gemini
@@ -69,11 +85,75 @@ function detectClientLastRole(body) {
 // Translate request: source -> openai -> target. `translationContext` carries
 // request-scoped routing intent (never serialized into the provider body).
 const isGeminiRequestSource = (format) => format === FORMATS.GEMINI || format === FORMATS.GEMINI_CLI;
+const isGeminiFamilyTarget = (format) => isGeminiRequestSource(format) || format === FORMATS.ANTIGRAVITY || format === FORMATS.VERTEX;
+
+const XIAOMI_ACCOUNT_MODELS = new Set([
+  "mimo-v2.6-pro",
+  "mimo-v2.6-flash",
+  "mimo-v2.6-pro-ultraspeed"
+]);
+const XIAOMI_ACCOUNT_COOKIE_KEY = "__mimoAccountCookie";
+
+function bareXiaomiModel(model) {
+  const s = String(model || "");
+  const i = s.lastIndexOf("/");
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+/**
+ * Return true only when request-local dispatch data proves the Xiaomi request
+ * stays on the cloud OpenAI API rather than switching to the Desktop account-service
+ * route in `XiaomiMimoExecutor.execute()`.
+ */
+function isDefiniteXiaomiCloudOpenAIRoute(model, credentials, openAITransport) {
+  if (!isRecord(credentials) || !isString(openAITransport?.baseUrl)) return false;
+  const isAccountModel = XIAOMI_ACCOUNT_MODELS.has(bareXiaomiModel(model));
+  if (isAccountModel && (credentials[XIAOMI_ACCOUNT_COOKIE_KEY] || credentials.providerSpecificData?.mimoPassToken)) {
+    return false;
+  }
+  const rt = credentials.runtimeTransport;
+  if (rt?.format && rt.format !== FORMATS.OPENAI) return false;
+  if (rt?.baseUrl && rt.baseUrl !== openAITransport.baseUrl) return false;
+  const apiKey = isString(credentials.apiKey) ? credentials.apiKey.trim() : "";
+  if (apiKey.startsWith("sk-")) return true;
+  const hasSessionAuth = Boolean(
+    credentials[XIAOMI_ACCOUNT_COOKIE_KEY] ||
+    credentials.providerSpecificData?.mimoPassToken ||
+    credentials.providerSpecificData?.authMethod === "session" ||
+    credentials.authType === "oauth"
+  );
+  if (hasSessionAuth) return false;
+  if (apiKey.length > 0) return true;
+  return rt?.format === FORMATS.OPENAI && rt?.baseUrl === openAITransport.baseUrl;
+}
+
+/**
+ * Resolve explicit OpenAI `cache_control` preservation from provider-wide or
+ * transport-scoped registry quirks without opting Xiaomi's account route in.
+ */
+function shouldPreserveOpenAICacheControl(targetFormat, provider, model, credentials) {
+  if (targetFormat !== FORMATS.OPENAI || !provider) return false;
+  // OpenRouter relays explicit breakpoints only for anthropic/* models (OmniRoute #19755).
+  if (isOpenRouterAnthropicModel(provider, model)) return true;
+  const providerConfig = PROVIDERS[provider];
+  if (providerConfig?.quirks?.preserveCacheControl === true) return true;
+  const openAITransport = Array.isArray(providerConfig?.transports) ?
+    providerConfig.transports.find((transport) => transport?.format === FORMATS.OPENAI) :
+    null;
+  if (openAITransport?.quirks?.preserveCacheControl !== true) return false;
+  if (provider === "xiaomi-mimo") {
+    return isDefiniteXiaomiCloudOpenAIRoute(model, credentials, openAITransport);
+  }
+  return credentials?.runtimeTransport?.format === FORMATS.OPENAI &&
+    (!openAITransport.baseUrl || credentials.runtimeTransport?.baseUrl === openAITransport.baseUrl);
+}
 
 export function translateRequest(sourceFormat, targetFormat, model, body, stream = true, credentials = null, provider = null, reqLogger = null, stripList = [], connectionId = null, clientTool = null, translationContext = null) {
   if (targetFormat === FORMATS.CURSOR) validateCursorImages(body);
   ensureInitialized();
-  let result = body;
+  // Own the message list so the rewrites below never mutate the caller's messages.
+  let result = ownMessages(body);
+  if (!DEVELOPER_ROLE_TARGETS.has(targetFormat)) result = normalizeDeveloperRole(result);
   // Role the client actually ended on, before any translator drops an emptied turn.
   const clientLastRole = detectClientLastRole(body);
   // Provider envelopes (e.g. commandcode's { memory, config, params } wrapper)
@@ -120,7 +200,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // keep rejecting malformed JSON instead of having it silently coerced first.
   ensureToolCallIds(result, targetFormat);
 
-  // Fix missing tool responses (insert empty tool_result if needed)
+  // Fix missing tool responses (insert empty tool_result if needed). A real result
+  // displaced past a non-tool message is hoisted first so no placeholder duplicates it.
+  repairDisplacedToolResults(result);
   fixMissingToolResponses(result);
 
   // Salvage orphaned tool results (tool_result with no matching tool_call).
@@ -156,14 +238,26 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   const thinkingIntent = translationContext?.thinkingIntent ??
   parsedModel.override ??
   claudeGeminiBudgetIntent ??
-  captureThinking(directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result);
+  captureThinking(
+    directiveEffort ? { ...result, output_config: { ...result.output_config, effort: directiveEffort } } : result,
+    translationContext?.capabilityModel || translationModel,
+    provider,
+    translationContext?.modelCapabilities
+  );
 
   // Capture session id from the original body (envelope still intact, e.g. antigravity request.sessionId)
   const clientSessionId = captureSessionId(result, credentials, connectionId, targetFormat);
+  const preserveCacheControl = shouldPreserveOpenAICacheControl(
+    targetFormat,
+    provider,
+    translationContext?.capabilityModel || translationModel,
+    credentials
+  );
   const resolvedTranslationContext = Object.freeze({
     ...(translationContext || {}),
     provider,
-    preserveCacheControl: targetFormat === FORMATS.OPENAI && PROVIDERS[provider]?.quirks?.preserveCacheControl === true,
+    targetFormat,
+    preserveCacheControl,
     thinkingIntent,
     clientSessionId
   });
@@ -172,6 +266,9 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Expose to downstream translators (gemini-cli/antigravity envelopes) that run after envelope is stripped
   if (credentials) {
     credentials._clientSessionId = clientSessionId;
+    if (targetFormat === FORMATS.ANTIGRAVITY) {
+      credentials._antigravitySubagentId = result?.metadata?.subagent_id || result?.metadata?.agent_id || result?.subagent_id || credentials.rawHeaders?.["x-subagent-id"] || "";
+    }
     if (connectionId) credentials._signatureNamespace = connectionId;
   }
 
@@ -226,6 +323,11 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
           if ((sourceFormat === FORMATS.OPENAI_RESPONSES || isGeminiRequestSource(sourceFormat)) && isObject(result)) {
             responsesToolAliases = normalizeOpenAIToolNames(result);
           }
+          // Responses developer items survive the pivot with role "developer", which the
+          // Gemini converters skip. Promote them to system so they land in systemInstruction.
+          if (sourceFormat === FORMATS.OPENAI_RESPONSES && isGeminiFamilyTarget(targetFormat) && Array.isArray(result?.messages)) {
+            result.messages = result.messages.map((message) => message?.role === ROLE.DEVELOPER ? { ...message, role: ROLE.SYSTEM } : message);
+          }
           // Log OpenAI intermediate format
           reqLogger?.logOpenAIRequest?.(result);
         }
@@ -269,11 +371,18 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   // Always normalize to clean OpenAI format when target is OpenAI
   // This handles hybrid requests (e.g., OpenAI messages + Claude tools)
   if (targetFormat === FORMATS.OPENAI) {
+    // Responses/Gemini sources only expose messages[] after translation.
+    if (isObject(result)) repairDisplacedToolResults(result);
     result = filterToOpenAIFormat(result, {
-      preserveCacheControl: !!PROVIDERS[provider]?.quirks?.preserveCacheControl,
+      preserveCacheControl,
+      preserveDeveloperRole: provider === "openai" && sourceFormat === FORMATS.OPENAI,
       preserveVideo: resolvedTranslationContext.modelCapabilities?.videoInput === true ||
         getCapabilitiesForModel(provider, translationModel).videoInput === true
     });
+    // Anthropic allows four breakpoints; OpenRouter anthropic/* only (other providers unchanged).
+    if (preserveCacheControl && isOpenRouterAnthropicModel(provider, translationContext?.capabilityModel || translationModel)) {
+      result = capOpenAICacheBreakpoints(result);
+    }
     // Poe rejects image-only user turns with 400; Poe-only, other providers unchanged.
     if (Array.isArray(result?.messages)) result.messages = ensurePoeUserTurnHasText(result.messages, provider);
     /**
@@ -320,7 +429,8 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
      * sends mid-session. Hoist them before the Claude wire is prepared.
      */
     if (provider === "kimi") result = normalizeDeferredTools(result);
-    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole);
+    result = prepareClaudeRequest(result, provider, apiKey, connectionId, credentials?.rawHeaders, clientSessionId, customMaxOutput, clientLastRole,
+      sourceFormat === FORMATS.OPENAI_RESPONSES && !PROVIDERS[provider]?.quirks?.dropClaudeCacheControl && provider !== "ollama" && provider !== "ollama-local");
     /**
      * Forced tool choice is rejected by every thinking model, so this must run
      * on the TRANSLATED path too — not just native Claude passthrough. An
@@ -373,7 +483,7 @@ export function translateResponse(targetFormat, sourceFormat, chunk, state) {
   }
   // If same format, return as-is
   if (sourceFormat === targetFormat) {
-    return targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk];
+    return (targetFormat === FORMATS.OPENAI ? normalizeDsmlChunks([chunk], state) : [chunk]).filter((event) => event != null);
   }
 
   let results = [chunk];
@@ -438,118 +548,7 @@ export function needsTranslation(sourceFormat, targetFormat) {
   return sourceFormat !== targetFormat;
 }
 
-// Initialize state for streaming response based on format
-export function initState(sourceFormat, requestBody) {
-  // Build a name → declared type map from the request tools so response
-  // translators can classify custom tools using real metadata instead of
-  // guessing from the tool name (e.g. apply_patch).
-  const toolTypes = {};
-  const toolNamespaces = {};
-  const flatToolNamespaces = new Map();
-  const plainToolNames = new Set();
-  // Chat Completions custom tools ({type:"custom", custom:{name}}) the client declared (#1436).
-  const chatCustomToolNames = new Set();
-  const declaredTools = [
-    ...(Array.isArray(requestBody?.tools) ? requestBody.tools : []),
-    ...(Array.isArray(requestBody?.input) ? requestBody.input.flatMap((item) => item?.type === "additional_tools" && Array.isArray(item.tools) ? item.tools : []) : [])
-  ];
-  if (declaredTools.length) {
-    for (const tool of declaredTools) {
-      const type = isString(tool?.type) ? tool.type : "";
-      const name = isString(tool?.function?.name) ?
-      tool.function.name :
-      isString(tool?.custom?.name) ? tool.custom.name :
-      isString(tool?.name) ? tool.name : "";
-      if (name && type) toolTypes[name] = type;
-      if (type === "custom" && name && sourceFormat === FORMATS.OPENAI) chatCustomToolNames.add(name);
-      if (type === "namespace" && name && Array.isArray(tool.tools)) {
-        for (const subtool of tool.tools) {
-          if (isString(subtool?.name) && subtool.name) {
-            // Only the dotted form is mapped. A bare subtool name (e.g. "click")
-            // can collide with an unrelated plain function tool of the same name;
-            // namespace restoration must rely on the provider-translated dotted
-            // tool name to disambiguate.
-            toolNamespaces[`${name}.${subtool.name}`] = name;
-            const namespaces = flatToolNamespaces.get(subtool.name) || new Set();
-            namespaces.add(name);
-            flatToolNamespaces.set(subtool.name, namespaces);
-          }
-        }
-      } else if (name) {
-        plainToolNames.add(name);
-      }
-    }
-    for (const [name, namespaces] of flatToolNamespaces) {
-      if (namespaces.size === 1 && !plainToolNames.has(name)) {
-        toolNamespaces[name] = namespaces.values().next().value;
-      }
-    }
-  }
-
-  // A follow-up turn that continues a conversation (previous_response_id) or
-  // simply omits `tools` still carries the namespace identity of every earlier
-  // call in its own `input` history. Recover it so the response translator
-  // restores `{namespace, name}` instead of forwarding a flat dotted name
-  // (OmniRoute #15974). Current declarations always win.
-  mergeHistoricalToolIdentities(toolNamespaces, requestBody?.input);
-
-  // Base state for all formats
-  const base = {
-    messageId: null,
-    model: null,
-    textBlockStarted: false,
-    thinkingBlockStarted: false,
-    inThinkingBlock: false,
-    currentBlockIndex: null,
-    toolCalls: new Map(),
-    finishReason: null,
-    finishReasonSent: false,
-    usage: null,
-    contentBlockIndex: -1,
-    toolTypes,
-    chatCustomToolNames,
-    toolNamespaces
-  };
-
-  // Add openai-responses specific fields
-  if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
-    return {
-      ...base,
-      seq: 0,
-      responseId: `resp_${Date.now()}`,
-      created: Math.floor(Date.now() / 1000),
-      started: false,
-      msgTextBuf: {},
-      msgItemAdded: {},
-      msgContentAdded: {},
-      msgItemDone: {},
-      reasoningId: "",
-      nextOutputIndex: 0,
-      msgOutputIndexes: {},
-      funcOutputIndexes: {},
-      reasoningIndex: -1,
-      reasoningBuf: "",
-      reasoningPartAdded: false,
-      reasoningDone: false,
-      inThinking: false,
-      funcArgsBuf: {},
-      funcNames: {},
-      funcCallIds: {},
-      funcArgsDone: {},
-      funcItemDone: {},
-      funcItemAdded: {},
-      funcPendingArgs: {},
-      funcCustomInput: {},
-      funcCustomDeltaEmitted: {},
-      awaitingTrailingUsage: false,
-      // Isolated from provider-native state.usage used by the first pivot hop.
-      responsesUsage: null,
-      completedSent: false
-    };
-  }
-
-  return base;
-}
+export { initState } from "./registry.js";
 
 // Kept for backward compatibility; translators are already registered at import time.
 export function initTranslators() {

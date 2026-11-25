@@ -13,6 +13,7 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the Yuanbao cookie session from yuanbao.tencent.com.",
+  cookieImport: { origin: "https://yuanbao.tencent.com", cookieNames: ["hy_user", "hy_token"] },
   serviceKinds: ["llm"],
   transport: {
     baseUrl: "https://yuanbao.tencent.com/api/chat",

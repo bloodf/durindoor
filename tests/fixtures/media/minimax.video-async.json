@@ -1,0 +1,20 @@
+{
+  "synthetic": true,
+  "vendor": "minimax",
+  "kind": "video",
+  "transport": "asynchronous",
+  "model": "MiniMax-H3",
+  "verifiedLive": false,
+  "source": "https://platform.minimax.io/docs/api-reference/video-generation",
+  "liveGap": "Synthetic fixture only. No live verification; account entitlement, current model availability, upstream error bodies, polling cadence, and terminal failure variants remain unverified.",
+  "request": {
+    "method": "POST",
+    "url": "https://api.minimax.io/v2/video_generation",
+    "headers": { "Content-Type": "application/json", "Authorization": "Bearer fixture-key" },
+    "body": { "model": "MiniMax-H3", "content": [{ "type": "text", "text": "A lantern over a lake" }], "resolution": "2K", "duration": 5, "ratio": "16:9" }
+  },
+  "response": {
+    "submit": { "status": 200, "body": { "task_id": "fixture-task" }, "normalized": { "request_id": "fixture-task" } },
+    "poll": { "status": 200, "body": { "task": { "id": "fixture-task", "status": "succeeded", "duration": 5, "content": { "url": "https://cdn.example.invalid/fixture.mp4" } } }, "normalized": { "request_id": "fixture-task", "status": "done", "video": { "url": "https://cdn.example.invalid/fixture.mp4", "duration": 5 } } }
+  }
+}

@@ -84,9 +84,21 @@ jobs:
         working-directory: website
         run: pnpm install --frozen-lockfile
 
+      - name: Smoke test website mock
+        working-directory: website
+        run: pnpm run mock:smoke
+
       - name: Build website
         working-directory: website
         run: pnpm run build
+
+      - name: Install Chromium
+        working-directory: website
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run website browser suites
+        working-directory: website
+        run: pnpm exec playwright test
 
       - name: Check docs
         run: pnpm run check:docs

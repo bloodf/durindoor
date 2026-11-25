@@ -1,4 +1,5 @@
 // Provider definitions
+import { cookieImportConfig, resolveCookieImportContract } from "../utils/cookieImportContract.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { SYSTEMONE_COMPATIBLE_PREFIX } from "open-sse/config/systemone.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
@@ -8,7 +9,7 @@ const MEDIA_ENTRY_KEYS = [
 "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
 "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
 "searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
-"modelsFetcher", "mediaPriority", "hiddenKinds"];
+"modelsFetcher", "modelsFetchers", "mediaPriority", "hiddenKinds"];
 
 
 // Build provider UI object from registry entry
@@ -20,6 +21,7 @@ function buildProviderEntry(r) {
   }
   const display = { ...(r.display || {}) };
   if (display.deprecationNotice === "RISK_NOTICE") display.deprecationNotice = RISK_NOTICE;
+  const cookieImport = resolveCookieImportContract(cookieImportConfig(r));
   return {
     ...display,
     id: r.id,
@@ -42,6 +44,7 @@ function buildProviderEntry(r) {
     ...(r.authHint ? { authHint: r.authHint } : null),
     ...(r.authSnippet ? { authSnippet: r.authSnippet } : null),
     ...(r.webLogin ? { webLogin: r.webLogin } : null),
+    ...(cookieImport ? { cookieImport } : null),
     ...(r.apiKeyOptionalWith ? { apiKeyOptionalWith: r.apiKeyOptionalWith } : null),
     ...(r.credentialForm ? { credentialForm: r.credentialForm } : null),
     ...(r.aliases ? { aliases: r.aliases } : null),
@@ -135,6 +138,11 @@ export function classifyFreeProvider(providerId) {
 // All providers (combined)
 export const AI_PROVIDERS = { ...FREE_PROVIDERS, ...FREE_TIER_PROVIDERS, ...OAUTH_PROVIDERS, ...APIKEY_PROVIDERS, ...WEB_COOKIE_PROVIDERS };
 
+export function getProviderModelsFetcher(providerId, kind) {
+  const provider = AI_PROVIDERS[providerId];
+  return provider?.modelsFetchers?.[kind] || provider?.modelsFetcher || null;
+}
+
 // Auth methods
 export const AUTH_METHODS = {
   oauth: { id: "oauth" },
@@ -188,8 +196,12 @@ export function isRoutableProvider(aliasOrId) {
 /**
  * Per-account requests-per-minute defaults from decolua/9router#3203.
  * Unlisted providers are unlimited; persisted settings may override either case.
+ *
+ * Gisoo publishes a default of 60 requests per minute per key
+ * (https://gisoo.pro/en/docs/quickstart); the account's real ceiling is
+ * reported by `GET /api/v1/me` and can be overridden in the settings.
  */
-export const DEFAULT_PROVIDER_RPM = Object.freeze({ nvidia: 40 });
+export const DEFAULT_PROVIDER_RPM = Object.freeze({ nvidia: 40, gisoo: 60 });
 export const MAX_PROVIDER_RPM = 10_000;
 
 /** Resolve a persisted provider override, where blank uses defaults and zero is unlimited. */
@@ -254,4 +266,6 @@ map((r) => r.id);
 // /api/providers/[id]/models and that the model picker offers. Single source of
 // truth: a provider listed here must be reachable from the picker, and a
 // provider whose live catalog the route serves must be listed here.
-export const LIVE_CATALOG_PROVIDERS = ["claude", "commandcode"];
+// ChatPlayground ships no static list: its bots come only from the signed-in catalog.
+// WorkBuddy and Zed Hosted ship no static list either: their catalogs come from the signed-in account.
+export const LIVE_CATALOG_PROVIDERS = ["kilocode", "claude", "commandcode", "mnn-ai", "chatplayground", "workbuddy", "zed-hosted"];

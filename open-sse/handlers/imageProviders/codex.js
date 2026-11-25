@@ -1,3 +1,4 @@
+import { createSseFrameReader } from "../../utils/sseFrames.js";
 // Codex (ChatGPT Plus/Pro) image generation via Responses API + SSE
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
@@ -18,6 +19,16 @@ const HOSTED_IMAGE_MODELS = new Set([
   "gpt-image-2.5", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst",
   "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"
 ]);
+
+const HOSTED_MAIN_MODEL = "gpt-6-sol";
+const FALLBACK_MAIN_MODEL = "gpt-5.6-terra";
+
+// Responses model that drives the hosted image_generation tool. Operators can
+// override it with CODEX_IMAGE_RESPONSES_MODEL (decolua/9router#4866); blank
+// values keep the default.
+function hostedMainModel() {
+  return process.env.CODEX_IMAGE_RESPONSES_MODEL?.trim() || HOSTED_MAIN_MODEL;
+}
 
 function stripImageSuffix(model) {
   return model.endsWith(CODEX_MODEL_SUFFIX) ? model.slice(0, -CODEX_MODEL_SUFFIX.length) : model;
@@ -61,7 +72,8 @@ function buildContent(prompt, refs, detail = CODEX_REF_DETAIL) {
 // with an image is success; an image item followed by EOF is not completion.
 async function* parseStream(reader, log, onReceipt) {
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frameReader = createSseFrameReader();
+  let frames = [];
   let imageB64 = null;
   let imageError;
   let hasText = false;
@@ -69,25 +81,19 @@ async function* parseStream(reader, log, onReceipt) {
   let lastProgressLogMs = 0;
   let eof = false;
   while (true) {
-    const separator = /\r?\n\r?\n/.exec(buffer);
-    if (!separator) {
+    if (!frames.length) {
       if (eof) throw new Error("Codex stream ended before response.completed");
       const { done, value } = await reader.read();
       eof = done;
       bytesReceived += value?.byteLength || 0;
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      frames = frameReader.push(done ? decoder.decode() : decoder.decode(value, { stream: true }));
+      if (done) frames.push(...frameReader.flush());
       continue;
     }
-    const block = buffer.slice(0, separator.index);
-    buffer = buffer.slice(separator.index + separator[0].length);
-    let eventName;
-    const lines = [];
-    for (const line of block.split(/\r?\n/)) {
-      if (line.startsWith("event:")) eventName = line.slice(6).trim();
-      if (line.startsWith("data:")) lines.push(line.slice(5).trimStart());
-    }
-    if (!lines.length) continue;
-    const text = lines.join("\n");
+    const frame = frames.shift();
+    const text = frame.data.trim();
+    if (!text) continue;
+    let eventName = frame.eventName?.trim();
     if (text === "[DONE]") throw new Error("Codex stream ended before response.completed");
     const data = JSON.parse(text);
     eventName ||= data.type;
@@ -272,7 +278,7 @@ export default {
     if (body.quality && body.quality !== "") imgTool.quality = body.quality;
     if (body.background && body.background !== "") imgTool.background = body.background;
     return {
-      model: hostedImageModel ? "gpt-6-sol" : stripImageSuffix(model),
+      model: hostedImageModel ? hostedMainModel() : stripImageSuffix(model),
       instructions: "",
       input: [{ type: "message", role: "user", content: buildContent(body.prompt, refs, detail) }],
       tools: [imgTool],
@@ -285,10 +291,11 @@ export default {
     };
   },
   buildFallbackBody(requestBody, status, message) {
-    if (status !== 400 || requestBody?.model !== "gpt-6-sol" ||
+    if (status !== 400 || requestBody?.model !== hostedMainModel() ||
+      requestBody.model === FALLBACK_MAIN_MODEL ||
       !HOSTED_IMAGE_MODELS.has(requestBody.tools?.[0]?.model) ||
       !/model is not supported when using Codex/i.test(message)) return null;
-    return { ...requestBody, model: "gpt-5.6-terra" };
+    return { ...requestBody, model: FALLBACK_MAIN_MODEL };
   },
   // Reuse the core's buffered settlement for native JSON, and its streaming
   // settlement for Responses SSE.

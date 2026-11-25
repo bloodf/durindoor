@@ -1,3 +1,4 @@
+import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // Image provider adapter registry
 import createOpenAIAdapter from "./openai.js";
 import gemini from "./gemini.js";
@@ -14,11 +15,13 @@ import cloudflareAi from "./cloudflareAi.js";
 import antigravity from "./antigravity.js";
 import minimax from "./minimax.js";
 import together from "./together.js";
+import nvidia from "./nvidia.js";
 import magnific from "./magnific.js";
 import deepai from "./deepai.js";
+import copilotM365 from "./copilotM365.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
-const ADAPTERS = {
+export const IMAGE_ADAPTERS = createMediaRegistry({
   openai: createOpenAIAdapter("openai"),
   // Dedicated adapter (OmniRoute #7108): MiniMax image_generation is not
   // OpenAI-compatible (aspect_ratio request, data.image_urls response).
@@ -33,6 +36,7 @@ const ADAPTERS = {
   "vercel-ai-gateway": createOpenAIAdapter("vercel-ai-gateway"),
   uberllm: createOpenAIAdapter("uberllm"),
   together,
+  nvidia,
   xai: createOpenAIAdapter("xai"),
   gemini,
   codex,
@@ -49,12 +53,14 @@ const ADAPTERS = {
   magnific,
   deepai,
   "cloudflare-ai": cloudflareAi,
-};
+  // One chat turn plus a Designer artifact download; needs a native sign-in connection.
+  "copilot-m365-web": copilotM365,
+});
 
 export function getImageAdapter(provider) {
-  return ADAPTERS[provider] || null;
+  return lookupMediaAdapter(IMAGE_ADAPTERS, provider);
 }
 
 export function isImageProvider(provider) {
-  return provider in ADAPTERS;
+  return provider in IMAGE_ADAPTERS;
 }

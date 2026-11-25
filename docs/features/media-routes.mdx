@@ -3,6 +3,10 @@ title: Media routes
 description: Default model and fallbacks for each media endpoint, so requests can leave out the model.
 ---
 
+Morph embeddings use `morph/morph-embedding-v4` with `POST /v1/embeddings` and a Morph API key.
+
+For NVIDIA's `nvidia/nv-embedqa-e5-v5` embedding model, omitted `input_type` defaults to `query`. Send `input_type: "passage"` when embedding documents.
+
 A media route is the ordered list of models an endpoint uses when a request has no `model`. Leave `model` out, or send `"model": "auto"`. DurinDoor tries the route's models in order and moves to the next one on a retryable failure (429, 5xx, missing or exhausted credentials). Any other error comes back unchanged. A 200 with an empty result (a silent audio file, a page with no text) is returned as is, not retried. If the request names a model or a combo, the route is not used.
 
 Routes exist for these endpoints:
@@ -31,6 +35,7 @@ DurinDoor does not ship a default model. A route can only hold models that `GET 
   - Checks are cached per URL for 30 seconds.
 - The provider serves that kind.
 - For image and embedding routes, the provider has an image or embedding adapter in DurinDoor. A live or custom catalog row for a provider without one does not go on the route.
+- For the other kinds, the provider carries the transport that serves the kind: its speech, transcription, video, music, search or fetch settings, or a built-in handler. A provider the registry describes as serving the kind without that transport does not go on the route either (AWS Polly is the known case: it declares text to speech, but DurinDoor has no Polly synthesis handler). A row of a provider the registry does not describe, such as a custom node, stays on the route and the endpoint decides.
 - The model itself is that kind. Models a provider declares only in its speech, transcription, embedding, image or video settings (ElevenLabs, Cartesia, PlayHT, Fish Audio, Inworld, Coqui, Tortoise, Jina AI) count as that kind.
 - The model is routable. AWS Polly is listed as a text-to-speech provider, but DurinDoor has no Polly synthesis handler yet, so its models are never listed and a request to one returns HTTP 400.
 - The provider's visible-model allowlist and disabled-model list allow it.
@@ -59,7 +64,8 @@ Open **Dashboard → Media Routes** (`/dashboard/media-routes`). Each endpoint h
 - **Automatic** is used until you save an order. It tries every available model in catalog order.
 - **Customize** starts an editable list from the current first model. Add fallbacks from the available models, drag to reorder, remove models, then **Save**. The first model is the default and the rest are fallbacks.
 - **Use automatic order** clears the saved list.
-- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order. The same applies when the saved models are available but the endpoint can't run any of them, for example a `veoaifree-web`-only video route on `/v1/videos`, or a Deepgram-only speech-to-text route on `/v1/audio/translations`. The video and speech-to-text cards list what each endpoint will run and flag an endpoint that can't run any model in the route.
+- A saved model that later becomes unavailable (connection removed or disabled, model hidden) is skipped and shown as **unavailable, skipped**. If every saved model is unavailable, the request fails with `no_provider_for_kind`. DurinDoor does not quietly switch to the automatic order. The same applies when the saved models are available but the endpoint can't run any of them, for example a `veoaifree-web`-only video route on `/v1/videos`, or a Deepgram-only speech-to-text route on `/v1/audio/translations`. Each card lists what every endpoint of that kind will run and flags an endpoint that can't run any model in the route.
+- A request that names a model gets the same check against the endpoint it called. A model whose provider serves the kind on another endpoint is refused with a message that names the endpoint that can serve it, for example `Provider 'xai' does not support synchronous video generation on /v1/video/generations. Use /v1/videos for asynchronous video jobs.`
 
 Routes are stored in settings as `mediaRoutes`, for example `{ "tts": ["elevenlabs/eleven_v3", "openai/tts-1"] }`. You can also write them through:
 
@@ -93,3 +99,5 @@ Video and music combo model pickers show only catalog entries of the requested
 service kind, including passthrough providers. Chat models from the same provider
 are excluded. When paid models are hidden, each picker uses its matching video
 or music catalog rather than the chat catalog.
+
+AssemblyAI key checks use a read-only transcript list request. A rejected key is reported separately from a service error or rate limit.

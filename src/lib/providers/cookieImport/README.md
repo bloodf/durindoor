@@ -50,7 +50,7 @@ through the normal connection path.
 | Provider | Import decision | Credential evidence |
 | --- | --- | --- |
 | ChatGPT Web | Extension and dashboard | Existing `chatgpt.com` profile. NextAuth session cookie or contiguous numbered chunks. |
-| Perplexity Web | Extension and dashboard | Existing `www.perplexity.ai` profile. NextAuth session cookie or contiguous numbered chunks. |
+| Perplexity Web | Extension and dashboard | Existing `www.perplexity.ai` profile. NextAuth session cookie or contiguous numbered chunks. Current `__Secure-pplx.session.<UUID>` and `pplx.session-id` cookies can be pasted as a Cookie header. |
 | Grok Web | Extension and dashboard | Existing `grok.com` profile requires `sso`. |
 | Muse Spark Web | Extension and dashboard, guarded runtime | Existing `www.meta.ai` profile requires `ecto_1_sess`. Import leaves guard-only dispatch in place. |
 | ChatGPT Web Codex | Extension and dashboard | Same `chatgpt.com` profile as ChatGPT Web: NextAuth session cookie or contiguous numbered chunks. |

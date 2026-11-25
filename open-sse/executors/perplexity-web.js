@@ -6,7 +6,7 @@ import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
-import { buildNextAuthSessionCookie } from "../../src/lib/providers/webCookieAuth.js";
+import { buildPerplexitySessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
 const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
@@ -601,7 +601,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     // Scope continuation IDs to the actual outbound credential without retaining the secret.
     const auth = credentials?.accessToken ? `bearer:${credentials.accessToken}` :
-      credentials?.apiKey ? `cookie:${buildNextAuthSessionCookie(credentials.apiKey)}` : null;
+      credentials?.apiKey ? `cookie:${buildPerplexitySessionCookie(credentials.apiKey)}` : null;
     const credentialScope = auth ? createHash("sha256").update(auth).digest("hex") : null;
     const parsed = parseOpenAIMessages(messages);
     const followUpUuid = sessionLookup(parsed.history, credentialScope);
@@ -630,7 +630,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (credentials.accessToken) {
       headers["Authorization"] = `Bearer ${credentials.accessToken}`;
     } else if (credentials.apiKey) {
-      headers["Cookie"] = buildNextAuthSessionCookie(credentials.apiKey);
+      headers["Cookie"] = buildPerplexitySessionCookie(credentials.apiKey);
     }
 
     log?.info?.("PPLX-WEB", `Query to ${model} (pref=${modelPref}, mode=${pplxMode}), len=${query.length}`);
@@ -653,7 +653,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     if (!response.ok) {
       const status = response.status;
       let errMsg = `Perplexity returned HTTP ${status}`;
-      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token.";else
+      if (status === 401 || status === 403) errMsg = "Perplexity auth failed — session cookie may be expired. Re-paste your __Secure-next-auth.session-token (legacy), or your current Perplexity session cookies.";else
       if (status === 429) errMsg = "Perplexity rate limited. Wait a moment and retry.";
       log?.warn?.("PPLX-WEB", errMsg);
       const errResp = new Response(JSON.stringify({

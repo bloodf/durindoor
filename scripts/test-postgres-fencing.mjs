@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 export const FENCING_TEST_FILE = "unit/antigravity-lease-postgres.test.js";
 export const FENCING_TIMEOUT_MS = 240_000;
@@ -101,7 +102,7 @@ export function runFencing(env = process.env) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   try {
     const count = runFencing();
     console.log(`PostgreSQL fencing: ${count} tests passed`);

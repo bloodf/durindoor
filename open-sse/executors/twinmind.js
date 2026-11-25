@@ -4,8 +4,8 @@ import { BaseExecutor } from "./base.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { PROVIDERS } from "../config/providers.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { runQuotaBearingProviderRequest } from "../services/providerAttemptContext.js";
+import { cancelDiscardedResponse, createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 
 const CHAT_URL = "https://api2.twinmind.com/api/v3/chat";
 const REFRESH_URL = "https://securetoken.googleapis.com/v1/token";
@@ -48,7 +48,13 @@ export class TwinmindExecutor extends BaseExecutor {
     this.pendingRefreshes = new Map();
   }
 
-  async execute({ model, body, stream, credentials = {}, connectionId, signal, proxyOptions, onCredentialsRefreshed }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials = {}, connectionId, signal, proxyOptions, onCredentialsRefreshed }, sender, billed) {
     if (body?.tools?.length || body?.messages?.some((message) => message.tool_calls || ["tool", "function"].includes(message.role) || (Array.isArray(message.content) && message.content.some((part) => !["text", "input_text"].includes(part.type))))) {
       return errorResult(400, "TwinMind supports text chat only", body);
     }
@@ -58,14 +64,16 @@ export class TwinmindExecutor extends BaseExecutor {
     const identity = connectionId
       ? createHash("sha256").update(JSON.stringify([connectionId, key, refresh])).digest("hex")
       : null;
-    const fetcher = (url, init) => proxyAwareFetch(url, init, proxyOptions);
+    // The token refresh is not charged; each chat send is quota-bearing.
+    const setup = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false });
+    const chat = (url, init) => sender.sendRequest(url, init, proxyOptions);
     let localToken;
     const getCached = () => identity ? this.tokens.get(identity) : localToken;
     const fresh = (token, expires) => jwt(token) && expires > Date.now() + 300000;
     const cached = getCached();
     let token = fresh(cached?.token, cached?.expires) ? cached.token : fresh(access, expiry(access)) ? access : "";
     const fetchAccess = async (cached, refreshSignal) => {
-      const response = await credentialFetch(fetcher, `${REFRESH_URL}?key=${encodeURIComponent(firebaseKey())}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: cached?.refresh || refresh }).toString(), signal: refreshSignal });
+      const response = await credentialFetch(setup, `${REFRESH_URL}?key=${encodeURIComponent(firebaseKey())}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: cached?.refresh || refresh }).toString(), signal: refreshSignal });
       if (!response.ok) return "";
       const result = await response.json();
       const next = strip(result.id_token || result.access_token);
@@ -104,10 +112,11 @@ export class TwinmindExecutor extends BaseExecutor {
     if (!query) return errorResult(400, "TwinMind requires a non-empty message", body);
     const requestedModel = (model || body.model || "auto").replace(/^(twinmind|tm)\//, "");
     const envelope = { type: "app", version: 1, response_version: 1, query, model: { model_name: ["auto", "default"].includes(requestedModel) ? "gpt-5.6-sol-thinking" : requestedModel }, context: null, client: { platform: "web", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", client_time: new Date().toISOString(), locale: "en" }, capabilities: { allow_web_search: false, allow_notes_access: false }, mode: "private" };
-    const post = (bearer) => runQuotaBearingProviderRequest(() => credentialFetch(fetcher, CHAT_URL, { method: "POST", headers: { accept: "text/event-stream", "content-type": "application/json", authorization: `Bearer ${bearer}` }, body: JSON.stringify(envelope), signal }));
+    const post = async (bearer) => billed(await credentialFetch(chat, CHAT_URL, { method: "POST", headers: { accept: "text/event-stream", "content-type": "application/json", authorization: `Bearer ${bearer}` }, body: JSON.stringify(envelope), signal }));
     let upstream = await post(token);
     if (upstream.status === 401 && refresh) {
-      await upstream.body?.cancel();
+      await settleProviderAttemptDispatch(upstream, { reason: "fallback" });
+      cancelDiscardedResponse(upstream);
       try { token = await refreshAccess(token); } catch (error) { if (signal?.aborted) throw error; token = ""; }
       if (!token) return errorResult(401, "TwinMind credentials expired or invalid", body);
       upstream = await post(token);

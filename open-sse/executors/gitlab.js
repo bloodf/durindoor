@@ -1,33 +1,8 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import * as proxyFetch from "../utils/proxyFetch.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-
-const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
-
-/**
- * Credentialed send through proxyAwareFetch with redirect:"error".
- * Falls back to the live global when proxyFetch is empty-mocked or when the
- * DurinDoor-patched global (including Vitest spies that preserve the patch
- * flag) should observe the call.
- */
-function routeExecutorFetch(url, init, proxyOptions = null) {
-  const options = { ...init, redirect: "error" };
-  let send = null;
-  try {
-    send = proxyFetch.proxyAwareFetch;
-  } catch {
-    send = null;
-  }
-  if (!isFunction(send)) {
-    return globalThis.fetch(url, { ...options, proxyOptions });
-  }
-  const live = globalThis.fetch;
-  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
-    return live(url, { ...options, proxyOptions });
-  }
-  return send(url, options, proxyOptions);
-}
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function asObject(value) {
   return value && isObject(value) && !Array.isArray(value) ? value : {};
@@ -205,17 +180,29 @@ export class GitlabExecutor extends BaseExecutor {
     return buildRequestBody(model, body || {}, credentials || {});
   }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions = null }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
+    const sender = createExecutorSender(this, input);
     const url = this.buildUrl(model, stream, 0, credentials);
     const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
-    const response = await routeExecutorFetch(url, {
+    const response = await sender.sendRequest(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       signal: signal || undefined
     }, proxyOptions);
-    const text = await response.text();
+    const result = (replacement) => {
+      transferProviderAttemptDispatch(response, replacement);
+      return { response: replacement, url, headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+    };
+    let text;
+    try {
+      text = await response.text();
+    } catch (error) {
+      await settleProviderAttemptDispatch(response, { reason: "upstream_error" });
+      throw error;
+    }
     let payload = null;
     try {
       payload = text ? JSON.parse(text) : {};
@@ -223,14 +210,10 @@ export class GitlabExecutor extends BaseExecutor {
       payload = { message: text };
     }
     if (!response.ok) {
-      return { response: errorResponse(response.status, `GitLab Duo auth failed or request rejected: ${payload?.message || text}`), url, headers, transformedBody };
+      return result(errorResponse(response.status, `GitLab Duo auth failed or request rejected: ${payload?.message || text}`));
     }
     const json = completionResponse(payload, model);
-    return {
-      response: stream ? streamFromCompletion(json) : new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } }),
-      url,
-      headers,
-      transformedBody
-    };
+    return result(stream ? streamFromCompletion(json) :
+      new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } }));
   }
 }

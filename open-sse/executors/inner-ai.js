@@ -2,34 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import innerAiRegistry from "../providers/registry/inner-ai.js";
-import * as proxyFetch from "../utils/proxyFetch.js";
-import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
-
-const DURINDOOR_FETCH_PATCH = Symbol.for("durindoor.proxyFetch.patched");
-
-/**
- * Credentialed send through proxyAwareFetch with redirect:"error".
- * Falls back to the live global when proxyFetch is empty-mocked or when the
- * DurinDoor-patched global (including Vitest spies that preserve the patch
- * flag) should observe the call.
- */
-function routeExecutorFetch(url, init, proxyOptions = null) {
-  const options = { ...init, redirect: "error" };
-  let send = null;
-  try {
-    send = proxyFetch.proxyAwareFetch;
-  } catch {
-    send = null;
-  }
-  if (!isFunction(send)) {
-    return globalThis.fetch(url, { ...options, proxyOptions });
-  }
-  const live = globalThis.fetch;
-  if (isFunction(live) && live[DURINDOOR_FETCH_PATCH] === true) {
-    return live(url, { ...options, proxyOptions });
-  }
-  return send(url, options, proxyOptions);
-}
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_MODEL = innerAiRegistry.models?.[0]?.id || "gpt-4o";
 
@@ -131,7 +107,7 @@ function buildHeaders(token, email, deviceId) {
   return headers;
 }
 
-async function resolveCredentials(token, credEmail, signal, proxyOptions = null) {
+async function resolveCredentials(sendRequest, token, credEmail, signal, proxyOptions = null) {
   const key = tokenCacheKey(token);
   const cached = lruTouch(credentialCache, key);
   if (cached) return cached;
@@ -141,7 +117,7 @@ async function resolveCredentials(token, credEmail, signal, proxyOptions = null)
   ).trim();
   let email = "";
   try {
-    const profileResp = await routeExecutorFetch(INNER_AI_PROFILE_URL, {
+    const profileResp = await sendRequest(INNER_AI_PROFILE_URL, {
       headers: {
         Cookie: `token=${token}`,
         "USER-TOKEN": token,
@@ -151,7 +127,7 @@ async function resolveCredentials(token, credEmail, signal, proxyOptions = null)
         Referer: "https://app.innerai.com/"
       },
       signal: signal ?? undefined
-    }, proxyOptions);
+    }, proxyOptions, { quotaBearing: false });
     if (profileResp.ok) {
       const body = await profileResp.json().catch(() => null);
       email = String(
@@ -178,14 +154,14 @@ class InnerAiModelsError extends Error {
   }
 }
 
-async function resolveModels(token, deviceId, email, signal, proxyOptions = null) {
+async function resolveModels(sendRequest, token, deviceId, email, signal, proxyOptions = null) {
   const key = tokenCacheKey(token);
   const cached = lruTouch(modelsCache, key);
   if (cached && Date.now() < cached.expiresAt) return cached.models;
-  const resp = await routeExecutorFetch(INNER_AI_MODELS_URL, {
+  const resp = await sendRequest(INNER_AI_MODELS_URL, {
     headers: buildHeaders(token, email, deviceId),
     signal: signal ?? undefined
-  }, proxyOptions);
+  }, proxyOptions, { quotaBearing: false });
   if (!resp.ok) {
     const preview = await resp.text().catch(() => "");
     if (resp.status === 401 || resp.status === 403) credentialCache.delete(key);
@@ -360,6 +336,7 @@ export class InnerAiExecutor extends BaseExecutor {
 
   async execute(input) {
     const { body, credentials, signal, stream: wantStream, proxyOptions = null } = input;
+    const sender = createExecutorSender(this, input);
     const bodyObj = body || {};
     const rawToken = String(credentials?.apiKey ?? "").trim();
     if (!rawToken) {
@@ -368,7 +345,7 @@ export class InnerAiExecutor extends BaseExecutor {
     const { token, credEmail } = parseCredential(rawToken);
     let creds;
     try {
-      creds = await resolveCredentials(token, credEmail, signal, proxyOptions);
+      creds = await resolveCredentials(sender.sendRequest, token, credEmail, signal, proxyOptions);
     } catch (err) {
       credentialCache.delete(tokenCacheKey(token));
       return makeErrorResult(401, err instanceof Error ? err.message : "Failed to authenticate with Inner.ai", body);
@@ -377,7 +354,7 @@ export class InnerAiExecutor extends BaseExecutor {
     const requestedModel = String(bodyObj.model ?? "").trim() || DEFAULT_MODEL;
     let models = [];
     try {
-      models = await resolveModels(token, creds.deviceId, creds.email, signal, proxyOptions);
+      models = await resolveModels(sender.sendRequest, token, creds.deviceId, creds.email, signal, proxyOptions);
     } catch (err) {
       if (err instanceof InnerAiModelsError && (err.status === 401 || err.status === 403)) {
         return makeErrorResult(err.status, "Inner.ai /ai-models authentication failed; re-paste your token cookie", body);
@@ -404,25 +381,30 @@ export class InnerAiExecutor extends BaseExecutor {
 
     let upstream;
     try {
-      upstream = await routeExecutorFetch(INNER_AI_CHAT_URL, {
+      upstream = await sender.sendRequest(INNER_AI_CHAT_URL, {
         method: "POST",
         headers: reqHeaders,
         body: JSON.stringify(innerAiBody),
         signal: signal ?? undefined
       }, proxyOptions);
     } catch (err) {
+      if (isQuotaDispatchUnavailable(err)) throw err;
       return makeErrorResult(502, `Inner.ai request failed: ${sanitizeErrorMessage(err.message)}`, body);
     }
 
+    const result = (value) => {
+      transferProviderAttemptDispatch(upstream, value.response);
+      return { ...value, attemptStartedAt: sender.attemptStartedAt };
+    };
     if (upstream.status === 401 || upstream.status === 403) {
       credentialCache.delete(tokenCacheKey(token));
-      return makeErrorResult(upstream.status, "Inner.ai authentication failed; re-paste your token cookie", body);
+      return result(makeErrorResult(upstream.status, "Inner.ai authentication failed; re-paste your token cookie", body));
     }
     if (!upstream.ok) {
       const errText = await upstream.text().catch(() => "");
-      return makeErrorResult(upstream.status, `Inner.ai returned HTTP ${upstream.status}: ${errText}`, body);
+      return result(makeErrorResult(upstream.status, `Inner.ai returned HTTP ${upstream.status}: ${errText}`, body));
     }
-    if (!upstream.body) return makeErrorResult(502, "Inner.ai returned an empty response", body);
+    if (!upstream.body) return result(makeErrorResult(502, "Inner.ai returned an empty response", body));
 
     const resolvedModel = modelEntry.llm_model || requestedModel;
     if (wantStream === false) {
@@ -431,14 +413,14 @@ export class InnerAiExecutor extends BaseExecutor {
       try {
         content = await collectContent(upstream.body);
       } catch (err) {
-        if (err instanceof InnerAiStreamError) return makeErrorResult(err.status, err.message, body);
+        if (err instanceof InnerAiStreamError) return result(makeErrorResult(err.status, err.message, body));
         throw err;
       }
       const completionId = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       if (hasTools) {
         const parsed = buildToolAwareResult(content, requestedTools, "inner");
         if (parsed.toolCalls) {
-          return {
+          return result({
             response: new Response(
               JSON.stringify({
                 id: completionId,
@@ -452,11 +434,11 @@ export class InnerAiExecutor extends BaseExecutor {
             url: INNER_AI_CHAT_URL,
             headers: reqHeaders,
             transformedBody: innerAiBody
-          };
+          });
         }
         content = parsed.content;
       }
-      return {
+      return result({
         response: new Response(
           JSON.stringify({
             id: completionId,
@@ -471,7 +453,7 @@ export class InnerAiExecutor extends BaseExecutor {
         url: INNER_AI_CHAT_URL,
         headers: reqHeaders,
         transformedBody: innerAiBody
-      };
+      });
     }
     if (hasTools) {
       // tool requests must be parsed; synthesize an OpenAI-compatible SSE stream.
@@ -479,7 +461,7 @@ export class InnerAiExecutor extends BaseExecutor {
       try {
         content = await collectContent(upstream.body);
       } catch (err) {
-        if (err instanceof InnerAiStreamError) return makeErrorResult(err.status, err.message, body);
+        if (err instanceof InnerAiStreamError) return result(makeErrorResult(err.status, err.message, body));
         throw err;
       }
       const completionId = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -492,37 +474,37 @@ export class InnerAiExecutor extends BaseExecutor {
         `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: parsed.finishReason }] })}\n\n`,
         "data: [DONE]\n\n"].
         join("");
-        return {
+        return result({
           response: new Response(streamBody, {
             headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
           }),
           url: INNER_AI_CHAT_URL,
           headers: reqHeaders,
           transformedBody: innerAiBody
-        };
+        });
       }
       const streamBody = [
       `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant", content: parsed.content }, finish_reason: null }] })}\n\n`,
       `data: ${JSON.stringify({ id: completionId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
       "data: [DONE]\n\n"].
       join("");
-      return {
+      return result({
         response: new Response(streamBody, {
           headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
         }),
         url: INNER_AI_CHAT_URL,
         headers: reqHeaders,
         transformedBody: innerAiBody
-      };
+      });
     }
-    return {
+    return result({
       response: new Response(transformInnerAiSSE(upstream.body, resolvedModel), {
         headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }
       }),
       url: INNER_AI_CHAT_URL,
       headers: reqHeaders,
       transformedBody: innerAiBody
-    };
+    });
   }
 }
 

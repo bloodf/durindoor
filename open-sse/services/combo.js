@@ -1746,7 +1746,12 @@ export async function handleComboChat({
       if (result.ok) {
         const upstreamError = await detectUpstreamError(result);
         if (upstreamError) {
-          const { shouldFallback } = checkFallbackError(result.status, upstreamError, 0, splitModelString(modelStr).provider, result.headers);
+          const { shouldFallback } = checkFallbackError({
+            status: result.status,
+            errorText: upstreamError,
+            headers: result.headers,
+            ...splitModelString(modelStr),
+          });
           if (!shouldFallback) {
             log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
             return result;
@@ -1898,14 +1903,13 @@ export async function handleComboChat({
       }
 
       // Check if should fallback to next model
-      const { shouldFallback, requestScoped, terminal } = checkFallbackError(
-        result.status,
+      const { shouldFallback, requestScoped, terminal } = checkFallbackError({
+        status: result.status,
         errorText,
-        0,
-        splitModelString(modelStr).provider,
-        result.headers,
-        errorBody
-      );
+        headers: result.headers,
+        structuredError: errorBody,
+        ...splitModelString(modelStr),
+      });
 
       // A request-scoped 4xx (validation, unsupported parameter, context overflow)
       // means this member cannot serve THIS request, not that its credential is

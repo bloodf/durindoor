@@ -24,10 +24,13 @@
  * Registered in open-sse/executors/index.js. See docs/providers/gemini-web.mdx.
  */
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 import { resolvePlaywrightProxy } from "../services/browserPool.js";
 import { isFunction, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -42,7 +45,7 @@ export const GEMINI_WEB_ORIGIN = "https://gemini.google.com";
  * the browser egress directly from the host IP.
  */
 export function resolveGeminiWebBrowserProxy(proxyOptions) {
-  const proxyUrl = resolveProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
+  const proxyUrl = resolveConnectProxyForRequest(GEMINI_WEB_URL, proxyOptions).proxyUrl;
   if (!proxyUrl) return undefined;
   const proxy = resolvePlaywrightProxy(proxyUrl);
   if (!proxy) throw new Error("Gemini Web proxy is invalid; refusing a direct connection");
@@ -431,7 +434,9 @@ async function acquireBrowser(launch) {
     await previous.close().catch(() => {});
   }
   inflight += 1;
-  const launching = launch({ headless: true }).then((browser) => {
+  // Publish the in-flight promise before invoking/awaiting the launcher. Deferring
+  // the call also covers launchers that throw synchronously.
+  const launching = Promise.resolve().then(() => launch({ headless: true })).then((browser) => {
     slot = { launch, browser };
     return browser;
   });
@@ -591,6 +596,13 @@ export class GeminiWebExecutor extends BaseExecutor {
     }
 
     const modelId = model || DEFAULT_MODEL_ID;
+    const sender = createExecutorSender(this, input);
+    let sent = null;
+    // Every result after the prompt is submitted carries its quota ticket.
+    const carry = (response) => {
+      transferProviderAttemptDispatch(sent, response);
+      return { ...this.result(input, response), attemptStartedAt: sender.attemptStartedAt };
+    };
     let browser = null;
     let context = null;
     let abortBrowser = null;
@@ -686,17 +698,23 @@ export class GeminiWebExecutor extends BaseExecutor {
       // trigger the composer's Enter-submits handler before the explicit Enter.
       await page.keyboard.insertText(prompt);
       await page.waitForTimeout(300);
-      promptSubmitted = true;
-      await page.keyboard.press("Enter");
+      // Submitting the prompt is the one physical send; page setup is not.
+      sent = await sender.sendRequest(GEMINI_WEB_URL, { signal }, input.proxyOptions, {
+        transport: async () => {
+          promptSubmitted = true;
+          await page.keyboard.press("Enter");
+          return {};
+        },
+      });
 
       await Promise.race([responsePromise, page.waitForTimeout(resolveResponseTimeoutMs())]);
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
 
       if (!responseText) {
-        if (upstreamStatus === 401 || upstreamStatus === 403) return this.result(input, sessionExpired(upstreamStatus));
-        if (upstreamStatus === 429) return this.result(input, quotaExceeded());
-        if (SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
-        return this.result(input, new Response(JSON.stringify({
+        if (upstreamStatus === 401 || upstreamStatus === 403) return carry(sessionExpired(upstreamStatus));
+        if (upstreamStatus === 429) return carry(quotaExceeded());
+        if (SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return carry(sessionExpired());
+        return carry(new Response(JSON.stringify({
           error: upstreamStatus ? `Gemini answered HTTP ${upstreamStatus}` : "No response from Gemini",
           code: captured ? "gemini_web_unparseable_response" : "gemini_web_no_response",
           seen_response_urls: seenResponseUrls,
@@ -710,30 +728,31 @@ export class GeminiWebExecutor extends BaseExecutor {
         const buffered = new Response(JSON.stringify(chatCompletion(responseText, modelId)), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
-        return this.result(input, await buildToolModeResponse(buffered, requestedTools, Boolean(stream), {
+        return carry(await buildToolModeResponse(buffered, requestedTools, Boolean(stream), {
           cid, created: Math.floor(Date.now() / 1000), model: modelId, idSeed: "gwe",
         }));
       }
-      if (stream) return this.result(input, sseResponse(modelId, responseText));
-      return this.result(input, new Response(JSON.stringify(chatCompletion(responseText, modelId)), {
+      if (stream) return carry(sseResponse(modelId, responseText));
+      return carry(new Response(JSON.stringify(chatCompletion(responseText, modelId)), {
         status: 200, headers: { "Content-Type": "application/json" },
       }));
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
       const message = error instanceof Error ? error.message : "Unknown error";
       if (isMissingBrowserExecutable(message)) {
-        return this.result(input, new Response(JSON.stringify({
+        return carry(new Response(JSON.stringify({
           error: "Gemini Web requires the Playwright Chromium browser, which is not installed. Run `npx playwright install chromium` on the host.",
         }), { status: 503, headers: { "Content-Type": "application/json" } }));
       }
       const aborted = abortStatus(signal);
       if (aborted || isBrowserClosedError(message)) {
-        return this.result(input, new Response(JSON.stringify({ error: sanitizeErrorMessage(message) }), {
+        return carry(new Response(JSON.stringify({ error: sanitizeErrorMessage(message) }), {
           status: aborted ?? 502, headers: { "Content-Type": "application/json" },
         }));
       }
       // A selector failure is terminal: the DOM did not match, so retrying cannot help.
       const status = error instanceof Error && isSelectorFailure(error) ? 400 : 500;
-      return this.result(input, new Response(JSON.stringify({ error: sanitizeErrorMessage(message) }), {
+      return carry(new Response(JSON.stringify({ error: sanitizeErrorMessage(message) }), {
         status, headers: { "Content-Type": "application/json" },
       }));
     } finally {

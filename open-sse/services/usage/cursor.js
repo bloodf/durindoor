@@ -3,19 +3,22 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { readBoundedResponseText } from "../../utils/error.js";
 import { buildCursorHeaders } from "../../utils/cursorChecksum.js";
 import { parseResetTime, toFiniteNumber } from "./shared.js";
-import { isObject } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const CURSOR_USAGE_CONFIG = {
   currentPeriodUsageUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
   planInfoUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo",
-  authUsageUrl: "https://api2.cursor.sh/auth/usage"
+  authUsageUrl: "https://api2.cursor.sh/auth/usage",
+  summaryUrl: "https://api2.cursor.sh/api/usage/summary",
+  aggregatedUsageUrl: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents"
 };
 
 function buildCursorUsageHeaders(accessToken, providerSpecificData = {}) {
   const machineId = providerSpecificData?.machineId || null;
-  const headers = buildCursorHeaders(accessToken, machineId);
+  const headers = buildCursorHeaders(accessToken, machineId, providerSpecificData?.ghostMode !== false);
   return {
     ...headers,
     "content-type": "application/json",
@@ -114,6 +117,46 @@ function parseCursorAuthUsage(data) {
   return quotas;
 }
 
+/** Normalize Cursor's aggregated billing events; invalid rows do not affect quota reporting. */
+export function mapCursorModelUsage(data) {
+  if (!Array.isArray(data?.aggregations)) return [];
+  const number = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  };
+  return data.aggregations.flatMap((row) => {
+    const model = isString(row?.modelIntent) ? row.modelIntent.trim() : "";
+    if (!model) return [];
+    return [{
+      model,
+      inputTokens: Math.floor(number(row.inputTokens)),
+      outputTokens: Math.floor(number(row.outputTokens)),
+      cacheReadTokens: Math.floor(number(row.cacheReadTokens)),
+      cacheWriteTokens: Math.floor(number(row.cacheWriteTokens)),
+      costUsd: Math.round(number(row.totalCents) * 100) / 10000,
+    }];
+  }).sort((a, b) => b.costUsd - a.costUsd || a.model.localeCompare(b.model)).slice(0, 50);
+}
+
+async function readCursorUsageJson(response) {
+  if (!response?.ok) {
+    void response?.body?.cancel().catch(() => {});
+    return null;
+  }
+  const text = await readBoundedResponseText(response, { maxBytes: 1024 * 1024 });
+  return text ? JSON.parse(text) : null;
+}
+
+async function fetchCursorModelUsage(headers, proxyOptions) {
+  try {
+    const response = await proxyAwareFetch(CURSOR_USAGE_CONFIG.aggregatedUsageUrl,
+      { method: "POST", headers, body: "{}" }, proxyOptions);
+    return mapCursorModelUsage(await readCursorUsageJson(response));
+  } catch {
+    return [];
+  }
+}
+
 export async function getCursorUsage(accessToken, providerSpecificData = {}, proxyOptions = null) {
   if (!accessToken) {
     return { message: "Cursor usage unavailable: no access token" };
@@ -128,20 +171,10 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
       proxyOptions
     );
 
+    // Consume or cancel the first response before reusing the connection.
+    const usageData = await readCursorUsageJson(usageRes).catch(() => null);
     if (usageRes.status === 401) {
       return { message: "Cursor token expired or invalid. Re-import from Cursor IDE." };
-    }
-
-    // Consume usage body before opening another request to api2.cursor.sh.
-    // Reusing the keep-alive socket without draining the first body yields empty JSON.
-    const usageText = usageRes.ok ? await usageRes.text().catch(() => "") : "";
-    let usageData = null;
-    if (usageText) {
-      try {
-        usageData = JSON.parse(usageText);
-      } catch {
-        usageData = null;
-      }
     }
 
     let planName = null;
@@ -151,10 +184,8 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
         { method: "POST", headers, body: "{}" },
         proxyOptions
       );
-      if (planRes?.ok) {
-        const planData = await planRes.json().catch(() => ({}));
-        planName = planData?.planInfo?.planName || null;
-      }
+      const planData = await readCursorUsageJson(planRes);
+      planName = planData?.planInfo?.planName || null;
     } catch {
 
       // Plan info is optional; usage data is the primary signal.
@@ -163,13 +194,16 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
       const data = usageData;
       const quotas = parseCursorDashboardUsage(data || {});
       if (Object.keys(quotas).length > 0) {
-        return {
+        const modelUsage = await fetchCursorModelUsage(headers, proxyOptions);
+        const result = {
           plan: planName,
           billingCycleStart: parseResetTime(data?.billingCycleStart),
           billingCycleEnd: parseResetTime(data?.billingCycleEnd),
           displayMessage: data?.displayMessage || null,
           quotas
         };
+        if (modelUsage.length) result.modelUsage = modelUsage;
+        return result;
       }
     }
 
@@ -185,18 +219,38 @@ export async function getCursorUsage(accessToken, providerSpecificData = {}, pro
       proxyOptions
     );
 
+    const fallbackData = await readCursorUsageJson(fallbackRes).catch(() => null);
     if (fallbackRes.status === 401) {
       return { message: "Cursor token expired or invalid. Re-import from Cursor IDE." };
     }
 
     if (fallbackRes.ok) {
-      const fallbackData = await fallbackRes.json().catch(() => null);
       const quotas = parseCursorAuthUsage(fallbackData || {});
       if (Object.keys(quotas).length > 0) {
-        return { plan: planName, quotas };
+        const modelUsage = await fetchCursorModelUsage(headers, proxyOptions);
+        const result = { plan: planName, quotas };
+        if (modelUsage.length) result.modelUsage = modelUsage;
+        return result;
       }
     }
 
+    // Newer accounts may expose usage only through the summary endpoint.
+    try {
+      const summary = await proxyAwareFetch(CURSOR_USAGE_CONFIG.summaryUrl, {
+        method: "GET", headers: { authorization: headers.authorization, accept: "application/json" }
+      }, proxyOptions);
+      const data = await readCursorUsageJson(summary);
+      if (data) {
+        const plan = data?.individualUsage?.plan;
+        const used = Number(plan?.used);
+        const limit = Number(plan?.limit);
+        const reported = Number(plan?.totalPercentUsed);
+        if (plan && ((Number.isFinite(used) && Number.isFinite(limit) && limit > 0) || Number.isFinite(reported))) {
+          const percent = Number.isFinite(reported) ? reported : used / limit * 100;
+          return { plan: planName || "Cursor Pro", quotas: { Total: formatCursorPercentWindow(percent, parseResetTime(data.billingCycleEnd)) } };
+        }
+      }
+    } catch { /* Summary is an optional fallback. */ }
     return {
       message: `Cursor connected. Usage API temporarily unavailable (${usageRes.status}).`
     };

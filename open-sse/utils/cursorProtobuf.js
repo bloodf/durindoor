@@ -5,6 +5,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import zlib from "zlib";
+import { MAX_PROVIDER_BODY_BYTES } from "../config/runtimeConfig.js";
 import {
   toCursorToolName,
   fromCursorToolName,
@@ -18,6 +19,18 @@ import { isString, isNumber, isBoolean, isObject } from "../../src/shared/utils/
 const DEBUG = process.env.CURSOR_PROTOBUF_DEBUG === "1";
 const log = (tag, ...args) => DEBUG && console.log(`[PROTOBUF:${tag}]`, ...args);
 const textDecoder = new TextDecoder();
+
+export function cursorBodyLimitError() {
+  return new Error("Cursor response exceeded the configured body limit");
+}
+
+export function appendBoundedCursorChunk(state, chunk, maxBytes = MAX_PROVIDER_BODY_BYTES) {
+  const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+  const nextTotal = state.total + value.byteLength;
+  if (nextTotal > maxBytes) throw cursorBodyLimitError();
+  state.total = nextTotal;
+  state.chunks.push(value);
+}
 
 const PROTOBUF_SCHEMA_VERSION = "1.1.3";
 

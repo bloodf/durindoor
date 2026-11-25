@@ -1,3 +1,4 @@
+import { refreshCursorToken } from "./tokenRefresh/cursor.js";
 import { createPrivateKey } from "node:crypto";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, REFRESH_LEAD_MS } from "../config/appConstants.js";
@@ -268,6 +269,7 @@ async function refreshAntigravityProvider(provider, credentials, log, proxyOptio
 
 const REFRESH_HANDLERS = {
   openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
+  cursor: (c, log, p) => refreshCursorToken(c.refreshToken, log, p),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
   antigravity: (c, log, p) => refreshAntigravityProvider("antigravity", c, log, p),
   agy: (c, log, p) => refreshAntigravityProvider("agy", c, log, p),

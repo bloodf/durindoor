@@ -16,6 +16,8 @@ import { readFreshReport, validateVitestExecution } from "../tests/__baseline__/
 import { isString, isFunction } from "../src/shared/utils/typeChecks.js";
 import { partitionInventory, mergeBatchReports, fullBatchArgs, mandatoryTestInventory, missingFromDiscovery } from "../tests/__baseline__/full-batches.mjs";
 import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
+import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "../tests/utils/chromiumLaunch.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -512,11 +514,24 @@ const appBuilt = await job("lint-and-build", [
 if (!websiteRun) {
   skip("website-build", "website-build", `conditional job skipped: ${websiteReason}`, "skipped");
 } else {
-  await job("website-build", [
+  // Reuse the browser chosen for local evidence; child HOME stays private.
+  const configuredBrowser = process.env.WEBSITE_CHROMIUM_EXECUTABLE || process.env.V5_CHROMIUM_EXECUTABLE;
+  const browser = configuredBrowser || chromiumLaunchOptions(chromium, dirs.src).executablePath || chromium.executablePath();
+  const browserAvailable = configuredBrowser || existsSync(browser);
+  const websiteSteps = [
     ["pnpm-install-root", "pnpm", pnpmInstall],
     ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
     ["website-build", "pnpm", ["run", "build"], { cwd: web }],
-  ]);
+  ];
+  if (browserAvailable) {
+    websiteSteps.push(["website-browser-suites", "pnpm", ["run", "test:browser"],
+      { cwd: web, env: { WEBSITE_CHROMIUM_EXECUTABLE: browser } }]);
+  }
+  await job("website-build", websiteSteps);
+  if (!browserAvailable) {
+    console.log("browser suites skipped: no browser");
+    skip("website-browser-suites", "website-build", "browser suites skipped: no browser");
+  }
 }
 
 const packDirectory = path.join(out, "pack");

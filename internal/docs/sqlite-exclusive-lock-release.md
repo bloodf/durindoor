@@ -11,7 +11,7 @@ Each SQLite adapter exposes two read-only getters:
 | Adapter | `open` | `inTransaction` |
 | --- | --- | --- |
 | better-sqlite3 | driver `db.open` | driver `db.inTransaction` |
-| node:sqlite | driver `isOpen`; falls back to our own close outcome on drivers without it | driver `isTransaction`, read only while open (the driver throws after close) |
+| node:sqlite | driver `isOpen` (unknown if the driver lacks it) | driver `isTransaction`, read only while open (the driver throws after close); unknown when `isOpen` is missing |
 | bun:sqlite | our own flag, cleared only when `close(true)` returns | driver `inTransaction`, read only while open |
 | sql.js | not exposed | not exposed, so a release is refused as unknown |
 

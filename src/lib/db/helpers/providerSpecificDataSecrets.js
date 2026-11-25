@@ -52,7 +52,9 @@ export const SENSITIVE_PSD_KEYS = Object.freeze([
 "opendesignControlKey",
 "qwenCloudCookie",
 "alibabaConsoleCookie",
-"QWEN_CLOUD_COOKIE"]
+"QWEN_CLOUD_COOKIE",
+// TinyCMS Web's imported localStorage credential is a named PSD field.
+"app-config-uuid"]
 );
 
 const SENSITIVE_PSD_SET = new Set(SENSITIVE_PSD_KEYS);
@@ -254,5 +256,7 @@ export function scrubProxyPoolForExport(pool) {
     if (safe === null) delete out.proxyUrl;
     else out.proxyUrl = safe;
   }
+  // Deploy-time relay gate (issue #2440): never ship it in a scrubbed export.
+  delete out.relaySecret;
   return out;
 }

@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError, unpatchedGlobalFetch, withBillableDispatch } from "./sendRequest.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { UnsupportedOmniRouteWebSessionExecutor } from "./unsupported-websession.js";
 import { normalizeSessionCookieHeader, normalizeSessionCookieHeaders } from "./websession-utils.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import { isRecord } from "./muse-spark-web/response-parser.js";
 import {
   _fetchFreshAccessTokenDispatch
@@ -466,9 +467,9 @@ function buildWsUrl(authorization, requestId) {
 function isGraphqlFailure(result) {
   return !result.ok;
 }
-async function graphqlPost(docId, variables, cookieHeader, label, signal, proxyOptions) {
+async function graphqlPost(docId, variables, cookieHeader, label, signal, send) {
   try {
-    const response = await proxyAwareFetch(META_AI_GRAPHQL_API, {
+    const response = await send(META_AI_GRAPHQL_API, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -480,8 +481,8 @@ async function graphqlPost(docId, variables, cookieHeader, label, signal, proxyO
       },
       body: JSON.stringify({ doc_id: docId, variables }),
       signal: signal ?? void 0,
-      directFetch: (url, init) => globalThis.fetch(url, init)
-    }, proxyOptions);
+      directFetch: unpatchedGlobalFetch()
+    });
     if (!response.ok) return { ok: false, status: response.status, error: `${label} failed: HTTP ${response.status}` };
     const text = await response.text();
     try {
@@ -554,11 +555,33 @@ function __setMuseSparkWebSocketForTesting(ctor) {
     WebSocketCtor = previous;
   };
 }
-async function wsChat(prompt, conversationId, authorization, cookieHeader, templateB64, signal) {
+async function proxyAgentForWebSocket(proxyUrl) {
+  try {
+    const { HttpsProxyAgent } = await import("https-proxy-agent");
+    return new HttpsProxyAgent(proxyUrl);
+  } catch {
+    try {
+      const { SocksProxyAgent } = await import("socks-proxy-agent");
+      return new SocksProxyAgent(proxyUrl);
+    } catch {
+      return null;
+    }
+  }
+}
+async function wsChat(prompt, conversationId, authorization, cookieHeader, templateB64, signal, proxyOptions = null) {
   const requestId = crypto.randomUUID();
   const wsUrl = buildWsUrl(authorization, requestId);
+  let agent = null;
+  try {
+    const route = resolveWebSocketProxyRoute(wsUrl, proxyOptions);
+    if (route.enabled && route.url) agent = await proxyAgentForWebSocket(route.url);
+    if (route.strict && !agent) throw new Error("WebSocket proxy required but unavailable");
+  } catch (error) {
+    return { content: "", deltas: [], error: sanitizeErrorMessage(error?.message) || "WebSocket proxy required but unavailable" };
+  }
   return new Promise((resolve) => {
     const ws = new WebSocketCtor(wsUrl, {
+      ...(agent ? { agent } : null),
       headers: {
         "User-Agent": META_AI_USER_AGENT,
         Origin: "https://meta.ai"
@@ -722,16 +745,22 @@ class MuseSparkWebExecutor extends BaseExecutor {
   constructor() {
     super("muse-spark-web", { id: "muse-spark-web", baseUrl: META_AI_GRAPHQL_API });
   }
-  async execute({
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+  async runChat({
     model,
     body,
     stream,
     credentials,
     signal,
     log,
-    upstreamExtraHeaders,
     proxyOptions
-  }) {
+  }, sender, billed) {
+    // The GraphQL setup calls are not charged; the WebSocket turn is quota-bearing.
+    const setup = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false });
     if (credentials?.providerSpecificData?.enableSessionDispatch !== true) {
       return new UnsupportedOmniRouteWebSessionExecutor("muse-spark-web").execute({ credentials });
     }
@@ -769,7 +798,7 @@ class MuseSparkWebExecutor extends BaseExecutor {
       cookieHeader,
       "Warmup",
       signal,
-      proxyOptions
+      setup
     );
     if (isGraphqlFailure(warmupResult)) {
       evictContinuationIfNeeded(cached, continuationCacheKey);
@@ -782,21 +811,29 @@ class MuseSparkWebExecutor extends BaseExecutor {
       cookieHeader,
       "Mode switch",
       signal,
-      proxyOptions
+      setup
     );
     if (isGraphqlFailure(modeResult)) {
       evictContinuationIfNeeded(cached, continuationCacheKey);
       log?.error?.("MUSE-SPARK-WEB", `Mode switch failed: ${modeResult.error}`);
       return errorResult(modeResult.status === 429 ? 429 : modeResult.status === 401 || modeResult.status === 403 ? 401 : 502, modeResult.status === 401 || modeResult.status === 403 ? "Meta AI session expired; re-import your ecto_1_sess cookie." : modeResult.error, "meta_ai_mode_switch_failed", {}, body);
     }
-    const wsResult = await wsChat(
-      prompt,
-      conversationContext.conversationId,
-      authorization,
-      cookieHeader,
-      templateB64,
-      signal
-    );
+    // wsChat answers with the whole turn under its own idle timeout, so starting it
+    // stands in for response headers.
+    const sent = billed(await sender.sendRequest(META_AI_GRAPHQL_API, { signal }, proxyOptions, {
+      transport: () => ({
+        reply: wsChat(
+          prompt,
+          conversationContext.conversationId,
+          authorization,
+          cookieHeader,
+          templateB64,
+          signal,
+          proxyOptions
+        )
+      })
+    }));
+    const wsResult = await sent.reply;
     const headers = {};
     if (wsResult.error) {
       evictContinuationIfNeeded(cached, continuationCacheKey);

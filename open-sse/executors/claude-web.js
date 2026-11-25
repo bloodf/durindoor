@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { PROVIDERS } from "../config/providers.js";
 import { buildErrorBody } from "../utils/error.js";
@@ -99,10 +102,22 @@ export class ClaudeWebExecutor extends BaseExecutor {
     } catch { return false; }
   }
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const cookie = normalizeClaudeWebCookie(input.credentials?.apiKey || input.credentials?.cookie);
     if (!cookie) return { response: responseError(401, "Missing or invalid sessionKey cookie"), url: BASE, headers: {}, transformedBody: input.body };
     const common = headers(cookie);
-    const fetcher = input.fetcher || proxyAwareFetch;
+    // `input.fetcher` replaces the HTTP transport in tests.
+    const fetcher = (target, init, quotaBearing = false) => sender.sendRequest(target, init, input.proxyOptions, {
+      quotaBearing,
+      ...(input.fetcher ? { transport: (options) => input.fetcher(target, options, input.proxyOptions) } : null)
+    });
+    let upstream = null;
+    // Every result returned after the completion send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(upstream, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
       const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, redirect: "manual", signal: input.signal });
       if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
@@ -131,15 +146,16 @@ export class ClaudeWebExecutor extends BaseExecutor {
       if (!conversationId) payload.create_conversation_params = { name: "", model, include_conversation_preferences: true, paprika_mode: null, compass_mode: null, is_temporary: false, enabled_imagine: false, tool_search_mode: "auto" };
       if (!conversationId) conversationId = randomUUID();
       const url = `${BASE}/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(conversationId)}/completion`;
-      const upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
-      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body };
-      if (upstream.status === 429) return { response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body };
-      if (!upstream.ok || !upstream.body) return { response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body };
+      upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, true);
+      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return carry({ response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body });
+      if (upstream.status === 429) return carry({ response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body });
+      if (!upstream.ok || !upstream.body) return carry({ response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body });
       const response = await readSse(upstream, model, input.stream === true || input.body?.stream === true);
       if (scope) sessions.set(scope, conversationId);
-      return { response, url, headers: common, transformedBody: input.body };
+      return carry({ response, url, headers: common, transformedBody: input.body });
     } catch (error) {
-      return { response: responseError(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body };
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      return carry({ response: responseError(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body });
     }
   }
   buildUrl(model, stream) { return PROVIDERS["claude-web"]?.baseUrl || BASE; }

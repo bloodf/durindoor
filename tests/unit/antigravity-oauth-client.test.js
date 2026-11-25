@@ -38,7 +38,8 @@ describe("antigravity oauth client (deduped)", () => {
     const { dirname, join } = await import("node:path");
     const here = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(here, "../../src/lib/oauth/constants/oauth.js"), "utf8");
-    expect(src).toContain('import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "open-sse/providers/shared.js"');
+    // Relative path (not bare "open-sse/...") so the module also loads under native Node ESM (#2313).
+    expect(src).toMatch(/import \{ ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT \} from "(?:open-sse|(?:\.\.\/)+open-sse)\/providers\/shared\.js"/);
     expect(src).toContain("...ANTIGRAVITY_OAUTH_CLIENT");
     expect(src).toContain("...GOOGLE_OAUTH_CLIENT");
     // authorizeUrl now lives in registry; oauth.js derives via PROVIDER_OAUTH spread

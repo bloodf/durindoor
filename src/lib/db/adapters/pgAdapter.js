@@ -13,6 +13,7 @@
 //   - `?` placeholders → `$1, $2, ...`
 //   - `RETURNING` on known BIGSERIAL tables so `lastInsertRowid` works
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
@@ -379,31 +380,58 @@ async function createAsyncAdapter(connStr, clientFactory) {
     })();
   }
 
-  let txDepth = 0;
+  // The one shared client carries one transaction at a time. Every scope (the
+  // client, or an open transaction) queues the transactions started directly
+  // inside it, so neither top-level transactions nor sibling savepoints can
+  // interleave. AsyncLocalStorage tells a nested call from a concurrent one.
+  const txScope = new AsyncLocalStorage();
+  const clientScope = { open: true, parent: null, tail: Promise.resolve() };
+
   function transaction(fn) {
+    let parent = txScope.getStore() ?? clientScope;
+    // Work scheduled by a finished transaction must not reuse its savepoints.
+    while (!parent.open) parent = parent.parent;
+    const result = parent.tail.then(() => runTransaction(parent, fn));
+    parent.tail = result.catch(() => {});
+    return result;
+  }
+
+  // Wait for nested calls the callback did not await before ending its scope.
+  async function closeScope(scope) {
+    let tail;
+    do {
+      tail = scope.tail;
+      await tail;
+    } while (tail !== scope.tail);
+    scope.open = false;
+  }
+
+  async function runTransaction(parent, fn) {
+    const nested = parent !== clientScope;
+    const scope = { open: true, parent, tail: Promise.resolve() };
     const sp = `sp_${Math.random().toString(36).slice(2)}`;
-    return (async () => {
-      if (txDepth === 0) await client.query("BEGIN");
-      txDepth += 1;
+    if (!nested) await client.query("BEGIN");
+    try {
       await client.query(`SAVEPOINT ${sp}`);
+      let result;
       try {
-        const result = await fn();
-        await client.query(`RELEASE SAVEPOINT ${sp}`);
-        txDepth -= 1;
-        if (txDepth === 0) await client.query("COMMIT");
-        return result;
-      } catch (e) {
-        try {
-          await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-          await client.query(`RELEASE SAVEPOINT ${sp}`);
-        } catch { /* noop */ }
-        txDepth -= 1;
-        if (txDepth === 0) {
-          try { await client.query("ROLLBACK"); } catch { /* noop */ }
-        }
-        throw e;
+        result = await txScope.run(scope, async () => fn());
+      } finally {
+        await closeScope(scope);
       }
-    })();
+      await client.query(`RELEASE SAVEPOINT ${sp}`);
+      if (!nested) await client.query("COMMIT");
+      return result;
+    } catch (e) {
+      try {
+        await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+        await client.query(`RELEASE SAVEPOINT ${sp}`);
+      } catch { /* noop */ }
+      if (!nested) {
+        try { await client.query("ROLLBACK"); } catch { /* noop */ }
+      }
+      throw e;
+    }
   }
 
   async function close() {

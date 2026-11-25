@@ -90,7 +90,6 @@ export async function getOidcRuntimeConfig() {
   // OIDC is the only SSO protocol implemented. An unknown stored `ssoType`
   // (e.g. "saml" from a hand-edited db) falls back to OIDC instead of leaving
   // an SSO-only install with no login method; see resolveSsoType.
-  if (settings.authMode === "sso" && resolveSsoType(settings.ssoType) !== "oidc") return null;
   if (!isOidcAuthMode(settings.authMode) || !isOidcConfigured(settings)) return null;
 
   const issuerUrl = trimTrailingSlashes(settings.oidcIssuerUrl);

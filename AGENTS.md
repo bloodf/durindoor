@@ -34,6 +34,8 @@ Do not hand-edit `open-sse/providers/registry/index.js` or `open-sse/AGENT-INDEX
 
 ## Test workflow
 
+Run `sh scripts/checks.sh unit` for checks selected from changes against `origin/main`, or set `ORQ_CHANGED_FILES` to a file containing changed paths. Run `sh scripts/checks.sh final` for root lint and the complete CI test suite.
+
 Install root, CLI (`cli/`), and test (`tests/`) dependencies before collecting the suite. The root/CLI advisory compatibility tests load the real CLI-only `nodemon` dependency. Pass `--config tests/vitest.config.js` unless you already run from `tests/` (Vitest picks that config up on its own).
 
 ```bash

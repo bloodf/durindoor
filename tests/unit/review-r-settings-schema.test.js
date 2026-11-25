@@ -26,7 +26,7 @@ describe("settings schema regression (#2306)", () => {
       "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting",
     ].sort());
     expect([...AUTH_CRITICAL_SETTING_KEYS].sort()).toEqual([
-      "comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode",
+      "comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "ssoType",
       "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel",
       "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess",
       "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl",

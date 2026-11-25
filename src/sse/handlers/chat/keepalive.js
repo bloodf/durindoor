@@ -5,6 +5,7 @@
 import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
 import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
+import { withEarlyJsonKeepalive, resolveJsonKeepaliveThresholdMs } from "open-sse/utils/earlyJsonKeepalive.js";
 import { decodeAnthropicRequest } from "../../utils/inboundGzip.js";
 import { handleChat } from "../chat.js";
 
@@ -31,7 +32,11 @@ export async function handleMessages(request) {
     return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Invalid JSON body" } }, { status: 400 });
   }
 
-  return chatWithKeepalive(request, body?.stream === true, {
+  if (body?.stream !== true) {
+    return withEarlyJsonKeepalive(handleChat(request), { thresholdMs: resolveJsonKeepaliveThresholdMs() });
+  }
+
+  return chatWithKeepalive(request, true, {
     intervalMs: SSE_KEEPALIVE_MS,
     keepaliveFrame: ANTHROPIC_PING_FRAME,
     // A late failure becomes an Anthropic `event: error` carrying the HTTP status.

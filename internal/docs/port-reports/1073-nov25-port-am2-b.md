@@ -1,0 +1,17 @@
+# Port review: November 25 AM commits 2, candidates 10-18
+
+Status: COMPLETE. The dispositions apply the settled scope for this work order.
+
+| Candidate | Source row and commit | Disposition | Evidence |
+| --- | --- | --- | --- |
+| 10 | 74, [15994958](https://github.com/cheaper-inference/OmniRoute/commit/15994958dc85309ba7a289f428699f299b012844) | Not applicable | The exact diff extracts agent-session usage code into a new upstream module and adjusts its test. The upstream `src/lib/usage/usageHistory/agentSessionUsage.ts` module is absent locally; its usage repository writes the existing attribution fields directly ([usageRepo.js](../../../src/lib/db/repos/usageRepo.js)). |
+| 11 | 75, [81ffcae6](https://github.com/cheaper-inference/OmniRoute/commit/81ffcae62e2891338c8647cecdfb41be6ac98032) | Not applicable | The exact first-parent merge diff contains the same extraction as row 74, with no additional independent behavior. The upstream `src/lib/usage/usageHistory/agentSessionUsage.ts` module is absent locally. |
+| 12 | 76, [ea45b68b](https://github.com/cheaper-inference/OmniRoute/commit/ea45b68bcc2916b9bfa226efa3f79b675736db71) | Not applicable | This merge carries candidates 2 and 4, both not applicable. The upstream `src/lib/db/agentSessions.ts` store and `src/app/api/v1/me/sessions/[id]/messages/route.ts` route are absent locally. |
+| 13 | 77, [b8083890](https://github.com/cheaper-inference/OmniRoute/commit/b808389051569fe1998ede6040146a9a887b33b5) | Not applicable | The exact diff changes an upstream comment, removes a blank line, and updates its file-size baseline. It changes no runtime behavior. |
+| 14 | 79, [2104e7b4](https://github.com/cheaper-inference/OmniRoute/commit/2104e7b46ab17f6b5e5f1500435c6ef4eef8cc3a) | Not applicable | The index repair targets `src/lib/db/agenticConversations.ts` and its turn-node table, absent locally. The local [capture migration](../../../src/lib/db/migrations/032-session-capture.js) creates a separate store. |
+| 15 | 80, [1fedc41e](https://github.com/cheaper-inference/OmniRoute/commit/1fedc41e8eb9fb4c423343646681407b6061f561) | Not applicable | The upstream `src/lib/db/apiKeySelfServiceSettings.ts` store and `207_api_key_self_service_settings.sql` migration are absent locally. This restack carries that self-service feature. |
+| 16 | 81, [43ceeff7](https://github.com/cheaper-inference/OmniRoute/commit/43ceeff71272cdbd58926ca42d5ab27bf33cac92) | Not applicable | The upstream `src/lib/db/agentSessions.ts` store and `208_agent_sessions.sql` migration are absent locally. The local [attribution migration](../../../src/lib/db/migrations/031-usage-session-attribution.js) stores different attribution fields. |
+| 17 | 82, [ba164c1c](https://github.com/cheaper-inference/OmniRoute/commit/ba164c1c484a4df0fb1bb2115d67d23ccf2265bd) | Not applicable | The upstream `src/app/api/v1/me/sessions/[id]/route.ts` detail route and `src/lib/db/agentSessions.ts` store are absent locally. The local [sessions route](../../../src/app/api/v1/me/sessions/route.js) provides aggregate usage. |
+| 18 | 83, [f97d260a](https://github.com/cheaper-inference/OmniRoute/commit/f97d260a25dc284ed22d157d8dd917c9c177c6fb) | Not applicable | The upstream `src/app/api/v1/me/sessions/[id]/messages/route.ts` route and `open-sse/handlers/chatCore/agentSessionTurn.ts` capture module are absent locally. The [capture repository](../../../src/lib/db/repos/sessionCaptureRepo.js) is separate. |
+
+No product behavior changed. The restacked upstream session features have no matching local agent-session store.

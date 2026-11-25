@@ -570,3 +570,24 @@ proxyOptions = null,
   });
   return callerWait(operation, signal, shouldCommit, callerTimeoutMs, laneAcquired);
 }
+
+/**
+ * Reactive (401/403) refresh for a stored Antigravity connection. The network
+ * refresh is dispatched and committed under the connection-bound lease
+ * (#2313). Resolves the stored connection only when this refresh committed
+ * and the row still holds its result, so a caller never retries with tokens a
+ * concurrent writer already replaced; resolves null otherwise.
+ *
+ * @param {object} connection Stored connection whose credentials were rejected.
+ * @param {object|null} [proxyOptions]
+ * @returns {Promise<object|null>}
+ */
+export async function refreshAntigravityConnection(connection, proxyOptions = null) {
+  if (!connection?.id || !isAntigravityProvider(connection.provider)) return null;
+  const result = await refreshAndUpdateCredentials(connection, true, proxyOptions);
+  if (!result?.refreshed) return null;
+  // A joined in-flight operation may have started with an older snapshot.
+  const current = await getProviderConnectionById(connection.id);
+  if (!current || current.isActive === false || current.provider !== connection.provider) return null;
+  return providerRefreshContextMatches(current, providerRefreshContext(result.connection)) ? current : null;
+}

@@ -14,6 +14,7 @@ import Select from "@/shared/ui/components/Select.jsx";
 import Checkbox from "@/shared/ui/components/Checkbox.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { sortComboModels } from "@/lib/combos/comboSort.js";
+import { readModelAliases } from "@/shared/utils/modelAliases";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -183,12 +184,10 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
     let active = true;
     const fetchModalData = async () => {
       try {
-        const aliasesRes = await fetch("/api/models/alias");
-        if (!aliasesRes.ok) return;
-        const aliasesData = await aliasesRes.json();
-        if (active) setModelAliases(aliasesData.aliases || {});
+        const aliases = await readModelAliases({ skipErrorBody: true });
+        if (active) setModelAliases(aliases);
       } catch (error) {
-        console.error("Error fetching modal data:", error);
+        if (!error.status) console.error("Error fetching modal data:", error);
       }
     };
     fetchModalData();

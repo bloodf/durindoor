@@ -88,7 +88,8 @@ describe("Anthropic credit envelope account rotation (#1364)", () => {
       expect.objectContaining({
         testStatus: "unavailable",
         errorCode: 400,
-        "modelLock_claude-sonnet-4-5": expect.any(String),
+        // OmniRoute #21076: the balance is account-wide, so the lock is too.
+        modelLock___all: expect.any(String),
       }),
       expect.objectContaining({ refuseIfReauth: true, returnCommitResult: true }),
     );

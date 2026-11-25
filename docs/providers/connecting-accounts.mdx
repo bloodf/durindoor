@@ -129,4 +129,6 @@ After connecting, send a short request with an ID from `GET /v1/models` and chec
 
 For CodeBuddy International, create an [International API key](https://www.codebuddy.ai/profile/keys) and save it under **CodeBuddy International** in the dashboard. Tencent's [IAM guide](https://www.codebuddy.ai/docs/cli/iam) lists `CODEBUDDY_API_KEY` for individual developers, identifies International as the default CLI environment, and specifies the `X-Api-Key` header. China keys use the separate CodeBuddy CN connection.
 
+When CodeBuddy International returns a 429 with a reset time in its message, DurinDoor treats the stated time as UTC and pauses the connection until that time, subject to the seven-day rate-limit ceiling.
+
 DurinDoor uses the International chat endpoint, conversation headers and upstream streaming. DurinDoor aggregates the stream for non-streaming clients. The gateway transport has been tested with mocks. Save the key and use a chat request to check it, since the dashboard has no separate validation probe. The curated model list is a fallback and availability varies by account. International OAuth, token refresh, account-specific model discovery and quota reporting are unavailable.

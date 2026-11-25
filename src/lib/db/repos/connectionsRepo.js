@@ -7,6 +7,7 @@ import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import {
   advanceAntigravityGeneration,
   deleteAntigravityRotationRows,
@@ -807,6 +808,7 @@ export async function recordProviderConnectionFallbackState(id, {
       merged[`modelError_${scope}`] = Number(status) || 503;
     }
     if (!webFetch && !webSearch) {
+      Object.assign(merged, modelUpstreamUpdate(scope, { status, message: storedReason, lockUntil: merged[lockKey] }));
       merged.testStatus = "unavailable";
       merged.lastError = storedReason;
       merged.errorCode = Number(status) || null;

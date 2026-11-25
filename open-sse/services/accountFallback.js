@@ -3,6 +3,7 @@ import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 import { resolveFallbackModelScope } from "./fallbackScope.js";
+import { isAnthropicAccountCreditExhausted, isAnthropicCreditProvider } from "./anthropicAccountCredit.js";
 import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
@@ -223,6 +224,12 @@ function classifyFallbackError({
     return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
   }
 
+  // OmniRoute #21076: an exhausted Anthropic balance blocks every model on the key.
+  if (Number(status) === 400 && isAnthropicCreditProvider(provider) &&
+      isAnthropicAccountCreditExhausted(errorText, structuredError)) {
+    return { ...checkFallbackErrorByRules(status, "credit balance is too low", backoffLevel), scope: "connection" };
+  }
+
   // Port-pending guards are explicit feature-not-implemented errors; they should not
   // lock the user's connection or trigger the account fallback cooldown chain.
   // chatCore flattens the guard body to "[501]: <provider> ... runtime execution is not ported yet",
@@ -319,6 +326,16 @@ function classifyFallbackError({
     const clineHintMs = parseClineTryAgainInMs(ruleMatchText, provider, MAX_RATE_LIMIT_COOLDOWN_MS);
     if (clineHintMs !== null) {
       return { shouldFallback: true, cooldownMs: clineHintMs, newBackoffLevel: 0, scope: "model", retryHintSource: "body" };
+    }
+  }
+
+  // OmniRoute ce3d869: CodeBuddy International states its unlock time in UTC
+  // prose even when the message does not identify an exhausted quota.
+  if (status === 429 && provider === "codebuddy-intl") {
+    const now = Date.now();
+    const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, provider, now });
+    if (["quota_text", "structured_body"].includes(evidence?.source) && Number.isFinite(evidence.resetAtMs)) {
+      return { shouldFallback: true, cooldownMs: evidence.resetAtMs - now, newBackoffLevel: 0, scope: "connection", rateLimitEvidence: evidence };
     }
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 /** Keeps ModelVisibility requests and handlers together. */
 export default function useModelVisibility({ currentProviderIdRef, providerId, providerStorageAlias, setConfirmState, setCustomModels, setDisabledModelIds, setEnabledModelIds, setModelAliases }) {
@@ -81,14 +82,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
 
   // Define callbacks BEFORE the useEffect that uses them
   const fetchAliases = useCallback(() => {
-    return fetch("/api/models/alias").then(async (res) => {
-      const data = await res.json();
-      if (res.ok) {
-        setModelAliases(data.aliases || {});
-      }
-    }).catch((error) => {
-      console.log("Error fetching aliases:", error);
-    });
+    return loadModelAliases(setModelAliases, "Error fetching aliases:");
   }, []);
 
   const fetchCustomModels = useCallback(() => {

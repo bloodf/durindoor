@@ -12,6 +12,7 @@ import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { leasedAntigravityRefresher } from "./media/antigravityRefresh.js";
 import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
@@ -201,6 +202,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     async runAttempt(credentials) {
       const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
       const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+      // Cores and executors mutate the dispatched credentials before the callback runs.
+      const presentedRefreshToken = refreshedCredentials.refreshToken;
+      // Without a sent refresh token there is nothing to guard against.
+      const refreshGuard = presentedRefreshToken ? [{ presentedRefreshToken }] : [];
 
       const result = await handleImageGenerationCore({
         body,
@@ -220,8 +225,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
             refreshToken: newCreds.refreshToken,
             providerSpecificData: newCreds.providerSpecificData,
             testStatus: "active"
-          });
+          }, ...refreshGuard);
         },
+        refreshCredentials: leasedAntigravityRefresher(refreshedCredentials),
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         }

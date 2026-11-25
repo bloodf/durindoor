@@ -16,6 +16,7 @@
 import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { chargeRetained } from "../../utils/streamRetainedBudget.js";
 
 function stopThinkingBlock(state, results) {
   if (!state.thinkingBlockStarted) return;
@@ -210,6 +211,7 @@ export function kiroToClaudeResponse(chunk, state) {
             tc.function.arguments.startsWith(current) ?
             tc.function.arguments :
             current + tc.function.arguments;
+            chargeRetained(state, next.length - current.length);
             state.toolArgBuffers.set(idx, next);
           }
         }

@@ -1,10 +1,10 @@
 # #1073: Responses long call-ID clamp (OmniRoute #20224)
 
-Disposition: **pending port of the `responses-call-id-clamp` member of #20224, carried only by open DurinDoor PR [#2487](https://github.com/bloodf/durindoor/pull/2487)**. This integration branch does not contain the code change or its test; they were removed here as a duplicate of that PR. The other six members of that train are out of scope here; the [Nov 24 census row](1073-nov24-commits-4.md) and the [prior #20963 disposition](1073-nov21-open-ledger-c.md) leave them unreviewed.
+Disposition: **ported**. The `responses-call-id-clamp` member of OmniRoute #20224 is included in this branch (Refs #2487). The other six members of that train remain unreviewed; see the [Nov 24 census row](1073-nov24-commits-4.md) and the [prior #20963 disposition](1073-nov21-open-ledger-c.md).
 
 ## Upstream evidence
 
-[OmniRoute #20224](https://github.com/cheaper-inference/OmniRoute/pull/20224), head `73f02b9d74324a6e2c7ebc03388e592d58233536`, base `release/v3.8.55`, merged 2026-11-23 as `713bf17cc7fd87fb2b0eff4b93d0e882963ab409` (via #20963). The relevant hunk is `open-sse/translator/request/openai-responses/helpers.ts`: `clampCallId` returned `id.slice(0, 64)` for an id over 64 characters; it now keeps 55 characters, `_`, and the first 8 hex of the SHA-256 of the whole id. Its test is `tests/unit/responses-call-id-clamp.test.ts`.
+OmniRoute #20224, head `73f02b9d74324a6e2c7ebc03388e592d58233536`, base `release/v3.8.55`, merged 2026-11-23 as `713bf17cc7fd87fb2b0eff4b93d0e882963ab409` (via #20963). The relevant hunk is `open-sse/translator/request/openai-responses/helpers.ts`: `clampCallId` returned `id.slice(0, 64)` for an id over 64 characters; it now keeps 55 characters, `_`, and the first 8 hex of the SHA-256 of the whole id. Its test is `tests/unit/responses-call-id-clamp.test.ts`.
 
 ## Collision check in DurinDoor
 
@@ -18,7 +18,7 @@ Call sites that share the clamp, all now covered by the one change: `open-sse/tr
 
 Checked open DurinDoor PRs (`gh pr list -R bloodf/durindoor --state open`, searches for `20224`, `call id`, `call_id`, `clamp`, plus the full list): none touches `responsesApi.js`, `openai-responses.js` or `opencode-go.js`. Open at check time: #2486, #2484, #2483, #2481, #2430, #2112, #1809, #1784. No prior DurinDoor PR or branch references #20224.
 
-## Change (on PR #2487 only)
+## Change
 
 - `open-sse/translator/formats/responsesApi.js`: over-long ids become `<first 55 chars>_<8 hex sha256>`; length is exactly 64. The constant `MAX_RESPONSES_CALL_ID_LEN` and a new `CALL_ID_HASH_LEN` define the layout.
 - `tests/translator/omni-20224-call-ids.test.js`: behavior tests using `ROLE`, `RESPONSES_ITEM`, `OPENAI_BLOCK` and `FORMATS` constants and `translator/registerAll.js`: unchanged short ids, distinct and stable clamping for shared-prefix ids, and an end-to-end Chat → Responses parallel-call pairing.
@@ -36,6 +36,4 @@ The full four-batch `test:ci` was not run in this lane; CI on the PR is the full
 
 ## Status
 
-Open, pending. Upstream: [OmniRoute #20224](https://github.com/cheaper-inference/OmniRoute/pull/20224). DurinDoor PR: [#2487](https://github.com/bloodf/durindoor/pull/2487), draft, open, not merged; head `06778c07e4d1d5c9d223feb1cbec3398841aad7e` (branch `orq/tows9a/port-omni-20224-clean`) when rechecked on 2026-11-24. Its diff matches the change described above: the `clampResponsesCallId` hunk in `open-sse/translator/formats/responsesApi.js`, `tests/translator/omni-20224-call-ids.test.js`, and this report.
-
-The orchestration integration branch had the same change at merge `ad145f2e25ad` (commits `456361ed03` and `ac1b0fad8a`). That code and test were removed from the integration branch so the port lands once, through #2487. Until #2487 merges, `main` and the integration branch still use the plain 64-character cut. Do not count this port complete until #2487 merges.
+Ported on this branch. Refs #2487. The earlier integration branch removed the duplicate code and test; this change restores them on the current branch.

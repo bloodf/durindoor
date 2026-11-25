@@ -397,10 +397,10 @@ export class BaseExecutor {
       if (response && Number(statusKey) === HTTP_STATUS.RATE_LIMITED &&
           !this.computeRetryDelay && matchedRule?.action !== "retry") {
         const now = Date.now();
-        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, now });
+        let evidence = parseRateLimitEvidence({ status: 429, headers: response.headers, provider: this.provider, now });
         if (evidence?.source !== "retry_after") {
           const bodyText = await readOptionalProbeText(response, { signal });
-          evidence = parseRateLimitEvidence({ status: 429, bodyText, now });
+          evidence = parseRateLimitEvidence({ status: 429, bodyText, provider: this.provider, now });
         }
         const remaining = Math.min(attempts - retryAttemptsByUrl[urlIndex],
           maxTransportAttempts == null ? Infinity : maxTransportAttempts - dispatchesByUrl[urlIndex]);
@@ -566,6 +566,23 @@ export class BaseExecutor {
             return { response, url, headers, transformedBody: requestBody,
               attemptStartedAt: sender.attemptStartedAt, terminalProvenance: "upstream",
               claudeRequestScoped };
+          }
+        }
+
+        // AgentRouter's burst-sensitive WAF can clear after a short cooldown.
+        // Respect explicit skip rules and the per-URL transport budget.
+        if (this.provider === "agentrouter" && response.status === HTTP_STATUS.BAD_REQUEST &&
+            retryAttemptsByUrl[urlIndex] < 2 && transportBudgetLeft(urlIndex)) {
+          const wafText = errorText ?? await readOptionalProbeText(response, { signal });
+          if (/content[_-]blocked/i.test(wafText) &&
+              !matchedSkip({ statusKey: response.status, errorKind: `http_${response.status}`, text: wafText })) {
+            const attempt = ++retryAttemptsByUrl[urlIndex];
+            const baseDelay = 1500 * 2 ** (attempt - 1);
+            await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
+            cancelDiscardedResponse(response);
+            await waitForRetryDelay(baseDelay * (0.5 + Math.random() * 0.5), signal);
+            urlIndex--;
+            continue;
           }
         }
 

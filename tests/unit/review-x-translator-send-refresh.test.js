@@ -8,7 +8,11 @@ vi.mock("@/lib/localDb.js", () => ({
 }));
 vi.mock("@/lib/network/connectionProxy.js", () => ({ resolveConnectionProxyConfig: async () => ({}) }));
 vi.mock("open-sse/index.js", () => ({ getExecutor: () => ({ execute: mock.execute }) }));
-vi.mock("@/shared/services/providerCredentials.js", () => ({ refreshAndUpdateCredentials: mock.refresh }));
+vi.mock("@/shared/services/providerCredentials.js", () => ({
+  refreshAndUpdateCredentials: mock.refresh,
+  // The route refreshes Antigravity through the shared connection lease helper.
+  refreshAntigravityConnection: mock.refresh,
+}));
 
 import { POST } from "../../src/app/api/translator/send/route.js";
 

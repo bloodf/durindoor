@@ -1,0 +1,19 @@
+# OmniRoute morning port candidates 1–9
+
+This report uses the port-candidate order in [the source report](1073-nov25-am-commits-2.md). Each linked commit was fetched with `gh api` and compared with this checkout. The dispositions below apply the settled scope for this work order.
+
+Status: COMPLETE.
+
+| Candidate | Upstream commit | Disposition | Evidence |
+|---:|---|---|---|
+| 1 (source row 52) | [84b607d](https://github.com/cheaper-inference/OmniRoute/commit/84b607dcb09f0d573c528a45d0c1dac58f08aa86) | Not applicable | The patch only extracts a wrapper around upstream `recordAgentSessionUsage`; it introduces no behavior. DurinDoor's [usage repository](../../../src/lib/db/repos/usageRepo.js) writes aggregate session and project labels without the upstream `src/lib/db/agentSessions.ts` store, which is absent locally. The broader attribution gap remains under candidate 8. |
+| 2 (source row 54) | [30921d2](https://github.com/cheaper-inference/OmniRoute/commit/30921d2cfa29ff50976cddbf32fe9a6a0a3bd2c1) | Not applicable | The upstream agent-session list and detail rely on `src/lib/db/agentSessions.ts` and `src/app/api/v1/me/sessions/[id]/route.ts`, which do not exist locally. The local [sessions route](../../../src/app/api/v1/me/sessions/route.js) lists aggregate usage. |
+| 3 (source row 55) | [6a9fa96](https://github.com/cheaper-inference/OmniRoute/commit/6a9fa96996b8061716684c7a03b6c2ba9e02c941) | Not applicable | This merge carries candidate 2, which is not applicable. The upstream `src/lib/db/agentSessions.ts` and session detail route are absent locally. |
+| 4 (source row 56) | [7ab1521](https://github.com/cheaper-inference/OmniRoute/commit/7ab15217a0802f1ce9b492ec4dd99e7fafbd4dcb) | Not applicable | The upstream usage-linked turn capture module `open-sse/handlers/chatCore/agentSessionTurn.ts` is absent locally. The separate [capture repository](../../../src/lib/db/repos/sessionCaptureRepo.js) is opt-in. |
+| 5 (source row 57) | [d5ac1cf](https://github.com/cheaper-inference/OmniRoute/commit/d5ac1cf7cbc999f469666b986cc0b597b6618b79) | Not applicable | This fixes reconnect lookup in upstream's conversation tracker. The upstream `open-sse/services/conversationTracker.ts` and `src/lib/db/agenticConversations.ts` are absent locally. Its [session manager](../../../open-sse/utils/sessionManager.js) handles provider session identifiers, not a reconnect candidate store. |
+| 6 (source row 59) | [4ccb07c](https://github.com/cheaper-inference/OmniRoute/commit/4ccb07cfae6b9dc01cc5b055f93f1fa44c6635d3) | Not applicable | Content-based candidate selection operates on the same upstream-only conversation tracker and store as candidate 5. The upstream `open-sse/services/conversationTracker.ts` and `src/lib/db/agenticConversations.ts` are absent locally. |
+| 7 (source row 63) | [7cafdb8](https://github.com/cheaper-inference/OmniRoute/commit/7cafdb801d5b6d57e79c395c4b08d6616686c884) | Not applicable | The migration recreates an index on upstream conversation turn nodes. The upstream `src/lib/db/agenticConversations.ts` store and `src/lib/db/migrations/206_recreate_turn_nodes_content_hash_index.sql` migration are absent locally. |
+| 8 (source row 66) | [b3d79fb](https://github.com/cheaper-inference/OmniRoute/commit/b3d79fb7a4d8cafd5f7e055a406f5e586f94eb5e) | Not applicable | The upstream agent-session store `src/lib/db/agentSessions.ts` and its usage-linked turn model are absent locally. Existing [usage attribution](../../../src/lib/usageAttribution.js) uses a separate model. |
+| 9 (source row 69) | [0832fc7](https://github.com/cheaper-inference/OmniRoute/commit/0832fc73c84a3c2e397ca1e4f16197608f4f5855) | Not applicable | This merge carries candidate 8, which is not applicable. The upstream `src/lib/db/agentSessions.ts` store is absent locally. |
+
+No product behavior changed. These candidates concern the upstream agent-session and conversation stores absent from DurinDoor.

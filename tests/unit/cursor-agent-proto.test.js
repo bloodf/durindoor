@@ -32,7 +32,8 @@ describe("Cursor AgentService codec (cursorProtobuf.js)", () => {
   for (const [model, effort, key, value] of [
     ["gpt-5.2", "high", "reasoning", "high"],
     ["claude-4.6-opus", "minimal", "effort", "low"],
-    ["composer-2.5", "ultra", "effort", "max"],
+    // composer-2.5 ignores client effort since OmniRoute #20171; the -fast route still forwards it.
+    ["claude-4.6-sonnet", "ultra", "effort", "max"],
   ]) {
     it(`forwards ${effort} as a RequestedModel parameter for ${model}`, () => {
       const frame = buildAgentRunFrame([{ role: "user", content: "hi" }], model, [], effort);

@@ -77,10 +77,14 @@ async function POSTHandler(request, { params }) {
     // Convert Gemini request format to OpenAI/internal format
     const convertedBody = convertGeminiToInternal(body, model, stream);
 
-    // Create new request with converted body
+    // Create new request with converted body. It is plain JSON, so the client's
+    // representation headers no longer describe it.
+    const convertedHeaders = new Headers(request.headers);
+    convertedHeaders.delete("content-encoding");
+    convertedHeaders.delete("content-length");
     const newRequest = new Request(request.url, {
       method: "POST",
-      headers: request.headers,
+      headers: convertedHeaders,
       body: JSON.stringify(convertedBody),
     });
 

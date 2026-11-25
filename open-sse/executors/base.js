@@ -1,20 +1,15 @@
 import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
-import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, FETCH_CONNECT_TIMEOUT_MS, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
-import { proxyAwareFetch, evictResponseDispatcher } from "../utils/proxyFetch.js";
-import { boundRelayStreamLifetime, fetchConnectTimeoutError, isRelaySseResponse } from "../utils/relayStreamLifecycle.js";
+import { evictResponseDispatcher } from "../utils/proxyFetch.js";
+import { cancelDiscardedResponse, createRequestSender, requestAbortError, resolveHeaderTimeout } from "./sendRequest.js";
 import { dbg } from "../utils/debugLog.js";
 
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField, findRejected422Field } from "../config/providerFieldStrips.js";
 import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
-import {
-  prepareProviderAttemptDispatch,
-  runQuotaBearingProviderRequest,
-  settleProviderAttemptDispatch,
-  transferProviderAttemptDispatch } from
-"../services/providerAttemptContext.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
@@ -54,19 +49,6 @@ export function normalizeAnthropicHeaders(headers) {
     if (values.length) headers[kept] = name === "anthropic-version" ? values[0] : values.join(",");
     else delete headers[kept];
   }
-}
-
-function requestAbortError(reason) {
-  if (reason instanceof Error && reason.name === "AbortError") return reason;
-  return new DOMException("Provider request aborted", "AbortError");
-}
-
-/** Release a discarded response without trusting provider-controlled cancel latency. */
-function cancelDiscardedResponse(response) {
-  try {
-    const cancellation = response?.body?.cancel?.("discarded provider response");
-    if (cancellation?.catch) void cancellation.catch(() => {});
-  } catch {/* body may already be locked or closed */}
 }
 
 /**
@@ -300,11 +282,6 @@ export class BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null }) {
-    // An executor-chosen no-proxy transport (OpenCode's TLS client), only when set.
-    const withDirectFetch = (init) => {
-      if (directFetch) init.directFetch = directFetch;
-      return init;
-    };
     if (signal?.aborted) throw requestAbortError(signal.reason);
     // Callers (direct execute() calls, tests) may omit requestContext entirely.
     // Allocate a fresh per-call object so executor request-scoped metadata
@@ -317,25 +294,6 @@ export class BaseExecutor {
     const dispatchesByUrl = {};
     // Keep explicit 400 downgrades across rebuilt attempts in this execution.
     const strippedFields = new Set();
-    let providerAttemptStartedAt = Number.isSafeInteger(attemptStartedAt) && attemptStartedAt > 0 ?
-    attemptStartedAt :
-    null;
-    let dispatchCount = 0;
-    const beginDispatch = () => {
-      const contextual = prepareProviderAttemptDispatch();
-      if (Number.isSafeInteger(contextual) && contextual > 0) {
-        providerAttemptStartedAt = contextual;
-        dispatchCount += 1;
-        return providerAttemptStartedAt;
-      }
-      if (dispatchCount > 0 || providerAttemptStartedAt === null) {
-        const allocated = isFunction(onProviderAttempt) ? onProviderAttempt() : Date.now();
-        if (Number.isSafeInteger(allocated) && allocated > 0) providerAttemptStartedAt = allocated;
-      }
-      dispatchCount += 1;
-      return providerAttemptStartedAt;
-    };
-
     // Merge default retry config with provider-specific config (base ceiling per status).
     // NOTE: never mutate this.config — executors are cached singletons shared across
     // concurrent requests. All per-request policy lives in local vars derived from requestPolicy.
@@ -347,7 +305,16 @@ export class BaseExecutor {
     const skipRules = policy.skipRules;
     const hasContainsRule = policy.hasContainsRule;
     // Header/connect timeout: per-request policy override → provider config → global default.
-    const headerTimeoutMs = policy.headerTimeoutMs || this.config?.timeoutMs || FETCH_CONNECT_TIMEOUT_MS;
+    const headerTimeoutMs = resolveHeaderTimeout(this.config, policy);
+
+    const sender = createRequestSender({
+      attemptStartedAt,
+      onProviderAttempt,
+      headerTimeoutMs,
+      // Keep the base executor's existing redirect opt-in outside a quota context.
+      credentialed: Boolean(this.config?.quirks?.rejectRedirects),
+      deferHeaders: true
+    });
 
     // Count actual sends separately from status retries: every recovery spends
     // the per-URL ceiling, without changing status-specific retry allowances.
@@ -477,17 +444,6 @@ export class BaseExecutor {
 
       if (!retryAttemptsByUrl[urlIndex]) retryAttemptsByUrl[urlIndex] = 0;
 
-      // Abort if upstream doesn't return response headers within the connect/header timeout.
-      // OUR timeout is proven by reason identity at the catch (mergedSignal.reason ===
-      // connectCtrl.signal.reason): undici rejects with the exact reason object we pass to
-      // abort(), and a near-simultaneous caller abort must not be misclassified.
-      let connectCtrl = new AbortController();
-      const armConnectTimer = () => setTimeout(() => {
-        connectCtrl.abort(fetchConnectTimeoutError());
-      }, headerTimeoutMs);
-      let connectTimer = armConnectTimer();
-      let mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-
       try {
         // Native executors may advertise OpenAI input without using its wire API.
         // Require a selected wire format or the resolved Chat Completions endpoint;
@@ -503,12 +459,14 @@ export class BaseExecutor {
         let bodyStr = JSON.stringify(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
-        chargeDispatch(urlIndex);
-        beginDispatch();
-        const fetchOptions = { method: "POST", headers, body: bodyStr, signal: mergedSignal };
-        if (this.config?.quirks?.rejectRedirects) fetchOptions.redirect = "error";
-        let response = await runQuotaBearingProviderRequest(() =>
-          proxyAwareFetch(url, withDirectFetch(fetchOptions), proxyOptions));
+        const send = (serializedBody) => {
+          chargeDispatch(urlIndex);
+          return sender.sendRequest(url, {
+            method: "POST", headers, body: serializedBody, signal,
+            ...(directFetch ? { directFetch } : null)
+          }, proxyOptions);
+        };
+        let response = await send(bodyStr);
         let responseFormat;
         // Only the official Chat endpoint can negotiate its token field or
         // fall back to Responses. Each replay uses the ordinary dispatch budget.
@@ -517,15 +475,7 @@ export class BaseExecutor {
           const replay = async () => {
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: JSON.stringify(requestBody), signal: mergedSignal
-            }), proxyOptions));
+            response = await send(JSON.stringify(requestBody));
           };
           const errorPayload = async () => {
             try { return JSON.parse(await readOptionalProbeText(response, { signal })); }
@@ -575,45 +525,13 @@ export class BaseExecutor {
             log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            // Reset the connect timeout for the new upstream request.
-            clearTimeout(connectTimer);
-            connectCtrl = new AbortController();
-            connectTimer = armConnectTimer();
-            mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-            chargeDispatch(urlIndex);
-            beginDispatch();
-            response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, withDirectFetch({
-              ...fetchOptions, body: bodyStr, signal: mergedSignal
-            }), proxyOptions));
+            response = await send(bodyStr);
           } else break;
         }
         if ((this.provider === "antigravity" || this.provider === "agy") && (response.status === 401 || response.status === 403)) {
           evictResponseDispatcher(response);
         }
-        // Relayed SSE (vercel relay): keep the timeout/abort signal live until
-        // the body actually ends — EOF, error, downstream cancel, or caller
-        // abort — so a stalled stream cannot bypass retry/fallback (port of
-        // diegosouzapw/OmniRoute#7093 "bound Bifrost stream lifetime").
-        const relaySse = Boolean(proxyOptions?.vercelRelayUrl) && isRelaySseResponse(response);
-        if (relaySse) {
-          const originalResponse = response;
-          response = new Response(
-            boundRelayStreamLifetime(response.body, {
-              signal: mergedSignal,
-              timeoutSignal: connectCtrl.signal,
-              onFinalize: () => clearTimeout(connectTimer)
-            }),
-            {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers
-            }
-          );
-          // Keep the quota dispatch ticket reachable through the rebuilt response.
-          transferProviderAttemptDispatch(originalResponse, response);
-        } else {
-          clearTimeout(connectTimer);
-        }
+        response = sender.finishHeaders(response, proxyOptions);
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
@@ -644,7 +562,7 @@ export class BaseExecutor {
           const claudeRequestScoped = isClaudeRequestScopedError(response.status, response.headers, message, claudeFast);
           if (claudeRequestScoped || claudeFast) {
             return { response, url, headers, transformedBody: requestBody,
-              attemptStartedAt: providerAttemptStartedAt, terminalProvenance: "upstream",
+              attemptStartedAt: sender.attemptStartedAt, terminalProvenance: "upstream",
               claudeRequestScoped };
           }
         }
@@ -667,7 +585,7 @@ export class BaseExecutor {
             headers,
             transformedBody: requestBody,
             responseFormat,
-            attemptStartedAt: providerAttemptStartedAt,
+            attemptStartedAt: sender.attemptStartedAt,
             terminalProvenance: "upstream"
           };
         }
@@ -687,34 +605,29 @@ export class BaseExecutor {
           headers,
           transformedBody: requestBody,
           responseFormat,
-          attemptStartedAt: providerAttemptStartedAt,
+          attemptStartedAt: sender.attemptStartedAt,
           terminalProvenance: "upstream",
           ...(claudeFast ? { claudeFast: true } : null)
         };
       } catch (error) {
-        clearTimeout(connectTimer);
+        sender.clearHeaderTimer();
         if (isQuotaDispatchUnavailable(error)) throw error;
         lastError = error;
-        // Prove OUR timer fired by reason identity (mergedSignal.reason ===
-        // connectCtrl's reason). connectCtrl.signal.aborted alone would
-        // misclassify a caller-first abort when the timer fires before the
-        // fetch rejection reaches this catch; the reason on the merged signal
-        // is whichever fired FIRST, so identity is authoritative.
-        const isConnectTimeout = connectCtrl.signal.aborted &&
-        mergedSignal?.reason === connectCtrl.signal.reason;
+        const timeoutReason = sender.timeoutReason;
+        const isConnectTimeout = Boolean(timeoutReason);
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // A caller-initiated abort (signal aborted but NOT our connect timer) must propagate.
         if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
           error.errorKind = "aborted";
-          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
 
         if (claudeFast) {
           error.errorKind = errorKind;
-          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           error.claudeRequestScoped = true;
           throw error;
         }
@@ -722,10 +635,10 @@ export class BaseExecutor {
         // A confirmed Antigravity header deadline has consumed the account's
         // full budget. Preserve the original reason for account-level failover.
         if (isConnectTimeout && (this.provider === "antigravity" || this.provider === "agy")) {
-          const timeout = connectCtrl.signal.reason;
+          const timeout = timeoutReason;
           timeout.errorKind = "connect_timeout";
           timeout.antigravityPreResponseTimeout = true;
-          timeout.providerAttemptStartedAt = providerAttemptStartedAt;
+          timeout.providerAttemptStartedAt = sender.attemptStartedAt;
           throw timeout;
         }
 
@@ -737,7 +650,7 @@ export class BaseExecutor {
         // passes requestPolicy.skipRules into execute() (account layer wires that).
         if (matchedSkip({ statusKey: HTTP_STATUS.BAD_GATEWAY, errorKind, text: error.message })) {
           error.errorKind = errorKind;
-          error.providerAttemptStartedAt = providerAttemptStartedAt;
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
           throw error;
         }
 
@@ -746,13 +659,13 @@ export class BaseExecutor {
           continue;
         }
         error.errorKind = errorKind;
-        error.providerAttemptStartedAt = providerAttemptStartedAt;
+        error.providerAttemptStartedAt = sender.attemptStartedAt;
         throw error;
       }
     }
 
     const error = lastError || new Error(`All ${fallbackCount} URLs failed with status ${lastStatus}`);
-    error.providerAttemptStartedAt = providerAttemptStartedAt;
+    error.providerAttemptStartedAt = sender.attemptStartedAt;
     throw error;
   }
 }

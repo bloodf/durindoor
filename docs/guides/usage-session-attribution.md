@@ -29,3 +29,8 @@ observability has separate settings and is not enabled by these headers.
 Migration 031 adds nullable attribution columns and key-scoped indexes without
 rewriting existing usage or API key secrets. Its version is recorded only after
 the migration succeeds; a failed upgrade is retried on the next open.
+
+Session rows also include a `tokens` split: `input` includes `cacheRead` and
+`cacheCreation`, `uncachedInput` is the remainder, and `output` includes
+`reasoning`. `total` is input plus output. For older rows whose prompt count is
+smaller than the sum of cache counters, the cache counters are added to input.

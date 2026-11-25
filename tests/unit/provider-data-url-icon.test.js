@@ -40,7 +40,7 @@ vi.mock("@/shared/ui/components/Select.jsx", () => ({ default: "Select" }));
 vi.mock("next/server", () => ({
   NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) },
 }));
-vi.mock("@/models", () => model);
+vi.mock("@/lib/localDb", () => model);
 vi.mock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
 vi.mock("@/shared/utils", () => ({ generateId: () => "test" }));
 

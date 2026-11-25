@@ -34,11 +34,7 @@ vi.mock("next/server", () => ({
     redirect: vi.fn((url) => ({ status: 307, url })),
   },
 }));
-vi.mock("@/lib/localDb", () => ({
-  getSettings: mocks.getSettings,
-  validateApiKey: mocks.validateApiKey,
-  getApiKeyByKey: mocks.getApiKeyByKey,
-}));
+
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: mocks.getConsistentMachineId }));
 vi.mock("@/lib/auth/dashboardSession", () => ({ verifyDashboardAuthToken: mocks.verifyDashboardAuthToken }));
 vi.mock("@/lib/auth/trustedPeer", () => ({ hasTrustedPeerHeaders: mocks.hasTrustedPeerHeaders }));
@@ -47,14 +43,16 @@ vi.mock("@/mitm/controlProof", () => ({
   CONTROL_PROOF_HEADER: "x-9r-owner-proof",
   verifyControlProof: vi.fn(),
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProxyPool: mocks.createProxyPool,
   getProxyPools: mocks.getProxyPools,
   getProxyPoolById: mocks.getProxyPoolById,
   updateProxyPool: mocks.updateProxyPool,
   deleteProxyPool: mocks.deleteProxyPool,
   getProviderConnections: mocks.getProviderConnections,
-}));
+  getSettings: mocks.getSettings,
+  validateApiKey: mocks.validateApiKey,
+  getApiKeyByKey: mocks.getApiKeyByKey}));
 vi.mock("undici", async (orig) => {
   const actual = await orig();
   return {

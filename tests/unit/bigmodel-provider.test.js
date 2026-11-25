@@ -11,15 +11,14 @@ const mocks = vi.hoisted(() => ({
   getProviderNodeById: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnectionById: mocks.getProviderConnectionById,
-  updateProviderConnection: mocks.updateProviderConnection,
-}));
+
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
-vi.mock("@/models", () => ({ getProviderNodeById: mocks.getProviderNodeById }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: mocks.getProviderNodeById ,
+  getProviderConnectionById: mocks.getProviderConnectionById,
+  updateProviderConnection: mocks.updateProviderConnection}));
 
 const endpoint = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const originalFetch = global.fetch;

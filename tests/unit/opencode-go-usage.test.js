@@ -9,15 +9,14 @@ const mocks = vi.hoisted(() => ({
   proxyAwareFetch: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnectionById: mocks.getProviderConnectionById,
-  updateProviderConnection: mocks.updateProviderConnection,
-}));
+
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig,
 }));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
-vi.mock("@/models", () => ({ getProviderNodeById: mocks.getProviderNodeById }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: mocks.getProviderNodeById ,
+  getProviderConnectionById: mocks.getProviderConnectionById,
+  updateProviderConnection: mocks.updateProviderConnection}));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));

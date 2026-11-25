@@ -26,14 +26,14 @@ describe("provider profile refresh", () => {
   });
 });
 
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn() }));
 vi.mock("@/dashboardGuard", () => ({ canAccessManagementApi: vi.fn(), isOperatorRequest: vi.fn(), hasExactRequestOrigin: vi.fn() }));
 vi.mock("@/lib/webLoginSession", () => ({ isIsolatedLoginRequest: vi.fn() }));
 
 describe("profile refresh endpoint", () => {
   it("rejects cross-origin requests and returns no credentials on success", async () => {
     const guard = await import("@/dashboardGuard");
-    const models = await import("@/models");
+    const models = await import("@/lib/localDb");
     const { POST } = await import("../../src/app/api/providers/[id]/refresh-profile/route.js");
     guard.canAccessManagementApi.mockResolvedValue(true);
     guard.isOperatorRequest.mockResolvedValue(true);

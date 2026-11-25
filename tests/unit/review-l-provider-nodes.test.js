@@ -16,7 +16,7 @@ describe("provider-node base URL validation", () => {
     const createProviderNode = vi.fn();
     vi.doMock("next/server", () => ({ NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) } }));
     vi.doMock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
-    vi.doMock("@/models", () => ({ createProviderNode, getProviderNodes: async () => [] }));
+    vi.doMock("@/lib/localDb", () => ({ createProviderNode, getProviderNodes: async () => [] }));
     const { POST } = await import("@/app/api/provider-nodes/route.js");
     const response = await POST(new Request("http://localhost/api/provider-nodes", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -31,7 +31,7 @@ describe("provider-node base URL validation", () => {
     const updateProviderNode = vi.fn();
     vi.doMock("next/server", () => ({ NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }) } }));
     vi.doMock("@/dashboardGuard", () => ({ canManageAccessConfig: async () => true }));
-    vi.doMock("@/models", () => ({
+    vi.doMock("@/lib/localDb", () => ({
       getProviderNodeById: async () => ({ id: "node", type: "openai-compatible", prefix: "node" }),
       updateProviderNode,
     }));

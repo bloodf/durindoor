@@ -12,7 +12,7 @@ vi.mock("../../open-sse/utils/kimchiUserAgent.js", () => ({
   updateKimchiUserAgent: vi.fn(),
 }));
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
   getProviderNodeById: vi.fn(),
 }));

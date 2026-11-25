@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ fetch: vi.fn(), connection: vi.fn() }));
 vi.mock("open-sse/index.js", () => ({}));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch, resolveProxyForRequest: () => ({ source: "direct", proxyUrl: null }) }));
-vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.connection }));
+
 vi.mock("@/lib/db/repos/monitoringUsageRepo.js", () => ({ getConnectionUsageSummary: vi.fn() }));
 vi.mock("@/lib/usage/xaiQuotaAdapter.js", () => ({ fetchXaiQuota: vi.fn() }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
@@ -68,7 +68,8 @@ describe("Cursor usage parity through the usage route", () => {
 });
 
 const loginMocks = vi.hoisted(() => ({ create: vi.fn(), list: vi.fn(), update: vi.fn(), machine: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: loginMocks.create, getProviderConnections: loginMocks.list, updateProviderConnection: loginMocks.update }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: loginMocks.create, getProviderConnections: loginMocks.list, updateProviderConnection: loginMocks.update ,
+  getProviderConnectionById: mocks.connection}));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: loginMocks.machine }));
 import { POST as startLogin } from "../../src/app/api/oauth/cursor/login/start/route.js";
 import { POST as pollLogin } from "../../src/app/api/oauth/cursor/login/poll/route.js";

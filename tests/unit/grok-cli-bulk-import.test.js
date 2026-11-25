@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const createProviderConnection = vi.hoisted(() => vi.fn());
 const getProviderConnections = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({ createProviderConnection, getProviderConnections }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection, getProviderConnections }));
 vi.mock("next/server", () => ({
   NextResponse: {
     json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status || 200 }),

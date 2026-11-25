@@ -40,7 +40,7 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/network/initOutboundProxy", () => ({
   ensureOutboundProxyInitialized: mocks.ensureOutboundProxyInitialized,
 }));
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProviderConnection: mocks.createProviderConnection,
   getProviderConnectionById: vi.fn(),
   getProxyPoolById: vi.fn(),

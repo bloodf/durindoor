@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 const mocks = vi.hoisted(() => ({ create: vi.fn(), transport: vi.fn() }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.transport }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.create, getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProxyPoolById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.create, getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProxyPoolById: vi.fn() }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 import { clearOAuthFlowsForTests } from "@/lib/oauth/flowStore.js";
 import { GET, POST } from "../../src/app/api/oauth/[provider]/[action]/route.js";

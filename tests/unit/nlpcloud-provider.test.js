@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const transport = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/utils/requestLogger.js", () => ({ createRequestLogger: vi.fn(async () => ({ logClientRawRequest: vi.fn(), logRawRequest: vi.fn(), logTargetRequest: vi.fn(), logProviderResponse: vi.fn(), logConvertedResponse: vi.fn(), logError: vi.fn() })) }));
-vi.mock("@/lib/localDb", () => ({ getSettings: vi.fn(async () => ({})) }));
-vi.mock("@/models", () => ({ getProviderConnectionById: vi.fn() }));
+
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
+  getSettings: vi.fn(async () => ({}))}));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn() }));
 // The physical dispatch is where the gateway admits or denies quota capacity.
 // Reproduce that boundary here so a local denial is proven to happen before
@@ -28,7 +29,7 @@ import { FORMATS } from "../../open-sse/translator/formats.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
 import { getProviderModels } from "../../open-sse/config/providerModels.js";
 import { buildRegistryProviderProbe, probeRegistryProvider } from "../../src/app/api/providers/providerProbe.js";
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { GET as getConnectionModels } from "../../src/app/api/providers/[id]/models/route.js";
 import { AI_PROVIDERS } from "../../src/shared/constants/providers.js";
 

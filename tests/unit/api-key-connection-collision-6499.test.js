@@ -30,7 +30,7 @@ async function setupTestContext() {
 
   const { POST } = await import("@/app/api/providers/route.js");
   const { PUT } = await import("@/app/api/providers/[id]/route.js");
-  const { getProviderConnections, getProviderConnectionById } = await import("@/models/index.js");
+  const { getProviderConnections, getProviderConnectionById } = await import("@/lib/localDb");
 
   return {
     POST,

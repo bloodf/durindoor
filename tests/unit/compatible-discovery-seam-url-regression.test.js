@@ -5,7 +5,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch })
 // Registry imports must not start Kimchi's release lookup in this offline fixture.
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "kimchi/offline-fixture" }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.proxy }));
-vi.mock("@/models", () => ({ getProviderConnectionById: mocks.get }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: mocks.get }));
 vi.mock("@/sse/services/tokenRefresh", () => ({
   refreshGoogleToken: vi.fn(), updateProviderCredentials: vi.fn(), checkAndRefreshToken: vi.fn(),
 }));

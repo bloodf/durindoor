@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { hasValidCliToken, hasValidToken, isLocalRequest } from "@/dashboardGuard";
 import { hasExactRequestOrigin } from "@/lib/auth/requestOrigin";

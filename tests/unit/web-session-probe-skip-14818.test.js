@@ -11,15 +11,13 @@ const mocks = vi.hoisted(() => ({
   testProxyUrl: vi.fn(),
 }));
 
-vi.mock("@/lib/localDb", () => ({
-  getProviderConnectionById: mocks.getProviderConnectionById,
-  updateProviderConnection: mocks.updateProviderConnection,
-}));
+
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(() => Promise.resolve(new Response("", { status: 400 }))),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: mocks.resolveConnectionProxyConfig }));
-vi.mock("@/models", () => ({ getProviderConnections: vi.fn(), getProviderConnectionById: vi.fn(), getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderConnections: vi.fn(), getProviderConnectionById: mocks.getProviderConnectionById, getProviderNodeById: vi.fn() ,
+  updateProviderConnection: mocks.updateProviderConnection}));
 vi.mock("@/lib/network/proxyTest", () => ({ testProxyUrl: mocks.testProxyUrl }));
 vi.mock("@/shared/utils/machineId", () => ({ getConsistentMachineId: vi.fn().mockResolvedValue("machine-id-test") }));
 
@@ -141,7 +139,7 @@ describe("web-session probe skip (#14818)", () => {
   });
 
   it("test-batch summary counts skipped separately from failed", async () => {
-    const { getProviderConnections } = await import("@/models");
+    const { getProviderConnections } = await import("@/lib/localDb");
     vi.mocked(getProviderConnections).mockResolvedValue([
       { id: "c1", provider: "grok-web", authType: "cookie", apiKey: "sso=abc" },
       { id: "c2", provider: "openai", authType: "apikey", apiKey: "k" },

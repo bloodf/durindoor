@@ -5,7 +5,7 @@ vi.mock("open-sse/utils/proxyFetch.js", async (original) => ({ ...(await origina
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "offline", updateKimchiUserAgent: vi.fn() }));
 
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
 vi.mock("@/lib/usageDb.js", () => ({
   trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}),
   saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}),

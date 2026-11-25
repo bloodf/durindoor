@@ -13,7 +13,7 @@
 import { NextRequest } from "next/server";
 import { canAccessManagementApi, isOperatorRequest, hasExactRequestOrigin } from "@/dashboardGuard";
 import { requireSameOrigin } from "@/lib/auth/requireSameOrigin";
-import { getProviderConnectionById, updateProviderConnection } from "@/models";
+import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { createProvider } from "@/lib/providerRouteHandlers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { isIsolatedLoginRequest, ownerBinding } from "@/lib/webLoginSession";

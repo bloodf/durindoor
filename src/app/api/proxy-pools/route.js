@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { createProxyPool, getProviderConnections, getProxyPools } from "@/lib/localDb";
 import { isString } from "../../../shared/utils/typeChecks.js";
 import { isOperatorRequest } from "@/dashboardGuard";
 import { sanitizePoolResponse } from "./sanitizePoolResponse.js";

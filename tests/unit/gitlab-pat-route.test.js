@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 let createdConnection = null;
 const fetchMock = vi.fn();
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   createProviderConnection: vi.fn(async (data) => {
     createdConnection = data;
     return { id: "conn-1", ...data };

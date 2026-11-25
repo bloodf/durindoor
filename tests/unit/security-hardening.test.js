@@ -61,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.doUnmock("open-sse/config/providers.js");
   vi.doUnmock("open-sse/utils/outboundUrlGuard.js");
-  vi.doUnmock("@/models");
+  vi.doUnmock("@/lib/localDb");
   vi.doUnmock("@/shared/constants/providers");
 });
 
@@ -227,7 +227,7 @@ describe("#3313 DNS guard wiring for provider probe sinks", () => {
 
   function mockCustomEmbeddingRoute(baseUrl) {
     const provider = "embedding-custom-rebind";
-    vi.doMock("@/models", async (importOriginal) => ({
+    vi.doMock("@/lib/localDb", async (importOriginal) => ({
       ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl })),
     }));
@@ -375,7 +375,7 @@ describe("wiring — POST handler (azure + openai-compatible branches, real hand
   it("generic openai-compatible node baseUrl=metadata → 403 {blocked:true}, global fetch zero", async () => {
     setGuardEnv("default");
     // Route reads node.baseUrl from the model store, NOT the request body.
-    vi.doMock("@/models", async (importOriginal) => ({
+    vi.doMock("@/lib/localDb", async (importOriginal) => ({
       ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl: METADATA_URL })),
     }));
@@ -426,7 +426,7 @@ describe("SECAUD gap regressions", () => {
   it("client error must NOT echo attacker URL; server still logs original (POST path)", async () => {
     setGuardEnv("default");
     const ATTACKER = "http://metadata.google.internal./computeMetadata/v1/instance/service-accounts/";
-    vi.doMock("@/models", async (importOriginal) => ({
+    vi.doMock("@/lib/localDb", async (importOriginal) => ({
       ...(await importOriginal()),
       getProviderNodeById: vi.fn(async () => ({ baseUrl: ATTACKER })),
     }));

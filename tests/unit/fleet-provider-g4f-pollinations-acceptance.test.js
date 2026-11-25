@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Registry imports otherwise start an unrelated release-check timer.
 vi.mock("open-sse/utils/kimchiUserAgent.js", () => ({ getKimchiUserAgent: () => "kimchi/offline" }));
-vi.mock("@/models", () => ({ getProviderNodeById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ getProviderNodeById: vi.fn() }));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => null),
 }));

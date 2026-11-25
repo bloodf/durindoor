@@ -7,7 +7,7 @@ import {
   getProviderNodeById,
   getProviderNodes,
   getProxyPoolById } from
-"@/models";
+"@/lib/localDb";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isHiddenProvider } from "@/shared/constants/providers";
 import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";

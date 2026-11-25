@@ -5,7 +5,7 @@ import path from "node:path";
 const mocks = vi.hoisted(() => ({ homedir: vi.fn(), setMitmAliasAll: vi.fn() }));
 vi.mock("os", () => ({ default: { homedir: mocks.homedir }, homedir: mocks.homedir }));
 vi.mock("next/server", () => ({ NextResponse: { json: (body, init = {}) => new Response(JSON.stringify(body), { status: init.status ?? 200 }) } }));
-vi.mock("@/models", () => ({ getMitmAlias: vi.fn(), setMitmAliasAll: mocks.setMitmAliasAll }));
+vi.mock("@/lib/localDb", () => ({ getMitmAlias: vi.fn(), setMitmAliasAll: mocks.setMitmAliasAll }));
 vi.mock("@/mitm/manager", () => ({ getMitmStatus: vi.fn(async () => ({ dnsStatus: {} })) }));
 vi.mock("@/lib/mitmAliasCache", () => ({ writeAliasForTool: vi.fn() }));
 

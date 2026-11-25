@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import dns from "node:dns";
 const mocks = vi.hoisted(() => ({ create: vi.fn(), exchange: vi.fn(), generate: vi.fn(), provider: vi.fn() }));
-vi.mock("@/models", () => ({ createProviderConnection: mocks.create, getProxyPoolById: vi.fn() }));
+vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.create, getProxyPoolById: vi.fn() }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn() }));
 vi.mock("@/lib/oauth/providers.js", async (original) => ({ ...await original(), getProvider: mocks.provider, exchangeTokens: mocks.exchange, generateAuthData: mocks.generate }));
 import { clearOAuthFlowsForTests } from "@/lib/oauth/flowStore.js";

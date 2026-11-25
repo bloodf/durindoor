@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel } from "@/models";
+import { getCustomModels, addCustomModel, updateCustomModel, deleteCustomModel } from "@/lib/localDb";
 import { isNumber, isRecord, isString } from "@/shared/utils/typeChecks.js";
 
 export const dynamic = "force-dynamic";

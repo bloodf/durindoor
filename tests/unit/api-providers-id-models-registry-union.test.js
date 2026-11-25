@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const routedFetch = vi.hoisted(() => vi.fn());
 const resolveConnectionProxyConfig = vi.hoisted(() => vi.fn());
 
-vi.mock("@/models", () => ({
+vi.mock("@/lib/localDb", () => ({
   getProviderConnectionById: vi.fn(),
 }));
 
@@ -32,7 +32,7 @@ vi.mock("open-sse/services/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 
-import { getProviderConnectionById } from "@/models";
+import { getProviderConnectionById } from "@/lib/localDb";
 import { GET } from "../../src/app/api/providers/[id]/models/route.js";
 
 describe("GET /api/providers/[id]/models — registry fetcher uses connection credential and proxy", () => {

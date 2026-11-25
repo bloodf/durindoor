@@ -245,7 +245,7 @@ const DEFAULT_SETTINGS = {
 
 
 const secretKeys = ["password", "passwordSessionEpoch", "mitmSudoEncrypted", "postgresUrl", "mfaEnabled", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
-const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
+const authCriticalKeys = ["comboPrompts", "exposeComboOnly", "requireLogin", "requireApiKey", "authMode", "ssoType", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret", "oidcScopes", "oidcLoginLabel", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains", "tunnelDashboardAccess", "enableObservability", "logToolSources", "enableSessionCapture", "outboundProxyEnabled", "outboundProxyUrl", "outboundNoProxy", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "mitmRouterBaseUrl", "claudeClassifierCompat", "lanDiscoveryEnabled"];
 const redactKeys = ["password", "passwordSessionEpoch", "oidcClientSecret", "mitmSudoEncrypted", "postgresUrl", "mfaSecret", "mfaBackupCodes", "operatorWebhooks", "openrouterRouting"];
 const scopedKeys = ["claudeAutoPing", "codexAutoPing"];
 

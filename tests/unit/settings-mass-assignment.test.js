@@ -96,6 +96,7 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     ["requireLogin", false],
     ["requireApiKey", false],
     ["authMode", "value-for-authMode"],
+    ["ssoType", "saml"],
     ["oidcIssuerUrl", "value-for-oidcIssuerUrl"],
     ["oidcClientId", "value-for-oidcClientId"],
     ["oidcClientSecret", "value-for-oidcClientSecret"],

@@ -7,7 +7,7 @@
 import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import fs from "fs";
 import path from "path";
-import { sanitizeErrorMessage } from "../utils/error.js";
+import { readUpstreamErrorMessage, responsesTerminalFromChatFinish } from "../translator/concerns/finishReason.js";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { isInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.js";
 
@@ -17,7 +17,7 @@ function terminalUsage(raw) {
   const count = (value) => {
     if (!isNumber(value) && (!isString(value) || !value.trim())) return undefined;
     const number = Number(value);
-    return Number.isFinite(number) ? Math.max(0, Math.round(number)) : undefined;
+    return Number.isFinite(number) && number >= 0 ? Math.round(number) : undefined;
   };
   const keys = ["input_tokens", "prompt_tokens", "output_tokens", "completion_tokens", "total_tokens"];
   if (!keys.some((key) => count(raw[key]) !== undefined)) return null;
@@ -279,20 +279,14 @@ export function createResponsesApiTransformStream(logger = null) {
         output: state.outputItems.slice().sort((a, b) => a.outputIndex - b.outputIndex).map(({ item }) => item)
       };
       if (usage) response.usage = usage;
-      let eventType = "response.completed";
-      if (state.upstreamError !== null) {
-        eventType = "response.failed";
-        response.status = "failed";
-        const error = state.upstreamError;
-        response.error = {
-          code: String(error?.code || error?.type || "upstream_error"),
-          message: sanitizeErrorMessage(isString(error) ? error : error?.message || "Upstream stream failed"),
-        };
-      } else if (state.finishReason === "length") {
-        eventType = "response.incomplete";
-        response.status = "incomplete";
-        response.incomplete_details = { reason: "max_output_tokens" };
-      }
+      const terminal = responsesTerminalFromChatFinish(
+        state.upstreamError !== null ? "error" : state.finishReason,
+        readUpstreamErrorMessage(state.upstreamError)
+      );
+      const eventType = terminal.event;
+      response.status = eventType.slice("response.".length);
+      response.error = terminal.error;
+      if (terminal.incomplete_details) response.incomplete_details = terminal.incomplete_details;
       emit(controller, eventType, {
         type: eventType,
         response
@@ -318,7 +312,8 @@ export function createResponsesApiTransformStream(logger = null) {
         }
         if (!isRecord(parsed) || state.completedSent) continue;
 
-        if (parsed.usage && isObject(parsed.usage)) state.usage = parsed.usage;
+        // A later usage object with no readable counts must not replace a good one.
+        if (terminalUsage(parsed.usage)) state.usage = parsed.usage;
         if (parsed.error) state.upstreamError = parsed.error;
         if (!parsed.choices?.length) {
           if (state.upstreamError !== null) {

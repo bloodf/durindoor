@@ -23,9 +23,16 @@ describe("OmniRoute 489e7499ee4159acec082eeee18805f7c988ff96 Responses streams",
   it("reports upstream errors once, including error-only chunks", async () => {
     const result = terminals(await events([{ error: { message: "failed", code: "stream_error" } }, finish("stop")]));
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ type: "response.failed", response: { status: "failed", error: { code: "stream_error", message: "failed" } } });
+    expect(result[0]).toMatchObject({ type: "response.failed", response: { status: "failed", error: { code: "server_error", message: "failed" } } });
   });
-  it("marks length-limited output incomplete", async () => {
-    expect(terminals(await events([finish("length")]))[0]).toMatchObject({ type: "response.incomplete", response: { status: "incomplete" } });
+  it("marks length-limited and filtered output incomplete", async () => {
+    for (const [reason, detail] of [["length", "max_output_tokens"], ["content_filter", "content_filter"]]) {
+      expect(terminals(await events([finish(reason)]))[0]).toMatchObject({ type: "response.incomplete", response: { status: "incomplete", incomplete_details: { reason: detail } } });
+    }
+  });
+  it("drops negative counts and keeps good usage over a later unreadable one", async () => {
+    expect(terminals(await events([finish("stop", { prompt_tokens: -1 })]))[0].response).not.toHaveProperty("usage");
+    const [kept] = terminals(await events([{ choices: [], usage: { prompt_tokens: 3, completion_tokens: 1 } }, finish("stop", { prompt_tokens: "NaN" })]));
+    expect(kept.response.usage).toMatchObject({ input_tokens: 3, output_tokens: 1 });
   });
 });

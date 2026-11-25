@@ -18,6 +18,9 @@ import { randomInt } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildErrorBody } from "../utils/error.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
@@ -151,13 +154,19 @@ export class FreebuffExecutor extends BaseExecutor {
     return false;
   }
 
-  #call(url, init, proxyOptions) {
-    if (this.fetchImpl) return this.fetchImpl(url, init, proxyOptions);
-    return credentialFetch((target, request) => proxyAwareFetch(target, request, proxyOptions), url, init);
+  #call(sender, url, init, proxyOptions, options) {
+    const send = (target, request) => sender.sendRequest(target, request, proxyOptions, this.fetchImpl ?
+      { ...options, transport: (merged) => this.fetchImpl(target, merged, proxyOptions) } : options);
+    // An injected transport owns its redirects; the real one follows only same-origin ones.
+    return this.fetchImpl ? send(url, init) : credentialFetch(send, url, init);
   }
 
   async execute(input) {
     const { model, body, stream, credentials, signal, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    // Session and run bookkeeping are not billable; only the chat completion is.
+    const setup = { quotaBearing: false };
     const payload = isObject(body) ? body : {};
 
     if (!isFreebuffDispatchEnabled(credentials)) {
@@ -189,12 +198,12 @@ export class FreebuffExecutor extends BaseExecutor {
     // 1. Session acquisition.
     let instanceId = "";
     try {
-      const res = await this.#call(FREEBUFF_SESSION_URL, {
+      const res = await this.#call(sender, FREEBUFF_SESSION_URL, {
         method: "POST",
         headers: { ...authHeaders, "x-freebuff-model": requested },
         body: JSON.stringify({}),
         signal,
-      }, proxyOptions);
+      }, proxyOptions, setup);
       const data = res.ok || res.status === 409 ? await readJson(res) : {};
       if (res.ok || (res.status === 409 && isString(data.instanceId) && data.instanceId)) {
         instanceId = isString(data.instanceId) ? data.instanceId : "";
@@ -215,12 +224,12 @@ export class FreebuffExecutor extends BaseExecutor {
     // 2. Start the agent run (best effort, as upstream: a failed start only drops the run id).
     let runId = "";
     try {
-      const res = await this.#call(FREEBUFF_RUNS_URL, {
+      const res = await this.#call(sender, FREEBUFF_RUNS_URL, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ action: "START", agentId }),
         signal,
-      }, proxyOptions);
+      }, proxyOptions, setup);
       if (res.ok) {
         const data = await readJson(res);
         runId = isString(data.runId) ? data.runId : "";
@@ -250,7 +259,7 @@ export class FreebuffExecutor extends BaseExecutor {
     // 4. Chat completion.
     let response;
     try {
-      response = await this.#call(FREEBUFF_CHAT_URL, {
+      response = await this.#call(sender, FREEBUFF_CHAT_URL, {
         method: "POST",
         headers: chatHeaders,
         body: JSON.stringify(upstreamBody),
@@ -259,12 +268,16 @@ export class FreebuffExecutor extends BaseExecutor {
     } catch (error) {
       if (signal?.aborted) throw error;
       this.#finishRun(authHeaders, runId, proxyOptions, "failed");
-      return errorResult({
-        status: 502,
-        type: "upstream_error",
-        code: "freebuff_network_error",
-        message: `Freebuff chat network error: ${snippet(error?.message || error)}`,
-      }, { transformedBody: upstreamBody });
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      return {
+        ...errorResult({
+          status: 502,
+          type: "upstream_error",
+          code: "freebuff_network_error",
+          message: `Freebuff chat network error: ${snippet(error?.message || error)}`,
+        }, { transformedBody: upstreamBody }),
+        attemptStartedAt: sender.attemptStartedAt,
+      };
     }
 
     // 5. Finish the run in the background.
@@ -272,19 +285,23 @@ export class FreebuffExecutor extends BaseExecutor {
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      return errorResult(mapFreebuffError(response.status, text, "chat"), { transformedBody: upstreamBody }, response.headers.get("retry-after"));
+      const failed = errorResult(mapFreebuffError(response.status, text, "chat"), { transformedBody: upstreamBody }, response.headers.get("retry-after"));
+      transferProviderAttemptDispatch(response, failed.response);
+      return { ...failed, attemptStartedAt: sender.attemptStartedAt };
     }
-    return { response, url: FREEBUFF_CHAT_URL, headers: chatHeaders, transformedBody: upstreamBody };
+    return { response, url: FREEBUFF_CHAT_URL, headers: chatHeaders, transformedBody: upstreamBody, attemptStartedAt: sender.attemptStartedAt };
   }
 
   #finishRun(headers, runId, proxyOptions, status) {
     if (!runId) return;
+    // The run outlives the request, so it gets its own sender and no caller signal.
+    const sender = createExecutorSender(this, {}, { observePatchedFetch: false });
     void Promise.resolve()
-      .then(() => this.#call(FREEBUFF_RUNS_URL, {
+      .then(() => this.#call(sender, FREEBUFF_RUNS_URL, {
         method: "POST",
         headers,
         body: JSON.stringify({ action: "FINISH", runId, status, totalSteps: 1, directCredits: 0, totalCredits: 0 }),
-      }, proxyOptions))
+      }, proxyOptions, { quotaBearing: false }))
       .catch(() => {});
   }
 }

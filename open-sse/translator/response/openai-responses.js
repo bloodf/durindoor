@@ -31,7 +31,7 @@ import {
 
 /** Collect events while preserving the stream-wide sequence across deferred completion. */
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { chargeRetained } from "../../utils/streamRetainedBudget.js";
+import { chargeRetained, releaseRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 function recordFinalOutputItem(state, eventType, data) {
   if (eventType !== "response.output_item.added" && eventType !== "response.output_item.done") return;
   const outputIndex = Number(data.output_index);
@@ -165,14 +165,18 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     const extractor = state.inlineResponsesExtractor ||= createThinkTagStreamExtractor();
     if (delta.reasoning_content != null && !isString(delta.reasoning_content)) {
       const pending = extractor.failOpen();
+      trackExtractorHold(state, 0, pending);
       if (pending.content && isString(delta.content)) delta.content = pending.content + delta.content;
     } else if (isString(delta.content)) {
-      const result = extractor.process(delta.content);
+      const input = delta.content;
+      const result = extractor.process(input);
+      trackExtractorHold(state, input.length, result);
       delta.content = result.content;
       if (result.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + result.reasoning;
     }
     if (choice.finish_reason) {
       const pending = extractor.flush();
+      trackExtractorHold(state, 0, pending);
       delta.content = (delta.content || "") + (pending.content || "");
       if (pending.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + pending.reasoning;
     }
@@ -186,6 +190,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
   }
 
   if (isString(delta.reasoning_encrypted_content) && delta.reasoning_encrypted_content) {
+    replaceRetained(state, retainedSize(state.reasoningEncryptedContent), delta.reasoning_encrypted_content.length);
     state.reasoningEncryptedContent = delta.reasoning_encrypted_content;
     startReasoning(state, emit, idx);
   }
@@ -235,6 +240,15 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 }
 
 // Helper functions
+
+// The inline <think> extractor buffers text until its tags close: what went in
+// and has not come out yet is retained. Tag characters it consumes stay counted.
+function trackExtractorHold(state, inputLength, output) {
+  const held = state.inlineExtractorHeld || 0;
+  const next = Math.max(0, held + inputLength - retainedSize(output.content) - retainedSize(output.reasoning));
+  replaceRetained(state, held, next);
+  state.inlineExtractorHeld = next;
+}
 function startReasoning(state, emit, idx) {
   if (!state.reasoningId) {
     const outputIndex = state.nextOutputIndex++;
@@ -334,6 +348,7 @@ function emitTextContent(state, emit, idx, content) {
     logprobs: []
   });
 
+  chargeRetained(state, retainedSize(content));
   if (!state.msgTextBuf[idx]) state.msgTextBuf[idx] = "";
   state.msgTextBuf[idx] += content;
 }
@@ -459,7 +474,11 @@ function emitToolCall(state, emit, tc) {
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
-  if (funcName) state.funcNames[tcIdx] = restoreResponsesToolName(state, funcName);
+  if (funcName) {
+    const restored = restoreResponsesToolName(state, funcName);
+    replaceRetained(state, retainedSize(state.funcNames[tcIdx]), retainedSize(restored));
+    state.funcNames[tcIdx] = restored;
+  }
 
   // apply_patch defaults to custom framing (legacy Codex compatibility), but
   // an explicit function declaration in the request always wins over the name
@@ -468,6 +487,7 @@ function emitToolCall(state, emit, tc) {
 
   // Save id on first sight; if name hasn't arrived yet, emit nothing yet.
   if (newCallId && !state.funcCallIds[tcIdx]) {
+    chargeRetained(state, retainedSize(newCallId));
     state.funcCallIds[tcIdx] = newCallId;
   }
 
@@ -587,7 +607,9 @@ function mintMissingToolCallIds(state, emit) {
   for (const i in state.funcNames) {
     if (state.funcCallIds[i] || !state.funcNames[i]) continue;
     const idx = Number(i);
-    state.funcCallIds[i] = fallbackToolCallId(idx);
+    const callId = fallbackToolCallId(idx);
+    chargeRetained(state, callId.length);
+    state.funcCallIds[i] = callId;
     emitToolCall(state, emit, { index: idx });
   }
 }
@@ -785,7 +807,9 @@ export function openaiResponsesToOpenAIResponse(chunk, state, terminalSnapshot =
   // A new response starts with no custom-tool framing or buffered input (#1436).
   if (eventType === "response.created") {
     state.respCustomToolKinds?.clear();
+    for (const input of state.respCustomToolInput?.values() || []) releaseRetained(state, input.length);
     state.respCustomToolInput?.clear();
+    if (state.responsesTextSnapshots) closeResponsesTextSnapshots(state);
     delete state.responsesTextSnapshots;
   }
 

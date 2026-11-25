@@ -192,7 +192,8 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
-  const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
+  // Kimi platform exposes Responses for its catalog and dynamically synced models.
+  const directFormat = supportedFormats?.includes(sourceFormat) || (provider === "kimi" && sourceFormat === FORMATS.OPENAI_RESPONSES) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
   const preferredFormat = modelTargetFormat || directFormat || defaultFormat;
   let runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;

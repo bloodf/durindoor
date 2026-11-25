@@ -31,6 +31,11 @@ import { USAGE_COST_FIELDS } from "../../../shared/utils/usageCostAllocation.js"
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
+// Exception messages may contain credentials; keep fallback diagnostics safe.
+function logFallback(context, error) {
+  console.warn(`[usageRepo] ${context}`, error instanceof Error ? "Error" : "non-Error thrown");
+}
+
 function maskApiKey(key) {
   if (!key || !isString(key)) return null;
   // Legacy keys contain only 32 bits of secret material (`sk-<8 hex>`).
@@ -109,8 +114,8 @@ async function loadPublicApiKeyIdentity(db) {
   const [{ getApiKeys }, { getGatewayKeys }] = await Promise.all([import("./apiKeysRepo.js"), import("./mcpGatewayRepo.js")]);
   let keys = [];
   let gatewayKeys = [];
-  try { keys = await getApiKeys(); } catch {}
-  try { gatewayKeys = await getGatewayKeys(); } catch {}
+  try { keys = await getApiKeys(); } catch (error) { logFallback("API key identity lookup failed", error); }
+  try { gatewayKeys = await getGatewayKeys(); } catch (error) { logFallback("gateway key identity lookup failed", error); }
   const apiKeyMap = Object.create(null);
   const gatewayKeyMap = Object.create(null);
   for (const key of keys) { apiKeyMap[key.key] = key; apiKeyMap[key.id] = key; }
@@ -271,7 +276,7 @@ async function getConnectionMapCached() {
     for (const c of all) map[c.id] = c.name || c.email || c.id;
     connCache.map = map;
     connCache.ts = Date.now();
-  } catch {}
+  } catch (error) { logFallback("cached connection lookup failed", error); }
   return connCache.map;
 }
 
@@ -287,7 +292,7 @@ async function ensureRingInitialized() {
       tokens: parseJson(r.tokens, {}), storedEventId: r.usageEventId,
       completedAt: parseJson(r.meta, {})?.completedAt
     }));
-  } catch {}
+  } catch (error) { logFallback("recent usage initialization failed", error); }
 }
 
 /**
@@ -472,7 +477,7 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   const call = { requestId, modelKey, provider, connectionId, keyName: safeKeyName, timer: null };
   changePendingCount(call, 1);
   if (session) {
-    try { startActiveSession({ ...session, requestId, model, provider, connectionId }); } catch {/* telemetry must not block requests */}
+    try { startActiveSession({ ...session, requestId, model, provider, connectionId }); } catch (error) { logFallback("active session telemetry failed", error); }
   }
   call.timer = setTimeout(() => finishPendingRequest(requestId), PENDING_TIMEOUT_MS);
   call.timer.unref?.();
@@ -1258,7 +1263,7 @@ export async function getUsageStats(period = "all", opts = {}) {
   );
 
   let allConnections = [];
-  try {allConnections = await getProviderConnections();} catch {}
+  try {allConnections = await getProviderConnections();} catch (error) { logFallback("stats connection lookup failed", error); }
   const connectionMap = Object.create(null);
   for (const c of allConnections) connectionMap[c.id] = c.name || c.email || c.id;
 
@@ -1266,14 +1271,14 @@ export async function getUsageStats(period = "all", opts = {}) {
   try {
     const nodes = await getProviderNodes();
     for (const n of nodes) if (n.id && n.name) providerNodeNameMap[n.id] = n.name;
-  } catch {}
+  } catch (error) { logFallback("stats node lookup failed", error); }
 
   let allApiKeys = [];
-  try {allApiKeys = await getApiKeys();} catch {}
+  try {allApiKeys = await getApiKeys();} catch (error) { logFallback("stats API key lookup failed", error); }
   const apiKeyBySecret = new Map(allApiKeys.map((key) => [key.key, key]));
   const apiKeyById = new Map(allApiKeys.map((key) => [key.id, key]));
   let gatewayKeys = [];
-  try {gatewayKeys = await getGatewayKeys();} catch {}
+  try {gatewayKeys = await getGatewayKeys();} catch (error) { logFallback("stats gateway key lookup failed", error); }
   const gatewayKeyByDigest = new Map(gatewayKeys.map((key) => [usageKeyIdentity(null, key.key, "mcp-gateway"), key]));
 
   // Resolve current labels for stable IDs without placing credentials in reports.
@@ -1808,7 +1813,8 @@ function isValidTimeZone(timeZone) {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone });
     return true;
-  } catch {
+  } catch (error) {
+    logFallback("time zone validation failed", error);
     return false;
   }
 }
@@ -1914,7 +1920,7 @@ export async function getChartData(period = "7d", timeZone) {
   // Historical charts need only each day’s total row.
   const dayRows = [];
   for (const row of loadDaysInRange(db, fixedDays, nowDate, true)) {
-    try { localDateFromKey(row.dateKey); } catch { continue; }
+    try { localDateFromKey(row.dateKey); } catch (error) { logFallback("chart date validation failed", error); continue; }
     const { day } = row;
     dayRows.push({ dateKey: row.dateKey, day: {
       promptTokens: day.promptTokens, completionTokens: day.completionTokens,
@@ -2149,7 +2155,7 @@ export async function getRecentLogs(limit = 200) {
       const { getProviderConnections } = await import("./connectionsRepo.js");
       const connections = await getProviderConnections();
       for (const c of connections) connMap[c.id] = c.name || c.email || "";
-    } catch {}
+    } catch (error) { logFallback("recent logs connection lookup failed", error); }
 
     return rows.map((r) => {
       const ts = formatLogDate(new Date(r.timestamp));

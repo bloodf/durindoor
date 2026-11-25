@@ -3,6 +3,7 @@ import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 import { resolveFallbackModelScope } from "./fallbackScope.js";
+import { isAnthropicAccountCreditExhausted, isAnthropicCreditProvider } from "./anthropicAccountCredit.js";
 import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
@@ -221,6 +222,12 @@ function classifyFallbackError({
   // treating a 400 as request-scoped or retrying a dead 403 key on the short cooldown.
   if (isDashScopeDeadAccount(provider, status, errorText, structuredError)) {
     return { shouldFallback: true, cooldownMs: COOLDOWN_MS.paymentRequired, newBackoffLevel: 0, terminal: true, scope: null };
+  }
+
+  // OmniRoute #21076: an exhausted Anthropic balance blocks every model on the key.
+  if (Number(status) === 400 && isAnthropicCreditProvider(provider) &&
+      isAnthropicAccountCreditExhausted(errorText, structuredError)) {
+    return { ...checkFallbackErrorByRules(status, "credit balance is too low", backoffLevel), scope: "connection" };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not

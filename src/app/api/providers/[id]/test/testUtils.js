@@ -17,7 +17,7 @@ import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connect
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
-import { buildNextAuthSessionCookie } from "@/lib/providers/webCookieAuth.js";
+import { buildPerplexitySessionCookie } from "@/lib/providers/webCookieAuth.js";
 import {
   refreshProviderCredentials,
   shouldRefreshCredentials } from
@@ -1051,7 +1051,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             method: "GET",
             headers: {
               "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-              Cookie: buildNextAuthSessionCookie(connection.apiKey)
+              Cookie: buildPerplexitySessionCookie(connection.apiKey)
             }
           }, effectiveProxy);
           if (!res.ok) return { valid: false, error: "Invalid session cookie" };

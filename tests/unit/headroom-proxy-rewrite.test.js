@@ -20,6 +20,13 @@ const { DASHBOARD_PREFIX, HEAD, forwardedHeaders, rewriteHeadroomHtml, rewriteLo
 
 const PREFIX = DASHBOARD_PREFIX;
 
+describe("port(upstream) #5166: Headroom dashboard stats-lifetime", () => {
+  it("prefixes the fetch used by newer dashboards", () => {
+    const out = rewriteHeadroomHtml("fetch('/stats-lifetime');fetch('/stats-lifetime?days=7')");
+    expect(out).toBe(`fetch('${PREFIX}/stats-lifetime');fetch('${PREFIX}/stats-lifetime?days=7')`);
+  });
+});
+
 describe("rewriteHeadroomHtml", () => {
   it("rewrites allow-listed src/href/action and fetch literals", () => {
     const html = [
@@ -42,11 +49,6 @@ describe("rewriteHeadroomHtml", () => {
     expect(out).toContain(`fetch('${PREFIX}/settings')`);
     expect(out).toContain(`fetch("${PREFIX}/stats-history?from=1#top")`);
     expect(out).toContain(`fetch(\`${PREFIX}/health\`)`);
-  });
-
-  it("port(upstream) #5166: prefixes the stats-lifetime fetch of newer dashboards", () => {
-    const out = rewriteHeadroomHtml("fetch('/stats-lifetime');fetch('/stats-lifetime?days=7')");
-    expect(out).toBe(`fetch('${PREFIX}/stats-lifetime');fetch('${PREFIX}/stats-lifetime?days=7')`);
   });
 
   it("returns non-string and empty bodies unchanged", () => {

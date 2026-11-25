@@ -21,6 +21,10 @@ export default {
   authHint: "API key from app.cline.bot → Settings > API Keys, or sign in with OAuth.",
   transport: {
     baseUrl: "https://api.cline.bot/api/v1/chat/completions",
+    // Streaming-only upstream: a non-streaming request returns a {"data":{...}}
+    // envelope without a `success` flag. chatCore streams upstream and rebuilds
+    // JSON for stream:false clients.
+    forceStream: true,
     headers: {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",

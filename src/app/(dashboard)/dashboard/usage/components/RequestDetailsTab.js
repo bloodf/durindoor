@@ -4,7 +4,7 @@ import { requestSettings } from "@/store/settingsStore";
 import { REQUEST_DETAILS_TITLE } from "@/i18n/keyedMessages";
 import { useKeyedMessage } from "@/i18n/useKeyedMessage";
 
-import { getOutputTokens } from "./tokenDisplay.js";
+import { getCacheCreationTokens, getOutputTokens } from "./tokenDisplay.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -114,18 +114,10 @@ function getCachedTokens(tokens) {
   return tokens?.cached_tokens || tokens?.cache_read_input_tokens || 0;
 }
 
-function getCacheCreationTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
-}
-
 function getInputTokens(tokens) {
   const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
   const cache = getCachedTokens(tokens);
   return prompt < cache ? cache : prompt;
-}
-
-function getCacheWriteTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
 }
 
 function getCacheReadTokens(tokens) {
@@ -470,7 +462,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Cache creation</span>
-                  <span className="font-mono text-dd-text">{getCacheWriteTokens(selectedDetail.tokens).toLocaleString()}</span>
+                  <span className="font-mono text-dd-text">{getCacheCreationTokens(selectedDetail.tokens).toLocaleString()}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Cached</span>

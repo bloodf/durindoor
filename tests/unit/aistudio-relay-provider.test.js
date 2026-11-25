@@ -194,6 +194,43 @@ describe("AI Studio Build through the existing CLIProxyAPI connection", () => {
     expect(dispatched).toHaveLength(3);
   });
 
+  it.each([["build", appRoute], ["devin", devinRoute]])(
+    "ends the %s stream when the sidecar disconnects after a partial reply",
+    async (connection, model) => {
+      let upstream;
+      sidecarFetch.mockImplementation(async (url, init) => {
+        expect(String(url)).toBe(`${sidecar}/v1/chat/completions`);
+        expect(JSON.parse(init.body).model).toBe(model);
+        expect(new Headers(init.headers).get("authorization")).toBe(`Bearer fixture-${connection}`);
+        return new Response(new ReadableStream({
+          start(controller) {
+            upstream = controller;
+            controller.enqueue(new TextEncoder().encode('data: {"id":"partial","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"partial reply"},"finish_reason":null}]}\n\n'));
+          },
+        }), { headers: { "content-type": "text/event-stream" } });
+      });
+
+      const response = await chat(`cpa/${model}`, clients[connection], true);
+      expect(response.status).toBe(200);
+      const reader = response.body.getReader();
+      const first = await reader.read();
+      expect(new TextDecoder().decode(first.value)).toContain("partial reply");
+      upstream.error(new Error("sidecar disconnected"));
+      const remainder = [];
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          remainder.push(new TextDecoder().decode(chunk.value));
+        }
+      } catch (error) {
+        expect(error.message).toContain("sidecar disconnected");
+      }
+      expect(remainder.join("")).not.toContain('"finish_reason":"stop"');
+      expect(sidecarFetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("surfaces missing relay errors without switching to Gemini CLI or another connection", async () => {
     const app = connectApp(`ws://127.0.0.1:8317/v1/ws?auth_token=${relayKey}`);
     app.disconnect();

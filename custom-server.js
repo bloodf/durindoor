@@ -56,15 +56,7 @@ function applyBaselineSecurityHeaders(res) {
 const INBOUND_KEEP_ALIVE_TIMEOUT_MS = 72_000;
 const INBOUND_HEADERS_TIMEOUT_MS = 76_000;
 
-/** Resolve the single listen contract used by the dev and standalone entries. */
-function resolveListenConfig({ argv = process.argv, env = process.env, dev = false } = {}) {
-  const portIndex = argv.indexOf("--port");
-  const rawPort = env.PORT || (portIndex >= 0 ? argv[portIndex + 1] : dev ? 20127 : 20128);
-  const port = Number(rawPort);
-  const host = env.HOSTNAME || "127.0.0.1";
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("Invalid server port");
-  return { port, host };
-}
+const { resolveListenConfig } = require("./src/lib/startup/listenConfig.cjs");
 
 /** Create the common HTTP server, applying the gateway request and upgrade boundaries. */
 function createGatewayServer(handler, { httpModule = http, serverArgs = [], dashboardPort, upgradeHandler, alreadyWrapped = false, wrapperOptions = {} } = {}) {
@@ -91,7 +83,7 @@ function canonicalizeRuntimePaths() {
   // standalone server reads HOSTNAME (defaulting to 0.0.0.0); pin it to 127.0.0.1
   // unless an operator deliberately overrode it. Expose it publicly only behind
   // your own auth/proxy by setting HOSTNAME=0.0.0.0 (#2725).
-  if (!process.env.HOSTNAME) process.env.HOSTNAME = "127.0.0.1";
+  if (!process.env.HOSTNAME) process.env.HOSTNAME = resolveListenConfig().host;
   return DATA_DIR;
 }
 

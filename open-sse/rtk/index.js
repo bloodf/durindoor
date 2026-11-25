@@ -320,6 +320,7 @@ export function normalizeTokenSaverEvent(event) {
   const rtk = e.rtk && isObject(e.rtk) ? e.rtk : {};
   const headroom = e.headroom && isObject(e.headroom) ? e.headroom : {};
   const pxpipe = e.pxpipe && isObject(e.pxpipe) ? e.pxpipe : {};
+  const compression = e.compression && isObject(e.compression) ? e.compression : {};
 
   const rtkBytesSaved = toNonNeg(rtk.bytesSaved);
   const hrState = ["compressed", "skipped", "disabled"].includes(headroom.state) ? headroom.state : "disabled";
@@ -359,6 +360,12 @@ export function normalizeTokenSaverEvent(event) {
       tokensAfterEst: toNonNeg(pxpipe.tokensAfterEst),
       tokensSavedEst: toNonNeg(pxpipe.tokensSavedEst),
       imageCount: toNonNeg(pxpipe.imageCount)
+    },
+    // Stack estimates exclude the preceding RTK and Headroom stages.
+    compression: {
+      tokensBefore: toNonNeg(compression.tokensBefore),
+      tokensAfter: toNonNeg(compression.tokensAfter),
+      tokensSaved: toNonNeg(compression.tokensSaved)
     },
     totals: {
       actualBytesSaved: rtkBytesSaved + hrBodyShrink

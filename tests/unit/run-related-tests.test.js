@@ -13,6 +13,7 @@ function runFixture({ testCount, failFirstBatch = false }) {
     const scripts = join(root, "scripts");
     const pkg = join(root, "tests/node_modules/vitest");
     const calls = join(root, "calls.jsonl");
+    const maxConcurrency = join(root, "max-concurrency");
     const changed = join(root, "changed");
     mkdirSync(scripts);
     mkdirSync(join(pkg, "dist"), { recursive: true });
@@ -22,10 +23,26 @@ function runFixture({ testCount, failFirstBatch = false }) {
       import { appendFileSync } from "node:fs";
       export async function createVitest(_mode, options) {
         appendFileSync(process.env.CALLS, JSON.stringify({ related: options.related }) + "\\n");
+        const specifications = {
+          active: 0,
+          maxActive: 0,
+          async getTestDependencies() {
+            this.active++;
+            this.maxActive = Math.max(this.maxActive, this.active);
+            await new Promise((resolve) => setTimeout(resolve, 2));
+            this.active--;
+            return new Set();
+          },
+        };
         return {
-          getRelevantTestSpecifications: async () => Array.from({ length: ${testCount} }, (_, index) => ({
+          specifications,
+          getRelevantTestSpecifications: async function() {
+            await Promise.all(Array.from({ length: ${testCount} }, () => this.specifications.getTestDependencies({})));
+            appendFileSync(process.env.MAX_CONCURRENCY, String(this.specifications.maxActive));
+            return Array.from({ length: ${testCount} }, (_, index) => ({
             moduleId: process.cwd() + "/unit/test-" + String(index).padStart(2, "0") + ".test.js",
-          })),
+            }));
+          },
           close: async () => {},
         };
       }
@@ -39,7 +56,7 @@ function runFixture({ testCount, failFirstBatch = false }) {
     `);
     const result = spawnSync(process.execPath, [join(scripts, "run-related-tests.mjs"), changed], {
       cwd: root,
-      env: { ...process.env, CALLS: calls, TMPDIR: root },
+      env: { ...process.env, CALLS: calls, MAX_CONCURRENCY: maxConcurrency, TMPDIR: root },
       encoding: "utf8",
     });
     return {
@@ -47,15 +64,17 @@ function runFixture({ testCount, failFirstBatch = false }) {
       status: result.status,
       stderr: result.stderr,
       calls: readFileSync(calls, "utf8").trim().split("\n").map(JSON.parse),
+      maxActive: Number(readFileSync(maxConcurrency, "utf8")),
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
-it("discovers once and runs every related file even after a batch fails", () => {
-  const { root, status, calls } = runFixture({ testCount: 51, failFirstBatch: true });
+it("limits related dependency discovery and runs every file after a batch fails", () => {
+  const { root, status, calls, maxActive } = runFixture({ testCount: 51, failFirstBatch: true });
   expect(status).toBe(1);
+  expect(maxActive).toBe(8);
   expect(calls[0]).toEqual({ related: [join(root, "open-sse/utils/sseFrames.js")] });
   expect(calls.slice(1).map((batch) => batch.length)).toEqual([50, 1]);
   expect(calls.slice(1).flat()).toEqual(Array.from({ length: 51 }, (_, index) =>

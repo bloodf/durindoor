@@ -19,6 +19,7 @@ import { applyCodexAccountHeader } from "open-sse/shared/codexAccountId.js";
 import { PROVIDERS, resolveXiaomiTokenplanBaseUrl } from "open-sse/config/providers.js";
 import { buildProviderProbeHeaders } from "../../providerProbe.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { credentialFetch } from "open-sse/utils/credentialFetch.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { updateProviderConnection } from "@/lib/localDb";
@@ -152,7 +153,10 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
       const models = await discoverZedHostedModels({
         accessToken: connection.accessToken || connection.apiKey,
         providerSpecificData: connection.providerSpecificData || {},
-      }, { proxyOptions: zedProxyOptions, signal: signal || AbortSignal.timeout(15000) });
+      }, {
+        fetch: (url, init) => credentialFetch((target, options) => proxyAwareFetch(target, options, zedProxyOptions), url, init),
+        signal: signal || AbortSignal.timeout(15000),
+      });
       return { provider: connection.provider, connectionId: connection.id, models, source: "provider_api" };
     } catch (error) {
       const status = Number.isInteger(error?.status) ? error.status : 502;

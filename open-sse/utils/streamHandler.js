@@ -2,6 +2,7 @@
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { sanitizeErrorMessage } from "./error.js";
+import { colorStreamStatus } from "./streamStatusColor.js";
 
 // Get HH:MM:SS timestamp
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -68,7 +69,7 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       try { interruptionFinalizer?.(reason); } catch (error) {
         console.error("[Stream] Failed to finalize interrupted stream:", error?.message || error);
       }
-      logStream("⚡", `DISCONNECT: ${reason}`);
+      logStream("⚡", `${colorStreamStatus("DISCONNECT", "yellow")}: ${reason}`);
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
       // Stop upstream work before releasing persistent quota capacity. A delayed
@@ -97,11 +98,11 @@ export function createStreamController({ externalSignal, onDisconnect, onError, 
       onError?.(error);
 
       if (error.name === "AbortError") {
-        logStream("⚡", "ABORTED");
+        logStream("⚡", colorStreamStatus("ABORTED", "yellow"));
         return;
       }
 
-      logStream("✗", `ERROR: ${sanitizeErrorMessage(error?.message || "stream failed")}`, true);
+      logStream("✗", `${colorStreamStatus("ERROR", "red")}: ${sanitizeErrorMessage(error?.message || "stream failed")}`, true);
     },
 
     abort: (reason) => abortController.abort(reason)

@@ -745,8 +745,8 @@ export class AntigravityExecutor extends BaseExecutor {
     return transformedBody;
   }
 
-  async refreshCredentials(credentials, log, proxyOptions = null) {
-    if (!credentials.refreshToken) return null;
+  async refreshCredentialsDetailed(credentials, log, proxyOptions = null) {
+    if (!credentials.refreshToken) return { ok: false, category: "pre_dispatch_failure" };
 
     const signal = AbortSignal.timeout(30_000);
     try {
@@ -769,22 +769,41 @@ export class AntigravityExecutor extends BaseExecutor {
         timeoutMs: 30_000, throwOnTimeout: true
       }));
       if (!response.ok) {
-        return tokens?.error === "invalid_grant" ? { error: "invalid_grant" } : null;
+        if (tokens?.error === "invalid_grant") return { ok: false, category: "invalid_grant" };
+        if (response.status === 429) {
+          const retryAfter = response.headers?.get?.("retry-after");
+          const seconds = Number(retryAfter);
+          return {
+            ok: false,
+            category: "rate_limit",
+            retryAfterMs: Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null,
+          };
+        }
+        return { ok: false, category: "uncertain", status: response.status };
       }
 
-      if (!isString(tokens?.access_token) || !tokens.access_token.trim()) return null;
+      if (!isString(tokens?.access_token) || !tokens.access_token.trim()) return { ok: false, category: "uncertain" };
       log?.info?.("TOKEN", "Antigravity refreshed");
 
       return {
-        accessToken: tokens.access_token.trim(),
-        refreshToken: isString(tokens.refresh_token) && tokens.refresh_token.trim() || credentials.refreshToken,
-        expiresIn: tokens.expires_in,
-        projectId: credentials.projectId
+        ok: true,
+        tokens: {
+          accessToken: tokens.access_token.trim(),
+          refreshToken: isString(tokens.refresh_token) && tokens.refresh_token.trim() || credentials.refreshToken,
+          expiresIn: tokens.expires_in,
+          projectId: credentials.projectId
+        }
       };
     } catch (error) {
       log?.error?.("TOKEN", `Antigravity refresh request failed (${error.name})`);
-      return null;
+      return { ok: false, category: "uncertain" };
     }
+  }
+
+  async refreshCredentials(credentials, log, proxyOptions = null) {
+    const detailed = await this.refreshCredentialsDetailed(credentials, log, proxyOptions);
+    if (!detailed?.ok) return detailed?.category === "invalid_grant" ? { error: "invalid_grant" } : null;
+    return detailed.tokens;
   }
 
   generateProjectId() {

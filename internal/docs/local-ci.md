@@ -14,7 +14,7 @@ fnm exec --using=24.22.2 node scripts/local-ci.mjs \
   --website always --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
 ```
 
-Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Four sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
+Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Twelve sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
 
 ## Workflow coverage
 
@@ -23,7 +23,7 @@ Audited all ten workflows at main `05614249fae91cbb8c4022e91607857e3f942e25`.
 | Workflow and jobs | Local coverage | Hosted control retained |
 | --- | --- | --- |
 | `ci.yml`: lint-and-build, website-build | Root lint, agent index, Postgres migration registry, app build; website build with exact base/head input selection; docs/catalog plus registry-index checks | Manual dispatch, website always built |
-| `test.yml`: vitest | Complete configured/tracked inventory, four supervised batches, empty baseline, fresh JSON/JUnit and hashes | Manual dispatch with explicit base SHA; uploaded reports |
+| `test.yml`: vitest | Complete configured/tracked inventory, twelve supervised batches, empty baseline, fresh JSON/JUnit and hashes | Manual dispatch with explicit base SHA; uploaded reports |
 | `commitlint.yml`: commitlint | Exact base..head and supplied squash title, pinned commitlint | Manual dispatch with base SHA and title |
 | `artifact-smoke.yml`: smoke | Full mode builds standalone and CLI, packs, installs the exact tarball into an isolated prefix and smokes both artifacts; hashes the tarball | Existing manual smoke fallback |
 | `nightly.yml`: nightly | Lint/index/build/tests/reports covered by full mode | Schedule/manual control and prerelease creation unchanged; enabled state is owner-managed |
@@ -39,6 +39,8 @@ local PR validation. CI fallback does not replace the independent review or
 external provenance requirements.
 
 ## Docker and platform exceptions
+
+Website Docker verification caches a labeled dependency and Chromium base image keyed by the lockfile and Dockerfile, and prunes older labeled tags after seven days. Each run builds from a read-only checkout with writable website files and artifacts under its private run root.
 
 Docker requires a separately authorized, disposable local builder. Do not expose
 its socket or registry configuration to Vitest or the local runner. On a host
@@ -58,11 +60,16 @@ owner's recorded builder name and image name:
 ```sh
 docker buildx build --builder "$BUILDER" --platform "$PLATFORM" \
   --build-arg "APP_VERSION=$VERSION" --load --tag "$LOCAL_IMAGE" "$SOURCE"
-docker run --detach --name "$CONTAINER" --platform "$PLATFORM" \
+docker run --rm --detach --name "$CONTAINER" --platform "$PLATFORM" \
   --publish 127.0.0.1:20128:20128 "$LOCAL_IMAGE"
 curl --fail --retry 30 --retry-connrefused --retry-delay 2 \
   --max-time 5 http://127.0.0.1:20128/api/health
 ```
+
+Keep writable workspace, `node_modules`, HOME, package caches, Playwright output
+and test results on bind mounts from a fast local disk, or use `--tmpfs` for
+small scratch paths. Always run containers with `--rm` and remove the per-run
+directory afterwards.
 
 Do not add `--push`, registry login, secrets, real data volumes or publication
 labels. Install cleanup traps before starting: remove only this container,
@@ -73,13 +80,31 @@ source tree. A timeout is a failure; do not increase the ceiling. This separate
 owner evidence is required when Docker/release inputs change and for release
 readiness, and must be explicitly attached rather than inferred from Vitest.
 
+## PostgreSQL fencing evidence
+
+The ordinary batches supply no `DURINDOOR_TEST_PG_URL`, so the live cases in
+`tests/unit/antigravity-lease-postgres.test.js` skip there; skipped cases are
+not evidence. The batches do run `tests/unit/postgres-live-runner.test.js`
+offline: it proves the runner fails without a URL, fails rather than skips in
+required mode or against an unreachable cluster, and hands Vitest only an
+allowlisted environment.
+
+For live evidence, the supervising process starts a disposable cluster with
+synthetic credentials on `127.0.0.1` and runs
+`node scripts/test-postgres-fencing.mjs` with `DURINDOOR_TEST_PG_URL` set.
+The script never controls a container runtime. Run it without the Docker
+socket, for example
+`bwrap --dev-bind / / --bind /dev/null /run/docker.sock env -i PATH="$PATH" DURINDOOR_TEST_PG_URL="$URL" node scripts/test-postgres-fencing.mjs`,
+then remove the container. It fails unless all five fencing tests pass,
+including the multi-process acquire and fence/dispatch races.
+
 ## Verification and merge
 
 The orchestrator or a review worker that ran the gate verifies its own run before merging. The run must have:
 
 - covered the exact PR base and head;
 - every mandatory command exit 0 within its 300-second ceiling;
-- all four test batches passing, with their union equal to the tracked test inventory;
+- all twelve test batches passing, with their union equal to the tracked test inventory;
 - an empty failure baseline.
 
 A review from a different model family than the author must be recorded on the PR. Reread the PR head right before merging; if it changed, run the gate again. Attaching the run summary to the PR is enough evidence. Posting a commit status is optional, and no owner-held receipt is required. Never publish secrets or private filesystem paths in PR comments.

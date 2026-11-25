@@ -4,6 +4,7 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { deleteProviderConnectionsByProviderInTx } from "./connectionsRepo.js";
 import { isString } from "../../../shared/utils/typeChecks.js";
+import { assertValidProviderNode } from "../../providerNodes/validateNode.js";
 
 function rowToNode(row) {
   if (!row) return null;
@@ -56,16 +57,17 @@ export async function getProviderNodeById(id) {
 }
 
 export async function createProviderNode(data) {
+  const checked = assertValidProviderNode(data, { type: data.type });
   const db = await getAdapter();
   const now = new Date().toISOString();
   const node = {
     id: data.id || uuidv4(),
     type: data.type,
-    name: data.name,
-    prefix: data.prefix,
-    apiType: data.apiType,
-    baseUrl: data.baseUrl,
-    ...(data.iconUrl ? { iconUrl: data.iconUrl } : null),
+    name: checked.name ?? data.name,
+    prefix: checked.prefix ?? data.prefix,
+    apiType: checked.apiType ?? data.apiType,
+    baseUrl: checked.baseUrl ?? data.baseUrl,
+    ...(checked.iconUrl ? { iconUrl: checked.iconUrl } : null),
     createdAt: now,
     updatedAt: now
   };
@@ -108,6 +110,7 @@ export async function updateProviderNode(id, data) {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
     const current = rowToNode(row);
+    data = { ...data, ...assertValidProviderNode(data, { type: current.type }) };
     if (data.prefix !== undefined && data.prefix !== current.prefix && ownsPrefix(db, current, current.prefix)) {
       rewriteOwnedAliases(db, current.prefix, id);
     }

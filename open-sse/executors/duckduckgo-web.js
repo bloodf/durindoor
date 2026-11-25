@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { errorJson, extractTextFromContent, jsonResponse, readTextStream, withTimeoutSignal } from "./websession-utils.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -94,7 +95,10 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
     this.noAuth = true;
   }
 
-  async execute({ model, body, stream, signal, proxyOptions }) {
+  async execute(input) {
+    const { model, body, stream, signal, proxyOptions } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const messages = normalizeMessages(body?.messages || []);
     if (messages.length === 0) return { response: errorJson(400, "No messages provided", "invalid_request"), url: CHAT_URL, headers: {}, transformedBody: body };
     const setupSignal = withTimeoutSignal(signal);
@@ -106,10 +110,11 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       Referer: `${DUCKDUCKGO_BASE}/`,
       "x-vqd-accept": "1"
     };
-    const status = await proxyAwareFetch(STATUS_URL, { method: "GET", headers, signal: setupSignal }, proxyOptions);
+    // Fetching the VQD token is setup; only the chat send is quota-bearing.
+    const status = await sender.sendRequest(STATUS_URL, { method: "GET", headers, signal: setupSignal }, proxyOptions, { quotaBearing: false });
     const vqd4 = status.headers.get("x-vqd-4");
     const vqdHash = status.headers.get("x-vqd-hash-1");
-    if (!status.ok || !vqd4 && !vqdHash) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body };
+    if (!status.ok || !vqd4 && !vqdHash) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
 
     const transformedBody = {
       model: normalizeModel(model),
@@ -124,13 +129,17 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       ...(vqd4 ? { "x-vqd-4": vqd4 } : null),
       ...(vqdHash ? { "x-vqd-hash-1": vqdHash } : null)
     };
-    const response = await proxyAwareFetch(CHAT_URL, { method: "POST", headers: chatHeaders, body: JSON.stringify(transformedBody), signal }, proxyOptions);
+    const response = await sender.sendRequest(CHAT_URL, { method: "POST", headers: chatHeaders, body: JSON.stringify(transformedBody), signal }, proxyOptions);
+    const result = (reply) => {
+      transferProviderAttemptDispatch(response, reply);
+      return { response: reply, url: CHAT_URL, headers: chatHeaders, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+    };
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      return { response: errorJson(response.status, text || `DuckDuckGo AI Chat returned HTTP ${response.status}`), url: CHAT_URL, headers: chatHeaders, transformedBody };
+      return result(errorJson(response.status, text || `DuckDuckGo AI Chat returned HTTP ${response.status}`));
     }
-    if (stream) return { response: new Response(transformDuckStream(response.body, signal), { headers: { "Content-Type": "text/event-stream" } }), url: CHAT_URL, headers: chatHeaders, transformedBody };
+    if (stream) return result(new Response(transformDuckStream(response.body, signal), { headers: { "Content-Type": "text/event-stream" } }));
     const content = await collectDuckText(response, signal);
-    return { response: jsonResponse({ id: `chatcmpl-ddg-${randomUUID().slice(0, 12)}`, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: transformedBody.model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }), url: CHAT_URL, headers: chatHeaders, transformedBody };
+    return result(jsonResponse({ id: `chatcmpl-ddg-${randomUUID().slice(0, 12)}`, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: transformedBody.model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }));
   }
 }

@@ -20,21 +20,11 @@ import {
   qoderRegionOf,
   qoderModelListUrl } from
 "../shared/qoder/constants.js";
+import { createCatalogCache } from "./catalogCache.js";
 import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1h, same as the Kiro catalog
-
-/** @type {Map<string, { expiresAt: number, models: any[], rawConfigs: Map<string, object>, fetched: boolean }>} */
-const catalogCache = new Map();
-
-/**
- * In-flight fetch promises keyed by cacheKey. Concurrent first-time
- * callers (parallel chat windows) all observe the same Promise so we
- * fan-out exactly one upstream request per credential per miss.
- * @type {Map<string, Promise<{ expiresAt: number, models: any[], rawConfigs: Map<string, object>, fetched: boolean } | null>>}
- */
-const inflight = new Map();
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1h (the Kiro catalog uses 5 minutes)
 
 /**
  * Stable cache key per access credential and region. Account IDs alone do not
@@ -45,6 +35,10 @@ function cacheKey(credentials, region) {
   const seed = JSON.stringify([region, psd.userId || "", credentials?.accessToken || ""]);
   return createHash("sha256").update(`qoder:${seed}`).digest("hex");
 }
+
+// Concurrent first-time callers (parallel chat windows) share one load, so each
+// credential fans out exactly one upstream request per miss.
+const catalogCache = createCatalogCache({ ttlMs: CACHE_TTL_MS, keyFn: cacheKey });
 
 /**
  * Strip credential -> COSY creds for buildCosyHeaders.
@@ -195,50 +189,24 @@ export async function resolveQoderModels(credentials, options = {}) {
   if (!psd.userId) return null;
 
   const region = options.region || qoderRegionOf(credentials?.provider);
-  const key = cacheKey(credentials, region);
-  const now = Date.now();
-  if (!options.forceRefresh) {
-    const cached = catalogCache.get(key);
-    if (cached && cached.expiresAt > now) {
-      return cached;
-    }
-  }
+  const key = catalogCache.keyFor(credentials, region);
 
-  // Coalesce concurrent misses on the same credential into one upstream call.
   // forceRefresh callers still get their own fetch (they wanted fresh data).
-  const existing = inflight.get(key);
-  if (existing && !options.forceRefresh) {
-    return existing;
-  }
-
-  const fetchPromise = (async () => {
+  return catalogCache.load(key, async () => {
     const fetched = await fetchQoderCatalogRaw(credentials, options.signal, options.proxyOptions, region);
     if (!fetched) return null;
-    const entry = {
+    return {
       expiresAt: Date.now() + CACHE_TTL_MS,
       models: fetched.models,
       rawConfigs: fetched.rawConfigs,
       fetched: true
     };
-    catalogCache.set(key, entry);
-    return entry;
-  })();
-
-  inflight.set(key, fetchPromise);
-  try {
-    return await fetchPromise;
-  } finally {
-    // Clear only if this is still the in-flight entry — a forceRefresh
-    // call that started later may have replaced it.
-    if (inflight.get(key) === fetchPromise) {
-      inflight.delete(key);
-    }
-  }
+  }, { force: Boolean(options.forceRefresh) });
 }
 
 export function invalidateQoderCatalog(credentials) {
   if (!credentials) return;
-  catalogCache.delete(cacheKey(credentials, qoderRegionOf(credentials?.provider)));
+  catalogCache.delete(catalogCache.keyFor(credentials, qoderRegionOf(credentials?.provider)));
 }
 
 export function clearQoderCatalog() {

@@ -5,6 +5,23 @@ import { afterEach, expect, it, vi } from "vitest";
 const route = vi.hoisted(() => ({ id: "openrouter" }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: route.id }), useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }) }));
 import ProviderDetailError from "../../src/app/(dashboard)/dashboard/providers/[id]/error.js";
+// Load every component during collection. Cold-transforming this module graph inside a test body
+// can exceed testTimeout on a loaded host; the timed-out body then keeps rendering into the shared
+// document and breaks every later test.
+import * as AddSystemoneCompatibleModalModule from "../../src/shared/components/AddSystemoneCompatibleModal.js";
+import * as BulkReviewModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/components/BulkReviewModal.js";
+import * as AddCompatibleModalModule from "../../src/app/(dashboard)/dashboard/providers/components/AddCompatibleModal.js";
+import * as AutoPingScheduleModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js";
+import * as BulkImportCodexModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.js";
+import * as BulkImportGrokCliModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/BulkImportGrokCliModal.js";
+import * as VisibleModelsModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js";
+import * as ProviderErrorRulesModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/ProviderErrorRulesModal.js";
+import * as EditCompatibleNodeModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.js";
+import * as EditConnectionModalModule from "../../src/shared/components/EditConnectionModal.js";
+import * as AddApiKeyModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js";
+import * as AddCustomModelModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/AddCustomModelModal.js";
+import * as CookieImportModalModule from "../../src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js";
+import * as ProviderPageModule from "../../src/app/(dashboard)/dashboard/providers/[id]/page.js";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root;
@@ -34,7 +51,7 @@ it("announces the V5 provider error and retries", async () => {
 });
 
 it("keeps System One edit request identical with V5 on and off", async () => {
-  const { default: Modal } = await import("../../src/shared/components/AddSystemoneCompatibleModal.js");
+  const { default: Modal } = await AddSystemoneCompatibleModalModule;
   const calls = [];
   const fetchMock = vi.fn(async (url, options) => {
     calls.push({ url, method: options.method, body: JSON.parse(options.body) });
@@ -66,7 +83,7 @@ it("keeps System One edit request identical with V5 on and off", async () => {
 });
 
 it.each([false, true])("preserves bulk review actions with V5 %s", async (v5) => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/components/BulkReviewModal.js");
+  const { default: Modal } = await BulkReviewModalModule;
   if (v5) document.documentElement.dataset.ui = "v5";
   const show = vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
@@ -84,7 +101,7 @@ it.each([false, true])("preserves bulk review actions with V5 %s", async (v5) =>
 });
 
 it("keeps compatible provider creation requests identical", async () => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/components/AddCompatibleModal.js");
+  const { default: Modal } = await AddCompatibleModalModule;
   const calls = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options) => {
     calls.push({ url, method: options.method, body: JSON.parse(options.body) });
@@ -114,7 +131,7 @@ it("keeps compatible provider creation requests identical", async () => {
 });
 
 it.each([false, true])("retains schedule save data with V5 %s", async (v5) => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/AutoPingScheduleModal.js");
+  const { default: Modal } = await AutoPingScheduleModalModule;
   if (v5) document.documentElement.dataset.ui = "v5";
   vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
@@ -132,8 +149,8 @@ it.each([
   ["BulkImportGrokCliModal", "/api/oauth/grok-cli/bulk-import", { accounts: [{ accessToken: "example" }] }],
 ])("keeps %s import requests identical", async (name, url, expectedBody) => {
   const modules = {
-    BulkImportCodexModal: () => import("../../src/app/(dashboard)/dashboard/providers/[id]/BulkImportCodexModal.js"),
-    BulkImportGrokCliModal: () => import("../../src/app/(dashboard)/dashboard/providers/[id]/BulkImportGrokCliModal.js"),
+    BulkImportCodexModal: () => BulkImportCodexModalModule,
+    BulkImportGrokCliModal: () => BulkImportGrokCliModalModule,
   };
   const { default: Modal } = await modules[name]();
   const calls = [];
@@ -155,7 +172,7 @@ it.each([
 });
 
 it("keeps visible model writes identical", async () => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/VisibleModelsModal.js");
+  const { default: Modal } = await VisibleModelsModalModule;
   const writes = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
     if (options.method === "PUT") writes.push({ url, method: options.method, body: JSON.parse(options.body) });
@@ -177,7 +194,7 @@ it("keeps visible model writes identical", async () => {
 });
 
 it("attaches invalid rule feedback to the V5 match field", async () => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/ProviderErrorRulesModal.js");
+  const { default: Modal } = await ProviderErrorRulesModalModule;
   document.documentElement.dataset.ui = "v5";
   vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
@@ -194,9 +211,9 @@ it.each([
   ["rules", "Save"], ["node", "Save"], ["connection", "Save"],
 ])("preserves %s save callback with V5 on and off", async (kind, label) => {
   const imports = {
-    rules: () => import("../../src/app/(dashboard)/dashboard/providers/[id]/ProviderErrorRulesModal.js"),
-    node: () => import("../../src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.js"),
-    connection: () => import("../../src/shared/components/EditConnectionModal.js"),
+    rules: () => ProviderErrorRulesModalModule,
+    node: () => EditCompatibleNodeModalModule,
+    connection: () => EditConnectionModalModule,
   };
   const { default: Modal } = await imports[kind]();
   vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
@@ -218,7 +235,7 @@ it.each([
 });
 
 it.each(["apiKey", "customModel"])("preserves %s submit values with the switch on and off", async (kind) => {
-  const { default: Modal } = await (kind === "apiKey" ? import("../../src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js") : import("../../src/app/(dashboard)/dashboard/providers/[id]/AddCustomModelModal.js"));
+  const { default: Modal } = await (kind === "apiKey" ? AddApiKeyModalModule : AddCustomModelModalModule);
   const calls = []; const payloads = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options) => { calls.push({ url, method: options.method, body: JSON.parse(options.body) }); return { ok: true, json: async () => ({ valid: true }) }; }));
   vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
@@ -242,7 +259,7 @@ it.each(["apiKey", "customModel"])("preserves %s submit values with the switch o
 });
 
 it("keeps cookie import pairing and submission requests identical", async () => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js");
+  const { default: Modal } = await CookieImportModalModule;
   const calls = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options) => {
     calls.push({ url, method: options.method, body: JSON.parse(options.body) });
@@ -268,7 +285,7 @@ it("keeps cookie import pairing and submission requests identical", async () => 
 });
 
 it("masks V5 cookie and local storage credentials", async () => {
-  const { default: Modal } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js");
+  const { default: Modal } = await CookieImportModalModule;
   document.documentElement.dataset.ui = "v5";
   vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function () { this.setAttribute("open", ""); });
   vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function () { this.removeAttribute("open"); });
@@ -282,7 +299,7 @@ it("masks V5 cookie and local storage credentials", async () => {
 });
 
 it("keeps provider page API key, custom model, and rule writes identical across the switch", async () => {
-  const { default: Page } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+  const { default: Page } = await ProviderPageModule;
   const writes = [];
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
     const path = String(url);
@@ -332,7 +349,7 @@ it("keeps provider page API key, custom model, and rule writes identical across 
 });
 
 it("keeps connection edit and bulk review writes identical across the switch", async () => {
-  const { default: Page } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+  const { default: Page } = await ProviderPageModule;
   const writes = [];
   const connection = { id: "c1", provider: "openrouter", name: "Example", authType: "apikey", priority: 1, isActive: true, providerSpecificData: {} };
   vi.stubGlobal("fetch", vi.fn(async (url, options = {}) => {
@@ -375,7 +392,7 @@ it("keeps connection edit and bulk review writes identical across the switch", a
 });
 
 it("keeps compatible node edits identical across the switch", async () => {
-  const { default: Page } = await import("../../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+  const { default: Page } = await ProviderPageModule;
   route.id = "openai-compatible-acme";
   const node = { id: route.id, name: "Example", prefix: "example", type: "openai-compatible", apiType: "chat", baseUrl: "https://example.com/v1" };
   const writes = [];

@@ -5,6 +5,11 @@ import { getSettingsSync } from "./settingsRepo.js";
 import { redactValue } from "../../observability/redact.js";
 import { isFunction, isString } from "../../../shared/utils/typeChecks.js";
 
+// Do not log exception messages: they can contain payloads or credentials.
+function logFallback(context, error) {
+  console.warn(`[proxyTimelineRepo] ${context}`, error instanceof Error ? "Error" : "non-Error thrown");
+}
+
 export const QUEUE_CAP = 10_000;
 export const QUEUE_BYTE_LIMIT = 32 * 1024 * 1024;
 export const FLUSH_BATCH = 50;
@@ -23,7 +28,7 @@ let flushPromise = null;
 let pendingPersist = null;
 let immediateScheduled = false;
 
-function enabled() { try { return getSettingsSync().enableProxyTimeline === true; } catch { return false; } }
+function enabled() { try { return getSettingsSync().enableProxyTimeline === true; } catch (error) { logFallback("settings lookup failed", error); return false; } }
 function bytes(item) { return Buffer.byteLength(JSON.stringify(item), "utf8"); }
 function seq(id) { const n = (seqs.get(id) || 0) + 1; seqs.set(id, n); return n; }
 function noteDrop(id) { dropped.set(id, (dropped.get(id) || 0) + 1); }
@@ -89,7 +94,7 @@ export function startTrace(traceOrId, fields = {}) {
     activeTraces.add(id);
     schedule();
     return id;
-  } catch { return null; }
+  } catch (error) { logFallback("trace start failed", error); return null; }
 }
 
 export function record(traceIdOrEvent, maybeEvent = {}) {
@@ -108,7 +113,7 @@ export function record(traceIdOrEvent, maybeEvent = {}) {
       truncated: data.truncated,
     } });
     schedule();
-  } catch {}
+  } catch (error) { logFallback("event recording failed", error);}
 }
 
 export function finishTrace(traceOrId, fields = {}) {
@@ -123,11 +128,11 @@ export function finishTrace(traceOrId, fields = {}) {
     activeTraces.delete(trace.id);
     finishedTraces.add(trace.id);
     schedule();
-  } catch {}
+  } catch (error) { logFallback("trace finish failed", error);}
 }
 
 export function onTimelineWrite(fn) { if (!isFunction(fn)) return () => {}; listeners.add(fn); return () => listeners.delete(fn); }
-function emit(item) { for (const listener of listeners) try { listener(item); } catch {} }
+function emit(item) { for (const listener of listeners) try { listener(item); } catch (error) { logFallback("write listener failed", error);} }
 function schedule() {
   if (pendingPersist || queue.length >= FLUSH_BATCH) {
     if (!immediateScheduled) {
@@ -213,7 +218,7 @@ async function flushBatch() {
           await pendingPersist.adapter.flush?.();
           finalizeBatch(pendingPersist.batch);
           pendingPersist = null;
-        } catch {
+        } catch (error) { logFallback("pending batch flush failed", error);
           retry = true;
           return;
         }
@@ -223,7 +228,7 @@ async function flushBatch() {
     const generation = flushGeneration;
     const { batch, restore } = takeBatch();
     let adapter;
-    try { adapter = await getProxyTimelineAdapter(); } catch {
+    try { adapter = await getProxyTimelineAdapter(); } catch (error) { logFallback("batch adapter lookup failed", error);
       if (generation === flushGeneration) { restore(); retry = true; }
       return;
     }
@@ -245,7 +250,7 @@ async function flushBatch() {
           }
         }
       });
-    } catch {
+    } catch (error) { logFallback("batch transaction failed", error);
       if (generation === flushGeneration) {
         restore();
         retry = true;
@@ -254,7 +259,7 @@ async function flushBatch() {
     }
     try {
       await adapter.flush?.();
-    } catch {
+    } catch (error) { logFallback("batch flush failed", error);
       if (generation === flushGeneration) {
         pendingPersist = { adapter, batch, generation };
         retry = true;
@@ -302,7 +307,7 @@ export async function listTraces(filter = {}) {
     const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
     const rows = db.all(`SELECT * FROM ${traces}${where} ORDER BY started_at DESC LIMIT ? OFFSET ?`, [...values, pageSize, (page - 1) * pageSize]);
     return { traces: rows, pagination: { page, pageSize, totalItems, totalPages, hasNext: page < totalPages, hasPrev: page > 1 } };
-  } catch { return { traces: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, hasNext: false, hasPrev: false } }; }
+  } catch (error) { logFallback("trace list failed", error); return { traces: [], pagination: { page: 1, pageSize: 20, totalItems: 0, totalPages: 1, hasNext: false, hasPrev: false } }; }
 }
 export async function getTrace(id) {
   try {
@@ -310,7 +315,7 @@ export async function getTrace(id) {
     const tables = timelineTables(db); const trace = db.get(`SELECT * FROM ${tables.traces} WHERE id=?`, [id]);
     if (!trace) return null;
     return { ...trace, events: db.all(`SELECT * FROM ${tables.events} WHERE trace_id=? ORDER BY seq,id`, [id]).map((e) => ({ ...e, payload: e.payload ? JSON.parse(e.payload) : null })) };
-  } catch { return null; }
+  } catch (error) { logFallback("trace lookup failed", error); return null; }
 }
 export async function getTraceMeta(id) {
   try {
@@ -320,7 +325,7 @@ export async function getTraceMeta(id) {
       `SELECT * FROM ${traces} WHERE id=?`,
       [id],
     ) || null;
-  } catch { return null; }
+  } catch (error) { logFallback("trace metadata lookup failed", error); return null; }
 }
 export async function clearTraces() {
   flushGeneration++;
@@ -334,12 +339,12 @@ export async function clearTraces() {
   finishedTraces.clear();
   flushedStarts.clear();
   if (timer) { clearTimeout(timer); timer = null; }
-  try { const db = await getProxyTimelineAdapter(); const tables = timelineTables(db); db.run(`DELETE FROM ${tables.events}`); db.run(`DELETE FROM ${tables.traces}`); } catch {}
+  try { const db = await getProxyTimelineAdapter(); const tables = timelineTables(db); db.run(`DELETE FROM ${tables.events}`); db.run(`DELETE FROM ${tables.traces}`); } catch (error) { logFallback("trace clearing failed", error);}
 }
 /** Delete traces (and their events) started before `cutoffIso`, whatever the retention setting says. */
 export async function pruneTimelineOlderThan(cutoffIso) {
   let db;
-  try { db = await getProxyTimelineAdapter(); } catch { return 0; }
+  try { db = await getProxyTimelineAdapter(); } catch (error) { logFallback("prune adapter lookup failed", error); return 0; }
   const tables = timelineTables(db);
   const before = db.get(`SELECT COUNT(*) AS cnt FROM ${tables.traces} WHERE started_at < ?`, [cutoffIso]);
   db.transaction(() => {
@@ -361,6 +366,6 @@ export async function pruneExpired() {
         db.run(`DELETE FROM ${tables.events} WHERE trace_id NOT IN (SELECT id FROM ${tables.traces})`);
       }
     });
-  } catch {}
+  } catch (error) { logFallback("retention pruning failed", error);}
 }
 if (!global._proxyTimelinePruneTimer) { global._proxyTimelinePruneTimer = setInterval(() => { pruneExpired(); }, 3600000); global._proxyTimelinePruneTimer.unref?.(); }

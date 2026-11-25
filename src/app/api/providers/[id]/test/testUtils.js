@@ -397,7 +397,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   // Xiaomi MiMo session-login rows hold a passToken, not an access token: the
   // account-service handshake is the probe.
   if (connection.provider === "xiaomi-mimo") {
-    const { getMimoAccountCookie } = await import("open-sse/shared/mimoAccount.js");
+    const { getMimoAccountCookie } = await import("open-sse/utils/mimoAccount.js");
     const cookie = await getMimoAccountCookie(connection.providerSpecificData, effectiveProxy);
     return cookie ?
     { valid: true, error: null, refreshed: false, newTokens: null } :

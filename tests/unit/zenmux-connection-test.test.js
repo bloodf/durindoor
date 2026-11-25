@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
+import { DEFAULT_SETTINGS_SCHEMA } from "../../src/lib/settings/settingsSchema.js";
 
 const mocks = vi.hoisted(() => ({
   getProviderConnectionById: vi.fn(),
@@ -16,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/localDb", () => ({
-  getSettings: vi.fn(async () => ({})),
+  getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS_SCHEMA })),
   getProviderConnectionById: mocks.getProviderConnectionById,
   updateProviderConnection: mocks.updateProviderConnection,
 }));

@@ -1,0 +1,22 @@
+# PR 758 credential design review
+
+Reviewed repository base: `9647d9f7a76f884da241ef1d0a383d1748fe3fb3`.
+Original design Git blob: `b360021d12b6a1377863417ffc772baceb2d9172`.
+Reviewed and corrected design Git blob: `ee277d63698e355bc2564ec7b39db113f42fdd73` (`git hash-object internal/docs/port-reports/1072-pr758-credential-design.md`).
+Upstream: [decolua/9router PR 758](https://github.com/decolua/9router/pull/758), head `ba58e5a38fb4e8615107d8ad08b9d9e6166e001d` at review. Its broad diff includes unrelated upstream history; this review covers the credential and scheduler proposal, not every changed file.
+
+Disposition: the corrected design is acceptable as a conditional specification. There are no unresolved high-severity design findings after the corrections below. This is not approval to implement, enable, or release product behavior. The design explicitly blocks release until its security, deployment, identity, and concurrency gates are demonstrated. No product code or stored credentials were changed.
+
+## Findings and resolution
+
+1. **High: OAuth identity and PKCE were assumed to exist.** Local `src/lib/oauth/services/antigravity.js` sends neither a PKCE challenge nor verifier and obtains user info without the claimed verified identity path. Email alone cannot bind an account safely. The correction requires provider-compatible PKCE, a verified stable subject, and interactive reauthorization for legacy connections without one. If compatibility cannot be proved, recovery stays disabled.
+2. **High: concurrent writers and uncertain exchanges could invalidate or overwrite credentials.** Upstream `src/lib/tokenScheduler/scheduler.js` uses process-local tick control and independently refreshes and writes tokens. Local gateway refresh also occurs in `open-sse/handlers/chatCore.js`. The correction requires all Antigravity writers to use one durable database protocol, a generation fence, an attempt marker, atomic token persistence, and a stop on uncertain dispatch across all entry points. Lease expiration cannot make an external operation safe to replay.
+3. **High: encryption and export assumptions could lose or expose credentials.** `src/lib/crypto/columnCrypto.js` creates a missing master key, and its existing key is installation-local. The correction distinguishes first enrollment from key loss, specifies authenticated binding and fail-closed behavior, and excludes recovery credentials from initial import and export. Portable backup requires a separate reviewed design.
+4. **High: browser controls must cover the actual network and consent boundary.** Upstream `src/lib/puppeteer/antigravityLogin.js` uses callback prefix matching and clicks consent. The correction requires exact callback matching and interception, a separately enforced network boundary, controlled token and userinfo requests, and a stop for new consent or challenges. The feature remains disabled where sandbox or egress enforcement cannot be proved.
+5. **Medium: new routes, logs, and distribution need explicit work.** `src/app/api/settings/database/route.js` has a rate-limited dual-auth gate, but a new endpoint does not inherit it by implication. The local Antigravity service includes raw provider bodies in exceptions. The root manifest, `next.config.mjs`, and `cli/package.json` do not establish the proposed Puppeteer packages or Chromium distribution. The correction requires explicit protected routes, allowlisted errors, pinned and reviewed packaging, and independent real-browser isolation tests.
+
+## Evidence and test feasibility
+
+The review inspected the upstream PR metadata and its browser and scheduler source at the head above, plus the local guard example, Antigravity service, encryption helper, gateway refresh path, Next standalone tracing configuration, and CLI package manifest. The upstream PR adds auto-login and scheduler routes, browser helpers, and scheduler services. Its code is evidence of behavior, not a safe patch to copy.
+
+The corrected design specifies synthetic OAuth and fake-browser tests for state, identity, error redaction, lifecycle, packaging, and failure cases. It also requires actual multi-process races and crash injection against both supported database engines, plus owner-controlled real-browser sandbox and network tests. Fake-browser tests alone cannot prove Chromium isolation. These are future implementation gates; this documentation review did not execute them or contact a real provider.

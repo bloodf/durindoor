@@ -1,4 +1,4 @@
-// Zed-hosted executor (staged; not registered in executors/index.js).
+// Zed-hosted executor.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // open-sse/executors/zed-hosted.ts and open-sse/executors/zedClientVersion.ts (MIT),

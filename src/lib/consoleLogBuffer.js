@@ -59,19 +59,34 @@ function stripAnsi(str) {
   return str.replace(ANSI_RE, "");
 }
 
+// Snapshot at capture time with bounded traversal and output, even for hostile values.
 function formatArg(arg) {
-  if (isString(arg)) return stripAnsi(arg);
-  if (arg instanceof Error) return stripAnsi(arg.stack || arg.message || String(arg));
   try {
-    return stripAnsi(JSON.stringify(arg));
+    if (isString(arg)) return stripAnsi(arg.slice(0, 16384));
+    if (arg instanceof Error) return stripAnsi(String(arg.stack || arg.message).slice(0, 16384));
+    const depths = new WeakMap();
+    const seen = new WeakSet();
+    let remaining = 1000;
+    const result = JSON.stringify(arg, function (key, value) {
+      if (--remaining < 0) throw new Error("Console snapshot limit exceeded");
+      if (isString(value)) return value.slice(0, 16384);
+      if (value !== null && Object(value) === value) {
+        const depth = key === "" ? 0 : (depths.get(this) ?? 0) + 1;
+        if (depth >= 8) return "[Max depth]";
+        if (seen.has(value)) return "[Circular]";
+        seen.add(value);
+        depths.set(value, depth);
+      }
+      return value;
+    });
+    return stripAnsi((result === undefined ? String(arg) : result).slice(0, 16384));
   } catch {
-    return stripAnsi(String(arg));
+    return "[Unformattable]";
   }
 }
 
 function appendLine(args) {
-  // Keep argument arrays independent while deferring object serialization to readers.
-  const line = args.map((arg) => Array.isArray(arg) ? arg.slice() : arg);
+  const line = args.map(formatArg);
   if (state.logs.length < CONSOLE_LOG_CONFIG.maxLines) {
     state.logs.push(line);
   } else {

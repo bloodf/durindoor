@@ -4,7 +4,8 @@ import { admit } from "../services/admission.js";
 import { summarizeToolSources } from "../utils/toolSources.js";
 import { CAPTURE_CONSENT_HEADER, CAPTURE_SESSION_HEADER, prepareMessageCapture } from "../utils/messageCapture.js";
 import { usageAttributionFromHeaders } from "@/lib/usageAttribution.js";
-import { normalizeModelReference } from "open-sse/services/model.js";
+import { normalizeModelReference, parseModel } from "open-sse/services/model.js";
+import { getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getApiKeyByKey, getApiKeyById, getApiKeyUsageLimitStatus, getComboForModel } from "@/lib/localDb";
 import { getComboCanonicalName, createRoutableModelIdChecker } from "../services/model.js";
@@ -157,7 +158,9 @@ async function handleChatHandler(request, clientRawRequest = null, requestId = g
     // Reserve the lifetime token allowance (#2833) once per request, before any
     // combo or retry dispatch; handleChat releases it when the response ends.
     if (authenticatedKeyRecord?.isActive) {
-      const reservation = reserveLifetimeTokens(request, authenticatedKeyRecord, body);
+      const requested = parseModel(modelStr);
+      const reservationContext = { modelMaxOutput: getCapabilitiesForModel(requested.provider, requested.model).maxOutput, sourceFormat };
+      const reservation = reserveLifetimeTokens(request, authenticatedKeyRecord, body, Date.now(), reservationContext);
       if (!reservation.ok) {
         log.warn("AUTH", `API key lifetime token limit reached (${reservation.used}/${reservation.limit})`);
         return annotateClientAdmissionFailure(errorResponse(HTTP_STATUS.RATE_LIMITED,

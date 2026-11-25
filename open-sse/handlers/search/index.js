@@ -226,7 +226,7 @@ async function tryDedicatedProvider({
     }
     const data = await resp.json();
     const accounting = mediaAccounting(data, provider.id, "search");
-    const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
+    const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType, params.domainFilter);
     const results = normalized.results.slice(0, params.maxResults);
     const duration = Date.now() - startTime;
 

@@ -12,22 +12,25 @@ function defaultDir() {
   return path.join(os.homedir(), `.${APP_NAME}`);
 }
 
-/**
- * Best-effort: repair a DATA_DIR whose mode is broader than owner-only.
- * GHSA-2pg2-xm9r-8544 (ported from OmniRoute): a directory created without
- * an explicit mode inherits the process umask (0755 under the common 022),
- * letting every other local user read whatever is stored under DATA_DIR.
- * No-op on Windows (no POSIX mode bits); never throws — a foreign-owned
- * DATA_DIR (e.g. a bind mount) must not block boot. Duplicated (not
- * imported) from db/paths.js's chmodQuiet because that module imports
- * DATA_DIR from this one.
- */
-function chmodDirQuiet(dir) {
-  if (process.platform === "win32") return;
+/** Create owner-only and repair permissions only when the current user owns the directory. */
+function ensurePrivateDir(dir, {
+  platform = process.platform,
+  mkdir = fs.mkdirSync,
+  stat = fs.statSync,
+  chmod = fs.chmodSync,
+  getuid = process.getuid,
+  warn = console.warn,
+} = {}) {
+  mkdir(dir, { recursive: true, mode: DIR_MODE });
+  if (platform === "win32") return;
   try {
-    fs.chmodSync(dir, DIR_MODE);
+    const info = stat(dir);
+    if (getuid && info.uid === getuid() && (info.mode & 0o777) !== DIR_MODE) {
+      chmod(dir, DIR_MODE);
+      warn(`[DATA_DIR] Tightened permissions on '${dir}' to 0700`);
+    }
   } catch {
-    // best-effort
+    // Permission repair is best-effort.
   }
 }
 
@@ -36,14 +39,10 @@ function resolveDataDir(isHosted) {
   if (!configured && isHosted()) throw new Error("DATA_DIR is required in hosted mode");
   if (!configured) {
     const dir = defaultDir();
-    if (fs.existsSync(dir)) {
-      chmodDirQuiet(dir);
-    } else {
-      try {
-        fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-      } catch {
-        // best-effort; a real failure surfaces from the next file write instead
-      }
+    try {
+      ensurePrivateDir(dir);
+    } catch {
+      // A real failure surfaces from the next file write instead.
     }
     return dir;
   }
@@ -59,8 +58,7 @@ function resolveDataDir(isHosted) {
   const resolved = path.resolve(configured);
   try {
     /** Upstream PR #3381: newly configured credential directories start owner-only. */
-    fs.mkdirSync(resolved, { recursive: true, mode: DIR_MODE });
-    chmodDirQuiet(resolved);
+    ensurePrivateDir(resolved);
     if (isHosted()) fs.accessSync(resolved, fs.constants.W_OK);
     return resolved;
   } catch (e) {
@@ -74,4 +72,4 @@ function resolveDataDir(isHosted) {
 }
 
 
-module.exports = { resolveDataDir };
+module.exports = { resolveDataDir, ensurePrivateDir };

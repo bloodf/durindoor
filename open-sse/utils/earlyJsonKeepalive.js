@@ -1,14 +1,25 @@
-/** Slow non-streaming JSON responses start with legal whitespace to prevent proxy idle timeouts.
- * Once the threshold passes the HTTP status is committed to 200, including for late errors.
+/** Opt-in keepalive for slow non-streaming JSON responses (ported from OmniRoute #21087).
+ * Off by default. When enabled via DURINDOOR_NONSTREAM_KEEPALIVE_MS (or the
+ * OmniRoute name OMNIROUTE_NONSTREAM_KEEPALIVE_MS), a response slower than the
+ * threshold starts with legal JSON whitespace to prevent proxy idle timeouts.
+ * Trade-off: past the threshold the HTTP status is committed to 200, so late
+ * errors (429, 5xx) arrive as a 200 body and upstream headers such as
+ * retry-after and request-id are dropped, breaking client retry semantics.
  */
 const encoder = new TextEncoder();
 const space = encoder.encode(' ');
 const fallback = encoder.encode(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'Upstream request failed.' } }));
-export const DEFAULT_JSON_KEEPALIVE_THRESHOLD_MS = 60_000;
+// 0 = disabled. OmniRoute defaults to 60s; DurinDoor keeps real status codes by default.
+export const DEFAULT_JSON_KEEPALIVE_THRESHOLD_MS = 0;
+const THRESHOLD_ENV_NAMES = ['DURINDOOR_NONSTREAM_KEEPALIVE_MS', 'OMNIROUTE_NONSTREAM_KEEPALIVE_MS'];
 
+/** First valid decimal value among the env names wins; invalid values fall through. */
 export function resolveJsonKeepaliveThresholdMs(env = process.env) {
-  const raw = env.OMNIROUTE_NONSTREAM_KEEPALIVE_MS?.trim();
-  return raw && /^\d{1,9}$/.test(raw) ? Number(raw) : DEFAULT_JSON_KEEPALIVE_THRESHOLD_MS;
+  for (const name of THRESHOLD_ENV_NAMES) {
+    const raw = env[name]?.trim();
+    if (raw && /^\d{1,9}$/.test(raw)) return Number(raw);
+  }
+  return DEFAULT_JSON_KEEPALIVE_THRESHOLD_MS;
 }
 
 export async function withEarlyJsonKeepalive(handlerPromise, { thresholdMs, intervalMs = 10_000, extraHeaders = {} }) {

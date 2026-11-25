@@ -214,20 +214,30 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null, t
     for (const tool of body.tools) {
       // Pass-through built-in tools (e.g. web_search_20250305) without prefix or conversion
       const toolType = tool.type;
-      if (toolType && toolType !== OPENAI_BLOCK.FUNCTION) {
+      const isCustom = toolType === "custom";
+      if (toolType && toolType !== OPENAI_BLOCK.FUNCTION && !isCustom) {
         result.tools.push(tool);
+        continue;
+      }
+
+      // Anthropic validates a custom tool's input_schema (decolua/9router#4938). A
+      // Claude-shaped one keeps its other fields; only the schema is normalized.
+      if (isCustom && tool.input_schema) {
+        result.tools.push({ ...tool, input_schema: toClaudeInputSchema(tool.input_schema, undefined, tool.name) });
         continue;
       }
 
       // Function-shaped tools arrive in two flavors from real clients:
       //   (a) openai-spec: { type: "function", function: { name, ... } }
       //   (b) legacy/loose: { function: { name, ... } }   (no parent `type`)
-      // Both must yield toolData.name = "echo". Treat the bare-function shape
+      // Custom tools may wrap the same data under `custom`.
+      // All must yield toolData.name = "echo". Treat the bare-function shape
       // as a function tool too — Anthropic-compatible gateways (notably
       // MiniMax M3 at api.minimaxi.com) reject payloads where this branch
       // falls through with `toolData.name === undefined`, returning their
       // upstream code (2013) "invalid tool type". See #2435.
-      const toolData = tool.function ?? tool;
+      const toolSource = isCustom ? tool.custom ?? tool : tool;
+      const toolData = toolSource.function ?? toolSource;
       const originalName = toolData.name;
 
       // Claude OAuth requires prefixed tool names to avoid conflicts

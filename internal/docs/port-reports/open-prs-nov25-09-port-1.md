@@ -18,7 +18,7 @@ All eight rows have a final disposition. #4381, #4373, #4376 and #4348 ship chan
 ## Parts not taken
 
 - #4381: upstream sends every `response.failed` to account fallback. This fork classifies only known structured messages, so a request-level failure does not rotate or lock accounts.
-- #4373: the per-account model allowlist, its editor and the custom-model list in that editor are a new feature. [ConnectionRow.js](<../../../src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js>), the [provider route](<../../../src/app/api/providers/[id]/route.js>) and [EditConnectionModal.js](../../../src/shared/components/EditConnectionModal.js) are unchanged.
+- #4373: the per-account model allowlist, its editor and the custom-model list in that editor are a new feature. `src/app/(dashboard)/dashboard/providers/[id]/ConnectionRow.js`, the [provider route](../../../src/app/api/providers/[id]/route.js) and [EditConnectionModal.js](../../../src/shared/components/EditConnectionModal.js) are unchanged.
 - #4376: upstream's relayed comment also counts as the first client byte, which would stop this fork's Claude ping.
 - #4348: a 429 with no hint keeps the short backoff instead of a one to three hour park. Locks stay per model rather than covering the whole key. The "on hold" badge, countdown, summary counts and modal panel are new UI; `src/shared/components/OnHoldBadge.js` does not exist here.
 

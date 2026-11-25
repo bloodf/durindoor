@@ -588,6 +588,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // selection: it must not be unioned with the provider's full upstream
         // catalog (upstream decolua/9router #3880 / #3115).
         const hasCuratedCompatibleModels = isCompatibleProvider && customModelIds.length > 0;
+        // Without curated rows, an explicit allowlist is the node's catalog
+        // (upstream decolua/9router #4954): it stays listed when discovery is
+        // empty or down, and discovery only adds metadata to those ids.
+        if (isCompatibleProvider && !hasCuratedCompatibleModels && hasExplicitEnabledModels) rawModelIds = enabledModels;
         const liveResolver = syncedModels || hasCuratedCompatibleModels ? null : providerLiveResolver || openAIStyleLiveResolver;
         // Taken before any lookup: a resolver may refresh the connection's tokens in place.
         const catalogIdentity = [providerId, conn.id, conn.apiKey, conn.accessToken, conn.providerSpecificData, guard];
@@ -602,9 +606,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
                * expose different private or preview model IDs.
                */
               const unionRegistryLiveModels = Boolean(genericFetcher) && !hasExplicitEnabledModels;
-              const enrichExistingOnly = !isCompatibleProvider && (hasExplicitEnabledModels || (!unionRegistryLiveModels && !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
+              const enrichExistingOnly = hasExplicitEnabledModels || !isCompatibleProvider && !unionRegistryLiveModels && !LIVE_MODEL_UNION_PROVIDERS.has(providerId) && (
               Boolean(openAIStyleLiveResolver) || providerId === "cloudflare-ai") &&
-              rawModelIds.length > 0));
+              rawModelIds.length > 0;
               const servedIds = new Set(rawModelIds);
               const liveModels = enrichExistingOnly ?
               live.models.filter((m) => servedIds.has(m.id)) :

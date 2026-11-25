@@ -727,7 +727,9 @@ function convertPrefixItems(obj, preserveNullable = false) {
   if (!obj || !isObject(obj)) return;
 
   // Native Gemini Schema requires a single object for items, not a tuple or boolean.
-  if (schemaTypeKey(obj.type) === "array" && Array.isArray(obj.items)) {
+  // A tuple is collapsed even without `type: "array"`: untyped and ["array", "null"]
+  // nodes only get that type in later phases (9router #4442).
+  if (Array.isArray(obj.items)) {
     const nullable = obj.items.some((item) => item?.type === "null");
     const variants = obj.items.filter((item) => item && isObject(item) && !Array.isArray(item) && item.type !== "null");
     const types = [...new Set(variants.map((item) => item.type).filter(isString))];

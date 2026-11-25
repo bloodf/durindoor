@@ -33,7 +33,7 @@ function flattenObjectNode(node, root, seen) {
   const { allOf, oneOf, anyOf, ...base } = resolved;
   // A Map keeps a property named like an Object member (`__proto__`) as data.
   const properties = new Map(Object.entries(base.properties || {}));
-  const required = new Set(base.required || []);
+  const required = new Set(Array.isArray(base.required) ? base.required : []);
   let closed = base.additionalProperties === false;
   for (const [keyword, list] of [["allOf", allOf], ["oneOf", oneOf], ["anyOf", anyOf]]) {
     if (!Array.isArray(list) || list.length === 0) continue;
@@ -66,9 +66,10 @@ function flattenObjectNode(node, root, seen) {
 /**
  * Anthropic rejects oneOf/allOf/anyOf at the root of a tool schema. Merge the
  * object variants into one property superset; nested unions stay (upstream #4490).
+ * Anything without a root union is returned as is (also used for passthrough tools).
  */
-function flattenRootCombinators(schema) {
-  return ROOT_COMBINATORS.some((keyword) => Array.isArray(schema[keyword])) ?
+export function flattenRootCombinators(schema) {
+  return isPlainObject(schema) && ROOT_COMBINATORS.some((keyword) => Array.isArray(schema[keyword])) ?
   flattenObjectNode(schema, schema, new Set()) :
   schema;
 }

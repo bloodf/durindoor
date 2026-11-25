@@ -5,6 +5,7 @@ import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
 import { aliasLongResponsesToolNames, attachToolNameMap } from "../utils/responsesToolNames.js";
 import { nestResponsesReasoningEffort } from "../translator/concerns/responsesReasoning.js";
+import { floorResponsesOutputCap } from "../translator/concerns/paramSupport.js";
 
 const BASE = "https://opencode.ai/zen/v1";
 
@@ -53,6 +54,6 @@ export class OpenCodeZenExecutor extends BaseExecutor {
     const aliased = { ...body };
     const toolNameMap = aliasLongResponsesToolNames(aliased);
     const out = nestResponsesReasoningEffort(injectReasoningContent({ provider: this.provider, model, body: aliased }));
-    return attachToolNameMap(out, toolNameMap);
+    return attachToolNameMap(floorResponsesOutputCap(out), toolNameMap);
   }
 }

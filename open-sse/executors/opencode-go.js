@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { floorResponsesOutputCap } from "../translator/concerns/paramSupport.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { MAX_TOOL_NAME_LEN } from "../config/appConstants.js";
@@ -269,6 +270,8 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
     const toolNameMap = aliasLongResponsesToolNames(out);
     normalizeResponsesTools(out);
     sanitizeResponsesItems(out);
+    // In place: a retry over this body relies on the map already attached to it.
+    Object.assign(out, floorResponsesOutputCap(out));
     return attachToolNameMap(out, toolNameMap);
   }
 }

@@ -15,7 +15,7 @@ import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
 import { resolveInlineThinkingFormat } from "./inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../providers/schema.js";
-import { appendReasoningText } from "../translator/concerns/reasoning.js";
+import { appendReasoningText, extractReasoningText } from "../translator/concerns/reasoning.js";
 import { decloakToolName } from "./claudeCloaking.js";
 import { restoreOpenAIToolNames } from "../translator/concerns/toolCall.js";
 import { CLAUDE_STOP, OPENAI_FINISH } from "../translator/schema/finishReasons.js";
@@ -442,7 +442,7 @@ export function createSSEStream(options = {}) {
         for (const [position, choice] of chunk.choices.entries()) {
           const delta = choice?.delta;
           content = append(content, delta?.content, MAX_TEXT);
-          reasoning = append(reasoning, delta?.reasoning_content ?? delta?.reasoning, MAX_REASONING);
+          reasoning = append(reasoning, extractReasoningText(delta), MAX_REASONING);
           finishReason = bounded(choice?.finish_reason, 64) || finishReason;
           for (const [toolPosition, toolCall] of (delta?.tool_calls || []).entries()) {
             const index = Number.isSafeInteger(toolCall.index) ? toolCall.index : toolPosition;
@@ -582,9 +582,7 @@ export function createSSEStream(options = {}) {
           totalContentLength += delta.content.length;
           appendContent(delta.content);
         }
-        const reasoning = isString(delta?.reasoning_content) && delta.reasoning_content ?
-        delta.reasoning_content :
-        isString(delta?.reasoning) && delta.reasoning.trim() ? delta.reasoning : "";
+        const reasoning = extractReasoningText(delta);
         if (reasoning) {
           totalContentLength += reasoning.length;
           appendThinking(reasoning);
@@ -1480,11 +1478,8 @@ export function createSSEStream(options = {}) {
           totalContentLength += parsed.choices[0].delta.content.length;
           appendContent(parsed.choices[0].delta.content);
         }
-        // OpenAI format - reasoning (reasoning_content preferred, `reasoning` fallback)
-        const openAIReasoningDelta = parsed.choices?.[0]?.delta;
-        const openAIReasoning = isString(openAIReasoningDelta?.reasoning_content) && openAIReasoningDelta.reasoning_content ?
-        openAIReasoningDelta.reasoning_content :
-        isString(openAIReasoningDelta?.reasoning) && openAIReasoningDelta.reasoning.trim() ? openAIReasoningDelta.reasoning : "";
+        // OpenAI format - reasoning, in any vendor shape (reasoning_content preferred)
+        const openAIReasoning = extractReasoningText(parsed.choices?.[0]?.delta);
         if (openAIReasoning) {
           totalContentLength += openAIReasoning.length;
           appendThinking(openAIReasoning);

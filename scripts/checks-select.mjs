@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { isMainModule } from "./lib/is-main-module.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,7 +21,7 @@ export function selectChecks(changedFiles) {
   return result;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   if (!process.argv[2]) {
     console.error("Usage: node scripts/checks-select.mjs <file-list>");
     process.exitCode = 1;

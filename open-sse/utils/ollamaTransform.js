@@ -99,7 +99,8 @@ export function transformToOllama(response, model) {
             if (!pendingToolCalls[idx]) {
               pendingToolCalls[idx] = { id: tc.id, function: { name: "", arguments: "" } };
             }
-            if (tc.function?.name) pendingToolCalls[idx].function.name += tc.function.name;
+            // Skip an exact repeat of the name; split names still join (upstream #4511).
+            if (tc.function?.name && tc.function.name !== pendingToolCalls[idx].function.name) pendingToolCalls[idx].function.name += tc.function.name;
             if (tc.function?.arguments) pendingToolCalls[idx].function.arguments += tc.function.arguments;
           }
         }

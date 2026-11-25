@@ -11,7 +11,7 @@ import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/cap
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
 import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
-import { toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
+import { flattenRootSchemaUnion, toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
 
 const CACHE_CONTROL_5M = { type: "ephemeral" };
@@ -98,6 +98,14 @@ function lastCacheableToolIndex(tools) {
     if (tools[i]?.defer_loading !== true) return i;
   }
   return -1;
+}
+
+// Passthrough tools skip toClaudeInputSchema, including the `custom` wrapper.
+function withFlatInputSchema(tool) {
+  const direct = flattenRootSchemaUnion(tool.input_schema);
+  if (direct !== tool.input_schema) return { ...tool, input_schema: direct };
+  const wrapped = flattenRootSchemaUnion(tool.custom?.input_schema);
+  return wrapped === tool.custom?.input_schema ? tool : { ...tool, custom: { ...tool.custom, input_schema: wrapped } };
 }
 
 const HOISTABLE_SYSTEM_BLOCKS = new Set([CLAUDE_BLOCK.TEXT]);
@@ -1132,7 +1140,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
 
     const lastCacheable = lastCacheableToolIndex(body.tools);
     body.tools = body.tools.map((tool, i) => {
-      const { cache_control, ...rest } = tool;
+      const { cache_control, ...rest } = withFlatInputSchema(tool);
       if (allowCacheControl && i === lastCacheable) {
         return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
       }

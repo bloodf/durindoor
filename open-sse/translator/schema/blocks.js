@@ -51,6 +51,7 @@ export const RESPONSES_ITEM = {
   ITEM_REFERENCE: "item_reference",
   REASONING: "reasoning",
   OUTPUT_TEXT: "output_text",
+  REFUSAL: "refusal",
   INPUT_TEXT: "input_text",
   INPUT_IMAGE: "input_image",
   INPUT_FILE: "input_file",

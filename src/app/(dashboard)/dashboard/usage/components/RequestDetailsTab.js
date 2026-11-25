@@ -209,6 +209,17 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
     endDate: "",
   });
   const inflightController = useRef(null);
+  const copiedResetTimer = useRef(null);
+  const isMounted = useRef(false);
+
+  // A pending "Copied" reset must not outlive the tab (OmniRoute #21055).
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      clearTimeout(copiedResetTimer.current);
+    };
+  }, []);
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -305,8 +316,10 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
     if (!selectedDetail) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(selectedDetail, null, 2));
+      if (!isMounted.current) return;
       setCopiedAll(true);
-      setTimeout(() => setCopiedAll(false), 2000);
+      clearTimeout(copiedResetTimer.current);
+      copiedResetTimer.current = setTimeout(() => setCopiedAll(false), 2000);
     } catch (error) {
       console.error("Failed to copy request detail:", error);
     }

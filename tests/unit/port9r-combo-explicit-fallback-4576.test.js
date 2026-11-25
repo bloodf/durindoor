@@ -47,7 +47,7 @@ describe("decolua/9router#4576 - explicit combo fallback survives a different gl
     const next = updateComboStrategy(stored, "other", { fallbackStrategy: "inherit" });
     expect(persisted(stored, next)).toEqual({ demo: stored.demo });
     const cleared = updateComboStrategy({ demo: { timeoutMs: 5000 } }, "demo", { timeoutMs: 0 });
-    expect(persisted({ demo: { timeoutMs: 5000 } }, cleared)).toEqual({});
+    expect(persisted({ demo: { timeoutMs: 5000 } }, cleared)).toEqual({ demo: { timeoutMs: 0 } });
   });
 
   it("keeps per-combo context requirements when only the strategy is inherited", () => {

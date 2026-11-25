@@ -71,8 +71,8 @@ describe("production single combo delete feedback", () => {
     expect(document.body.querySelector("dialog")).toBeNull();
     expect(fetch.mock.calls.filter(([, options]) => options?.method === "DELETE")).toHaveLength(2);
     expect(fetch.mock.calls.filter(([, options]) => options?.method === "PATCH").map(([, options]) => JSON.parse(options.body))).toEqual([
-      { comboStrategies: { unrelated: { fallbackStrategy: "random" } } },
-      { comboStrategies: { unrelated: { fallbackStrategy: "random" } } },
+      { comboStrategies: { "combo-a": null, "combo-b": null, unrelated: { fallbackStrategy: "random" } } },
+      { comboStrategies: { "combo-a": null, "combo-b": null, unrelated: { fallbackStrategy: "random" } } },
     ]);
   });
 
@@ -204,6 +204,7 @@ describe("production single combo delete feedback", () => {
     if (firstSucceeds) {
       expect(within(container).queryByText("combo-a")).toBeNull();
       expect(payloads()).toEqual([{ comboStrategies: {
+        "combo-a": null,
         "combo-b": { fallbackStrategy: "random" },
         unrelated: { fallbackStrategy: "round-robin" },
       } }]);
@@ -227,6 +228,8 @@ describe("production single combo delete feedback", () => {
     expect(within(container).queryByText("combo-b")).toBeNull();
     expect(within(container).getByText("No combos yet").textContent).toBe("No combos yet");
     expect(payloads().at(-1)).toEqual({ comboStrategies: {
+      "combo-a": null,
+      "combo-b": null,
       unrelated: { fallbackStrategy: "round-robin" },
     } });
     expect(payloads()).toHaveLength(firstSucceeds ? 2 : 1);

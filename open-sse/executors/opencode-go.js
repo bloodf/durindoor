@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { floorResponsesOutputCap } from "../translator/concerns/paramSupport.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import {
@@ -267,6 +268,6 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
     delete out.previous_response_id;
     normalizeResponsesTools(out);
     sanitizeResponsesItems(out);
-    return out;
+    return floorResponsesOutputCap(out);
   }
 }

@@ -7,6 +7,7 @@ import { extractReasoningText } from "../concerns/reasoning.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
 import { sanitizeErrorMessage } from "../../utils/error.js";
 import { normalizeClaudeToolName } from "../../services/claudeCodeToolRemapper.js";
+import { resolveToolCallSlot } from "../concerns/toolCall.js";
 
 // Legacy "proxy_" prefix used by older request translators. Response strips it
 // defensively so tool names from such turns resolve back (e.g. proxy_Read → Read
@@ -35,15 +36,36 @@ function stripJsonFence(argsJson) {
   return argsJson.trim().replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
 }
 
+// Claude Code file tools take `file_path`. Other models often send `path` or `filePath`.
+const FILE_PATH_TOOLS = new Set(["Read", "Edit", "Write"]);
+const FILE_PATH_ALIASES = ["path", "filePath"];
+
+function repairFileArgs(name, args, clientTools) {
+  if (FILE_PATH_TOOLS.has(name)) renameFilePathAlias(name, args, clientTools);
+  if (name === "Read") sanitizeReadArgs(args);
+}
+
+// Rename only when the client declared this tool with `file_path` and without
+// the alias: a custom `Write` that really takes `path` must be left alone.
+function renameFilePathAlias(name, args, clientTools) {
+  if (!isObject(args) || args === null || args.file_path) return;
+  const declared = clientTools?.find((tool) => tool?.name === name)?.input_schema?.properties;
+  if (!declared?.file_path) return;
+  const alias = FILE_PATH_ALIASES.find((key) => !declared[key] && isString(args[key]) && args[key]);
+  if (!alias) return;
+  args.file_path = args[alias];
+  delete args[alias];
+}
+
 // Sanitize tool call arguments to fix bad params from non-Anthropic models
-function sanitizeToolArgs(toolName, argsJson) {
+function sanitizeToolArgs(toolName, argsJson, clientTools) {
   const cleaned = stripJsonFence(argsJson);
   try {
     const args = JSON.parse(cleaned);
     const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
     toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
     toolName;
-    if (name === "Read") sanitizeReadArgs(args);
+    repairFileArgs(name, args, clientTools);
     return JSON.stringify(args);
   } catch {
     // Deduplicate doubled JSON before giving up
@@ -54,7 +76,7 @@ function sanitizeToolArgs(toolName, argsJson) {
         const name = toolName.startsWith(CLAUDE_OAUTH_TOOL_PREFIX) ?
         toolName.slice(CLAUDE_OAUTH_TOOL_PREFIX.length) :
         toolName;
-        if (name === "Read") sanitizeReadArgs(args);
+        repairFileArgs(name, args, clientTools);
         return JSON.stringify(args);
       } catch {/* fall through to raw return */}
     }
@@ -122,7 +144,7 @@ function flushToolBlocks(state, results) {
     // Emit buffered + sanitized args as single delta before stop
     const buffered = state.toolArgBuffers?.get(idx);
     if (buffered) {
-      const sanitized = sanitizeToolArgs(toolInfo.name, buffered);
+      const sanitized = sanitizeToolArgs(toolInfo.name, buffered, state.clientTools);
       results.push({
         type: "content_block_delta",
         index: toolInfo.blockIndex,
@@ -308,7 +330,7 @@ export function openaiToClaudeResponse(chunk, state) {
   // Tool calls
   if (delta?.tool_calls) {
     for (const tc of delta.tool_calls) {
-      const idx = tc.index ?? 0;
+      const idx = resolveToolCallSlot(state, tc);
 
       // Strip the legacy proxy_ prefix from an incoming tool name (if any),
       // then normalize lowercase Anthropic built-ins (bash→Bash, read→Read, etc.).

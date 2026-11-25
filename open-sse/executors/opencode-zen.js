@@ -4,6 +4,7 @@ import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
 import { nestResponsesReasoningEffort } from "../translator/concerns/responsesReasoning.js";
+import { floorResponsesOutputCap } from "../translator/concerns/paramSupport.js";
 
 const BASE = "https://opencode.ai/zen/v1";
 
@@ -45,6 +46,7 @@ export class OpenCodeZenExecutor extends BaseExecutor {
 
   transformRequest(model, body) {
     const out = injectReasoningContent({ provider: this.provider, model, body });
-    return targetFormat(model) === "openai-responses" ? nestResponsesReasoningEffort(out) : out;
+    if (targetFormat(model) !== "openai-responses") return out;
+    return floorResponsesOutputCap(nestResponsesReasoningEffort(out));
   }
 }

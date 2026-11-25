@@ -11,6 +11,7 @@ import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
+  MAX_RESPONSES_CALL_ID_LEN,
   coerceResponsesArguments,
   coerceResponsesOutput,
   repairMissingResponsesCallIds,
@@ -908,6 +909,37 @@ function chatCustomToolInput(tc) {
   return args;
 }
 
+/** Reserve short IDs across the request before resolving clamped collisions. */
+function buildResponsesCallIdMap(messages) {
+  const ids = [];
+  for (const msg of messages) {
+    if (msg.role === ROLE.ASSISTANT && Array.isArray(msg.tool_calls)) {
+      for (const call of msg.tool_calls) ids.push(call.id);
+    }
+    if (msg.role === ROLE.TOOL) ids.push(msg.tool_call_id);
+  }
+  const validIds = ids.filter((id) => isString(id) && id);
+  const used = new Set(validIds.filter((id) => id.length <= MAX_RESPONSES_CALL_ID_LEN));
+  const mapped = new Map();
+  for (const id of validIds) {
+    if (mapped.has(id)) continue;
+    if (id.length <= MAX_RESPONSES_CALL_ID_LEN) {
+      mapped.set(id, id);
+      continue;
+    }
+    const base = clampResponsesCallId(id);
+    let candidate = base;
+    let counter = 0;
+    while (used.has(candidate)) {
+      const suffix = `_${++counter}`;
+      candidate = `${base.slice(0, MAX_RESPONSES_CALL_ID_LEN - suffix.length)}${suffix}`;
+    }
+    used.add(candidate);
+    mapped.set(id, candidate);
+  }
+  return (id) => mapped.get(id) ?? clampResponsesCallId(id);
+}
+
 
 /**
  * Normalize Chat Completions output limits at the shared Responses wire seam.
@@ -972,6 +1004,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
   // Collect all non-empty system/developer message texts in order for instructions (#2184)
   const instructionParts = [];
   const messages = body.messages || [];
+  const responsesCallId = buildResponsesCallIdMap(messages);
 
   // Declared tool types on this Chat Completions body, hoisted above the
   // message loop so coerceResponsesArguments never freeform-wraps a name
@@ -1029,7 +1062,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
         const name = isString(rawName) ? rawName.trim() : "";
         if (!name) continue;
         if (tc.type === "custom" || resolveDeclaredCustom(declaredToolTypes, name) === true) {
-          const callId = clampResponsesCallId(tc.id);
+          const callId = responsesCallId(tc.id);
           customCallIds.add(callId);
           result.input.push({
             type: RESPONSES_ITEM.CUSTOM_TOOL_CALL,
@@ -1041,7 +1074,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
         }
         result.input.push({
           type: RESPONSES_ITEM.FUNCTION_CALL,
-          call_id: clampResponsesCallId(tc.id),
+          call_id: responsesCallId(tc.id),
           name: name.slice(0, MAX_TOOL_NAME_LEN),
           arguments: coerceResponsesArguments(tc.function?.arguments, name, resolveDeclaredCustom(declaredToolTypes, name))
         });
@@ -1062,7 +1095,7 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
       // No tool_call_id means no call to pair with: drop the output rather than
       // manufacture an id for it (OmniRoute #20243).
       if (!isString(msg.tool_call_id) || msg.tool_call_id.trim() === "") continue;
-      const callId = clampResponsesCallId(msg.tool_call_id);
+      const callId = responsesCallId(msg.tool_call_id);
       result.input.push({
         type: customCallIds.has(callId) ? RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT : RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,
         call_id: callId,

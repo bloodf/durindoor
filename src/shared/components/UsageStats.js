@@ -8,6 +8,7 @@ import { USAGE_PERIOD_OPTIONS } from "@/lib/usagePeriods.js";
 import { createLatestRequestGuard, mergeUsageResponse } from "@/shared/utils/requestFreshness";
 import { allocateUsageCost } from "@/shared/utils/usageCostAllocation";
 import { buildUsageProviders } from "@/shared/utils/usageProviders";
+import { disambiguateApiKeyNames } from "@/shared/utils/usageApiKeyNames.js";
 
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -338,7 +339,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         }
       case "apiKey":{
           return {
-            groupedData: groupDataByKey(sortData(stats.byApiKey, {}, sortBy, sortOrder), "keyName"),
+            groupedData: groupDataByKey(sortData(disambiguateApiKeyNames(stats.byApiKey), {}, sortBy, sortOrder), "keyName"),
             storageKey: "usage-stats:expanded-apikeys",
             emptyMessage: "No API key usage recorded yet.",
             groupColumns: [

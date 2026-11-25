@@ -184,16 +184,15 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const needsNativeServerTools = Array.isArray(body?.tools) && body.tools.some((tool) =>
     isString(tool?.type) && tool.type !== "function" && tool.type !== "custom" && tool.type !== "tool");
   const nativeMiniMax = provider === "minimax" || provider === "minimax-cn";
-  // Kimi Code's /responses serves Responses clients only; typed server tools from
-  // Chat/Claude clients must stay on their native transport (#1368).
-  const responsesClientsOnly = provider === "kimi-coding-apikey";
+  // Kimi Code and Kimi Platform /responses serve Responses clients only; typed
+  // server tools from Chat/Claude clients stay on their native transport (#1368).
+  const responsesClientsOnly = provider === "kimi-coding-apikey" || provider === "kimi";
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
     (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model);
-  // Kimi platform exposes Responses for its catalog and dynamically synced models.
-  const directFormat = supportedFormats?.includes(sourceFormat) || (provider === "kimi" && sourceFormat === FORMATS.OPENAI_RESPONSES) ? sourceFormat : null;
+  const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
   const preferredFormat = modelTargetFormat || directFormat || defaultFormat;
   let runtimeTransport = credentials ? resolveTransport(provider, preferredFormat) : null;

@@ -19,4 +19,14 @@ describe("9router #5844 (3ee27755532fbc897db9aeb57d8e3f8ccb1798aa) Kimi platform
     expect(resolveRequestTransport({ ...request, credentials: { apiKey: "test-key" } }).targetFormat).toBe("openai-responses");
     expect(resolveRequestTransport({ ...request, credentials: null }).targetFormat).toBe("claude");
   });
+
+  it("keeps Chat and Claude clients with typed server tools on their native transport", () => {
+    for (const sourceFormat of ["openai", "claude"]) {
+      const { targetFormat } = resolveRequestTransport({
+        provider: "kimi", alias: "kimi", model: "kimi-k3", sourceFormat, credentials: { apiKey: "test-key" },
+        body: { tools: [{ type: "web_search" }] },
+      });
+      expect(targetFormat).toBe(sourceFormat);
+    }
+  });
 });

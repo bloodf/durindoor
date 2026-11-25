@@ -2,10 +2,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-// The CLI build copies the shared resolver beside this file for published packages.
-const sharedResolver = path.join(__dirname, "dataDir.cjs");
-const { ensurePrivateDir } = require(fs.existsSync(sharedResolver)
-  ? sharedResolver : "../../../src/lib/updater/dataDir.cjs");
+// The installed launcher keeps the shared data-directory module in its app bundle.
+const dataDirPath = fs.existsSync(path.join(__dirname, "../../app/src/lib/updater/dataDir.cjs"))
+  ? "../../app/src/lib/updater/dataDir.cjs" : "../../../src/lib/updater/dataDir.cjs";
+const { ensurePrivateDir } = require(dataDirPath);
 
 /** Match the server data-directory contract, including isolated DATA_DIR. */
 function getAppDataDir({

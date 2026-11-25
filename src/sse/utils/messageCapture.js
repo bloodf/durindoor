@@ -202,9 +202,9 @@ export function prepareMessageCapture({ request, body, settings, auth, credentia
           if (!user.length && !replies.length && !toolNames.size) return;
           const assistantText = format === FORMATS.CLAUDE && replies.length ? [replies.join("")] : replies;
           const redactText = createCaptureTextRedactor(credentials);
-          const content = JSON.stringify({ user: user.map(redactText), assistant: assistantText.map(redactText),
-            ...(toolNames.size ? { toolNames: [...toolNames].map(redactText) } : {}),
-          });
+          const captured = { user: user.map(redactText), assistant: assistantText.map(redactText) };
+          if (toolNames.size) captured.toolNames = [...toolNames].map(redactText);
+          const content = JSON.stringify(captured);
           // Start storage without awaiting it on the response path.
           void storeAdmittedCapture({ keyId, session, billingEpoch, content }).catch(() => {});
         } catch {

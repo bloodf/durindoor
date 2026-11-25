@@ -181,7 +181,11 @@ describe("opt-in message capture through the public chat routes", () => {
     providerResponse(sse(text));
     expect(await (await post({ claude, stream: true })).text()).toBe(text);
     await vi.waitFor(async () => expect(await turns()).toHaveLength(1));
-    expect((await turns())[0].content).toEqual({ user: ["hello"], assistant: ["café Bearer [redacted]"], ...(claude ? { toolNames: ["fixture"] } : {}) });
+    if (claude) {
+      expect((await turns())[0].content).toEqual({ user: ["hello"], assistant: ["café Bearer [redacted]"], toolNames: ["fixture"] });
+      return;
+    }
+    expect((await turns())[0].content).toEqual({ user: ["hello"], assistant: ["café Bearer [redacted]"] });
   });
 
   it("skips denied, partial, errored and oversized responses", async () => {

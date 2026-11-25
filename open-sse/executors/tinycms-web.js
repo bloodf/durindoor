@@ -10,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 // The vendored signer inlines about 78 KB of WASM; it is loaded on the first request, not with the
 // executor map, so every other provider's import path stays as light as before registration.
@@ -50,7 +52,8 @@ async function getPublicIp(fetcher, proxyOptions, signal) {
   if (cached && Date.now() - cached.at < IP_TTL_MS) return cached.ip;
   try {
     const timeout = AbortSignal.timeout(5000);
-    const res = await fetcher(IP_URL, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    // No credential travels to the IP service, so its redirects stay allowed.
+    const res = await fetcher(IP_URL, { redirect: "follow", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
     const ip = (await res.json())?.ip;
     if (isString(ip) && ip) { ipCache.set(key, { ip, at: Date.now() }); return ip; }
   } catch { /* the IP only feeds the signature; fall back like the upstream client */ }
@@ -97,10 +100,17 @@ export class TinyCmsExecutor extends BaseExecutor {
   constructor() { super("tinycms-web", { id: "tinycms-web", baseUrl: TINYCMS_CHAT_URL }); }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const body = isRecord(input.body) ? input.body : {};
     const uuid = tinyCmsDeviceUuid(input.credentials ?? {});
     if (!isTinyCmsDeviceUuid(uuid)) return failure(401, "TinyCMS: invalid or missing device UUID (must start with 'R')", "authentication_error", TINYCMS_CHAT_URL, input.body);
-    const fetcher = (url, options) => proxyAwareFetch(url, options, input.proxyOptions);
+    // The IP lookup and the challenge are not charged; only the chat send is quota-bearing.
+    const fetcher = (url, options) => sender.sendRequest(url, options, input.proxyOptions, { quotaBearing: false });
     try {
       const { initTinyCmsWasm, generateSecurePayload } = await loadSigner();
       await initTinyCmsWasm();
@@ -142,7 +152,14 @@ export class TinyCmsExecutor extends BaseExecutor {
         "Content-Type": "application/json",
       };
       const chatBody = { ...body, model, stream };
-      const upstream = await fetcher(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal });
+      let upstream;
+      try {
+        upstream = billed(await sender.sendRequest(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal }, input.proxyOptions));
+      } catch (error) {
+        if (!isRefusedRedirect(error)) throw error;
+        const mapped = classify(302);
+        return failure(mapped.status, mapped.message, mapped.type, TINYCMS_CHAT_URL, chatBody);
+      }
       if (!upstream.ok) return await upstreamFailure(upstream, TINYCMS_CHAT_URL, chatBody);
       const type = upstream.headers.get("content-type") || "";
       if (!stream && type.includes("json")) {
@@ -159,7 +176,7 @@ export class TinyCmsExecutor extends BaseExecutor {
       }
       return { response: upstream, url: TINYCMS_CHAT_URL, headers: { uuid: "[REDACTED]" }, transformedBody: chatBody };
     } catch (error) {
-      if (error?.name === "AbortError") throw error;
+      if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
       return failure(502, "TinyCMS request failed", "upstream_error", TINYCMS_CHAT_URL, input.body);
     }
   }

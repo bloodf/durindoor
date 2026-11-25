@@ -1,7 +1,9 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const ORIGIN = "https://chat.z.ai";
@@ -77,27 +79,39 @@ export class ZaiWebExecutor extends BaseExecutor {
     const model = String(input.body.model ?? input.model ?? "glm-5.3").split("/").at(-1);
     const chatMessageId = randomUUID();
     const chatBody = { chat: { id: "", title: "New Chat", models: [model], params: {}, history: { messages: { [chatMessageId]: { id: chatMessageId, parentId: null, childrenIds: [], role: "user", content: prompt, timestamp: Math.floor(Date.now() / 1000), models: [model] } }, currentId: chatMessageId }, tags: [], flags: [], features: [], mcp_servers: [], enable_thinking: true, reasoning_effort: input.body.reasoning_effort ?? "max", auto_web_search: false, message_version: 1, extra: {}, timestamp: Date.now(), type: "default" } };
-    const fetcher = (url, options) => proxyAwareFetch(url, options, input.proxyOptions);
+    const sender = createExecutorSender(this, input);
+    let upstream = null;
+    // Every response returned after the completion send carries its quota ticket.
+    const carry = (result) => {
+      transferProviderAttemptDispatch(upstream, result.response);
+      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
-      const chatResponse = await fetcher(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), redirect: "manual", signal: input.signal });
-      if (!chatResponse.ok) return this.upstreamError(chatResponse, input.body, NEW_CHAT);
+      // Creating the empty chat is setup; only the completion is quota-bearing.
+      const chatResponse = await sender.sendRequest(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), redirect: "manual", signal: input.signal }, input.proxyOptions, { quotaBearing: false });
+      if (!chatResponse.ok) return carry(await this.upstreamError(chatResponse, input.body, NEW_CHAT));
       const chatId = (await chatResponse.json()).id;
       if (!chatId) throw Object.assign(new Error("Z.ai chat creation returned no id"), { status: 502 });
       const timestamp = Date.now(); const requestId = randomUUID();
       const url = completionUrl(token, userId, requestId, timestamp);
       const payload = { stream: true, model, messages, signature_prompt: prompt, params: {}, extra: {}, features: { preview_mode: true, enable_thinking: true }, variables: {}, chat_id: chatId, id: randomUUID(), current_user_message_id: chatMessageId, current_user_message_parent_id: null, background_tasks: { title_generation: true, tags_generation: true } };
-      const upstream = await fetcher(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
-      if (!upstream.ok) return this.upstreamError(upstream, input.body, COMPLETIONS);
+      upstream = await sender.sendRequest(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions);
+      if (!upstream.ok) return carry(await this.upstreamError(upstream, input.body, COMPLETIONS));
       const answer = await readCompletion(upstream);
       const id = `chatcmpl-zai-${timestamp}`; const created = Math.floor(timestamp / 1000);
       const message = { role: "assistant", content: answer.content };
       if (answer.reasoning) message.reasoning_content = answer.reasoning;
       const result = { id, object: "chat.completion", created, model, choices: [{ index: 0, message, finish_reason: "stop" }] };
       const response = input.stream ? new Response(`data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] })}\n\n${answer.reasoning ? `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { reasoning_content: answer.reasoning }, finish_reason: null }] })}\n\n` : ""}data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: answer.content }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } }) : Response.json(result);
-      return { response, url: COMPLETIONS, headers: { Authorization: "Bearer [REDACTED]" }, transformedBody: input.body };
+      return carry({ response, url: COMPLETIONS, headers: { Authorization: "Bearer [REDACTED]" }, transformedBody: input.body });
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      if (input.signal?.aborted) {
+        await settleProviderAttemptDispatch(upstream, { reason: "abort" });
+        throw requestAbortError(input.signal.reason);
+      }
       const status = Number(error?.status) || 502;
-      return { response: errorResponse(status, status === 401 || status === 403 ? "Z.ai session expired or was rejected" : status === 429 ? "Z.ai quota exceeded" : String(error?.message ?? "Z.ai request failed"), { type: status === 401 || status === 403 ? "authentication_error" : "upstream_error", code: `HTTP_${status}` }), url: COMPLETIONS, headers: {}, transformedBody: input.body };
+      return carry({ response: errorResponse(status, status === 401 || status === 403 ? "Z.ai session expired or was rejected" : status === 429 ? "Z.ai quota exceeded" : String(error?.message ?? "Z.ai request failed"), { type: status === 401 || status === 403 ? "authentication_error" : "upstream_error", code: `HTTP_${status}` }), url: COMPLETIONS, headers: {}, transformedBody: input.body });
     }
   }
 

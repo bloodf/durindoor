@@ -1,3 +1,4 @@
+import { readUsageDailyRollups } from "@/lib/db/helpers/usageDailyRollups.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -87,10 +88,10 @@ it("stores one daily key bucket without retaining either rotated secret", async 
   await writeUsage(rotated, "fixture-first", "alpha");
   db.run("UPDATE apiKeys SET key = ? WHERE id = ?", ["fixture-rotated", "alpha"]);
   await writeUsage(rotated, "fixture-rotated", "alpha");
-  const { data } = db.get("SELECT data FROM usageDaily");
+  const data = JSON.stringify(db.all("SELECT * FROM usageDailyRollups"));
   expect(data).not.toContain("fixture-first");
   expect(data).not.toContain("fixture-rotated");
-  expect(Object.values(JSON.parse(data).byApiKey)).toEqual([expect.objectContaining({ requests: 2 })]);
+  expect(Object.values([...readUsageDailyRollups(db)][0].day.byApiKey)).toEqual([expect.objectContaining({ requests: 2 })]);
 });
 
 it("migrates legacy last-seen rows across pages and keeps the greatest timestamp on collision", async () => {
@@ -151,12 +152,14 @@ it("migrates legacy daily buckets without changing the period totals or dropping
       "alpha|model|fixture": { apiKey: "alpha", requests: 3, promptTokens: 6, completionTokens: 9, cost: 3, latencyMs: 200, latencySamples: 2, unsplit: { cost: 3 } },
     },
   });
+  db.transaction(() => migration.up(db));
+  expect(db.get("SELECT data FROM usageDaily").data).toBe(data);
+  const { convertLegacyUsageDaily } = await import("@/lib/db/migrations/037-usage-daily-rollups.js");
+  db.transaction(() => convertLegacyUsageDaily(db));
   const stats = await repo.getUsageStats("all", { startDate: "2026-09-19", endDate: "2026-09-19" });
   expect(stats).toMatchObject({ totalRequests: 6, totalCost: 6 });
   expect(stats.byApiKey["api-key:alpha|model|fixture"]).toMatchObject({ keyName: "Renamed Alpha", requests: 3, cost: 3 });
   expect(Object.values(stats.byApiKey)).toContainEqual(expect.objectContaining({ keyName: "Deleted API key 1", requests: 3 }));
-  db.transaction(() => migration.up(db));
-  expect(db.get("SELECT data FROM usageDaily").data).toBe(data);
 });
 
 it("uses a recorded ID even when the historical secret now belongs to another key", async () => {
@@ -206,7 +209,7 @@ it("normalizes rollups when a fresh database imports legacy usage JSON", async (
   db = await (await import("@/lib/db/driver.js")).getAdapter();
   expect(db.get("SELECT apiKey, apiKeyId FROM usageHistory")).toEqual({ apiKey: null, apiKeyId: "alpha" });
   expect(db.get("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual({ apiKey: "alpha", lastUsed: initial });
-  expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).byApiKey).toEqual({
+  expect([...readUsageDailyRollups(db)][0].day.byApiKey).toEqual({
     "alpha|model|fixture": { apiKey: "alpha", provider: "fixture", rawModel: "model", requests: 1 },
   });
 });
@@ -242,7 +245,8 @@ it.skipIf(!process.env.DURINDOOR_TEST_PG_URL)("rewrites populated last-seen and 
       },
     })]);
 
-    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS)).toEqual({ applied: 3, from: 32, to: 35 });
+    const identityMigrations = PG_MIGRATIONS.filter(({ version }) => version <= 35);
+    expect(applyVersionedMigrations(pgDb, identityMigrations)).toEqual({ applied: 3, from: 32, to: 35 });
     expect(pgDb.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([{ apiKey: "alpha", lastUsed: latest }]);
     const { data } = pgDb.get("SELECT data FROM usageDaily");
     expect(data).not.toMatch(/fixture-(old|current|unknown)/);
@@ -250,7 +254,7 @@ it.skipIf(!process.env.DURINDOOR_TEST_PG_URL)("rewrites populated last-seen and 
       expect.objectContaining({ apiKey: "alpha", requests: 3 }),
       expect.objectContaining({ apiKey: expect.stringMatching(/^hmac:[a-f0-9]{64}$/), requests: 3 }),
     ]));
-    expect(applyVersionedMigrations(pgDb, PG_MIGRATIONS).applied).toBe(0);
+    expect(applyVersionedMigrations(pgDb, identityMigrations).applied).toBe(0);
     expect(pgDb.get("SELECT data FROM usageDaily").data).toBe(data);
   } finally {
     await pgDb?.close();
@@ -269,7 +273,7 @@ it("preserves model last-seen data and detaches key attribution on backup restor
   expect(db.all("SELECT apiKey, lastUsed FROM usageLastSeen")).toEqual([
     { apiKey: "", lastUsed: "2026-09-19T17:00:00.000Z" },
   ]);
-  expect(JSON.parse(db.get("SELECT data FROM usageDaily").data).byApiKey).toEqual({});
+  expect([...readUsageDailyRollups(db)][0].day.byApiKey).toEqual({});
 });
 
 it("keeps last-seen dimensions consistent when a deleted key's event gains an endpoint", async () => {

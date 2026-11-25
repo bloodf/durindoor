@@ -673,15 +673,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
         lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`);
     db.run("DELETE FROM usageLastSeen WHERE apiKey <> ''");
-    for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
-      const day = parseJson(row.data, {});
-      if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {
-        // Preserve aggregate/provider/model analytics while removing the
-        // secret-derived per-key buckets from the pre-import identity set.
-        day.byApiKey = {};
-        db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), row.dateKey]);
-      }
-    }
+    // Keep the totals and non-key dimensions from the pre-import rollups.
+    db.run("DELETE FROM usageDailyRollups WHERE dimension = 'byApiKey'");
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM quotaReservationItems`);
     db.run(`DELETE FROM quotaReservations`);

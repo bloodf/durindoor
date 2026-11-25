@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { BaseExecutor } from "./base.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { errorJson, extractTextFromContent, jsonResponse } from "./websession-utils.js";
 
@@ -63,7 +65,8 @@ export class DifyExecutor extends BaseExecutor {
     super("dify", { id: "dify", baseUrl: DIFY_BASE_URL });
   }
 
-  async execute({ model, body, stream, credentials, signal, proxyOptions }) {
+  async execute(input) {
+    const { model, body, stream, credentials, signal, proxyOptions } = input;
     if (model && model !== "configured-app" && model !== "dify/configured-app") return { response: unsupported("Dify uses the configured app, not an upstream model ID."), url: CHAT_URL, headers: {}, transformedBody: body };
     if (Array.isArray(body?.tools) && body.tools.length) return { response: unsupported("Dify configured-app does not support client tool execution."), url: CHAT_URL, headers: {}, transformedBody: body };
     if (Array.isArray(body?.messages) && body.messages.some((message) => Array.isArray(message?.content) && message.content.some((part) => part?.type && part.type !== "text" && part.type !== "input_text"))) return { response: unsupported("Dify configured-app does not support media inputs."), url: CHAT_URL, headers: {}, transformedBody: body };
@@ -72,13 +75,23 @@ export class DifyExecutor extends BaseExecutor {
     const headers = { Authorization: `Bearer ${credentials?.apiKey || credentials?.accessToken || ""}`, "Content-Type": "application/json" };
     // Forward complete text history in query but never retain a Dify conversation across gateway users/requests.
     const transformedBody = { inputs: {}, query, response_mode: "blocking", user: randomUUID() };
-    const response = await proxyAwareFetch(CHAT_URL, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions);
-    if (!response.ok) {
-      const text = await readBoundedResponseText(response, { signal });
-      return { response: errorJson(response.status, text || `Dify returned HTTP ${response.status}`), url: CHAT_URL, headers, transformedBody };
+    const sender = createExecutorSender(this, input);
+    const response = await sender.sendRequest(CHAT_URL, { method: "POST", headers, body: JSON.stringify(transformedBody), signal }, proxyOptions);
+    const result = (replacement) => {
+      transferProviderAttemptDispatch(response, replacement);
+      return { response: replacement, url: CHAT_URL, headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+    };
+    try {
+      if (!response.ok) {
+        const text = await readBoundedResponseText(response, { signal });
+        return result(errorJson(response.status, text || `Dify returned HTTP ${response.status}`));
+      }
+      const completion = openAiResponse(await response.json(), "configured-app");
+      return result(stream ? streamFromCompletion(completion) : jsonResponse(completion));
+    } catch (error) {
+      await settleProviderAttemptDispatch(response, { reason: signal?.aborted ? "abort" : "upstream_error" });
+      throw error;
     }
-    const completion = openAiResponse(await response.json(), "configured-app");
-    return { response: stream ? streamFromCompletion(completion) : jsonResponse(completion), url: CHAT_URL, headers, transformedBody };
   }
 
   async validate(credentials, signal, proxyOptions) {

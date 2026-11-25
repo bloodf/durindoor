@@ -9,7 +9,8 @@
 // normalises JSON/SSE so the reply always matches what the caller asked for.
 import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -97,6 +98,12 @@ export class TencentAIStudioWebExecutor extends BaseExecutor {
   buildUrl(model) { return `${TENCENT_AISTUDIO_ORIGIN}/api/chat/${MODEL_MAP[modelKey(model)] || "HunyuanDefault"}`; }
 
   async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat(input, sender, billed) {
     const key = modelKey(input.model);
     const url = this.buildUrl(key);
     const cookie = tencentAIStudioCookie(input.credentials?.apiKey);
@@ -107,9 +114,11 @@ export class TencentAIStudioWebExecutor extends BaseExecutor {
     const body = { model: MODEL_MAP[key] || "HunyuanDefault", messages: Array.isArray(input.body?.messages) ? input.body.messages : [], stream: wantsStream };
     let upstream;
     try {
-      upstream = await proxyAwareFetch(url, { method: "POST", headers, body: JSON.stringify(body), redirect: "manual", signal: input.signal }, input.proxyOptions);
+      upstream = billed(await sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(body), redirect: "manual", signal: input.signal }, input.proxyOptions));
     } catch (error) {
-      if (error?.name === "AbortError") throw error;
+      if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
+      // The sign-in redirect an expired session receives.
+      if (isRefusedRedirect(error)) return reply(failure(401), { cookie: "[REDACTED]" });
       return reply(errorResponse(502, "Tencent AI Studio request failed: network error", { type: "upstream_error", code: "network_error" }), { cookie: "[REDACTED]" });
     }
     const shownHeaders = { ...headers, cookie: "[REDACTED]" };

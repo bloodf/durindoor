@@ -4,6 +4,7 @@ import {
   prepareProviderAttemptDispatch,
   runProviderAttemptDispatch,
   runQuotaBearingProviderRequest,
+  settleProviderAttemptDispatch,
   transferProviderAttemptDispatch
 } from "../services/providerAttemptContext.js";
 import {
@@ -20,6 +21,11 @@ export function requestAbortError(reason) {
   return new DOMException("Provider request aborted", "AbortError");
 }
 
+/** A refused redirect rejects the send instead of returning the 3xx response. */
+export function isRefusedRedirect(error) {
+  return /unexpected redirect/i.test(`${error?.message} ${error?.cause?.message}`);
+}
+
 /** Release a discarded response without trusting provider-controlled cancel latency. */
 export function cancelDiscardedResponse(response) {
   try {
@@ -28,7 +34,7 @@ export function cancelDiscardedResponse(response) {
   } catch {/* body may already be locked or closed */}
 }
 
-function sendThroughProxy(url, options, proxyOptions, observePatchedFetch) {
+function sendThroughProxy(url, options, proxyOptions, { observePatchedFetch, unrouted, globalFetch }) {
   let proxyAwareFetch;
   try {
     proxyAwareFetch = proxyFetch.proxyAwareFetch;
@@ -36,13 +42,56 @@ function sendThroughProxy(url, options, proxyOptions, observePatchedFetch) {
     // Some executor suites stub the entire proxy module.
   }
   const live = globalThis.fetch;
-  if (!isFunction(proxyAwareFetch)) {
+  // The patched global fetch routes through proxyAwareFetch and records its own dispatch.
+  if (globalFetch && live?.[DURINDOOR_FETCH_PATCH] === true) return live(url, { ...options, proxyOptions });
+  if (globalFetch || !isFunction(proxyAwareFetch)) {
     return runProviderAttemptDispatch(() => live(url, { ...options, proxyOptions }));
   }
   if (observePatchedFetch && !options.directFetch && live?.[DURINDOOR_FETCH_PATCH] === true) {
     return live(url, { ...options, proxyOptions });
   }
-  return proxyAwareFetch(url, options, proxyOptions);
+  // An unrouted send (a local sidecar) passes no connection route at all.
+  return unrouted ? proxyAwareFetch(url, options) : proxyAwareFetch(url, options, proxyOptions);
+}
+
+/**
+ * A replacement global fetch to hand to proxyAwareFetch as `directFetch`. The
+ * patched global is left out: it re-enters proxyAwareFetch, which would record
+ * and charge one physical send twice.
+ */
+export function unpatchedGlobalFetch() {
+  const live = globalThis.fetch;
+  return live?.[DURINDOOR_FETCH_PATCH] === true ? undefined : live;
+}
+
+/** Stop waiting on a pending operation as soon as the signal aborts. */
+export function abortable(pending, signal) {
+  if (!signal) return pending;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(requestAbortError(signal.reason));
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(pending).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+/**
+ * Run a send that is not a fetch (WebSocket frame, subprocess, app-server RPC).
+ * The transport receives the merged signal, and the sender stops waiting when it
+ * aborts even if the transport ignores it. An abort or header deadline wins
+ * over whatever error the transport raised while shutting down. There is no
+ * URL to proxy or redirect to guard here: a transport owns its own egress.
+ */
+async function runTransport(transport, options, timeoutSignal) {
+  const { signal } = options;
+  const abortCause = () => timeoutSignal.aborted && signal.reason === timeoutSignal.reason ?
+    timeoutSignal.reason : requestAbortError(signal.reason);
+  if (signal.aborted) throw abortCause();
+  try {
+    return await abortable(transport(options), signal);
+  } catch (error) {
+    throw signal.aborted ? abortCause() : error;
+  }
 }
 
 export function resolveHeaderTimeout(config, requestPolicy) {
@@ -70,7 +119,7 @@ export function createRequestSender({
   let deadline;
   const clearHeaderTimer = () => clearTimeout(deadline?.timer);
 
-  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true } = {}) {
+  async function sendRequest(url, init, proxyOptions = null, { quotaBearing = true, transport = null, unrouted = false, globalFetch = false } = {}) {
     const signal = init.signal;
     if (signal?.aborted) throw requestAbortError(signal.reason);
     clearHeaderTimer();
@@ -89,7 +138,9 @@ export function createRequestSender({
       }
       dispatched = true;
       const options = { ...(credentialed ? { redirect: "error" } : null), ...init, signal: mergedSignal };
-      const send = () => sendThroughProxy(url, options, proxyOptions, observePatchedFetch);
+      const send = transport ?
+        () => runProviderAttemptDispatch(() => runTransport(transport, options, controller.signal)) :
+        () => sendThroughProxy(url, options, proxyOptions, { observePatchedFetch, unrouted, globalFetch });
       return await (quotaBearing ? runQuotaBearingProviderRequest(send) : send());
     } catch (error) {
       clearTimeout(timer);
@@ -128,12 +179,40 @@ export function createRequestSender({
   };
 }
 
-/** Apply the provider's configured header deadline to a custom executor. */
-export function createExecutorSender(executor, input) {
+/**
+ * Run an execute() body that makes its quota-bearing send somewhere inside. The
+ * body passes that send's response to billed(); the ticket then moves to the
+ * returned response, or is settled when the body throws instead.
+ */
+export async function withBillableDispatch(sender, run) {
+  let dispatch = null;
+  let startedAt = null;
+  const billed = (response) => {
+    dispatch = response;
+    startedAt = sender.attemptStartedAt;
+    return response;
+  };
+  try {
+    const result = await run(billed);
+    if (!result?.response) return result;
+    transferProviderAttemptDispatch(dispatch, result.response);
+    const attemptStartedAt = startedAt ?? sender.attemptStartedAt;
+    return attemptStartedAt ? { ...result, attemptStartedAt } : result;
+  } catch (error) {
+    await settleProviderAttemptDispatch(dispatch, { reason: error?.name === "AbortError" ? "abort" : "transport_error" });
+    throw error;
+  }
+}
+
+/**
+ * Apply the provider's configured header deadline to a custom executor. An
+ * override that called proxyAwareFetch itself passes observePatchedFetch: false.
+ */
+export function createExecutorSender(executor, input, { observePatchedFetch = true } = {}) {
   return createRequestSender({
     attemptStartedAt: input.attemptStartedAt,
     onProviderAttempt: input.onProviderAttempt,
     headerTimeoutMs: resolveHeaderTimeout(executor.config, resolveRequestRetryPolicy(executor.provider, input.requestPolicy)),
-    observePatchedFetch: true
+    observePatchedFetch
   });
 }

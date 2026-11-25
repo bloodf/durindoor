@@ -94,8 +94,8 @@ describe.each(postgresUrl ? ["PostgreSQL server"] : ["SQLite", "PostgreSQL SQL f
   it("registers capture migration 032 in SQLite and PostgreSQL", async () => {
     const { MIGRATIONS, latestVersion } = await import("@/lib/db/migrations/index.js");
     const { PG_MIGRATIONS, pgLatestVersion } = await import("@/lib/db/migrations/postgres/index.js");
-    expect(latestVersion()).toBe(37);
-    expect(pgLatestVersion()).toBe(37);
+    expect(latestVersion()).toBe(38);
+    expect(pgLatestVersion()).toBe(38);
     expect(PG_MIGRATIONS.at(-1)).toBe(MIGRATIONS.at(-1));
     const captureMigration = MIGRATIONS.find(({ version }) => version === 32);
     expect(captureMigration).toMatchObject({ version: 32, name: "session-capture" });

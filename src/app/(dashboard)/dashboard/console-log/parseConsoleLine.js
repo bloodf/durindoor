@@ -43,7 +43,7 @@ function parseCompletion(message) {
 
   const ttft = suffix[0]?.match(/^TTFT (\d+)\s*ms$/);
   if (ttft) suffix.shift();
-  const input = suffix.shift()?.match(/^IN (\d+)(?: \(CACHE (?:↻(\d+))? ?(?:\+(\d+))?\))?$/);
+  const input = suffix.shift()?.match(/^IN (\d+)(?: \(CACHE (?:↻(\d+))? ?(?:\+(\d+))?\)(?: (\d+(?:\.\d+)?)% reused)?)?$/);
   const output = suffix.shift()?.match(/^OUT (\d+)$/);
   if (!input || !output) return null;
 
@@ -62,6 +62,7 @@ function parseCompletion(message) {
     cacheCreate: Number(input[3] ?? 0),
     routedModel: suffix[0] ?? null,
   };
+  if (input[4]) completion.cacheReusedPercent = Number(input[4]);
   if (credits) completion.credits = Number(credits[1]);
   if (session) completion.sessionId = session[1];
   return completion;

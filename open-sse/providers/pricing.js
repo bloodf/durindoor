@@ -7,6 +7,7 @@ import {
 "../config/freeModelCatalog.js";
 import { isKiroFamilyProvider, stripKiroSyntheticSuffixes } from "./models/kiroVariants.js";
 import { normalizeModelId } from "./models/schema.js";
+import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
 
 // Pricing rates for AI models — all rates in $/1M tokens
 //
@@ -626,9 +627,12 @@ export function isFreeNamespace(model) {
 export function getPricingForModel(provider, model) {
   if (!model) return null;
 
+  // Usage rows keep request-only annotations ("gpt-5.6-sol(xhigh)"). Resolved
+  // verbatim they miss the exact row and take a broader glob or no price.
+  model = stripThinkingSuffix(model, provider);
+
   if (provider) {
-    const codexModel = /^(?:codex|cx)$/.test(provider) ? model.replace(/\((?:low|medium|high|xhigh|max)\)$/, "") : model;
-    const providerPricing = providerPricingFor(provider, codexModel);
+    const providerPricing = providerPricingFor(provider, model);
     if (providerPricing) return providerPricing;
   }
 

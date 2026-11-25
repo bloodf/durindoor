@@ -1885,7 +1885,7 @@ export async function handleComboChat({
             advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
           }
         }
-        log.info("COMBO", `Model ${modelStr} succeeded`);
+        log.info("COMBO", `Model ${modelStr} succeeded · ATTEMPT ${i + 1}/${rotatedModels.length}`);
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
       }
 

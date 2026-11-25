@@ -72,6 +72,17 @@ describe("port(upstream) #4545: OpenCode Responses tool names stay within 64 cha
     expect(out._toolNameMap.get(out.tool_choice.name)).toBe(LONG_B);
   });
 
+  // OpenCode Zen also nests reasoning effort (#4610), which returns a copy.
+  it("opencode-zen keeps both the nested effort and the alias map on every attempt", () => {
+    const executor = new OpenCodeZenExecutor();
+    const body = { ...request(), reasoning_effort: "high" };
+    for (const attempt of [1, 2]) {
+      const out = executor.transformRequest("gpt-5-nano", body, true, {});
+      expect(out.reasoning, `attempt ${attempt}`).toEqual({ effort: "high" });
+      expect([...(out._toolNameMap?.values() ?? [])], `attempt ${attempt}`).toEqual(expect.arrayContaining([LONG_A, LONG_B]));
+    }
+  });
+
   it("keeps the alias map when the same body is transformed again", () => {
     const executor = new OpenCodeExecutor();
     const body = request();

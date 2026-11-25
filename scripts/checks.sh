@@ -10,7 +10,9 @@ run() {
 }
 if [ "$mode" = final ]; then
   run pnpm run lint
-  run sh -c 'cd tests && pnpm run test:ci'
+  # test:ci enforces the 300 s ceiling per batch; an outer timeout would kill the whole run.
+  echo "+ cd tests && pnpm run test:ci"
+  (cd tests && pnpm run test:ci) || { echo 'FAILED: test:ci' >&2; failed=1; }
   exit "$failed"
 fi
 work=$(mktemp -d) || exit 1
@@ -35,11 +37,11 @@ fi
 set --
 while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "$file"; done < "$work/tests"
 if [ "$#" -gt 0 ]; then
-  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs run --maxWorkers=50% "$@") || { echo 'FAILED: selected tests' >&2; failed=1; }
+  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: selected tests' >&2; failed=1; }
 fi
 set --
 while IFS= read -r file || [ -n "$file" ]; do [ -z "$file" ] || set -- "$@" "../$file"; done < "$work/related"
 if [ "$#" -gt 0 ]; then
-  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs related --run --maxWorkers=50% "$@") || { echo 'FAILED: related tests' >&2; failed=1; }
+  (cd tests && timeout 300 node node_modules/vitest/vitest.mjs related --run --passWithNoTests --maxWorkers=50% "$@") || { echo 'FAILED: related tests' >&2; failed=1; }
 fi
 exit "$failed"

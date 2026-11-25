@@ -26,4 +26,19 @@ describe("repository check selection", () => {
     expect(read("playwright.config.mjs")).toMatch(/workers: Math\.min\(2,/);
     expect(read("website/playwright.config.mjs")).toMatch(/workers: 2/);
   });
+
+  it("does not wrap test:ci in an outer timeout", () => {
+    const script = read("scripts/checks.sh");
+    const testCiLines = script.split("\n").filter((line) => line.includes("test:ci") && !line.trim().startsWith("#"));
+    expect(testCiLines.length).toBeGreaterThan(0);
+    for (const line of testCiLines) expect(line).not.toMatch(/timeout 300|\brun sh\b/);
+    expect(script).toMatch(/timeout 300 "\$@"/);
+    expect(script).toContain("run pnpm run lint\n");
+  });
+
+  it("passes unit vitest runs when no test matches", () => {
+    const vitestLines = read("scripts/checks.sh").split("\n").filter((line) => line.includes("vitest.mjs"));
+    expect(vitestLines).toHaveLength(2);
+    for (const line of vitestLines) expect(line).toContain("--passWithNoTests");
+  });
 });

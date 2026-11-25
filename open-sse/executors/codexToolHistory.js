@@ -37,7 +37,8 @@ function normalizeCallId(id) {
 }
 
 /**
- * Normalize call ids, drop results with no call of the same kind, and add a
+ * Reserve valid IDs and assign unique, deterministic IDs across the request,
+ * then drop results with no call of the same kind and add a
  * placeholder result after each function or custom call that has none. An
  * unanswered computer call is replaced with a note.
  *
@@ -45,9 +46,47 @@ function normalizeCallId(id) {
  * @returns {Array} repaired items; the caller's items are not mutated.
  */
 export function repairCodexToolHistory(input) {
-  const items = input.map((item) => OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)
-    ? { ...item, call_id: normalizeCallId(item.call_id) }
-    : item);
+  const ids = [];
+  for (const item of input) {
+    if (OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)) ids.push(item.call_id);
+    for (const call of Array.isArray(item?.tool_calls) ? item.tool_calls : []) ids.push(call?.id);
+    if (item?.role === ROLE.TOOL) ids.push(item.tool_call_id);
+  }
+  // Composite IDs represent the same call as their first nonempty component.
+  const key = (id) => isString(id) && id ? (id.split(/[\n|]/).find(Boolean) || id) : id;
+  const mapping = new Map();
+  const used = new Set();
+  for (const id of ids) {
+    if (isString(id) && /^[A-Za-z0-9_-]{1,64}$/.test(id)) {
+      mapping.set(id, id);
+      used.add(id);
+    }
+  }
+  for (const id of ids) {
+    const raw = key(id);
+    if (!isString(raw) || !raw || mapping.has(raw)) continue;
+    const normalized = normalizeCallId(raw);
+    let candidate = normalized;
+    let counter = 2;
+    while (used.has(candidate)) {
+      const suffix = `_${counter++}`;
+      candidate = `${normalized.slice(0, 64 - suffix.length)}${suffix}`;
+    }
+    mapping.set(raw, candidate);
+    used.add(candidate);
+  }
+  const mapped = (id) => mapping.get(key(id)) ?? id;
+  const items = input.map((item) => {
+    let result = item;
+    if (OUTPUT_TYPES.has(item?.type) || OUTPUT_TYPE_BY_CALL_TYPE.has(item?.type)) {
+      result = { ...result, call_id: mapped(item.call_id) };
+    }
+    if (Array.isArray(item?.tool_calls)) {
+      result = { ...result, tool_calls: item.tool_calls.map((call) => call ? { ...call, id: mapped(call.id) } : call) };
+    }
+    if (item?.role === ROLE.TOOL) result = { ...result, tool_call_id: mapped(item.tool_call_id) };
+    return result;
+  });
 
   const calls = new Set();
   const answered = new Set();

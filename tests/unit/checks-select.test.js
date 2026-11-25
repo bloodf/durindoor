@@ -10,11 +10,16 @@ describe("repository check selection", () => {
       "src/app/page.js",
       "tests/unit/checks-select.test.js",
       "src/deleted-file.js",
-    ])).toEqual({
+    ])).toEqual(expect.objectContaining({
       eslint: ["src/app/page.js"],
       tests: ["unit/checks-select.test.js"],
-      related: ["src/app/page.js"],
-    });
+    }));
+  });
+
+  it("selects importers of a source hub and leaves unrelated files empty", () => {
+    expect(selectChecks(["open-sse/handlers/chatCore.js"]).related).toContain("unit/zcode-provider.test.js");
+    expect(selectChecks(["scripts/checks-select.mjs"]).related).toContain("unit/checks-select.test.js");
+    expect(selectChecks(["scripts/bench-" + "db-queries.mjs"]).related).toEqual([]);
   });
 
   it("does not select documentation", () => {
@@ -25,7 +30,7 @@ describe("repository check selection", () => {
     expect(selectChecks([], ["src/checks-select.mjs"])).toEqual({
       eslint: [],
       tests: ["unit/checks-select.test.js"],
-      related: [],
+      related: ["unit/checks-select.test.js"],
       fullLint: true,
     });
     expect(selectChecks(["AGENTS.md"], [])).toEqual(selectChecks(["AGENTS.md"]));
@@ -49,6 +54,7 @@ describe("repository check selection", () => {
   it("passes unit vitest runs when no test matches", () => {
     const vitestLines = read("scripts/checks.sh").split("\n").filter((line) => line.includes("vitest.mjs"));
     expect(vitestLines).toHaveLength(2);
+    expect(read("scripts/checks.sh")).not.toContain("vitest.mjs related");
     for (const line of vitestLines) expect(line).toContain("--passWithNoTests");
   });
 });

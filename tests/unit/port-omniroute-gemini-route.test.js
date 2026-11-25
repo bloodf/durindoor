@@ -19,6 +19,9 @@ describe("OmniRoute a50e5b7904b9d686fd278b4fc6facb6f4da64d3b Gemini route", () =
     expect(mocks.handleChat).not.toHaveBeenCalled();
     expect(estimateGeminiCountTokens(body)).toBeGreaterThan(259);
   });
+  it("tolerates null tool entries", () => {
+    expect(estimateGeminiCountTokens({ contents: [{ parts: [null, { text: "abcd" }] }], tools: [null] })).toBe(1);
+  });
   it("enforces admission for counting", async () => {
     mocks.admit.mockResolvedValue({ error: new Response(null, { status: 401 }) });
     const response = await POST(new Request("http://localhost/v1beta/models/a:countTokens", { method: "POST", body: "{}" }), { params: Promise.resolve({ path: ["a:countTokens"] }) });

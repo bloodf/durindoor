@@ -30,6 +30,6 @@ export function estimateGeminiCountTokens(body) {
   };
   if (Array.isArray(request.contents)) request.contents.forEach(content);
   content(request.systemInstruction);
-  for (const tool of Array.isArray(request.tools) ? request.tools : []) add(tool.functionDeclarations);
+  for (const tool of Array.isArray(request.tools) ? request.tools : []) add(tool?.functionDeclarations);
   return Math.ceil(chars / 4) + media;
 }

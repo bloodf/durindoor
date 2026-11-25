@@ -255,7 +255,7 @@ export default function CombosPage() {
 
   const pruneStrategiesForNames = (names, base = comboStrategies) => {
     const updated = { ...base };
-    for (const name of names) delete updated[name];
+    for (const name of names) updated[name] = null;
     return updated;
   };
 

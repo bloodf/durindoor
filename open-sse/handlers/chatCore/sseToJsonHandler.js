@@ -96,9 +96,7 @@ function resolveToolSlot(accumulator, toolCall) {
   const slot = byIndex ? slots.get(toolCall.index) ?? toolCall.index : accumulator.lastToolSlot ?? 0;
   const current = accumulator.toolCallMap.get(slot);
   const name = toolCall.function?.name;
-  const known = toolCall.id ?
-  [...accumulator.toolCallMap].find(([, call]) => call.id === toolCall.id)?.[0] :
-  undefined;
+  const known = toolCall.id ? accumulator.slotById?.get(toolCall.id) : undefined;
   let next = known ?? slot;
   const startsCall = known === undefined && current && (toolCall.id ?
   current.id && (!byIndex || name) :
@@ -196,7 +194,12 @@ function aggregateParsedChunks(chunks, fallbackModel, {
           });
         }
         const existing = accumulator.toolCallMap.get(toolIndex);
-        if (toolCall.id) existing.id = toolCall.id;
+        if (toolCall.id) {
+          const ids = accumulator.slotById ??= new Map();
+          if (existing.id && existing.id !== toolCall.id) ids.delete(existing.id);
+          existing.id = toolCall.id;
+          ids.set(toolCall.id, toolIndex);
+        }
         if (toolCall.type) existing.type = toolCall.type;
         // Split names join, but an exact repeat of the whole name is skipped (upstream #4511).
         if (toolCall.function?.name && toolCall.function.name !== existing.function.name) existing.function.name += toolCall.function.name;

@@ -226,6 +226,12 @@ async function tryDedicatedProvider({
     }
     const data = await resp.json();
     const accounting = mediaAccounting(data, provider.id, "search");
+    // Tavily reports billed credits separately from token usage when requested.
+    const credits = data?.usage?.credits;
+    if (provider.id === "tavily" && Number.isFinite(credits) && credits >= 0) {
+      accounting.nativeUnits.credits = credits;
+      accounting.meta.nativeUnitsSource = "usage.credits";
+    }
     const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
     const results = normalized.results.slice(0, params.maxResults);
     const duration = Date.now() - startTime;

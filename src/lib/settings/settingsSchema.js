@@ -297,6 +297,8 @@ const constraints = {
   databaseEngine: { enum: ["sqlite", "postgres"] },
   databasePgVersion: { enum: [16, 17, 18], integer: true },
   proxyTimelineRetentionDays: { enum: [1, 3, 7] },
+  // Only OIDC is implemented (9router #5851); see resolveSsoType in src/lib/auth/oidc.js.
+  ssoType: { enum: ["oidc"] },
   stickyRoundRobinLimit: { minimum: 1, integer: true },
   pxpipeMinChars: { minimum: 1, integer: true },
   pxpipeTimeoutMs: { minimum: 1000, maximum: 120000, integer: true },

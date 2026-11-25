@@ -375,7 +375,8 @@ export default function ProviderDetailSections({ addConnectionError, allSelected
                     <span className="text-xs text-dd-muted">Sticky:</span>
                     <input
                   type="number"
-                  min={1}
+                  min={0}
+                  title="0 keeps one account until it is unavailable"
                   value={providerStickyLimit}
                   onChange={(e) => handleStickyLimitChange(e.target.value)}
                   placeholder="1"

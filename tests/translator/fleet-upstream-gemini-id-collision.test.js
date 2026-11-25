@@ -34,7 +34,7 @@ it("keeps generated Gemini call IDs unique and paired without changing overlap r
     call("x", "first"), { role: "user", content: "next" }, call("x", "second"), response("x", 2),
   ]);
   expect(overlap.filter((part) => part.functionResponse).map((part) => part.functionResponse)).toEqual([
-    { id: "x", name: "first", response: { result: { result: "[No response received]" } } },
+    { id: "x", name: "first", response: { result: "[No response received]" } },
     { id: "x_1", name: "second", response: { result: { n: 2 } } },
   ]);
 });

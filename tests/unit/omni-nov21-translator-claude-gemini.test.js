@@ -204,7 +204,7 @@ describe("#20204 OpenAI → Gemini request fixes", () => {
       messages: toolTurn([{ type: "text", text: "screen ready" }, { type: "image_url", image_url: { url: "data:image/png;base64,AQIDBA==" } }])
     }, false).contents.flatMap((content) => content.parts);
     expect(parts.find((part) => part.inlineData).inlineData).toEqual({ mimeType: "image/png", data: "AQIDBA==" });
-    expect(parts.find((part) => part.functionResponse).functionResponse.response.result).toEqual({ result: "screen ready" });
+    expect(parts.find((part) => part.functionResponse).functionResponse.response).toEqual({ result: "screen ready" });
   });
 
   it("keeps remote tool-result image URLs visible in the result and plain string results unchanged", () => {
@@ -215,7 +215,7 @@ describe("#20204 OpenAI → Gemini request fixes", () => {
     expect(JSON.stringify(withUrl.find((part) => part.functionResponse).functionResponse.response)).toContain("https://example.com/a.png");
     const plain = openaiToGeminiRequest("gemini-2.5-flash", { messages: toolTurn("plain text") }, false).contents.flatMap((content) => content.parts);
     expect(plain.some((part) => part.inlineData || part.fileData)).toBe(false);
-    expect(plain.find((part) => part.functionResponse).functionResponse.response.result).toEqual({ result: "plain text" });
+    expect(plain.find((part) => part.functionResponse).functionResponse.response).toEqual({ result: "plain text" });
   });
 
   it("splits inline media out while a remote image URL stays in the result", () => {

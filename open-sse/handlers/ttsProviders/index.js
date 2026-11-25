@@ -1,3 +1,4 @@
+import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // TTS provider registry
 import googleTts from "./googleTts.js";
 import edgeTts, { fetchEdgeTtsVoices } from "./edgeTts.js";
@@ -10,7 +11,7 @@ import { FORMAT_HANDLERS } from "./genericFormats.js";
 import { parseModelVoice } from "./_base.js";
 
 // Special providers with custom synthesize() logic
-const SPECIAL_ADAPTERS = {
+export const TTS_ADAPTERS = createMediaRegistry({
   "google-tts": googleTts,
   "edge-tts": edgeTts,
   "local-device": localDevice,
@@ -18,10 +19,10 @@ const SPECIAL_ADAPTERS = {
   openai,
   openrouter,
   gemini,
-};
+});
 
 export function getTtsAdapter(provider) {
-  return SPECIAL_ADAPTERS[provider] || null;
+  return lookupMediaAdapter(TTS_ADAPTERS, provider);
 }
 
 // Generic config-driven dispatcher (uses ttsConfig.format)

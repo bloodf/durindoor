@@ -68,6 +68,7 @@ function wireAppMocks({ killAllBridges, getSettings, startQuotaAutoPing }) {
     loadEncryptedPassword: () => null, initDbHooks: () => {},
     restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
   }));
+  // Shutdown needs the stop hook from the same factory as the startup hook.
   vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: startQuotaAutoPing || (() => {}), stopQuotaAutoPing: () => {} }));
   vi.doMock("@/sse/services/backgroundTokenRefresh.js", () => ({ startBackgroundTokenRefresh: () => {}, stopBackgroundTokenRefresh: () => {} }));
   vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));

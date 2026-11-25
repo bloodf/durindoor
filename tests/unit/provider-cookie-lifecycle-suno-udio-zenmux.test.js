@@ -218,10 +218,12 @@ describe("ZenMux Free saved cookie lifecycle", () => {
     const other = await addConnection("zenmux-free", "other", "ctoken=other", 2);
     expect((await (await usage(mine.id)).json()).message).toBe("ZenMux Free connected. No requests recorded in the last 30 days.");
     outbound.mockImplementation(async () => zenmuxOk("hello world"));
+    // The chat response schedules usage persistence without awaiting it.
+    const usageWrite = vi.spyOn(await import("@/lib/usageDb.js"), "saveRequestUsage");
     expect((await chat("zmf/deepseek/deepseek-chat")).status).toBe(200);
-    await vi.waitFor(async () => {
-      expect((await (await usage(mine.id)).json()).displayMessage).toBe("ZenMux Free connected. 1 requests in the last 30 days.");
-    });
+    expect(usageWrite).toHaveBeenCalledOnce();
+    await usageWrite.mock.results[0].value;
+    expect((await (await usage(mine.id)).json()).displayMessage).toBe("ZenMux Free connected. 1 requests in the last 30 days.");
     expect((await (await usage(other.id)).json()).message).toBe("ZenMux Free connected. No requests recorded in the last 30 days.");
   });
 });

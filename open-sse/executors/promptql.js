@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { promptqlCookieProfile } from "../providers/registry/promptql.js";
 import { BaseExecutor } from "./base.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { createExecutorSender, isRefusedRedirect, unpatchedGlobalFetch, withBillableDispatch } from "./sendRequest.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 
 const GQL = "https://data.prompt.ql.app/promptql/playground-v2-hge/v1/graphql";
 const { origin: ORIGIN, validationProbe: { url: REFRESH } } = promptqlCookieProfile;
@@ -102,16 +104,33 @@ function sleep(ms, signal) {
 }
 
 export class PromptQlExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("promptql", { id: "promptql", baseUrl: GQL }); this.fetch = deps.fetch || ((...args) => globalThis.fetch(...args)); }
+  constructor(deps = {}) { super("promptql", { id: "promptql", baseUrl: GQL }); this.fetch = deps.fetch ?? null; }
   async execute(input) {
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runThread(input, sender, billed));
+  }
+
+  async runThread(input, sender, billed) {
     const body = input.body || {};
     let { token, projectId, cookie, sessionHash } = readPromptQlCredentials(input.credentials);
     let sessionUpdate;
+    const send = (url, init, options = { quotaBearing: false }) =>
+      sender.sendRequest(url, { ...init, directFetch: this.fetch ?? unpatchedGlobalFetch() }, input.proxyOptions, options);
+    // The mutation that posts the message is the only request that spends quota.
+    let message = null;
+    const sendMessage = async (url, init) => {
+      await settleProviderAttemptDispatch(message, { reason: "fallback" });
+      try {
+        message = billed(await send(url, init, { quotaBearing: true }));
+      } catch (error) {
+        throw isRefusedRedirect(error) ? sessionError() : error;
+      }
+      return message;
+    };
     try {
       const expiresAt = Number(jwtPayload(token).exp) * 1000;
       if (cookie && (!token || !projectId || (expiresAt && expiresAt < Date.now() + 30000))) {
-        const refreshOptions = { ...promptQlSessionRequest(cookie, projectId, input.signal), directFetch: this.fetch };
-        const refreshed = await proxyAwareFetch(REFRESH, refreshOptions, input.proxyOptions);
+        const refreshed = await send(REFRESH, promptQlSessionRequest(cookie, projectId, input.signal));
         if (isPromptQlSessionError(refreshed.status) || refreshed.status === 400) throw sessionError();
         if (!refreshed.ok) throw Object.assign(new Error("PromptQL token exchange failed"), { status: refreshed.status });
 
@@ -122,9 +141,9 @@ export class PromptQlExecutor extends BaseExecutor {
       if (!token || (expiry && expiry * 1000 <= Date.now())) throw sessionError();
       if (!projectId) return error(400, "Missing PromptQL projectId", body);
       const headers = { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}`, origin: ORIGIN, referer: `${ORIGIN}/` };
-      const gql = async (query, variables, operationName) => {
-        const request = { method: "POST", headers, body: JSON.stringify({ query, variables, operationName }), redirect: "manual", signal: input.signal, directFetch: this.fetch };
-        const r = await proxyAwareFetch(GQL, request, input.proxyOptions);
+      const gql = async (query, variables, operationName, dispatch = send) => {
+        const request = { method: "POST", headers, body: JSON.stringify({ query, variables, operationName }), redirect: "manual", signal: input.signal };
+        const r = await dispatch(GQL, request);
         if (isPromptQlSessionError(r.status)) throw sessionError();
         if (r.status === 429) throw Object.assign(new Error("PromptQL quota or rate limit exceeded"), { status: 429 });
         const j = await r.json(); if (!r.ok || j.errors?.length) throw Object.assign(new Error(j.errors?.map((e) => e.message).join("; ") || `PromptQL HTTP ${r.status}`), { status: r.status }); return j.data;
@@ -145,7 +164,7 @@ export class PromptQlExecutor extends BaseExecutor {
       if (!text.trim()) return error(400, "No user message found", body);
       const threadId = body.promptql_thread_id || input.clientHeaders?.["x-promptql-thread-id"];
       let thread;
-      if (threadId) { await gql(SEND, { message: `<agent_mention /> ${text}`, timezone: "UTC", threadId, uploads: [], agentResponseConfig: "force_respond" }, "SendThreadMessage"); thread = threadId; }
+      if (threadId) { await gql(SEND, { message: `<agent_mention /> ${text}`, timezone: "UTC", threadId, uploads: [], agentResponseConfig: "force_respond" }, "SendThreadMessage", sendMessage); thread = threadId; }
       else {
         const variables = { message: `<agent_mention /> ${text}`, projectId, timezone: "UTC", uploads: [], agentResponseConfig: "force_respond" };
         let started;
@@ -154,13 +173,13 @@ export class PromptQlExecutor extends BaseExecutor {
           try {
             const catalog = await gql(MODEL_QUERY, {}, "FetchLlmConfigs");
             const selected = (catalog.llm_config || []).find((row) => [row.model_reference, row.model_id, row.id, row.display_label].some((name) => String(name || "").toLowerCase() === requested));
-            if (selected?.id) started = await gql(START_MODEL, { ...variables, llmConfigId: selected.id }, "StartThreadWithModel");
+            if (selected?.id) started = await gql(START_MODEL, { ...variables, llmConfigId: selected.id }, "StartThreadWithModel", sendMessage);
           } catch (err) {
-            if (err.status === 401 || err.status === 429) throw err;
+            if (err.status === 401 || err.status === 429 || isQuotaDispatchUnavailable(err)) throw err;
             // Fall back to the playground default if model selection fails.
           }
         }
-        if (!started) started = await gql(START, variables, "StartThreadRoomless");
+        if (!started) started = await gql(START, variables, "StartThreadRoomless", sendMessage);
         thread = started.start_thread.thread_id;
       }
       let cursor = "0", answer = "";
@@ -179,6 +198,7 @@ export class PromptQlExecutor extends BaseExecutor {
         if (e?.name === "AbortError") throw e;
         throw new DOMException("Request aborted", "AbortError");
       }
+      if (isQuotaDispatchUnavailable(e)) throw e;
       const status = e.status || (/expired|unauthorized|JWT/i.test(e.message) ? 401 : /quota|rate limit|429/i.test(e.message) ? 429 : 502);
       return error(status, e.message || "PromptQL request failed", body);
     }

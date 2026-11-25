@@ -37,6 +37,20 @@ import { normalizeComboMembers } from "./repos/combosRepo.js";
 import { normalizeComboCapabilities } from "open-sse/providers/capabilities.js";
 import { validateGroupName, validateGroupDescription } from "./repos/connectionGroupsRepo.js";
 import { backfillUsageEventReceiptsSync, getBillingEpochSync } from "./repos/usageRepo.js";
+import { dropAntigravityRowsForMissingConnections, noteImportedAntigravityToken } from "../antigravity/leaseSql.js";
+
+const ANTIGRAVITY_IMPORT_FORBIDDEN_KEYS = Object.freeze([
+  "antigravityRecoveryCredentials",
+  "antigravityRefreshLeases",
+]);
+
+function rejectAntigravityRotationPayload(payload) {
+  for (const key of ANTIGRAVITY_IMPORT_FORBIDDEN_KEYS) {
+    if (payload && Object.hasOwn(payload, key)) {
+      throw new Error("Database import cannot carry Antigravity recovery or lease rows");
+    }
+  }
+}
 
 function assertUniqueNonEmpty(rows, field, label, { revealDuplicate = true } = {}) {
   const seen = new Set();
@@ -560,6 +574,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
   if (!payload || !isObject(payload) || Array.isArray(payload)) {
     throw new Error("Invalid database payload");
   }
+  rejectAntigravityRotationPayload(payload);
   // Validate before opening the transaction or deleting any existing rows.
   // This makes duplicate keys, dangling totals, and malformed policies a hard
   // import error instead of silently collapsing or weakening enforcement.
@@ -658,15 +673,8 @@ export async function importDb(payload, { now = Date.now() } = {}) {
       ON CONFLICT (dateKey, provider, model, connectionId, apiKey, endpoint) DO UPDATE SET
         lastUsed = CASE WHEN excluded.lastUsed > usageLastSeen.lastUsed THEN excluded.lastUsed ELSE usageLastSeen.lastUsed END`);
     db.run("DELETE FROM usageLastSeen WHERE apiKey <> ''");
-    for (const row of db.all(`SELECT dateKey, data FROM usageDaily`)) {
-      const day = parseJson(row.data, {});
-      if (day?.byApiKey && Object.keys(day.byApiKey).length > 0) {
-        // Preserve aggregate/provider/model analytics while removing the
-        // secret-derived per-key buckets from the pre-import identity set.
-        day.byApiKey = {};
-        db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), row.dateKey]);
-      }
-    }
+    // Keep the totals and non-key dimensions from the pre-import rollups.
+    db.run("DELETE FROM usageDailyRollups WHERE dimension = 'byApiKey'");
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM quotaReservationItems`);
     db.run(`DELETE FROM quotaReservations`);
@@ -716,6 +724,7 @@ export async function importDb(payload, { now = Date.now() } = {}) {
 
     for (const c of payload.providerConnections || []) {
       const { id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...rest } = c;
+      const importedRefresh = isString(c.refreshToken) && c.refreshToken && !isEncryptedBlob(c.refreshToken) ? c.refreshToken : null;
       for (const field of SENSITIVE_CONNECTION_FIELDS) {
         const value = rest[field];
         if (isEncryptedBlob(value)) throw new Error(`Import field "${field}" must not contain an encrypted credential blob`);
@@ -730,7 +739,9 @@ export async function importDb(payload, { now = Date.now() } = {}) {
         `INSERT OR REPLACE INTO providerConnections(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, provider, authType || "oauth", name || null, email || null, priority || null, isActive === false ? 0 : 1, stringifyJson(rest), createdAt || new Date().toISOString(), updatedAt || new Date().toISOString()]
       );
+      noteImportedAntigravityToken(db, { connectionId: id, provider, refreshToken: importedRefresh });
     }
+    dropAntigravityRowsForMissingConnections(db);
     for (const n of payload.providerNodes || []) {
       const { id, type, name, createdAt, updatedAt, ...rest } = n;
       db.run(
@@ -1054,6 +1065,7 @@ export async function importSelectiveDb(bundle, selection) {
     combos: Array.isArray(bundle?.combos) ? bundle.combos.map((row) => row?.id).filter(Boolean) : [],
   };
   if (!bundle || !isObject(bundle) || Array.isArray(bundle) || bundle.format !== "durindoor-selective-transfer" || bundle.version !== 1 || !Array.isArray(bundle.providerConnections) || !Array.isArray(bundle.combos)) throw new Error("Invalid selective transfer bundle");
+  rejectAntigravityRotationPayload(bundle);
   const selected = validateTransferSelection(effectiveSelection);
   const providerRows = bundle.providerConnections.filter((row) => selected.providers.includes(row?.id));
   const comboRows = bundle.combos.filter((row) => selected.combos.includes(row?.id));
@@ -1107,6 +1119,7 @@ export async function importSelectiveDb(bundle, selection) {
     const existingRow = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     const existingData = existingRow ? parseJson(existingRow.data, {}) : {};
     const { id: _id, provider, authType, name, email, priority, isActive, createdAt, updatedAt, ...incomingData } = remap(incoming);
+    const plaintextRefresh = isString(incoming.refreshToken) && incoming.refreshToken && !isEncryptedBlob(incoming.refreshToken) ? incoming.refreshToken : null;
     const data = {
       ...incomingData,
       // Secret-free exports include only safe PSD metadata. Merge it via
@@ -1131,6 +1144,7 @@ export async function importSelectiveDb(bundle, selection) {
     return {
       id, provider, authType, name: name || null, email: email || null, priority: priority || null,
       isActive: isActive === false ? 0 : 1, data: stringifyJson(data),
+      plaintextRefresh,
       createdAt: existingRow?.createdAt || createdAt || new Date().toISOString(),
       updatedAt: updatedAt || new Date().toISOString(),
     };
@@ -1182,6 +1196,7 @@ export async function importSelectiveDb(bundle, selection) {
          ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, authType=excluded.authType, name=excluded.name, email=excluded.email, priority=excluded.priority, isActive=excluded.isActive, data=excluded.data, updatedAt=excluded.updatedAt`,
         [w.id, w.provider, w.authType, w.name, w.email, w.priority, w.isActive, w.data, w.createdAt, w.updatedAt]
       );
+      noteImportedAntigravityToken(db, { connectionId: w.id, provider: w.provider, refreshToken: w.plaintextRefresh });
       imported.providers.push(w.id);
     }
     for (const w of comboWrites) {

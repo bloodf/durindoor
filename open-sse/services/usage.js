@@ -81,6 +81,7 @@ const USAGE_HANDLERS = {
   "grok-web": () => getGrokWebUsage(),
   "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
   "kimi-coding": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
+  "kimi-ai": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData, "kimi-ai"),
   "kimi-coding-apikey": (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   "opencode-go": (c) => getOpenCodeGoUsage(c.apiKey, c.proxyOptions),

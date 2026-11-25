@@ -1,10 +1,6 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
-import { handleChat } from "@/sse/handlers/chat.js";
-import { requireJsonContentType } from "open-sse/translator/validate.js";
-import { SSE_KEEPALIVE_MS } from "open-sse/config/runtimeConfig.js";
-import { decodeAnthropicRequest } from "@/sse/utils/inboundGzip.js";
-import { ANTHROPIC_PING_FRAME, withEarlyStreamKeepalive } from "open-sse/utils/earlyStreamKeepalive.js";
+import { handleMessages } from "@/sse/handlers/chat/keepalive.js";
 
 
 /**
@@ -16,35 +12,5 @@ async function OPTIONSHandler() {
   });
 }
 
-/**
- * POST /v1/messages - Claude format (auto convert via handleChat).
- * Streaming requests emit Anthropic ping events while provider setup is silent.
- */
-async function POSTHandler(request) {
-  // #6414: reject non-JSON Content-Type with 415 before touching the body.
-  const ctRejection = requireJsonContentType(request);
-  if (ctRejection) return ctRejection;
-
-  const decoded = await decodeAnthropicRequest(request, { abortedStatus: 499 });
-  if (decoded.response) return decoded.response;
-  request = decoded.request;
-
-  const parsed = await request.clone().json().catch(() => null);
-  if (parsed === null) {
-    return Response.json({ type: "error", error: { type: "invalid_request_error", message: "Invalid JSON body" } }, { status: 400 });
-  }
-
-  const body = parsed;
-  const handlerPromise = handleChat(request);
-  if (body?.stream !== true) return await handlerPromise;
-
-  return await withEarlyStreamKeepalive(handlerPromise, {
-    signal: request.signal,
-    intervalMs: SSE_KEEPALIVE_MS,
-    keepaliveFrame: ANTHROPIC_PING_FRAME,
-    // A late failure becomes an Anthropic `event: error` carrying the HTTP status.
-    errorFormat: "claude"
-  });
-}
 export const OPTIONS = withRequestCorrelation(OPTIONSHandler);
-export const POST = withHttpRequestCorrelation(POSTHandler);
+export const POST = withHttpRequestCorrelation(handleMessages);

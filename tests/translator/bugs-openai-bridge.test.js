@@ -15,14 +15,14 @@ import { claudeToKiroRequest } from "../../open-sse/translator/request/claude-to
 import { VertexExecutor } from "../../open-sse/executors/vertex.js";
 import { QoderExecutor } from "../../open-sse/executors/qoder.js";
 import { XiaomiMimoExecutor } from "../../open-sse/executors/xiaomi-mimo.js";
-import { getMimoAccountCookie } from "../../open-sse/shared/mimoAccount.js";
+import { getMimoAccountCookie } from "../../open-sse/utils/mimoAccount.js";
 
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: (...args) => fetchMock(...args),
 }));
 vi.mock("@/lib/localDb", () => ({ getSettings: async () => ({ cliproxyapi_url: "http://sidecar.invalid" }) }));
-vi.mock("../../open-sse/shared/mimoAccount.js", async (importOriginal) => ({
+vi.mock("../../open-sse/utils/mimoAccount.js", async (importOriginal) => ({
   ...(await importOriginal()),
   getMimoAccountCookie: vi.fn(),
   invalidateMimoAccountCookieCache: vi.fn(),

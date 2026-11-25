@@ -17,7 +17,11 @@ describe("chat layering", () => {
   });
 
   it("does not import combo from single-model handling", () => {
-    const source = readFileSync(new URL("../../src/sse/handlers/chat/singleModel.js", import.meta.url), "utf8");
-    expect(source).not.toMatch(/(?:from\s*|import\s*(?:\(\s*)?)\s*["']\.\/combo\.js["']/);
+    const dir = new URL("../../src/sse/handlers/chat/singleModel/", import.meta.url);
+    const files = [new URL("../../src/sse/handlers/chat/singleModel.js", import.meta.url), ...readdirSync(dir).map((name) => new URL(name, dir))];
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      expect(source).not.toMatch(/(?:from\s*|import\s*(?:\(\s*)?)\s*["'](?:\.\.?\/)+(?:chat\/)?combo\.js["']/);
+    }
   });
 });

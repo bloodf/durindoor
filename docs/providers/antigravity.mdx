@@ -66,3 +66,7 @@ The project-403 check currently matches `antigravity` and `gemini-cli` only, so 
 A separate feature lets the Antigravity IDE itself route through DurinDoor. **CLI Tools** links to **MITM Proxy** (`/dashboard/mitm`), which installs a local root certificate, redirects `cloudcode-pa.googleapis.com` and `daily-cloudcode-pa.googleapis.com` to DurinDoor, and maps the IDE's model names to any DurinDoor model. It needs sudo for the certificate and DNS steps. It does not need an Antigravity connection. Recovery steps for a stuck redirect are on [Troubleshooting](../troubleshooting.mdx#mitm-root-ca-lock-or-redirect-errors).
 
 Confirm a short request on **Usage** after connecting. For an empty-client OAuth error, set both client variables and restart. For project setup errors, finish onboarding or enable the required API. Account suspension cannot be repaired by repeating OAuth.
+
+## Credential rotation
+
+Token refresh for `antigravity` and `agy` shares one database lease. Browser recovery and the automatic scheduler stay off. See [Antigravity rotation](../operations/antigravity-rotation.mdx).

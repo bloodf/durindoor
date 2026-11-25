@@ -118,9 +118,26 @@ export default function register(router, { store }) {
     return { usage: Object.fromEntries(keys.map((key) => [key.id, { rpm: null, tpm: null, limits: [] }])) };
   });
   router.post("/api/keys/:id/rotate", ({ params }) => {
-    if (!store.find(KEYS, params.id)) return notFound("Key not found");
+    const existing = store.find(KEYS, params.id);
+    if (!existing) return notFound("Key not found");
     const record = store.patch(KEYS, params.id, { key: randomSecret() });
-    return reply({ ...managementView(record), key: record.key, groupIds: record.groupIds || [] }, { headers: { "Cache-Control": "no-store" } });
+    return reply({
+      key: record.key,
+      id: record.id,
+      name: record.name,
+      maskedKey: "sk-••••••••",
+      machineId: record.machineId,
+      isActive: record.isActive,
+      allowedCombos: record.allowedCombos || [],
+      dailyLimitTokens: record.dailyLimitTokens ?? null,
+      policy: record.policy ?? null,
+      expiresAt: record.expiresAt ?? null,
+      isAdmin: record.isAdmin ?? false,
+      createdAt: record.createdAt,
+      providerConnectionIds: record.providerConnectionIds || [],
+      groupIds: record.groupIds || [],
+      usage: record.usage || { ...EMPTY_USAGE },
+    }, { headers: { "Cache-Control": "no-store" } });
   });
 
   router.get("/api/keys/policy-catalog", () => ({ models: buildPolicyCatalog() }));

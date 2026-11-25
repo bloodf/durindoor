@@ -37,6 +37,8 @@ export default {
   ],
   models: [
     { id: "glm-5.2", name: "GLM 5.2" },
+    { id: "glm-5.3", name: "GLM 5.3", supportsReasoning: true, supportsVision: false },
+    { id: "glm-5.3-flash", name: "GLM 5.3 Flash", supportsReasoning: true, supportsVision: true },
     { id: "glm-5.1", name: "GLM 5.1", supportedFormats: ["openai"] },
     { id: "kimi-k2.7-code", name: "Kimi K2.7 Code", supportedFormats: ["openai"] },
     { id: "kimi-k2.6", name: "Kimi K2.6", supportedFormats: ["openai"] },

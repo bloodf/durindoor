@@ -14,10 +14,6 @@ const EXECUTORS_DIR = path.join(ROOT, "open-sse/executors");
 
 /** Deliberate direct `fetch(` call sites still awaiting the shared send-wrapper port. */
 const BARE_FETCH_ALLOWLIST = {
-  "blackbox-web.js": "Blackbox session/subscription/chat still uses direct fetch pending shared wrapper.",
-  "chipotle.js": "Amelia init still uses direct fetch pending shared wrapper.",
-  "conol-web.js": "Conol session/model/message hops still use direct fetch pending shared wrapper.",
-  "deepseek-web.js": "DeepSeek web session bootstrap still uses direct fetch pending shared wrapper.",
   "websession-utils.js": "fetchWithTimeout falls back to global fetch only when proxyOptions is null."
 };
 
@@ -149,11 +145,12 @@ describe("s-exec-fetch: override proxy + redirect contract (#2308)", () => {
   });
 
   it.each(FIXED_OVERRIDE_FILES)("%s routes through proxyAwareFetch with redirect:error", (name) => {
-    const source = readFileSync(path.join(EXECUTORS_DIR, name), "utf8");
+    const source = readFileSync(path.join(EXECUTORS_DIR, "sendRequest.js"), "utf8");
     expect(source).toContain('from "../utils/proxyFetch.js"');
     expect(source).toContain("proxyAwareFetch");
     expect(source).toContain('redirect: "error"');
     expect(findBareFetchSites(source)).toEqual([]);
+    expect(findBareFetchSites(readFileSync(path.join(EXECUTORS_DIR, name), "utf8"))).toEqual([]);
   });
 
   it("threads connection proxyOptions and rejects redirects on GitLab Duo", async () => {

@@ -1,4 +1,4 @@
-// MiniMax Code account executor (staged: not listed in executors/index.js).
+// MiniMax Code account executor.
 //
 // Ported from OmniRoute release/v3.8.55 (4265bb2ad5477450a07d3a43ea33a62c6c874878),
 // open-sse/executors/minimax-code.ts and minimaxCodeGateway.ts (MIT). The managed gateway

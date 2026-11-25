@@ -300,6 +300,8 @@ describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
   });
 
   afterEach(() => {
+    // The headroom lifecycle test imports the real module in shuffled runs.
+    vi.doUnmock("@/lib/headroom/process");
     for (const sig of ["SIGTERM", "SIGINT"]) {
       for (const l of process.listeners(sig)) {
         if (!preSig[sig].has(l)) process.removeListener(sig, l);
@@ -343,6 +345,7 @@ describe("#2288 initializeApp shutdown cleans stdio + headroom", () => {
       loadEncryptedPassword: () => null, initDbHooks: () => {},
       restoreToolDNS: () => {}, isSudoPasswordRequired: () => false,
     }));
+    // Vitest resolves consecutive mocks in parallel. Use one factory for both hooks.
     vi.doMock("@/shared/services/quotaAutoPing", () => ({ startQuotaAutoPing: () => {}, stopQuotaAutoPing: () => {} }));
     vi.doMock("@/lib/mitmAliasCache", () => ({ syncToJson: async () => {} }));
     vi.doMock("@/lib/mcp/stdioSseBridge", () => ({ killAllBridges }));

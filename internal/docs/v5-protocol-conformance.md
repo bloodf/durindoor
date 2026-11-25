@@ -157,3 +157,11 @@ These changes do not establish a full checkpoint or complete #1089 acceptance.
 ## Responses non-stream to Gemini parity (#1389)
 
 `openAIResponsesBodyToGemini` carries `call_id` into `functionCall.id` (the Antigravity stream projector does the same), always emits object `functionCall.args` (null, array, scalar and malformed JSON become `{}`), maps `reasoning_tokens` to `thoughtsTokenCount` with `candidatesTokenCount = output_tokens - reasoning_tokens` (floor 0, total unchanged), and emits `cachedContentTokenCount: 0` for an explicit zero. Policy: `incomplete` with `incomplete_details.reason: content_filter` is a refusal in the OpenAI (`content_filter`), Claude (`refusal`) and Gemini (`SAFETY`) converters; other `incomplete` stays length (`max_tokens` / `MAX_TOKENS`). Failed/cancelled terminals keep their tool-call parts unchanged.
+
+## Gemini usageMetadata from OpenAI usage (OmniRoute #20224)
+
+Every OpenAI-to-Gemini projection uses `buildGeminiUsageMetadata`: the stream translator, the non-stream projector and the `/v1beta` bridge (stream and JSON).
+
+- Chat names are read first. `input_tokens`, `output_tokens`, `input_tokens_details.cached_tokens` and `output_tokens_details.reasoning_tokens` are the fallback.
+- Reasoning is counted once: `candidatesTokenCount` excludes `thoughtsTokenCount` (floor 0). If the upstream total shows reasoning counted on top of the output count, nothing is subtracted.
+- A Chat `total_tokens` is passed through. Without one, the stream path reports `0` for Chat names and input + output for Responses names; the non-stream projector reports prompt + completion.

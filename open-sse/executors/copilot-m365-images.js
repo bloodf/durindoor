@@ -162,14 +162,14 @@ function uploadFailure(status) {
  * next chat message. Fails closed: an image Copilot did not receive is an error, never a turn that goes
  * ahead without it.
  */
-export async function uploadM365Image({ host, accessToken, conversationId, image, signal, proxyOptions }) {
+export async function uploadM365Image({ host, accessToken, conversationId, image, signal, proxyOptions, send = proxyAwareFetch }) {
   const form = new URLSearchParams({ scenario: "UploadImage", conversationId, FileBase64: image.dataUrl });
   for (const option of UPLOAD_OPTION_SETS) form.append("optionsSets", option);
   const timeout = AbortSignal.timeout(UPLOAD_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let response;
   try {
-    response = await credentialFetch((url, init) => proxyAwareFetch(url, { ...init, directFetch: uploadFetch }, proxyOptions), `https://${host}/m365Copilot/UploadFile`, {
+    response = await credentialFetch((url, init) => send(url, { ...init, directFetch: uploadFetch }, proxyOptions), `https://${host}/m365Copilot/UploadFile`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,

@@ -4,7 +4,11 @@ import {
   ConverseStreamCommand } from
 "@aws-sdk/client-bedrock-runtime";
 import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   buildBedrockNativeConverseUrl,
@@ -430,6 +434,53 @@ function errorBody(error, fallback = "Bedrock request failed") {
   };
 }
 
+const CONVERSE_PATH = /\/converse(-stream)?$/;
+// fetch derives these from the URL and body, and a relay must not inherit the signed Host.
+// SigV4 stays valid because the derived Host equals the signed one.
+const FETCH_OWNED_HEADERS = new Set(["host", "content-length", "connection", "expect", "transfer-encoding"]);
+
+/**
+ * Replace the SDK's HTTP transport with the shared sender, so signed Bedrock
+ * requests get the proxy route, redirect guard, header deadline and abort
+ * handling. Only the Converse call is quota-bearing; a profile's role
+ * assumption may reuse this handler for its own credential request.
+ */
+function createSenderRequestHandler(sender, proxyOptions, signal, sent) {
+  return {
+    metadata: { handlerProtocol: "http/1.1" },
+    async handle(request, { abortSignal } = {}) {
+      const target = new URL(`${request.protocol}//${request.hostname}${request.port ? `:${request.port}` : ""}${request.path}`);
+      for (const [name, value] of Object.entries(request.query || {})) {
+        for (const item of [value].flat()) target.searchParams.append(name, item ?? "");
+      }
+      const headers = Object.fromEntries(
+        Object.entries(request.headers).filter(([name]) => !FETCH_OWNED_HEADERS.has(name.toLowerCase()))
+      );
+      const quotaBearing = CONVERSE_PATH.test(request.path);
+      const response = await sender.sendRequest(target.toString(), {
+        method: request.method,
+        headers,
+        body: request.body,
+        signal: abortSignal || signal || undefined
+      }, proxyOptions, { quotaBearing });
+      if (quotaBearing) sent.response = response;
+      return {
+        response: {
+          statusCode: response.status,
+          reason: response.statusText,
+          headers: Object.fromEntries(response.headers),
+          body: response.body ? Readable.fromWeb(response.body) : Readable.from([])
+        }
+      };
+    },
+    updateHttpClientConfig() {},
+    httpHandlerConfigs() {
+      return {};
+    },
+    destroy() {}
+  };
+}
+
 export class BedrockExecutor extends BaseExecutor {
   constructor(clientFactory = null) {
     super("bedrock", PROVIDERS.bedrock || { format: "openai" });
@@ -459,16 +510,22 @@ export class BedrockExecutor extends BaseExecutor {
    * @param {object} credentials - Connection credentials.
    * @returns {BedrockRuntimeClient}
    */
-  createClient(credentials) {
+  createClient(credentials, requestHandler = null) {
     if (this.clientFactory) return this.clientFactory(credentials);
     return new BedrockRuntimeClient({
       region: resolveBedrockRegion(credentials?.providerSpecificData),
       ...buildBedrockClientAuth(credentials),
+      ...(requestHandler ? { requestHandler } : null),
       maxAttempts: 1
     });
   }
 
-  async execute({ model, body, stream, credentials, signal, requestContext = null }) {
+  async execute(input) {
+    let { body } = input;
+    const { model, stream, credentials, signal, requestContext = null, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    const sender = createExecutorSender(this, input);
+    const sent = { response: null };
     // OpenAI-shape body converts to Converse below; clamp its token fields first.
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl(model, stream, 0, credentials);
@@ -477,41 +534,35 @@ export class BedrockExecutor extends BaseExecutor {
     // keys instead, so what counts as "configured" is decided by createClient below. Its
     // credential errors carry status 401 and land in the same catch as any upstream failure.
     const transformedBody = openAIToBedrockConverse(model, body);
+    const result = (response) => {
+      transferProviderAttemptDispatch(sent.response, response);
+      return { response, url, headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+    };
     try {
-      const client = this.createClient(credentials);
+      const client = this.createClient(credentials, createSenderRequestHandler(sender, proxyOptions, signal, sent));
       if (stream) {
         const output = await client.send(new ConverseStreamCommand(transformedBody), { abortSignal: signal || undefined });
-        return {
-          response: new Response(createOpenAIStreamFromBedrock(output.stream, model), {
-            status: 200,
-            headers: { "Content-Type": "text/event-stream" }
-          }),
-          url,
-          headers,
-          transformedBody
-        };
+        return result(new Response(createOpenAIStreamFromBedrock(output.stream, model), {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" }
+        }));
       }
       const output = await client.send(new ConverseCommand(transformedBody), { abortSignal: signal || undefined });
-      return {
-        response: new Response(JSON.stringify(openAICompletionFromConverse(output, model)), {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        }),
-        url,
-        headers,
-        transformedBody
-      };
+      return result(new Response(JSON.stringify(openAICompletionFromConverse(output, model)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
     } catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      if (signal?.aborted) {
+        await settleProviderAttemptDispatch(sent.response, { reason: "abort" });
+        throw requestAbortError(signal.reason);
+      }
       const status = statusFromError(error);
-      return {
-        response: new Response(JSON.stringify(errorBody(error)), {
-          status,
-          headers: { "Content-Type": "application/json" }
-        }),
-        url,
-        headers,
-        transformedBody
-      };
+      return result(new Response(JSON.stringify(errorBody(error)), {
+        status,
+        headers: { "Content-Type": "application/json" }
+      }));
     }
   }
 }

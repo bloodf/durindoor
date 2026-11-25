@@ -37,16 +37,13 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
+import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { FORMATS } from "../translator/formats.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
-import {
-  getCurrentProviderAttemptTimestamp,
-  runQuotaBearingProviderRequest,
-  settleProviderAttemptDispatch } from
-"../services/providerAttemptContext.js";
+import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import {
   QODER_MODEL_MAP,
   QODER_IDE_VERSION,
@@ -675,8 +672,8 @@ export function isQoderPat(token) {
   return isString(token) && token.startsWith(PAT_PREFIX);
 }
 
-async function exchangeJobToken(pat, proxyOptions = null, signal = null, region = "intl") {
-  const res = await proxyAwareFetch(
+async function exchangeJobToken(pat, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
+  const res = await send(
     qoderJobTokenExchangeUrl(region),
     {
       method: "POST",
@@ -708,9 +705,9 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null, region 
   return { jobToken: data.token, jobRefreshToken: data.refresh_token || "", expiresAt };
 }
 
-async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null, region = "intl") {
+async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
   try {
-    const res = await proxyAwareFetch(
+    const res = await send(
       qoderUserInfoUrl(region),
       {
         method: "GET",
@@ -735,7 +732,7 @@ async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = nu
  * Exchange a PAT for a job token + userId, caching until near-expiry so repeat
  * chat requests don't re-exchange. Returns { accessToken, userId }.
  */
-async function resolvePatCredential(pat, proxyOptions = null, signal = null, region = "intl") {
+async function resolvePatCredential(pat, proxyOptions = null, signal = null, region = "intl", send = proxyAwareFetch) {
   // Cache key includes region so the same PAT on both sites (unlikely, but
   // possible if a user copies a token) doesn't cross-exchange a job token
   // signed against the wrong gateway.
@@ -744,8 +741,8 @@ async function resolvePatCredential(pat, proxyOptions = null, signal = null, reg
   if (cached && cached.expiresAt - Date.now() > PAT_REFRESH_BUFFER_MS) {
     return cached;
   }
-  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal, region);
-  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal, region);
+  const { jobToken, expiresAt } = await exchangeJobToken(pat, proxyOptions, signal, region, send);
+  const userId = await fetchUserIdForJobToken(jobToken, proxyOptions, signal, region, send);
   if (!userId) throw new Error("qoder PAT exchange could not resolve user identity");
   const entry = { accessToken: jobToken, userId, expiresAt };
   patJobCache.set(cacheKey, entry);
@@ -767,7 +764,15 @@ export class QoderExecutor extends BaseExecutor {
   //   - body encoded with QoderEncodeBody before signing
   //   - COSY headers built from the *encoded* body bytes
   //   - response stream re-wrapped from {statusCodeValue, body} to OpenAI SSE
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }) {
+  async execute(input) {
+    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
+  }
+
+  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null }, sender, billed) {
+    // PAT exchange and queue status are not charged; each inference send is quota-bearing.
+    const setup = (target, init) => sender.sendRequest(target, init, proxyOptions, { quotaBearing: false });
     // Clamp OpenAI-shape token fields before the qoder payload derives maxTokens.
     body = this.clampCustomMaxOutput({ ...body }, requestContext);
     const url = this.buildUrl();
@@ -778,7 +783,7 @@ export class QoderExecutor extends BaseExecutor {
     const rawToken = credentials?.apiKey || credentials?.accessToken;
     if (isQoderPat(rawToken)) {
       try {
-        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal, this.region);
+        const resolved = await resolvePatCredential(rawToken, proxyOptions, signal, this.region, setup);
         credentials = {
           ...credentials,
           accessToken: resolved.accessToken,
@@ -879,16 +884,11 @@ export class QoderExecutor extends BaseExecutor {
         ...cosyHeaders
       };
 
-      // Abort if upstream doesn't return response headers within connect timeout.
-      const connectCtrl = new AbortController();
-      const connectTimer = setTimeout(() => connectCtrl.abort(new Error("fetch connect timeout")), timeoutMs);
-      const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
-
       let response;
       try {
-        response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(
+        response = billed(await sender.sendRequest(
           url,
-          { method: "POST", headers, body: encodedBodyBuf, signal: mergedSignal },
+          { method: "POST", headers, body: encodedBodyBuf, signal },
           // A failed proxy request may already have reached Qoder. Replaying
           // the same COSY signature directly (fallback-to-direct) reuses its
           // requestId and returns 403/code 103 "Duplicate request". Force a
@@ -898,10 +898,8 @@ export class QoderExecutor extends BaseExecutor {
         ));
       } catch (err) {
         // strictProxy wraps transport errors; retain caller cancellation semantics.
-        if (mergedSignal.aborted) throw mergedSignal.reason;
-        throw err;
-      } finally {
-        clearTimeout(connectTimer);
+        if (signal?.aborted) throw signal.reason;
+        throw sender.timeoutReason ?? err;
       }
 
       if (!response.ok) {
@@ -914,7 +912,6 @@ export class QoderExecutor extends BaseExecutor {
         url,
         headers,
         transformedBody: payload,
-        attemptStartedAt: getCurrentProviderAttemptTimestamp(),
         terminalProvenance: "validated"
       };
     };
@@ -939,7 +936,7 @@ export class QoderExecutor extends BaseExecutor {
           machineId: psd.machineId || deriveMachineId(psd.userId),
         });
         const response = await credentialFetch(
-          (target, init) => proxyAwareFetch(target, init, proxyOptions),
+          setup,
           statusUrl,
           {
             method: "GET",

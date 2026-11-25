@@ -1,11 +1,12 @@
 // Adapted from OmniRoute open-sse/executors/adapta-web.ts at fbd3396 (PR #51).
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
-import { runQuotaBearingProviderRequest, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
-import { proxyAwareFetch, resolveProxyForRequest } from "../utils/proxyFetch.js";
+import { resolveProxyForRequest } from "../utils/proxyFetch.js";
 import { BaseExecutor } from "./base.js";
+import { createExecutorSender } from "./sendRequest.js";
 
 const APP = "https://agent.adapta.one";
 const CLERK = "https://clerk.agent.adapta.one";
@@ -33,12 +34,12 @@ function cookieValue(raw) {
 function expiry(token) {
   try { const exp = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).exp; return isNumber(exp) && Number.isFinite(exp) ? exp * 1000 : 0; } catch { return 0; }
 }
-async function session(cookie, key, signal, proxyOptions) {
+async function session(cookie, key, signal, send) {
   const saved = cache.get(key);
   if (saved && Date.now() < saved.exp - 30000) return saved.token;
   cache.delete(key);
   const headers = { Cookie: `__client=${cookie}`, Origin: APP };
-  const client = await proxyAwareFetch(`${CLERK}/v1/client`, { headers, signal }, proxyOptions);
+  const client = await send(`${CLERK}/v1/client`, { headers, signal });
   if (!client.ok) {
     void client.body?.cancel().catch(() => {});
     throw new Error("Unable to validate Adapta session");
@@ -47,7 +48,7 @@ async function session(cookie, key, signal, proxyOptions) {
   const id = data?.response?.sessions?.find((s) => s.status === "active")?.id;
   if (!isString(id) || !/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("No active Adapta session");
   signal?.throwIfAborted();
-  const response = await proxyAwareFetch(`${CLERK}/v1/client/sessions/${id}/tokens`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal }, proxyOptions);
+  const response = await send(`${CLERK}/v1/client/sessions/${id}/tokens`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal });
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
     throw new Error("Unable to refresh Adapta session");
@@ -114,7 +115,9 @@ export class AdaptaWebExecutor extends BaseExecutor {
   constructor() { super("adapta-web", { baseUrl: URL }); }
   // This executor performs authentication internally; callers must never obtain credentials from metadata.
   buildHeaders() { return {}; }
-  async execute({ model, body = {}, stream, credentials = {}, signal, proxyOptions }) {
+  async execute(input) {
+    const { model, body = {}, stream, credentials = {}, signal, proxyOptions } = input;
+    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
     const cookie = cookieValue(credentials.apiKey);
     if (!cookie || /[\r\n;]/.test(cookie)) return result(error(401, "Missing or invalid Adapta credentials"), body);
     const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(body, Array.isArray(body.messages) ? body.messages : []);
@@ -125,7 +128,9 @@ export class AdaptaWebExecutor extends BaseExecutor {
     let token;
     try {
       signal?.throwIfAborted();
-      token = await session(cookie, cacheKey, signal, proxyOptions);
+      // Clerk calls are setup: they use the transport policy but charge no quota.
+      token = await session(cookie, cacheKey, signal, (url, init) =>
+        sender.sendRequest(url, init, proxyOptions, { quotaBearing: false }));
     } catch {
       if (signal?.aborted) return canceled();
       return result(error(401, "Adapta authentication failed"), payload);
@@ -133,8 +138,8 @@ export class AdaptaWebExecutor extends BaseExecutor {
     let upstream;
     try {
       signal?.throwIfAborted();
-      // Only chat consumes quota. Clerk calls still use the gateway transport.
-      upstream = await runQuotaBearingProviderRequest(() => proxyAwareFetch(URL, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream", Origin: APP, Referer: `${APP}/agentic-chat` }, body: JSON.stringify(payload), signal }, proxyOptions));
+      // Only chat consumes quota.
+      upstream = await sender.sendRequest(URL, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "text/event-stream", Origin: APP, Referer: `${APP}/agentic-chat` }, body: JSON.stringify(payload), signal }, proxyOptions);
     } catch (cause) {
       if (isQuotaDispatchUnavailable(cause)) throw cause;
       if (signal?.aborted) return canceled();
@@ -142,7 +147,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
     }
     function chatResult(response) {
       transferProviderAttemptDispatch(upstream, response);
-      return result(response, payload);
+      return { ...result(response, payload), attemptStartedAt: sender.attemptStartedAt };
     }
     if (!upstream.ok) {
       if ((upstream.status === 401 || upstream.status === 403) && cache.get(cacheKey)?.token === token) cache.delete(cacheKey);

@@ -1,10 +1,9 @@
-import { admit } from "../services/admission.js";
+import { refreshMediaCredentials, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
   getProviderCredentialsWithQuotaPreflight,
-  markAccountUnavailable,
   clearAccountError,
   projectProviderCredentials } from
 "../services/auth.js";
@@ -14,7 +13,6 @@ import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
-import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
 import { getAutoComboCatalog, filterDisabledComboModels } from "../services/model.js";
 import { isAutoComboId } from "open-sse/services/autoComboResolver.js";
@@ -42,24 +40,29 @@ async function handleFetchHandler(request) {
 
   const reqUrl = new URL(request.url);
   // Accept either `provider` or `model` (UI sends `model` since provider IS the model for webFetch)
-  let providerInput = normalizeFetchProviderInput(body.provider || body.model);
+  const providerInput = normalizeFetchProviderInput(body.provider || body.model);
   const targetUrl = body.url;
-  const format = body.format;
-  const maxCharacters = body.max_characters;
 
   log.request("POST", `${reqUrl.pathname} | ${providerInput}`);
 
-  const { settings, apiKey, auth: apiKeyAuth, error: admissionError } = await admit(request, { kind: "fetch" });
+  return runMediaEndpoint(request, {
+    kind: "fetch",
+    rejectAborted: true,
+    onAdmission: logAdmission,
+    route: (admission) => routeFetch(request, body, { reqUrl, providerInput, targetUrl }, admission),
+  });
+}
+
+function logAdmission({ apiKey, auth, error }) {
   if (apiKey) {
     log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
-  if (admissionError) {
-    log.warn("AUTH", apiKeyAuth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
-    return admissionError;
-  }
+  if (error) log.warn("AUTH", auth.reason === "missing" ? "Missing API key (requireApiKey=true)" : "Invalid API key");
+}
 
+async function routeFetch(request, body, { reqUrl, providerInput, targetUrl }, { settings, apiKey, auth: apiKeyAuth }) {
   if (!wantsDefaultRoute(providerInput) && !isString(providerInput)) {
     log.warn("FETCH", "Invalid provider/model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid field: provider (or model) must be a string");
@@ -99,6 +102,7 @@ async function handleFetchHandler(request) {
       models: route.models,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings),
       log,
+      signal: request.signal,
       ...defaultRouteComboOptions("webFetch")
     });
   }
@@ -148,6 +152,7 @@ async function handleFetchHandler(request) {
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, normalizeFetchProviderInput(m), request, apiKey, apiKeyAuth.apiKeyId, usageContext, settings, comboRouting),
       log,
+      signal: request.signal,
       comboName,
       comboStrategy,
       comboStickyLimit,
@@ -266,26 +271,19 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
   }
 
-  // Credential + fallback loop
-  const excludeConnectionIds = new Set();
-  let lastError = null;
-  let lastStatus = null;
-
-  while (true) {
-    const credentials = await getProviderCredentialsWithQuotaPreflight(
-      providerId,
-      excludeConnectionIds,
-      null,
-      {
-        webFetch: true,
-        apiKeyId,
-        allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
-        restrictionApplied: comboRouting?.restrictionApplied === true
-      }
-    );
-
+  return runMediaAccounts({
+    provider: providerId,
+    model: null,
+    signal: request.signal,
+    selectionOptions: {
+      webFetch: true,
+      apiKeyId,
+      allowedConnectionIds: comboRouting?.allowedConnectionIds || null,
+      restrictionApplied: comboRouting?.restrictionApplied === true
+    },
+    selectCredentials: (excluded, model, options) => getProviderCredentialsWithQuotaPreflight(providerId, excluded, model, options),
     // All accounts unavailable or provider disabled
-    if (!credentials || credentials.allRateLimited || credentials.providerDisabled) {
+    buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
         log.warn("FETCH", `[${providerId}] free no-auth provider disabled by settings`);
         return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${providerId}' is disabled. Enable it in Settings > Providers.`);
@@ -296,56 +294,41 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, a
         log.warn("FETCH", `[${providerId}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${providerId}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
-      if (excludeConnectionIds.size === 0) {
+      if (attempted === 0) {
         log.error("AUTH", `No credentials for provider: ${providerId}`);
         return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${providerId}`);
       }
       log.warn("FETCH", "No more accounts available", { provider: providerId });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
-    }
+    },
+    async runAttempt(credentials) {
+      log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
 
-    log.info("AUTH", `\x1b[32mUsing ${providerId} account: ${credentials.connectionName}\x1b[0m`);
+      const { refreshed } = await refreshMediaCredentials(providerId, credentials);
+      const dispatch = credentialDispatchSnapshot(refreshed);
 
-    const refreshedCredentials = await checkAndRefreshToken(providerId, credentials);
-    const dispatch = credentialDispatchSnapshot(refreshedCredentials);
-
-    const result = await handleFetchCore({
-      url: targetUrl,
-      format,
-      maxCharacters,
-      provider: resolvedProvider.id,
-      providerConfig: fetchConfig,
-      credentials: refreshedCredentials,
-      log
-    });
-
-    if (result.success) {
-      await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true, usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
-      const response = new Response(JSON.stringify(result.data), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      const result = await handleFetchCore({
+        url: targetUrl,
+        format,
+        maxCharacters,
+        provider: resolvedProvider.id,
+        providerConfig: fetchConfig,
+        credentials: refreshed,
+        log
       });
-      return recordSuccess(result, response, credentials);
-    }
 
-    const { shouldFallback } = await markAccountUnavailable(
-      credentials.connectionId,
-      result.status,
-      result.error,
-      providerId,
-      null,
-      null,
-      { webFetch: true, ...dispatch }
-    );
-
-    if (shouldFallback) {
-      log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
-    }
-
-    return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed");
-  }
+      if (result.success) {
+        await clearAccountError(credentials.connectionId, credentials, null, { webFetch: true, usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
+        const response = new Response(JSON.stringify(result.data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+        return { response: await recordSuccess(result, response, credentials) };
+      }
+      // Web fetch failures have never named the presented credential.
+      return { result, dispatch, failureContext: { webFetch: true, usedCredential: undefined } };
+    },
+    onFallback: (result, credentials) => log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`),
+    buildFailureResponse: (result) => errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Fetch failed")
+  });
 }
 export const handleFetch = withRequestCorrelation(handleFetchHandler);

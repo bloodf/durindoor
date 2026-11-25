@@ -89,6 +89,7 @@ import {
   BLOCKED_OMNIROUTE_PROVIDERS,
   BLOCKED_OMNIROUTE_PROVIDER_ALIASES,
 } from "./unsupported-websession.js";
+import { createBlockedProviderExecutor } from "./session-dispatch-gate.js";
 import REGISTRY from "../providers/registry/index.js";
 import { resolveProviderAlias } from "../services/model.js";
 
@@ -255,13 +256,13 @@ const executors = {
   ...Object.fromEntries(
     Object.keys(BLOCKED_OMNIROUTE_PROVIDERS).map((provider) => [
       provider,
-      new UnsupportedOmniRouteWebSessionExecutor(provider),
+      createBlockedProviderExecutor(provider),
     ]),
   ),
   ...Object.fromEntries(
     Object.entries(BLOCKED_OMNIROUTE_PROVIDER_ALIASES).map(([alias, provider]) => [
       alias,
-      new UnsupportedOmniRouteWebSessionExecutor(provider),
+      createBlockedProviderExecutor(provider),
     ]),
   ),
 };

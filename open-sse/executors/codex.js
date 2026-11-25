@@ -17,6 +17,7 @@ import {
   HTTP_STATUS,
   resolveRetryEntry } from
 "../config/runtimeConfig.js";
+import { CODEX_ACCOUNT_MODEL_REJECTION_TEXT } from "../config/errorConfig.js";
 import { dbg } from "../utils/debugLog.js";
 import { repairCodexToolHistory } from "./codexToolHistory.js";
 import { readBoundedResponseText } from "../utils/error.js";
@@ -317,6 +318,10 @@ function classifyCodexSseFrame(frame) {
   );
   const accountMatch = failedOverload || firstPattern(values, CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS);
   if (accountMatch) return { userOutput: false, kind: "account", matched: accountMatch, message };
+
+  // decolua/9router#4381: the account cannot serve this model, so retrying it is useless.
+  const modelMatch = firstPattern(values, CODEX_ACCOUNT_MODEL_REJECTION_TEXT);
+  if (modelMatch) return { userOutput: false, kind: "model", matched: modelMatch, message };
 
   const retryMatch = firstPattern(values, CODEX_SSE_RETRY_PATTERNS);
   if (retryMatch) return { userOutput: false, kind: "retry", matched: retryMatch, message };
@@ -838,6 +843,13 @@ export class CodexExecutor extends BaseExecutor {
         );
         return result;
       }
+      if (peek.modelRejected) {
+        // Same 400 the HTTP path returns, so the lock stays scoped to this model.
+        args.log?.warn?.("RETRY", `CODEX | SSE model rejection "${peek.message}"`);
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
+        result.response = codexSseErrorResponse(HTTP_STATUS.BAD_REQUEST, peek.message || peek.matched);
+        return result;
+      }
       if (peek.accountFallback) {
         args.log?.warn?.("RETRY", `CODEX | SSE account fallback "${peek.message}"`);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
@@ -911,7 +923,8 @@ export class CodexExecutor extends BaseExecutor {
         }
         if (frameResult.kind === "context") classification = frameResult;else
         if (frameResult.kind === "account" && classification?.kind !== "context") classification = frameResult;else
-        if (frameResult.kind === "retry" && !["context", "account"].includes(classification?.kind)) classification = frameResult;
+        if (frameResult.kind === "model" && !["context", "account"].includes(classification?.kind)) classification = frameResult;else
+        if (frameResult.kind === "retry" && !["context", "account", "model"].includes(classification?.kind)) classification = frameResult;
       }
 
       if (classification) break;
@@ -948,6 +961,7 @@ export class CodexExecutor extends BaseExecutor {
         message: classification.message || classification.matched,
         accountFallback: classification.kind === "account",
         contextOverflow: classification.kind === "context",
+        modelRejected: classification.kind === "model",
         replacementBody: null
       };
     }

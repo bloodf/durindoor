@@ -286,8 +286,9 @@ export async function evaluateProviderFailure(ctx, state, attempt, result, resul
   null;
   // A locally synthesized short 429 delay is not a quota reset. Let the
   // Antigravity account policy choose its exhaustion default instead.
-  const creditsExhausted = antigravityProvider && result.status === 429 && !authoritativeReset &&
-    /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|g1_credits/i.test(`${result.error || ""} ${JSON.stringify(resultErrorBody || {})}`);
+  const creditsExhausted = antigravityProvider && result.status === 429 && !authoritativeReset && (
+    result.rateLimitEvidence?.creditsExhausted === true ||
+    /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|g1_credits/i.test(`${result.error || ""} ${JSON.stringify(resultErrorBody || {})}`));
   const fallbackResetAt = creditsExhausted ? null : strikeBreakerResetAt ?? result.resetsAtMs;
   const fallbackEvidence = creditsExhausted ? { state: "exhausted", resetAtMs: null, source: "antigravity_credits" } : strikeBreakerResetAt === null ?
   result.rateLimitEvidence || null :

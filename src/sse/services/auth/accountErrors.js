@@ -21,7 +21,11 @@ import * as log from "../../utils/logger.js";
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 const FREE_TIER_STATIC_COOLDOWN_CAP_MS = 60 * 1000;
-function antigravity429Fallback(errorText, errorBody) {
+function antigravity429Fallback(errorText, errorBody, evidence = null) {
+  // A redacted 429 has no credit wording left; the evidence still names it (#3394).
+  if (evidence?.source === "antigravity_credits" || evidence?.creditsExhausted === true) {
+    return { delay: 24 * 60 * 60 * 1000, exhausted: true, credits: true };
+  }
   const text = `${isString(errorText) ? errorText : ""} ${JSON.stringify(errorBody || {})}`.toLowerCase();
   const credits = /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
   const exhausted = /quota[_ ]exhausted|quota reached|individual quota|enable overages|free tier|daily limit|google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
@@ -336,7 +340,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const ag429 = (provider === "antigravity" || provider === "agy") && Number(status) === 429 ?
-  antigravity429Fallback(errorText, context?.errorBody) : null;
+  antigravity429Fallback(errorText, context?.errorBody, callerEvidence) : null;
   const evidenceState = effectiveEvidence?.state === "exhausted" || ag429?.exhausted ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
   // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed

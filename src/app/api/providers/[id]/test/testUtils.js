@@ -701,7 +701,8 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     if (!modelsBase) return { valid: false, error: "Missing base URL" };
     try {
       const res = await fetchWithConnectionProxy(`${modelsBase.replace(/\/$/, "")}/models`, {
-        headers: { "Authorization": `Bearer ${connection.apiKey}` }
+        // Keyless nodes get no auth header: an empty Bearer is rejected by stacked gateways.
+        headers: connection.apiKey ? { "Authorization": `Bearer ${connection.apiKey}` } : {}
       }, effectiveProxy);
       return { valid: res.ok, error: res.ok ? null : "Invalid API key or base URL" };
     } catch (err) {
@@ -721,10 +722,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
       const res = await fetchWithConnectionProxy(messagesUrl, {
         method: "POST",
         headers: {
-          "x-api-key": connection.apiKey,
+          ...(connection.apiKey ? { "x-api-key": connection.apiKey, "Authorization": `Bearer ${connection.apiKey}` } : {}),
           "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          "Authorization": `Bearer ${connection.apiKey}`
+          "content-type": "application/json"
         },
         body: JSON.stringify({
           model,

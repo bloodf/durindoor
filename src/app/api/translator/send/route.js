@@ -1,11 +1,11 @@
-import { getProviderConnectionById, getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
+import { getProviderConnections, updateProviderConnection } from "@/lib/localDb.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy.js";
 import { getExecutor } from "open-sse/index.js";
 import { isChatProvider } from "open-sse/providers/chatCapability.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { withRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
-import { providerRefreshContext, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext.js";
-import { refreshAndUpdateCredentials } from "@/shared/services/providerCredentials.js";
+import { providerRefreshContext } from "@/shared/utils/providerCredentialContext.js";
+import { refreshAntigravityConnection } from "@/shared/services/providerCredentials.js";
 
 async function persistRefreshedCredentials(connection, newCredentials) {
   const updateData = {};
@@ -102,17 +102,8 @@ async function POSTHandler(request) {
       let committed = false;
       if (provider === "antigravity" || provider === "agy") {
         // Stored Antigravity credentials must be dispatched and committed under the shared lease.
-        const result = await refreshAndUpdateCredentials(connection, true, proxyOptions);
-        // A joined in-flight operation may have started with an older snapshot.
-        // Retry only when its successful result still matches the stored credentials.
-        if (result.refreshed) {
-          const current = await getProviderConnectionById(connection.id);
-          if (current && current.isActive !== false && current.provider === connection.provider &&
-              providerRefreshContextMatches(current, providerRefreshContext(result.connection))) {
-            newCredentials = current;
-            committed = true;
-          }
-        }
+        newCredentials = await refreshAntigravityConnection(connection, proxyOptions);
+        committed = Boolean(newCredentials);
       } else {
         newCredentials = await executor.refreshCredentials(credentials, console, proxyOptions);
         committed = (newCredentials?.accessToken || newCredentials?.copilotToken) &&

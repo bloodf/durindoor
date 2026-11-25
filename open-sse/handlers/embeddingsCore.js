@@ -2,7 +2,7 @@ import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import { createErrorResult, parseUpstreamError, formatProviderError, readBoundedResponseText } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
-import { refreshWithRetry } from "../services/tokenRefresh.js";
+import { refreshMediaCredentials } from "./mediaRefresh.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { getEmbeddingAdapter } from "./embeddingProviders/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
@@ -17,7 +17,7 @@ import { resolveInputType } from "../config/embeddingParams.js";
  *
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
 export async function handleEmbeddingsCore({
   body,
   modelInfo,
@@ -25,6 +25,7 @@ export async function handleEmbeddingsCore({
   credentials,
   log,
   onCredentialsRefreshed,
+  refreshCredentials,
   onRequestSuccess,
   signal = null
 }) {
@@ -98,16 +99,13 @@ export async function handleEmbeddingsCore({
   providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
   providerResponse.status === HTTP_STATUS.FORBIDDEN))
   {
-    const newCredentials = await refreshWithRetry(
-      () => executor.refreshCredentials(credentials, log, proxyOptions),
-      3,
-      log
-    );
+    const newCredentials = await refreshMediaCredentials({ provider, executor, credentials, refreshCredentials, log, proxyOptions });
 
     if (newCredentials?.accessToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for embeddings`);
       Object.assign(credentials, newCredentials);
-      if (onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
+      // An injected refresher has already committed what it returns.
+      if (!isFunction(refreshCredentials) && onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
         const retryHeaders = adapter.buildHeaders(credentials, ctx);

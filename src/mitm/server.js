@@ -25,10 +25,13 @@ const ENABLE_FILE_LOG = IS_DEV;
 
 const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
-// Host rewrite for upstream forward: PROD cloudcode-pa is rate-limited (429),
-// daily-cloudcode-pa (dev endpoint) accepts same body+token. Same trick as open-sse.
+// Host rewrite for upstream forward: PROD and daily cloudcode-pa are rate-limited
+// (429); the daily sandbox host accepts the same body+token (upstream #3064).
+// The sandbox is a forwarding target only, never intercepted.
+const ANTIGRAVITY_SANDBOX_HOST = "daily-cloudcode-pa.sandbox.googleapis.com";
 const HOST_REWRITE = {
-  "cloudcode-pa.googleapis.com": "daily-cloudcode-pa.googleapis.com",
+  "cloudcode-pa.googleapis.com": ANTIGRAVITY_SANDBOX_HOST,
+  "daily-cloudcode-pa.googleapis.com": ANTIGRAVITY_SANDBOX_HOST,
 };
 
 const handlers = {
@@ -179,9 +182,7 @@ function getMappedOverride(tool, model, aliases) {
  */
 async function passthrough(req, res, bodyBuffer, onResponse) {
   const originalHost = (req.headers.host || TARGET_HOSTS[0]).split(":")[0];
-  // Only rewrite host for chat endpoints — daily-cloudcode-pa rejects auth/login requests
-  const isChatEndpoint = req.url.includes(":generateContent") || req.url.includes(":streamGenerateContent");
-  const targetHost = isChatEndpoint ? (HOST_REWRITE[originalHost] || originalHost) : originalHost;
+  const targetHost = resolveUpstreamHost(originalHost, req.url);
   const dumper = ENABLE_FILE_LOG ? createResponseDumper(req, "passthrough") : null;
 
   const tool = getToolForHost(req.headers.host);
@@ -205,6 +206,12 @@ async function passthrough(req, res, bodyBuffer, onResponse) {
   }
 
   return passthroughHttps(req, res, bodyForForwarding, headersForForwarding, targetHost, onResponse, dumper);
+}
+
+// Only chat endpoints are rewritten: the daily hosts reject auth/login requests.
+function resolveUpstreamHost(originalHost, url) {
+  const isChatEndpoint = url.includes(":generateContent") || url.includes(":streamGenerateContent");
+  return isChatEndpoint ? (HOST_REWRITE[originalHost] || originalHost) : originalHost;
 }
 
 // The loop marker is consumed locally and must not reach the upstream service.
@@ -505,6 +512,7 @@ module.exports = {
   getMappedOverride,
   handleRequest,
   registerShutdownHandlers,
+  resolveUpstreamHost,
   runMain,
   sniCallback,
   startMitmServer,

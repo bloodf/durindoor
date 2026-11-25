@@ -21,6 +21,16 @@ describe("repository check selection", () => {
     expect(selectChecks(["AGENTS.md"])).toEqual({ eslint: [], tests: [], related: [] });
   });
 
+  it("selects tests mentioning deleted source basenames and requires full lint", () => {
+    expect(selectChecks([], ["src/checks-select.mjs"])).toEqual({
+      eslint: [],
+      tests: ["unit/checks-select.test.js"],
+      related: [],
+      fullLint: true,
+    });
+    expect(selectChecks(["AGENTS.md"], [])).toEqual(selectChecks(["AGENTS.md"]));
+  });
+
   it("caps test workers", () => {
     expect(read("scripts/checks.sh")).toContain("--maxWorkers=50%");
     expect(read("playwright.config.mjs")).toMatch(/workers: Math\.min\(2,/);

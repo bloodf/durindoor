@@ -26,10 +26,7 @@ function terminalUsage(raw) {
     if (value && isObject(value)) return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clean(v)]).filter(([, v]) => v !== undefined));
     return count(value);
   };
-  const usage = toResponsesUsage(clean(raw));
-  usage.input_tokens_details = { cached_tokens: 0, ...usage.input_tokens_details };
-  usage.output_tokens_details = { reasoning_tokens: 0, ...usage.output_tokens_details };
-  return usage;
+  return toResponsesUsage(clean(raw));
 }
 
 // Create log directory for responses (Node.js only)
@@ -281,7 +278,7 @@ export function createResponsesApiTransformStream(logger = null) {
         error: null,
         output: state.outputItems.slice().sort((a, b) => a.outputIndex - b.outputIndex).map(({ item }) => item)
       };
-      response.usage = usage;
+      if (usage) response.usage = usage;
       let eventType = "response.completed";
       if (state.upstreamError !== null) {
         eventType = "response.failed";

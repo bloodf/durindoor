@@ -1,6 +1,6 @@
 # OmniRoute evening ports, 2026-11-25
 
-The five candidates in [the source report](1073-nov25-evening-commits-1.md) were checked against the exact GitHub commit diffs and this checkout. Token counting is a local estimate, not a provider call. Launcher contracts are outside DurinDoor's product surface.
+The five candidates in [the source report](1073-nov25-evening-commits-1.md) were checked against the exact GitHub commit diffs and this checkout. Token counting is a local estimate, not a provider call. Responses retain DurinDoor’s existing usage shape: absent usage and optional zero-valued details are omitted, while numeric counts are sanitized. Launcher contracts are outside DurinDoor's product surface.
 
 | Source row | Commit | Final disposition | Evidence |
 |---|---|---|---|

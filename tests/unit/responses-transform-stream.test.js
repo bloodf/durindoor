@@ -81,7 +81,6 @@ describe("Responses API transform stream", () => {
     const events = await runResponsesTransform([contentDelta("hello"), stop(usage)]);
 
     expect(completedOf(events).usage).toEqual({
-      input_tokens_details: { cached_tokens: 0 },
       input_tokens: 8,
       output_tokens: 3,
       total_tokens: 11,
@@ -89,9 +88,9 @@ describe("Responses API transform stream", () => {
     });
   });
 
-  it("emits null usage when no usage chunk arrived", async () => {
+  it("omits usage when no usage chunk arrived", async () => {
     const events = await runResponsesTransform([contentDelta("hello"), stop()]);
 
-    expect(completedOf(events).usage).toBeNull();
+    expect(completedOf(events)).not.toHaveProperty("usage");
   });
 });

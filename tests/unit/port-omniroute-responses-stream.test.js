@@ -16,9 +16,9 @@ describe("OmniRoute 489e7499ee4159acec082eeee18805f7c988ff96 Responses streams",
     expect(result).toHaveLength(1);
     expect(result[0].response.usage).toMatchObject({ input_tokens: 6, output_tokens: 2, total_tokens: 8 });
   });
-  it("returns null usage for invalid counts and completes an empty stream", async () => {
-    expect(terminals(await events([]))[0].response.usage).toBeNull();
-    expect(terminals(await events([finish("stop", { prompt_tokens: "NaN" })]))[0].response.usage).toBeNull();
+  it("omits invalid usage and completes an empty stream", async () => {
+    expect(terminals(await events([]))[0].response).not.toHaveProperty("usage");
+    expect(terminals(await events([finish("stop", { prompt_tokens: "NaN" })]))[0].response).not.toHaveProperty("usage");
   });
   it("reports upstream errors once, including error-only chunks", async () => {
     const result = terminals(await events([{ error: { message: "failed", code: "stream_error" } }, finish("stop")]));

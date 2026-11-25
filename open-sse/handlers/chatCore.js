@@ -197,8 +197,12 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
     (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
+  // A pivot through OpenAI drops signed thinking blocks, so a provider with a
+  // native Messages route keeps Claude-source requests Claude-shaped.
+  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE &&
+    PROVIDERS[provider]?.quirks?.claudeSourceNativeModels?.test(model) ? FORMATS.CLAUDE : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
-    nativeToolFormat || getModelTargetFormat(alias, model);
+    nativeToolFormat || getModelTargetFormat(alias, model) || nativeClaudeFormat;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
   const preferredFormat = modelTargetFormat || directFormat || defaultFormat;
@@ -1208,6 +1212,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   requestContext = Object.freeze({
     ...requestContext,
     sourceFormat,
+    // Shape of the body handed to the executor.
+    upstreamBodyFormat: finalFormat,
     modelCapabilities: preflightCaps,
     translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
   });

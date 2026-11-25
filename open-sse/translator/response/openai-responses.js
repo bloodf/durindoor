@@ -967,8 +967,9 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
   // Routed by item_id so interleaved parallel fragments stay on their own call.
   // Some providers key deltas by `call_id` or by a prefixed `fc_<id>`/`ctc_<id>`
   // form instead of the item id from output_item.added — try the raw key, the
-  // prefix-stripped key, then the most recent call's correlator before falling
-  // back to stream position. (#3772)
+  // prefix-stripped key, the event's own call_id and output_index, then the most
+  // recent call's correlator before falling back to stream position. (#3772,
+  // upstream 9router #2713)
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
@@ -977,6 +978,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
     const strippedItemId = rawItemId.replace(/^(?:fc|ctc)_/, "");
     const known = (rawItemId ? state.respToolChatIndex?.get(rawItemId) : undefined) ??
     (strippedItemId !== rawItemId ? state.respToolChatIndex?.get(strippedItemId) : undefined) ??
+    (data.call_id ? state.respToolChatIndex?.get(data.call_id) : undefined) ??
+    (Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined) ??
     (state.currentToolCallId ? state.respToolChatIndex?.get(state.currentToolCallId) : undefined);
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
     const kind = state.respCustomToolKinds?.get(idx);

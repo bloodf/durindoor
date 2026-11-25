@@ -148,6 +148,13 @@ export const RESET_COOLDOWN_CAP_MS = {
   "amazon-q": KIRO_CREDIT_EXHAUSTION_PROBE_MS
 };
 
+/**
+ * Park window for an exhausted Gemini per-day quota (decolua/9router#4348). The
+ * seconds-scale retry hint on that 429 does not clear it; the random spread
+ * keeps parked keys from returning together.
+ */
+export const GEMINI_DAILY_QUOTA_PARK_MS = Object.freeze({ min: 60 * 60 * 1000, max: 3 * 60 * 60 * 1000 });
+
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,
@@ -209,7 +216,20 @@ map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: CODEBUDDY_REST
 "is not allowed for user type", "credits exhausted", "额度已用尽"].
 map((text) => ({ provider: CODEBUDDY_PROVIDERS, text, cooldownMs: COOLDOWN.long }))];
 
+/**
+ * Codex refusals that name one account's model entitlement (decolua/9router#4381, #4373).
+ * Another account or combo member may serve the model, so they must not read as
+ * a permanently wrong model. Shared with the Codex executor's 200-SSE preflight.
+ */
+export const CODEX_ACCOUNT_MODEL_REJECTION_TEXT = Object.freeze([
+"is not supported when using codex with a chatgpt account",
+// Unavailable-model guidance (decolua/9router#4373).
+"configured model is unavailable from the provider",
+"not offered on this account"]);
+
 export const ERROR_RULES = [
+// Must precede the wrong-model rules: this text also contains "model is not supported".
+...CODEX_ACCOUNT_MODEL_REJECTION_TEXT.map((text) => ({ text, cooldownMs: COOLDOWN.long })),
 // --- Permanent wrong-model rules must precede 401/404 cooldowns (#750) ---
 ...WRONG_MODEL_TEXT.map((text) => ({ text, fallback: false })),
 ...WRONG_MODEL_PATTERNS.map((pattern) => ({ pattern, fallback: false })),

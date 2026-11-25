@@ -1960,11 +1960,17 @@ export function createSSEStream(options = {}) {
         // A Gemini-family stream that reaches EOF without a finish reason or a prompt
         // block was cut off. The null flush below would invent a successful end and
         // release buffered tool calls, so end it with an error (upstream #4486).
-        if (!nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason) {
+        // A translated Responses stream with no terminal event is cut off the same way
+        // (upstream #4490).
+        const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
+        const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
+        const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
+          !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
+        if (cutGemini || cutResponses) {
           streamErrorPayload = {
             type: sourceFormat === FORMATS.CLAUDE ? "api_error" : "server_error",
             code: "incomplete_upstream_stream",
-            message: "Gemini stream ended before a finish reason"
+            message: cutGemini ? "Gemini stream ended before a finish reason" : "Responses stream ended before a terminal event"
           };
           const output = formatTranslatedStreamError(streamErrorPayload, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);
@@ -1997,7 +2003,6 @@ export function createSSEStream(options = {}) {
         }
 
         // Synthesize response.failed if a Responses passthrough stream never reached a terminal event
-        const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         if (keepsOpenAIResponsesFormat && !openAIResponsesTerminalSeen) {
           const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
           reqLogger?.appendConvertedChunk?.(failedOutput);

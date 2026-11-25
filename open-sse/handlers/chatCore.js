@@ -61,7 +61,7 @@ import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from 
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { classifyStreamAbandonReason } from "../utils/streamLifecycle.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType, rejectsClaudeCustomToolType, stripClaudeCustomToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectCustomPrompt } from "../rtk/customPrompt.js";
@@ -938,7 +938,10 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // requireClaudeToolType get the explicit type. Applying it unconditionally breaks
   // Claude-format endpoints that only accept the legacy typeless tool shape — DeepSeek's
   // Anthropic-compatible endpoint 400s with "unknown variant `custom`" (#3905).
-  if (shouldDefaultClaudeToolType(provider, finalFormat, translatedBody.tools, PROVIDERS)) {
+  // An operator-listed provider rejects that discriminator, so the list wins over the default.
+  if (finalFormat === FORMATS.CLAUDE && Array.isArray(translatedBody.tools) && rejectsClaudeCustomToolType(provider)) {
+    translatedBody.tools = stripClaudeCustomToolType(translatedBody.tools);
+  } else if (shouldDefaultClaudeToolType(provider, finalFormat, translatedBody.tools, PROVIDERS)) {
     translatedBody.tools = defaultClaudeToolType(translatedBody.tools);
   }
 

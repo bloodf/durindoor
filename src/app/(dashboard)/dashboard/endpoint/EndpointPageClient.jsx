@@ -13,6 +13,8 @@ import IconButton from "@/shared/ui/components/IconButton.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { usePasswordPrompt } from "@/shared/hooks/usePasswordPrompt";
+import Input from "@/shared/ui/components/Input.jsx";
 import {
   TUNNEL_PING_INTERVAL_MS,
   TUNNEL_PING_MAX_MS,
@@ -304,12 +306,14 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     }
   };
 
+  const { confirmPassword, prompt: reauth } = usePasswordPrompt();
+
   // Settings remain confirmed until the server accepts the write. Retry preserves intent.
   const saveSecuritySetting = async (field, value, apply) => {
     if (!settingsKnown || loadError || securityPending.current) return;
     securityPending.current = true; setSecuritySaving(true); setSecurityError(null);
     try {
-      const saved = await useSettingsStore.getState().patchSettings({ [field]: value });
+      const saved = await useSettingsStore.getState().patchSettings({ [field]: value }, { confirmPassword });
       if (!saved) throw new Error(useSettingsStore.getState().error);
       apply(value);
     } catch (error) { setSecurityError({ message: error.message || "Security setting could not be saved.", retry: () => saveSecuritySetting(field, value, apply) }); }
@@ -973,6 +977,18 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
       {/* Activity: in-flight requests, provider health, recent requests */}
       <MonitoringStrip />
+
+      {/* Password step for security-weakening settings */}
+      <Modal open={reauth.open} title="Confirm password" size="sm" onClose={() => reauth.finish(null)}>
+        <form className="flex flex-col gap-4" onSubmit={(e) => {e.preventDefault();if (reauth.password) reauth.finish(reauth.password);}}>
+          <p className="text-[13px] text-dd-muted">This change lowers protection or changes who can sign in. Enter your current dashboard password to continue.</p>
+          <Input id="endpoint-reauth-password" label="Dashboard password" type="password" autoComplete="current-password" value={reauth.password} onChange={(e) => reauth.setPassword(e.target.value)} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" variant="primary" disabled={!reauth.password} className="flex-1">Confirm</Button>
+            <Button type="button" variant="ghost" onClick={() => reauth.finish(null)} className="flex-1">Cancel</Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Enable Tunnel Modal */}
       <Modal

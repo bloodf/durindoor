@@ -67,6 +67,12 @@ Ten single-use backup codes are generated at enrollment and shown once, bcrypt-h
 
 `mfaSecret` and `mfaBackupCodes` are stored in the same settings row as the password hash. They never round-trip through `GET/PATCH /api/settings` (only a boolean `mfaEnabled` and a `mfaBackupCodesRemaining` count are exposed there) and are writable only through `/api/auth/mfa/{setup,enable,disable}`, each of which re-verifies the current password.
 
+## Changing security settings
+
+`PATCH /api/settings` asks for the current dashboard password, on top of the session, when a change would turn off `requireLogin` or `requireApiKey`, turn on `tunnelDashboardAccess`, or change who can sign in (`authMode`, `ssoType`, the OIDC issuer, client ID, client secret, scopes, or allowlists). Turning protection on and re-saving the stored value need no password.
+
+Without it the route answers `401` with `"code": "REAUTH_REQUIRED"` and the affected `fields`, and writes nothing. Send the password as `currentPassword` in the same body; it is checked and never stored. Wrong passwords count toward the login lockout (`429` with `Retry-After`). A valid machine-bound CLI token needs no password. The Profile and Endpoint pages prompt for it and retry.
+
 ## Rate limits
 
 Dashboard login: five failures from one IP, then a lock of 30s, 2m, 10m, 30m. A quiet hour since the last fail resets the bucket. At most 5000 IPs are tracked. HTTP 429 includes `Retry-After`.

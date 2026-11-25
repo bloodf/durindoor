@@ -221,12 +221,21 @@ function googleErrorInfoReset(root, now, maxDelayMs) {
   return null;
 }
 
-function findJsonReset(value, now, maxDelayMs) {
+function findJsonReset(value, now, maxDelayMs, provider) {
   let visited = 0;
   const visit = (node, depth) => {
     if (depth > 4 || visited++ > 100 || !node || !isObject(node)) return null;
     for (const [rawKey, item] of Object.entries(node).slice(0, 50)) {
       const key = rawKey.toLowerCase();
+      // OmniRoute fb5fe2a: only CodeBuddy treats its data envelope as a reset hint.
+      if (depth === 0 && key === "data") {
+        if (provider === "codebuddy-intl" && item && isObject(item)) {
+          const resetValue = item.resetTime ?? item.reset_time;
+          const reset = absoluteFromEpoch(resetValue, now, maxDelayMs) || absoluteFromIso(resetValue, now, maxDelayMs);
+          if (reset) return reset;
+        }
+        continue;
+      }
       let reset = null;
       if (RELATIVE_MILLISECOND_FIELDS.has(key)) reset = relativeReset(item, 1, now, maxDelayMs);else
       if (RELATIVE_SECOND_FIELDS.has(key)) {
@@ -368,7 +377,7 @@ export function parseRateLimitEvidence({
   if (!resetAtMs && isString(bodyText) && bodyText.length <= 64 * 1024) {
     try {
       const body = JSON.parse(bodyText);
-      resetAtMs = googleErrorInfoReset(body, safeNow, maxDelayMs) || findJsonReset(body, safeNow, maxDelayMs);
+      resetAtMs = googleErrorInfoReset(body, safeNow, maxDelayMs) || findJsonReset(body, safeNow, maxDelayMs, provider);
       if (resetAtMs) source = "structured_body";
     } catch {/* non-JSON provider body */}
   }

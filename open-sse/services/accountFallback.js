@@ -327,7 +327,7 @@ function classifyFallbackError({
   if (status === 429 && provider === "codebuddy-intl") {
     const now = Date.now();
     const evidence = parseRateLimitEvidence({ status, bodyText: normalizedText, provider, now });
-    if (evidence?.source === "quota_text" && Number.isFinite(evidence.resetAtMs)) {
+    if (["quota_text", "structured_body"].includes(evidence?.source) && Number.isFinite(evidence.resetAtMs)) {
       return { shouldFallback: true, cooldownMs: evidence.resetAtMs - now, newBackoffLevel: 0, scope: "connection", rateLimitEvidence: evidence };
     }
   }

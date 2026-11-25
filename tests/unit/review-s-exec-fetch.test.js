@@ -149,11 +149,12 @@ describe("s-exec-fetch: override proxy + redirect contract (#2308)", () => {
   });
 
   it.each(FIXED_OVERRIDE_FILES)("%s routes through proxyAwareFetch with redirect:error", (name) => {
-    const source = readFileSync(path.join(EXECUTORS_DIR, name), "utf8");
+    const source = readFileSync(path.join(EXECUTORS_DIR, "sendRequest.js"), "utf8");
     expect(source).toContain('from "../utils/proxyFetch.js"');
     expect(source).toContain("proxyAwareFetch");
     expect(source).toContain('redirect: "error"');
     expect(findBareFetchSites(source)).toEqual([]);
+    expect(findBareFetchSites(readFileSync(path.join(EXECUTORS_DIR, name), "utf8"))).toEqual([]);
   });
 
   it("threads connection proxyOptions and rejects redirects on GitLab Duo", async () => {

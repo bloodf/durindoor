@@ -101,12 +101,16 @@ function sha16(text) {
   return crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
-// Normalize a session id candidate (trim, length cap)
+// Normalize a session id candidate (trim, length cap). Ids end up in upstream
+// headers, which reject code points above U+00FF, so such an id is hashed: one
+// conversation keeps one stable, header-safe value (OmniRoute #21148). UTF-16
+// input keeps lone surrogates distinct.
 function normalizeSessionId(value) {
   if (!isString(value)) return null;
   const v = value.trim();
-  if (!v || v.length > 256) return null;
-  return v;
+  if (!v || v.length > 256 || /[\u0000-\u001f\u007f]/.test(v)) return null;
+  if (!/[^\u0000-\u00ff]/.test(v)) return v;
+  return `sid_${crypto.createHash("sha256").update(v, "utf16le").digest("hex").slice(0, 32)}`;
 }
 
 // Extract Claude Code session id from metadata.user_id (_session_{uuid} | JSON {session_id})

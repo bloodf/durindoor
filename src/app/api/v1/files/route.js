@@ -36,6 +36,7 @@ async function GETHandler(request) {
 /**
  * POST /v1/files — multipart upload (fields: file, purpose).
  * Per O-A convention: non-multipart POST → 415.
+ * Interrupted or malformed multipart bodies return 400; oversized requests return 413.
  */
 async function POSTHandler(request) {
   const ownership = await resolveResourceOwner(request);
@@ -49,10 +50,10 @@ async function POSTHandler(request) {
   if (Number.isFinite(declaredLength) && declaredLength > requestLimit) {
     return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
   }
-  const boundedRequest = await readBoundedRequest(request, requestLimit);
-  if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
   let form;
   try {
+    const boundedRequest = await readBoundedRequest(request, requestLimit);
+    if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
     form = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart body");

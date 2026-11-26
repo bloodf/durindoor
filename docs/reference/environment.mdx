@@ -201,7 +201,7 @@ MCP OAuth needs a public https URL. If the dashboard is reached through a tunnel
 | --- | --- | --- |
 | `MCP_GATEWAY_OAUTH_PUBLIC_URL` | unset | Public origin for MCP Gateway OAuth callbacks. Wins, then tunnel status, then the request. |
 | `OAUTH_PUBLIC_BASE_URL` | unset | Older public OAuth origin fallback. |
-| `TUNNEL_WORKER_URL` | `https://abc-tunnel.us` | Cloudflare tunnel worker endpoint. |
+| `TUNNEL_WORKER_URL` | unset | Required for a stable URL: the HTTPS endpoint of your self-hosted relay. See the [relay guide](../operations/tunnel-relay.mdx). |
 | `TUNNEL_TRANSPORT_PROTOCOL` | `http2` | Quick tunnel protocol: `http2`, `quic`, `auto`. |
 | `CLOUDFLARED_PROTOCOL` | `http2` | Alternate name for the same protocol. |
 | `HEADROOM_URL` | `http://localhost:8787` | External Headroom proxy URL. |

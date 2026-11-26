@@ -232,7 +232,7 @@ async function probeRegistryNoAuth(connection, effectiveProxy, fetcher) {
 }
 
 async function probeRegistry(connection, fetcher, effectiveProxy) {
-  const { probeRegistryProvider } = await import("@/app/api/providers/providerProbe");
+  const { probeRegistryProvider } = await import("@/lib/providerProbe.js");
   return probeRegistryProvider(
     connection.provider,
     connection.apiKey,

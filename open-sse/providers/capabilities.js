@@ -1505,7 +1505,8 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
   }
   // The OpenAI Responses routing fallback also implies reasoning support for
   // unlisted chat IDs. Keep effort levels unknown until metadata declares them;
-  // explicit capabilities, catalog service kinds and family patterns win above.
+  // explicit capabilities, catalog service kinds and family patterns win above,
+  // and a custom or synced `thinkingEfforts` merged over this row wins as well.
   if (provider === "openai" && !registryModel && OPENAI_RESPONSES_FAMILY.test(normalizedModel)) {
     return finalize({ ...DEFAULT_CAPABILITIES, reasoning: true, thinkingFormat: "openai", thinkingLevelsUnknown: true });
   }

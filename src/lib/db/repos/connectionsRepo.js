@@ -50,7 +50,8 @@ const MODEL_LOCK_PREFIX = "modelLock_";
  * lifecycle. Persist caller-supplied soft warnings, but clear stale failures,
  * rate limits and backoff. A model lock still in force survives a passed test or
  * a token refresh (upstream #4389); a replaced credential clears every lock,
- * because the old one's failures say nothing about it. A lock value in the
+ * because the old one's failures say nothing about it. MiMo session token
+ * replacement is also a credential replacement. A lock value in the
  * patch itself always wins.
  */
 function resetHealthStateOnActivation(existing, patch, replacesCredential) {
@@ -71,7 +72,9 @@ function resetHealthStateOnActivation(existing, patch, replacesCredential) {
     reauthAt: null
   };
 
-  const replaced = replacesCredential || Boolean(patch.apiKey) && patch.apiKey !== existing?.apiKey;
+  const mimoToken = patch.providerSpecificData?.mimoPassToken;
+  const replaced = replacesCredential || Boolean(patch.apiKey) && patch.apiKey !== existing?.apiKey ||
+    existing?.provider === "xiaomi-mimo" && Boolean(mimoToken) && mimoToken !== existing.providerSpecificData?.mimoPassToken;
   const now = Date.now();
   for (const [key, expiry] of Object.entries(existing || {})) {
     if (!key.startsWith(MODEL_LOCK_PREFIX)) continue;

@@ -19,4 +19,6 @@ The playground has no native function calling, so the gateway emulates it: your 
 
 The playground accepts at most 10 user messages of 6000 characters each, and tool results count as user messages. In requests that carry tools or tool history, the gateway truncates oversized messages and compacts older turns into one summary message, so long agent sessions lose detail from earlier turns. The tool list also uses some of those 10 messages. A very large toolset that does not fit in eight of them is cut off, and the tools left out are not described to the model. The playground ignores `system` messages.
 
+The tool contract has at most eight chunks. Tools beyond that limit are omitted, and the gateway logs the number omitted.
+
 Sources: [Cloudflare Agents chat docs](https://developers.cloudflare.com/agents/agent-class/communication-channels/chat/chat-agents/), [Cloudflare AI Playground](https://playground.ai.cloudflare.com/).

@@ -13,6 +13,7 @@ import { settleProviderAttemptDispatch } from "../services/providerAttemptContex
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { stringifyWellFormed } from "../utils/wellFormedJson.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 
 
@@ -460,7 +461,9 @@ export class BaseExecutor {
         if (strippedMessageFields.size && Array.isArray(requestBody?.messages)) {
           requestBody = stripAssistantMessageFields(requestBody, strippedMessageFields);
         }
-        let bodyStr = JSON.stringify(requestBody);
+        const claudeWire = wireFormat === FORMATS.CLAUDE || /\/messages\/?$/.test(new URL(url).pathname);
+        const serialize = claudeWire ? stringifyWellFormed : JSON.stringify;
+        let bodyStr = serialize(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         const send = (serializedBody) => {
@@ -481,7 +484,7 @@ export class BaseExecutor {
           const replay = async () => {
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            response = await send(JSON.stringify(requestBody));
+            response = await send(serialize(requestBody));
           };
           const errorPayload = async () => {
             try { return JSON.parse(await readOptionalProbeText(response, { signal })); }
@@ -527,14 +530,14 @@ export class BaseExecutor {
             requestBody = { ...requestBody };
             delete requestBody[field];
             strippedFields.add(field);
-            bodyStr = JSON.stringify(requestBody);
+            bodyStr = serialize(requestBody);
             log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
           } else {
             const messageField = findRejectedMessageField(response.status, errorText, requestBody);
             if (!messageField) break;
             requestBody = stripAssistantMessageFields(requestBody, [messageField]);
             strippedMessageFields.add(messageField);
-            bodyStr = JSON.stringify(requestBody);
+            bodyStr = serialize(requestBody);
             log?.debug?.("RETRY", `Provider rejected message field ${messageField}; stripping and retrying`);
           }
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });

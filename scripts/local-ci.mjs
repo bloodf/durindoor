@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync, rmSync, lstatSync,
+  accessSync, constants, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync, rmSync, lstatSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -82,6 +82,30 @@ export function requiresWebsiteBuild(paths) {
   return paths.some(p => /^(docs|website|src|open-sse|public)\//.test(p)
     || /^(package(?:-lock)?\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.nvmrc|next\.config\.[^/]+|postcss\.config\.[^/]+)$/.test(p)
     || p.startsWith("scripts/") || p.startsWith(".github/workflows/"));
+}
+
+// A configured path is only a candidate; launching and report validation remain mandatory.
+export function websiteBrowserAvailable(browser) {
+  try {
+    if (!browser || !statSync(browser).isFile()) return false;
+    accessSync(browser, constants.X_OK);
+    return true;
+  } catch { return false; }
+}
+
+// Applies equally to a single shard (1/1) and multiple shards. Build-only success
+// must never stand in for browser coverage when the full website job is selected.
+export function requiredWebsiteCoverageStep(websiteRun, coverage, steps) {
+  if (!websiteRun) return null;
+  const passed = Number.isInteger(coverage?.totalTests) && coverage.totalTests > 0
+    && Number.isInteger(coverage?.shards) && coverage.shards > 0
+    && steps.some(s => s.id === "verify-website-browser-reports" && s.status === "passed");
+  return {
+    id: "required-website-browser-coverage", job: "website-build", kind: "check",
+    status: passed ? "passed" : "failed",
+    reason: passed ? "complete website browser inventory executed"
+      : "required website browser coverage did not run or did not pass",
+  };
 }
 
 // Deterministic Playwright sharding keeps each website browser command well
@@ -716,7 +740,7 @@ if (!websiteRun) {
   const configuredBrowser = process.env.WEBSITE_CHROMIUM_EXECUTABLE || process.env.V5_CHROMIUM_EXECUTABLE;
   const resolvedBrowser = configuredBrowser ? path.resolve(configuredBrowser) : null;
   const browser = resolvedBrowser || chromiumLaunchOptions(chromium, dirs.src).executablePath || chromium.executablePath();
-  const browserAvailable = Boolean(resolvedBrowser || (browser && existsSync(browser)));
+  const browserAvailable = websiteBrowserAvailable(browser);
   const websiteBuilt = await job("website-build", [
     ["pnpm-install-root", "pnpm", pnpmInstall],
     ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
@@ -725,8 +749,8 @@ if (!websiteRun) {
   if (!websiteBuilt) {
     skip("website-browser-inventory", "website-build", "website build did not pass", "not-run");
   } else if (!browserAvailable) {
-    console.log("browser suites skipped: no browser");
-    skip("website-browser-suites", "website-build", "browser suites skipped: no browser");
+    anyFail = true;
+    skip("website-browser-suites", "website-build", "required website browser suites cannot run: no executable Chromium browser", "failed");
   } else {
     const browserOutputRoot = path.join(dirs.tmp, "website-browser-output");
     const browserReportRoot = path.join(out, "website-browser-reports");
@@ -920,6 +944,14 @@ if (toolInstalled) {
   skip("commitlint-range", "commitlint", "commitlint install did not pass", "not-run");
 }
 
+if (opts.mode === "full") {
+  const coverageStep = requiredWebsiteCoverageStep(websiteRun, evidence.websiteBrowserCoverage, evidence.steps);
+  if (coverageStep) {
+    evidence.steps.push({ ...coverageStep, at: now() });
+    if (coverageStep.status === "failed") anyFail = true;
+    save();
+  }
+}
 if (interrupted) finish(130, "interrupted");
 const bad = anyFail || evidence.steps.some((s) => ["failed", "not-run", "interrupted"].includes(s.status));
 finish(bad ? 1 : 0, bad ? "failed" : "passed");

@@ -5,6 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import {
   WEBSITE_BROWSER_SHARD_COUNT,
+  websiteBrowserAvailable,
+  requiredWebsiteCoverageStep,
+  requiresWebsiteBuild,
   collectWebsiteBrowserInventory,
   extractPlaywrightTests,
   selectWebsiteBrowserShards,
@@ -49,6 +52,41 @@ function makeReport({ suites = [], errors = [], testMatch = ["docs.spec.mjs", "m
 }
 
 describe("local CI website Playwright sharding", () => {
+  it("fails required coverage without a browser and rejects invalid explicit paths offline", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "gate-no-browser-"));
+    try {
+      const browser = path.join(dir, "chromium");
+      expect(websiteBrowserAvailable(browser)).toBe(false);
+      expect(websiteBrowserAvailable(dir)).toBe(false);
+      writeFileSync(browser, "#!/bin/sh\nexit 0\n", { mode: 0o600 });
+      expect(websiteBrowserAvailable(browser)).toBe(false);
+      chmodSync(browser, 0o700);
+      expect(websiteBrowserAvailable(browser)).toBe(true);
+      // Merely finding a browser or passing a build is insufficient evidence.
+      expect(requiredWebsiteCoverageStep(true, undefined, [
+        { id: "website-build", status: "passed" },
+        { id: "website-browser-suites", status: "skipped" },
+      ])).toMatchObject({ status: "failed", job: "website-build" });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("requires verified executed coverage for both single and multiple shards", () => {
+    const steps = [{ id: "verify-website-browser-reports", status: "passed" }];
+    for (const shards of [1, 8]) {
+      expect(requiredWebsiteCoverageStep(true, { totalTests: 12, shards }, steps).status).toBe("passed");
+      expect(requiredWebsiteCoverageStep(true, { totalTests: 0, shards }, steps).status).toBe("failed");
+      expect(requiredWebsiteCoverageStep(true, { totalTests: 12, shards }, []).status).toBe("failed");
+    }
+    expect(requiredWebsiteCoverageStep(true, undefined, steps).status).toBe("failed");
+  });
+
+  it("preserves conditional auto skips while requiring coverage for changed website inputs", () => {
+    const conditional = requiresWebsiteBuild(["tests/unit/local-ci.test.js"]);
+    expect(conditional).toBe(false);
+    expect(requiredWebsiteCoverageStep(conditional, undefined, [])).toBeNull();
+    expect(requiredWebsiteCoverageStep(requiresWebsiteBuild(["website/app/page.js"]), undefined, []).status).toBe("failed");
+  });
+
   it("extracts the complete configured inventory and rejects empty or missing configured suites", () => {
     const listReport = makeReport({
       suites: [

@@ -59,7 +59,7 @@ function stripAnsi(str) {
   return str.replace(ANSI_RE, "");
 }
 
-// Snapshot mutable values at capture time with bounded traversal and output.
+// Snapshot at capture time with bounded traversal and output, even for hostile values.
 function formatArg(arg) {
   try {
     if (isString(arg)) return stripAnsi(arg.slice(0, 16384));
@@ -86,9 +86,7 @@ function formatArg(arg) {
 }
 
 function appendLine(args) {
-  // Immutable primitives can be formatted on read; objects need a snapshot so
-  // subsequent mutations cannot change what the dashboard displays.
-  const line = args.map((arg) => arg !== null && Object(arg) === arg ? formatArg(arg) : arg);
+  const line = args.map(formatArg);
   if (state.logs.length < CONSOLE_LOG_CONFIG.maxLines) {
     state.logs.push(line);
   } else {

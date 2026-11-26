@@ -474,7 +474,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         credentialFingerprint: context?.credentialFingerprint || null,
         webFetch: context?.webFetch === true,
         webSearch: isolatedSearch,
-        videoPoll: context?.videoPoll === true
+        videoPoll: context?.videoPoll === true,
+        // Only a deadline the upstream stated may extend a newer, shorter lock.
+        upstreamReset: Boolean(githubResetAtMs || providerReset > now || fallbackResult.retryHintSource)
       }, { signal });
       // The atomic path ran; never fall through to the compatibility writer,
       // even when applied is false (stale watermark or reauth guard).

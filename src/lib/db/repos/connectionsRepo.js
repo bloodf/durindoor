@@ -7,7 +7,7 @@ import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
-import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
+import { activeModelUpstreamError, modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS } from "open-sse/config/runtimeConfig.js";
 import {
   advanceAntigravityGeneration,
@@ -748,6 +748,22 @@ function credentialHealthDelta(existing, fingerprint, { healthy, eventMs, status
  * late completions and the max-expiry merge prevents concurrent 429s from
  * shortening an already accepted cooldown.
  */
+/**
+ * A late failure that carries a longer upstream reset moves an active lock out. It never
+ * shortens a lock or recreates a cleared one, and leaves the newer backoff and error fields.
+ */
+function extendedModelLock(connection, scope, proposedExpiry, now) {
+  const lockKey = `${MODEL_LOCK_PREFIX}${scope}`;
+  const storedExpiry = Date.parse(connection[lockKey] || "") || 0;
+  if (storedExpiry <= now || proposedExpiry <= storedExpiry) return null;
+  const lockUntil = new Date(proposedExpiry).toISOString();
+  const record = activeModelUpstreamError(connection, [scope], now);
+  return {
+    [lockKey]: lockUntil,
+    ...(record ? modelUpstreamUpdate(scope, { ...record, lockUntil }) : null)
+  };
+}
+
 export async function recordProviderConnectionFallbackState(id, {
   model = null,
   status,
@@ -759,7 +775,8 @@ export async function recordProviderConnectionFallbackState(id, {
   credentialFingerprint = null,
   webFetch = false,
   webSearch = false,
-  videoPoll = false
+  videoPoll = false,
+  upstreamReset = false
 } = {}, { signal = null, now = Date.now() } = {}) {
   const eventMs = eventTimestamp(observedAt, now);
   if (!Number.isSafeInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 7 * 24 * 60 * 60 * 1000) {
@@ -804,6 +821,15 @@ export async function recordProviderConnectionFallbackState(id, {
     // Connection scope keeps the R-02 contract (equal stamps lose); the
     // per-key verdict above lets a same-millisecond failure win.
     if (eventMs <= storedVersion) {
+      const extended = upstreamReset &&
+      extendedModelLock(existing, scope, eventMs + cooldownMs, now);
+      if (extended) {
+        const grown = { ...existing, ...extended, updatedAt: existing.updatedAt };
+        if (credentialHealth) grown.credentialHealth = credentialHealth;
+        upsert(db, grown);
+        result = { applied: true, extended: true, connection: grown };
+        return;
+      }
       if (credentialHealth) {
         const keyOnly = { ...existing, credentialHealth, updatedAt: existing.updatedAt };
         upsert(db, keyOnly);

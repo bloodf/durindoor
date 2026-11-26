@@ -267,6 +267,8 @@ const executors = {
   ),
 };
 
+export const REGISTERED_EXECUTOR_IDS = Object.freeze(Object.keys(executors));
+
 const defaultCache = new Map();
 
 // #10394 — providers that exist ONLY as /v1/search endpoint entries (searchConfig but no

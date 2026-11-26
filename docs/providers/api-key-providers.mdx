@@ -126,6 +126,15 @@ DeepSeek's thinking mode requires the `reasoning_content` of earlier assistant t
 - The Anthropic-compatible DeepSeek endpoint carries thinking as `thinking` content blocks with signatures. DurinDoor forwards those blocks unchanged and sends no `reasoning_content` on that transport, including when the transport is selected as `claude-apikey`.
 - Another provider that serves a model with the same ID keeps its own endpoint and credentials. On an Anthropic-format transport it never receives `reasoning_content`. On an OpenAI Chat transport, other providers with a `deepseek` model ID receive the same placeholder, as before, because gateways that front DeepSeek enforce the same rule; models with other IDs are untouched.
 
+## Azure resource endpoint
+
+A new Azure connection needs its resource endpoint. Without one, the request would carry your Azure key to a host that is not your resource, so `POST /api/providers` answers HTTP 400.
+
+- `azure-openai` needs `providerSpecificData.baseUrl`. The dashboard form has no field for it yet, so create this connection through the API.
+- `azure` needs `providerSpecificData.azureEndpoint`, or `AZURE_ENDPOINT` set on the server.
+
+Saved connections and updates are not checked.
+
 ## Env fallbacks
 
 Saved connections are the path you should use. A handful of executors still read process environment when a connection field is empty:

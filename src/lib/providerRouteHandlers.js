@@ -10,7 +10,7 @@ import {
 "@/lib/localDb";
 import { APIKEY_PROVIDERS } from "@/shared/constants/config";
 import { AI_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, FREE_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, isHiddenProvider } from "@/shared/constants/providers";
-import { normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { missingAzureEndpointError, normalizeProviderId, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { requiresProviderAccountId } from "@/lib/providerAccountIds";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
@@ -381,6 +381,10 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
       } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
+    }
+    const azureEndpointError = missingAzureEndpointError(provider, providerSpecificData);
+    if (azureEndpointError) {
+      return NextResponse.json({ error: azureEndpointError }, { status: 400 });
     }
     if (provider === "google-pse" && !providerSpecificData?.cx) {
       return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });

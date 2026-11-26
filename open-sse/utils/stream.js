@@ -2049,16 +2049,24 @@ export function createSSEStream(options = {}) {
         // block was cut off. The null flush below would invent a successful end and
         // release buffered tool calls, so end it with an error (upstream #4486).
         // A translated Responses stream with no terminal event is cut off the same way
-        // (upstream #4490).
+        // (upstream #4490). A Claude client on a Chat Completions upstream gets the
+        // same treatment when neither a finish reason nor [DONE] arrived: the null
+        // flush would close it with end_turn + message_stop (upstream #3860).
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
         const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
           !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
-        if (cutGemini || cutResponses) {
+        const cutChatForClaude = sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.OPENAI &&
+          state.messageStartSent && !state.claudeFinishHandled && !streamDoneSent &&
+          !parseSSELine(buffer.trim(), targetFormat)?.done;
+        if (cutGemini || cutResponses || cutChatForClaude) {
+          // Claude clients retry overloaded_error; a dropped Chat stream is transient.
+          const claudeErrorType = cutChatForClaude ? "overloaded_error" : "api_error";
           streamErrorPayload = {
-            type: sourceFormat === FORMATS.CLAUDE ? "api_error" : "server_error",
+            type: sourceFormat === FORMATS.CLAUDE ? claudeErrorType : "server_error",
             code: "incomplete_upstream_stream",
-            message: cutGemini ? "Gemini stream ended before a finish reason" : "Responses stream ended before a terminal event"
+            message: cutGemini ? "Gemini stream ended before a finish reason" :
+              cutResponses ? "Responses stream ended before a terminal event" : "Upstream stream ended before a finish reason"
           };
           const output = formatTranslatedStreamError(streamErrorPayload, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);

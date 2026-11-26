@@ -9,8 +9,8 @@ const NO_REWRITE = /(?!)/g;
 /**
  * Shorten tool names longer than {@link MAX_TOOL_NAME_LEN} in a Responses body:
  * declarations (including namespace subtools), tool_choice and call history.
- * The alias is a hash of the full name, so two names sharing a prefix stay
- * distinct and a name keeps its alias across turns.
+ * Names are reserved before aliases are allocated, so an alias cannot capture
+ * another real tool name. Allocation order is stable for the same name set.
  *
  * Replaces `body.tools`, `body.input` and `body.tool_choice` with copies; the
  * objects the caller declared are left untouched.
@@ -19,8 +19,27 @@ const NO_REWRITE = /(?!)/g;
  * @returns {Map<string,string>} alias -> caller's name, for the response path.
  */
 export function aliasLongResponsesToolNames(body) {
-  const { alias, aliases } = createToolNameAliaser({ invalidCharacters: NO_REWRITE, maxLength: MAX_TOOL_NAME_LEN });
-  if (!isObject(body)) return aliases;
+  const reservedNames = new Set();
+  const collect = (entry) => {
+    if (!entry || !isObject(entry)) return;
+    const name = isString(entry.name) ? entry.name.trim() : "";
+    if (name) reservedNames.add(name);
+    if (entry.function && isObject(entry.function)) collect(entry.function);
+    if (Array.isArray(entry.tools)) entry.tools.forEach(collect);
+  };
+  if (body && isObject(body)) {
+    if (Array.isArray(body.tools)) body.tools.forEach((tool) => {
+      if (tool?.type === "namespace" && Array.isArray(tool.tools)) tool.tools.forEach(collect);
+      else collect(tool);
+    });
+    collect(body.tool_choice);
+    if (Array.isArray(body.input)) body.input.forEach((item) => {
+      if (/^(function|custom_tool)_call$/.test(item?.type)) collect(item);
+    });
+  }
+  const { alias, aliases } = createToolNameAliaser({ invalidCharacters: NO_REWRITE, maxLength: MAX_TOOL_NAME_LEN, reservedNames });
+  if (!body || !isObject(body)) return aliases;
+  for (const name of [...reservedNames].sort()) alias(name);
 
   const rename = (entry) => {
     if (!entry || !isObject(entry)) return entry;

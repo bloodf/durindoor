@@ -84,6 +84,24 @@ function contentFrom(events) {
   return { content, reasoning };
 }
 
+/**
+ * Resolve DeepSeek Web mode and feature flags from the model id and request body.
+ * Pro, Expert, Reasoner, and R1 models route through `"expert"` mode, while
+ * Flash and base chat stay on `"default"` (upstream decolua/9router#3945).
+ *
+ * @param {string} model Requested model id.
+ * @param {object} [body] Incoming OpenAI-format request body.
+ * @returns {{ modelType: "expert" | "default", thinkingEnabled: boolean, searchEnabled: boolean }}
+ */
+export function resolveDeepSeekWebModelOptions(model, body) {
+  const lower = String(model || "").toLowerCase();
+  return {
+    modelType: /pro|expert|reason|r1/.test(lower) ? "expert" : "default",
+    thinkingEnabled: /think|reason|r1/.test(lower) || body?.thinking === true || body?.reasoning_effort != null,
+    searchEnabled: /search/.test(lower) || body?.search === true || body?.web_search === true,
+  };
+}
+
 export class DeepSeekWebExecutor extends BaseExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
@@ -121,15 +139,15 @@ export class DeepSeekWebExecutor extends BaseExecutor {
       const sessionId = sessionData?.data?.biz_data?.chat_session?.id || sessionData?.biz_data?.chat_session?.id;
       if (!sessionId) return { response: json({ error: { message: "DeepSeek did not return a chat session id", type: "upstream_error" } }, 502), url: `${BASE}/v0/chat_session/create`, headers: authHeaders, transformedBody: body };
       const modelId = String(model || "deepseek-chat");
-      const lower = modelId.toLowerCase();
+      const { modelType, thinkingEnabled, searchEnabled } = resolveDeepSeekWebModelOptions(modelId, body);
       const payload = {
         chat_session_id: sessionId,
         parent_message_id: null,
-        model_type: /pro|expert/.test(lower) ? "expert" : "default",
+        model_type: modelType,
         prompt,
         ref_file_ids: [],
-        thinking_enabled: /think|reason|r1/.test(lower) || body?.thinking === true || body?.reasoning_effort != null,
-        search_enabled: /search/.test(lower) || body?.search === true || body?.web_search === true,
+        thinking_enabled: thinkingEnabled,
+        search_enabled: searchEnabled,
         preempt: false,
       };
       completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });

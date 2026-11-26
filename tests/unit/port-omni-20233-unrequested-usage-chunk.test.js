@@ -51,3 +51,12 @@ describe("OmniRoute #20233: no unrequested usage-only chunk for Chat clients", (
     expect(events.filter((event) => event.choices?.length === 0)).toHaveLength(1);
   });
 });
+
+describe("OmniRoute #20233: bridges that read usage ask for it", () => {
+  it("the Gemini v1beta bridge requests usage for streams only", async () => {
+    const { convertGeminiToInternal } = await import("../../src/app/api/v1beta/models/[...path]/geminiBridge.js");
+    const body = { contents: [{ role: "user", parts: [{ text: "hi" }] }] };
+    expect(convertGeminiToInternal(body, "m", true).stream_options).toEqual({ include_usage: true });
+    expect(convertGeminiToInternal(body, "m", false)).not.toHaveProperty("stream_options");
+  });
+});

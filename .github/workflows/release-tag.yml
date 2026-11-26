@@ -163,4 +163,5 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       release_tag: ${{ needs.tag.outputs.tag }}
-      promote_latest: true
+      # Prerelease tags must not move the stable image alias.
+      promote_latest: ${{ !contains(needs.tag.outputs.tag, '-') }}

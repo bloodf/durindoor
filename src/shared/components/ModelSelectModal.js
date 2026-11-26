@@ -496,9 +496,11 @@ export default function ModelSelectModal({
           // LLM/null kind: merge hardcoded models (e.g. mimo-free → mimo-auto) with user-added models
           const registeredLlms = customRegisteredModels.filter((m) => !getModelKind(m) || getModelKind(m) === "llm");
           const seen = new Set([...aliasModels, ...registeredLlms].map((m) => m.value));
-          const hardcoded = getModelsByProviderId(providerId).
+          // Account catalogs replace the fallback list when available (#5877).
+          const liveModels = LIVE_CATALOG_PROVIDERS.includes(providerId) ? fetchedModels[providerId] || [] : [];
+          const hardcoded = (liveModels.length ? liveModels : getModelsByProviderId(providerId)).
           filter((m) => !getModelKind(m) || getModelKind(m) === "llm").
-          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })).
+          map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m), capabilities: m.capabilities })).
           filter((m) => !seen.has(m.value));
           combined = [...registeredLlms, ...aliasModels.filter((m) => !registeredLlms.some((registered) => registered.value === m.value)), ...hardcoded];
           // Augment with live-fetched LLM models when available

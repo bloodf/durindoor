@@ -10,7 +10,6 @@ const db = vi.hoisted(() => ({
   getSettings: vi.fn(async () => ({})),
 }));
 vi.mock("@/lib/localDb", async (importOriginal) => ({ ...await importOriginal(), ...db }));
-vi.mock("@/models", async (importOriginal) => ({ ...await importOriginal(), ...db }));
 vi.mock("@/sse/services/modelAccess.js", () => ({
   filterModelsForRequest: async (_request, models) => models,
   getRequestModelDiscoveryOptions: async () => ({}),

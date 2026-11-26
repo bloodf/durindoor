@@ -50,14 +50,14 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.head_commit.message, 'chore(release): bump version to')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           # Pin the checkout: the pushed bump commit for automatic runs,
           # main for manual dispatches (never the selector's arbitrary ref).
           ref: ${{ github.event_name == 'push' && github.event.head_commit.id || 'main' }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24.22.2
 

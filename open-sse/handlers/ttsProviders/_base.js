@@ -6,6 +6,7 @@ export const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 
 // Convert upstream Response (binary audio) to { base64, format }
 export async function responseToBase64(res, defaultFormat = "mp3") {
+  await throwIfNotAudio(res);
   const buf = await res.arrayBuffer();
   if (buf.byteLength < 100) throw new Error("Upstream returned empty audio");
   const ctype = res.headers.get("content-type") || "";
@@ -14,6 +15,12 @@ export async function responseToBase64(res, defaultFormat = "mp3") {
   if (ctype.includes("mpeg") || ctype.includes("mp3")) format = "mp3";else
   if (ctype.includes("ogg")) format = "ogg";
   return { base64: Buffer.from(buf).toString("base64"), format };
+}
+
+// A 200 JSON or HTML body is an upstream error, not audio (9router #5864).
+// text/event-stream stays: it is OpenAI's `stream_format: "sse"` audio.
+export async function throwIfNotAudio(res) {
+  if (/json|text\/html/i.test(res.headers.get("content-type") || "")) await throwUpstreamError(res);
 }
 
 export async function throwUpstreamError(res) {

@@ -564,9 +564,11 @@ export const PROVIDER_CAPABILITIES = {
   // generated synthetic variant id (base/-thinking/-agentic/-thinking-agentic)
   // so the 12 keys can never drift from the catalog in providerModels.js.
   // Exposed under both the provider id ("kiro") and its short alias ("kr") —
-  // callers pass either.
-  kiro: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
-  kr: { ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  // callers pass either. "auto" is Kiro's router mode rather than a synced
+  // catalog entry (decolua/9router#5876); without an explicit entry it falls
+  // through to vision: false and image turns are stripped or rerouted.
+  kiro: { auto: { vision: true }, ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
+  kr: { auto: { vision: true }, ...KIRO_GPT_5_6_PROVIDER_CAPS, ...KIRO_CLAUDE_5_5_CAPS },
   github: CLAUDE_5_5_DOTTED_CAPS,
   "ghe-copilot": CLAUDE_5_5_DOTTED_CAPS,
   ghe: CLAUDE_5_5_DOTTED_CAPS,

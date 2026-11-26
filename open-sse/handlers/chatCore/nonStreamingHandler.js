@@ -890,6 +890,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         enrichUsageCost(addBufferToUsage(translatedResponse.usage, provider), provider, model),
         sourceFormat
       );
+    } else if (isClaudeMessageResponse && usageReported && usage?.estimated === true && translatedResponse?.usage) {
+      // A Claude message keeps provider-reported usage as sent. An executor
+      // estimate (Cursor, #2615) is recorded raw, so the client margin is added
+      // here once, matching the Claude streaming projection.
+      translatedResponse.usage = addBufferToUsage(translatedResponse.usage, provider);
     }
 
     if ((sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE) && translatedResponse?.usage) {

@@ -21,6 +21,9 @@ const MAX_CONTRACT_CHUNKS = CF_MAX_USER_MESSAGES - 2;
 const MAX_DESCRIPTION_CHARS = 160;
 // Each unmatched opener costs a scan to the end of the reply.
 const MAX_UNMATCHED_OPENERS = 50;
+// Fail closed on oversized replies or excessive rescanning of malformed JSON.
+const MAX_REPLY_CHARS = 1_000_000;
+const MAX_SCAN_CHARS = 1_000_000;
 const CONTINUED = "# Tool Calling Instructions (continued)\nTools:";
 const TAG_BLOCK = /<tool(?:_call)?>\s*([\s\S]*?)\s*<\/tool(?:_call)?>/g;
 const TAG_OPENER = /<tool(?:_call)?>/;
@@ -134,10 +137,11 @@ function toCalls(values, context) {
 }
 
 /** Index just past the bracket that closes the one at `start`, or -1. */
-function closingIndex(text, start) {
+function closingIndex(text, start, budget) {
   let depth = 0;
   let quoted = false;
   for (let i = start; i < text.length; i++) {
+    if (--budget.remaining < 0) return -1;
     const char = text[i];
     if (quoted) {
       if (char === "\\") i++;
@@ -154,11 +158,14 @@ function closingIndex(text, start) {
  * the complete calls inside it would run only part of what the model asked for.
  */
 function embeddedDocuments(text) {
+  if (text.length > MAX_REPLY_CHARS) return null;
   const documents = [];
+  const budget = { remaining: MAX_SCAN_CHARS };
   let unmatched = 0;
   for (let start = 0; start < text.length; start++) {
     if (text[start] !== "{" && text[start] !== "[") continue;
-    const end = closingIndex(text, start);
+    const end = closingIndex(text, start, budget);
+    if (budget.remaining < 0) return null;
     if (end === -1 && ++unmatched > MAX_UNMATCHED_OPENERS) return null;
     const value = end === -1 ? undefined : parseJson(text.slice(start, end));
     if (value !== undefined) {

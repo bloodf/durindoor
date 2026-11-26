@@ -94,6 +94,9 @@ export async function createLoopState(ctx) {
     refreshedQuotaConnectionIds: new Set(),
     lastError: null,
     lastStatus: null,
+    // The upstream error code that goes with lastError (e.g. gemini_web_signed_out),
+    // so account exhaustion does not replace it with the status default.
+    lastErrorCode: null,
     antigravityTimeoutResponse: null,
     antigravityCapacitySweeps: 0,
     totalAttempts: 0,

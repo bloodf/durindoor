@@ -235,6 +235,7 @@ export async function ensureProviderProjectId(ctx, state, credentials, refreshed
       const lastError = "Antigravity credential project validation failed";
       state.lastStatus = lastStatus;
       state.lastError = lastError;
+      state.lastErrorCode = null;
       await markAccountUnavailable(credentials.connectionId, lastStatus, lastError, provider, model, null, { signal: requestSignal });
       state.excludeConnectionIds.add(credentials.connectionId);
       return RETRY;
@@ -297,6 +298,7 @@ export async function evaluateProviderFailure(ctx, state, attempt, result, resul
         log.info("AUTH", `${provider} | refreshed quota blocked ${credentials.connectionId.slice(0, 8)} (reason=${decision.reason || "unknown"}); reselecting`);
         state.lastError = result.error;
         state.lastStatus = result.status;
+        state.lastErrorCode = null;
         return RETRY;
       }
     } catch (error) {

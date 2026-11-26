@@ -1224,8 +1224,8 @@
     "thinkingFormat": "openai"
   },
   "liquid": {
-    "baseUrl": "https://api.liquid.ai/v1/chat/completions",
-    "validateUrl": "https://api.liquid.ai/v1/models",
+    "baseUrl": "https://api.liquid.ai/openai/v1/chat/completions",
+    "validateUrl": "https://api.liquid.ai/openai/v1/models",
     "authHeader": "bearer",
     "format": "openai"
   },

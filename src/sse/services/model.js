@@ -4,6 +4,7 @@ import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
 import { effectiveSyncedModels, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
+import { isDevinBinAvailable } from "open-sse/executors/devin-acp-stdio.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
@@ -394,6 +395,12 @@ export async function getAutoComboCatalog() {
   // seated in the loop above, so an enabled provider-account still wins.
   for (const key of applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, inactiveKeys })) {
     if (!catalog[key]) catalog[key] = PROVIDER_MODELS[key];
+  }
+  // Host readiness is advisory and must never change connection health. Direct
+  // and saved-combo requests retain the executor's own diagnostic errors.
+  for (const [id, agentic] of [["devin-cli", false], ["devin-cli-agentic", true]]) {
+    const key = idToKey.get(id) || id;
+    if (catalog[key] && !isDevinBinAvailable({ agentic })) delete catalog[key];
   }
   return catalog;
 }

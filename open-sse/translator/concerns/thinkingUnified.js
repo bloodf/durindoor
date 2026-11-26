@@ -3,7 +3,7 @@
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
 import { getCapabilitiesForModel, isGemini4Model } from "../../providers/capabilities.js";
-import { getThinkingLevels, getThinkingLevelsFromCapabilities, getOpencodeGoEffortTiers, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
+import { getThinkingLevels, getThinkingLevelsFromCapabilities, getOpencodeGoEffortTiers, hasUnknownThinkingLevels, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
 import { GLM_ANTHROPIC_PROVIDERS, LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
@@ -205,6 +205,8 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   if (transportFmt) return transportFmt;
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
+  // The unlisted OpenAI Responses fallback needs the nested reasoning shape even
+  // after custom metadata declares its effort enum; the flag picks the wire, not levels.
   if (resolvedCaps.thinkingLevelsUnknown && targetFormat === FORMATS.OPENAI_RESPONSES) return "openai-responses";
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
@@ -447,11 +449,14 @@ export function normalizeToDeclaredTiers(cfg, supported) {
 // Map requested OpenAI effort to a level the model accepts.
 // Preserve when listed in getThinkingLevels; else nearest high-end sibling.
 // Unknown/empty metadata keeps legacy safe max/ultra → xhigh clamp.
+// The unlisted OpenAI Responses fallback (levels unknown, no declared efforts)
+// forwards OpenAI wire efforts, including max, which every current GPT-5.6/GPT-6
+// row accepts. `ultra` is a gateway tier with no OpenAI wire value, so it folds to max.
 export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
   // Adaptive intent must resolve to an OpenAI wire effort.
   if (level === "auto") level = "high";
-  if (caps?.thinkingLevelsUnknown) return level;
+  if (hasUnknownThinkingLevels(caps)) return level === "ultra" ? "max" : level;
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
     if (allowed.includes(level)) return level;
@@ -489,12 +494,17 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
       }
     case "openai-responses": {
         // Responses API nests effort as reasoning:{effort,summary}; strict upstreams reject
-        // top-level reasoning_effort / thinking:{type}. "none" is expressed by omitting reasoning.
-        if (none && canDisable) {delete body.reasoning;break;}
-        const level = toLevel(eff);
+        // top-level reasoning_effort / thinking:{type}. "none" is expressed by omitting reasoning,
+        // which leaves the upstream default effort. The unlisted OpenAI fallback cannot send
+        // "none" blindly (GPT-6 Astra/Sol rows reject it); once custom metadata declares its
+        // efforts, "none" goes on the wire when listed and floors to the lowest tier otherwise.
+        const declaredLevels = none && canDisable && caps.thinkingLevelsUnknown === true ?
+          getThinkingLevelsFromCapabilities(caps, provider, model) : null;
+        if (none && canDisable && !declaredLevels?.length) {delete body.reasoning;break;}
+        const level = declaredLevels?.length ? clampTierToSupported("none", declaredLevels) : toLevel(eff);
         if (level) {
           const current = isObject(body.reasoning) ? body.reasoning : {};
-          body.reasoning = { ...current, effort: resolveOpenAiEffort(level, provider, model, caps) };
+          body.reasoning = { ...current, effort: declaredLevels?.length ? level : resolveOpenAiEffort(level, provider, model, caps) };
           if (!body.reasoning.summary) body.reasoning.summary = "auto";
         }
         delete body.reasoning_effort;

@@ -1,4 +1,6 @@
-/** Buffer at most maxBytes from a request before allowing body parsing. */
+import { keepAbortChain } from "../../shared/utils/abortChain.js";
+
+/** Buffer at most maxBytes before body parsing, retaining the source abort chain. */
 export async function readBoundedRequest(request, maxBytes) {
   if (!request.body) return request;
   const reader = request.body.getReader();
@@ -20,5 +22,5 @@ export async function readBoundedRequest(request, maxBytes) {
   }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
-  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
+  return keepAbortChain(new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal }), request);
 }

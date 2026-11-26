@@ -84,11 +84,16 @@ const DOTHOOSH_PROVIDERS = new Set(["dothoosh", "dh"]);
 const OPENCODE_GO_ALIASES = new Set(["opencode-go", "ocg"]);
 const OPENCODE_GO_UNLISTED_RESPONSES_MODELS = new Set(["gpt-5.6-luna", "grok-4.6"]);
 
+// OpenAI rejects function tools with reasoning_effort on Chat Completions for the
+// GPT-6 and GPT-5.6+ families, so ids newer than the catalog use Responses (OmniRoute #21279).
+const OPENAI_RESPONSES_FAMILY = /^gpt-(?:[6-9]|5\.[6-9])/i;
+
 export function getModelTargetFormat(aliasOrId, modelId) {
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.targetFormat || null;
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
+  if (aliasOrId === "openai" && OPENAI_RESPONSES_FAMILY.test(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai-responses";
   if (OPENCODE_GO_ALIASES.has(aliasOrId) && OPENCODE_GO_UNLISTED_RESPONSES_MODELS.has(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai-responses";
   if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && MINIMAX_OPENAI_TOOL_MODELS.has(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai";
   // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need

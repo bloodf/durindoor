@@ -8,6 +8,7 @@ import { requireJsonContentType } from "open-sse/translator/validate.js";
 import { interactionEvent, mapInteractionEvents } from "open-sse/utils/interactionEvents.js";
 import { SSE_DONE, SSE_HEADERS_CORS } from "open-sse/utils/sseConstants.js";
 
+import { keepAbortChain } from "@/shared/utils/abortChain.js";
 import { isBoolean, isRecord, isString } from "@/shared/utils/typeChecks.js";
 
 export { OPTIONS };
@@ -71,12 +72,12 @@ async function createInteraction(request) {
   };
   if (body.generation_config) chatBody.reasoning_effort = body.generation_config.thinking_level;
   if (body.stream) chatBody.stream_options = { include_usage: true };
-  const adapted = new Request(request.url, {
+  const adapted = keepAbortChain(new Request(request.url, {
     method: "POST",
     headers,
     signal: request.signal,
     body: JSON.stringify(chatBody),
-  });
+  }), request);
   inheritHttpObservation(adapted);
   const response = await chat(adapted);
   if (!response.ok) {

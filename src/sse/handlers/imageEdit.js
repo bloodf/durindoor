@@ -9,32 +9,9 @@ import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
 import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { resolveImageModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
+import { readBoundedRequest } from "../utils/readBoundedRequest.js";
 import { MAX_IMAGE_BYTES } from "open-sse/config/mediaConfig.js";
 const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
-
-async function readBoundedRequest(request, maxBytes) {
-  if (!request.body) return request;
-  const reader = request.body.getReader();
-  const chunks = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(Buffer.from(value));
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const headers = new Headers(request.headers);
-  headers.delete("content-length");
-  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
-}
 
 // Allow large image uploads (mask + image can be several MB).
 import { isObject, isString } from "../../shared/utils/typeChecks.js";

@@ -6,7 +6,10 @@ import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { readBoundedRequest } from "@/sse/utils/readBoundedRequest.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
+
+const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 
 const CORS = {
   ...corsHeaders(["GET", "POST", "HEAD", "OPTIONS"]),
@@ -41,9 +44,16 @@ async function POSTHandler(request) {
   if (!ct.includes("multipart/form-data")) {
     return errorResponse(415, "Content-Type must be multipart/form-data");
   }
+  const requestLimit = maxBatchBytes() + MAX_MULTIPART_OVERHEAD_BYTES;
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > requestLimit) {
+    return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
+  }
+  const boundedRequest = await readBoundedRequest(request, requestLimit);
+  if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
   let form;
   try {
-    form = await request.formData();
+    form = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart body");
   }

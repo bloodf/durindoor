@@ -13,9 +13,10 @@ const COLORS = {
   cyan: "\x1b[36m"
 };
 
-// Claude model types with defaults (matching Web UI)
+// Claude model types with the defaults Quick Setup writes. The Sonnet default can
+// differ from the Web UI one in src/shared/constants/cliTools.js.
 const CLAUDE_MODEL_TYPES = [
-  { id: "sonnet", name: "Sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-4-5-20250929" },
+  { id: "sonnet", name: "Sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-5-5" },
   { id: "opus",   name: "Opus",   envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL",   defaultValue: "cc/claude-opus-4-5-20251101" },
   { id: "haiku",  name: "Haiku",  envKey: "ANTHROPIC_DEFAULT_HAIKU_MODEL",  defaultValue: "cc/claude-haiku-4-5-20251001" },
 ];
@@ -622,4 +623,4 @@ async function showCliToolsMenu(port, breadcrumb = []) {
   });
 }
 
-module.exports = { showCliToolsMenu };
+module.exports = { showCliToolsMenu, __test__: { CLAUDE_MODEL_TYPES } };

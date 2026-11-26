@@ -92,23 +92,15 @@ describe("docs navigation contrast", () => {
     expect(contrast(fg, bg)).toBeLessThan(4.5);
   });
 
-  it("only animates colors while a control is hovered or keyboard-focused", () => {
-    const guard = [...all.keys()].find((selector) => /^\.dd-docs :is\(([^)]*)\):not\(:hover, :focus-visible\)$/.test(selector));
-    expect(guard, "theme-swap transition guard").toBeDefined();
-    const targets = guard.match(/:is\(([^)]*)\)/)[1].split(",").map((s) => s.trim());
-    // a/button carry this file's 160ms color transition; Fumadocs paints
-    // #nd-subnav and sidebar items with the `transition-colors` utility.
-    expect(targets).toEqual(expect.arrayContaining(["a", "button", ".transition-colors"]));
+  it("does not animate docs control and chrome colors in any interaction state", () => {
+    const guard = ".dd-docs :is(a, button, .transition-colors)";
     expect(declarations(all.get(guard)).transition).toBe("none");
-  });
-
-  it("declares no other unguarded color transition in the docs chrome", () => {
-    const guarded = new Set([".dd-docs :is(a, button)"]);
     for (const [selector, body] of all) {
       const decl = declarations(body);
       const value = `${decl.transition || ""} ${decl["transition-property"] || ""}`;
       if (!/(^|[\s,])(color|background-color|background|border-color|all)\b/.test(value)) continue;
-      expect(guarded.has(selector), `${selector} animates colors without the hover/focus guard`).toBe(true);
+      expect(selector, `${selector} animates docs colors`).toBe(guard);
     }
   });
+
 });

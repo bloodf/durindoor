@@ -563,6 +563,16 @@ test("provider discovery links lead to the relevant guides", async ({ page }) =>
     const accessibility = await new AxeBuilder({ page }).analyze();
     expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact)), theme).toEqual([]);
   }
+  // Theme flips must retain contrast even when the brand has pointer or keyboard focus.
+  const brand = page.locator("#nd-subnav").getByRole("link", { name: "DurinDoor" });
+  for (const interaction of ["hover", "focus"]) {
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    if (interaction === "hover") await brand.hover();
+    else await brand.focus();
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact)), interaction).toEqual([]);
+  }
   for (const [label, url, heading] of destinations) {
     await page.goto("/docs");
     const link = page.getByRole("link", { name: new RegExp(label) });

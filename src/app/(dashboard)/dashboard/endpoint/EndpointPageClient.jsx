@@ -14,6 +14,7 @@ import { Badge } from "@/shared/ui/components/Badge.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { usePasswordPrompt } from "@/shared/hooks/usePasswordPrompt";
+import ReauthDialog from "@/shared/components/ReauthDialog.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import {
   TUNNEL_PING_INTERVAL_MS,
@@ -979,16 +980,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       <MonitoringStrip />
 
       {/* Password step for security-weakening settings */}
-      <Modal open={reauth.open} title="Confirm password" size="sm" onClose={() => reauth.finish(null)}>
-        <form className="flex flex-col gap-4" onSubmit={(e) => {e.preventDefault();if (reauth.password) reauth.finish(reauth.password);}}>
-          <p className="text-[13px] text-dd-muted">This change lowers protection or changes who can sign in. Enter your current dashboard password to continue.</p>
-          <Input id="endpoint-reauth-password" label="Dashboard password" type="password" autoComplete="current-password" value={reauth.password} onChange={(e) => reauth.setPassword(e.target.value)} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" disabled={!reauth.password} className="flex-1">Confirm</Button>
-            <Button type="button" variant="ghost" onClick={() => reauth.finish(null)} className="flex-1">Cancel</Button>
-          </div>
-        </form>
-      </Modal>
+      <ReauthDialog prompt={reauth} />
 
       {/* Enable Tunnel Modal */}
       <Modal

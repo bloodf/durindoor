@@ -123,7 +123,8 @@ function chat(model, key, stream = false) {
   return postChat(new Request("http://durindoor.invalid/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json", ...(key && { authorization: `Bearer ${key}` }) },
-    body: JSON.stringify({ model, stream, messages: [{ role: "user", content: "hello" }] }),
+    // A streaming client asks for the usage trailer; an unrequested one is dropped.
+    body: JSON.stringify({ model, stream, ...(stream && { stream_options: { include_usage: true } }), messages: [{ role: "user", content: "hello" }] }),
   }));
 }
 

@@ -17,6 +17,7 @@ import Textarea from "@/shared/ui/components/Textarea.jsx";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { usePasswordPrompt } from "@/shared/hooks/usePasswordPrompt";
+import ReauthDialog from "@/shared/components/ReauthDialog.jsx";
 import { APP_CONFIG } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
@@ -123,6 +124,7 @@ export default function ProfilePage() {
   const importFileRef = useRef(null);
   const { confirmPassword, prompt: reauth } = usePasswordPrompt();
   const [requireLoginError, setRequireLoginError] = useState("");
+  const [observabilityError, setObservabilityError] = useState("");
   const [proxyForm, setProxyForm] = useState({
     outboundProxyEnabled: false,
     outboundProxyUrl: "",
@@ -257,7 +259,8 @@ export default function ProfilePage() {
           outboundProxyUrl: proxyForm.outboundProxyUrl,
           outboundNoProxy: proxyForm.outboundNoProxy,
           proxyTestUrl: proxyForm.proxyTestUrl
-        })
+        }),
+        confirmPassword
       });
 
       const data = await res.json();
@@ -341,7 +344,8 @@ export default function ProfilePage() {
       const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outboundProxyEnabled })
+        body: JSON.stringify({ outboundProxyEnabled }),
+        confirmPassword
       });
 
       const data = await res.json();
@@ -731,8 +735,9 @@ export default function ProfilePage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logToolSources: enabled }),
+        confirmPassword
       });
-      if (!res.ok) throw new Error("Settings update failed");
+      if (!res.ok) throw new Error((await res.json()).error || "Settings update failed");
       setSettings((prev) => ({ ...prev, logToolSources: enabled }));
     } catch {
       setToolSourcesError("Could not save tool source diagnostics. Try again.");
@@ -742,16 +747,21 @@ export default function ProfilePage() {
   };
 
   const updateObservabilityEnabled = async (enabled) => {
+    setObservabilityError("");
     try {
       const res = await requestSettings({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enableObservability: enabled })
+        body: JSON.stringify({ enableObservability: enabled }),
+        confirmPassword
       });
       if (res.ok) {
         setSettings((prev) => ({ ...prev, enableObservability: enabled }));
+      } else {
+        setObservabilityError((await res.json()).error || "Failed to update observability");
       }
     } catch (err) {
+      setObservabilityError("Failed to update observability");
       console.error("Failed to update enableObservability:", err);
     }
   };
@@ -1085,7 +1095,7 @@ export default function ProfilePage() {
         {dbStatus.message ? <p role="status" className={`text-xs ${statusClass(dbStatus)}`}>{dbStatus.message}</p> : null}<SelectiveTransferPanel />
       </CardContent></Card>
 
-      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} /><Toggle label="Log tool sources" description="Log tool names and source counts for authenticated requests when LOG_LEVEL=DEBUG. Tool names may disclose identifiers." checked={settings.logToolSources === true} onChange={updateLogToolSources} disabled={loading || toolSourcesSaving} />{toolSourcesError ? <p role="alert" className="text-xs text-dd-danger">{toolSourcesError}</p> : null}<Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
+      <Card padding={false}><CardHeader icon="monitoring" title="Observability" subtitle="Local request diagnostics and retention" /><CardContent className="flex flex-col gap-5"><Toggle label="Enable Observability" description="Record request details for inspection in logs view." checked={observabilityEnabled} onChange={updateObservabilityEnabled} disabled={loading} />{observabilityError ? <p role="alert" className="text-xs text-dd-danger">{observabilityError}</p> : null}<Toggle label="Log tool sources" description="Log tool names and source counts for authenticated requests when LOG_LEVEL=DEBUG. Tool names may disclose identifiers." checked={settings.logToolSources === true} onChange={updateLogToolSources} disabled={loading || toolSourcesSaving} />{toolSourcesError ? <p role="alert" className="text-xs text-dd-danger">{toolSourcesError}</p> : null}<Toggle label="Proxy timeline" description="Capture redacted hops in a sidecar database. Secrets stay redacted." checked={proxyTimelineEnabled} onChange={updateProxyTimelineEnabled} disabled={loading} /><Field label="Timeline retention" hint="Days to keep sidecar traces."><Select aria-label="Timeline retention" options={[{value:1,label:"1 day"},{value:3,label:"3 days"},{value:7,label:"7 days"}]} value={proxyTimelineRetentionDays} disabled={loading || !proxyTimelineEnabled} onChange={updateProxyTimelineRetention} /></Field>
         <div className="flex flex-col gap-4 border-t border-dd-border-subtle pt-5">
           <Toggle label="Auto-clean old data" description="Every hour, delete usage history, request details, timeline traces and quota snapshots older than the window below." checked={dataRetentionEnabled} onChange={(value) => updateDataRetention({ dataRetentionEnabled: value === true })} disabled={loading} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -1118,7 +1128,7 @@ export default function ProfilePage() {
       <LanguageSwitcher hideTrigger isOpen={langOpen} onClose={(next) => { setLangOpen(false); setLocale(next); }} />
       <ConfirmDialog open={shutdownOpen} pending={isShuttingDown} onCancel={() => setShutdownOpen(false)} onConfirm={handleShutdown} title="Close Proxy" message="Are you sure you want to close the proxy server?" confirmLabel="Close" cancelLabel="Cancel" tone="danger" />
       <Modal open={dbAuth.open} onClose={() => setDbAuth({ open: false, mode: "", password: "" })} title="Confirm Password" size="sm" pending={dbLoading} footer={<><Button variant="secondary" onClick={() => setDbAuth({ open: false, mode: "", password: "" })} disabled={dbLoading}>Cancel</Button><Button variant="primary" onClick={handleDbAuthConfirm} loading={dbLoading} disabled={!dbAuth.password}>Confirm</Button></>}><div className="flex flex-col gap-3"><p className="text-[13px] text-dd-muted">Enter your current password to {dbAuth.mode === "export" ? "export" : "import"} the database.</p><Input type="password" value={dbAuth.password} onChange={(e) => setDbAuth((state) => ({ ...state, password: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter" && dbAuth.password) handleDbAuthConfirm(); }} placeholder="Current password" autoFocus /></div></Modal>
-      <Modal open={reauth.open} onClose={() => reauth.finish(null)} title="Confirm Password" size="sm" footer={<><Button variant="secondary" onClick={() => reauth.finish(null)}>Cancel</Button><Button variant="primary" onClick={() => reauth.finish(reauth.password)} disabled={!reauth.password}>Confirm</Button></>}><div className="flex flex-col gap-3"><p className="text-[13px] text-dd-muted">This change lowers protection or changes who can sign in. Enter your current dashboard password to continue.</p><Input id="profile-reauth-password" type="password" autoComplete="current-password" aria-label="Dashboard password" value={reauth.password} onChange={(e) => reauth.setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && reauth.password) reauth.finish(reauth.password); }} placeholder="Current password" autoFocus /></div></Modal>
+      <ReauthDialog prompt={reauth} />
     </main>
   );
 }

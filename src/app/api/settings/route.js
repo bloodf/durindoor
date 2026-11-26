@@ -10,7 +10,7 @@ import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRule
 import { DEFAULT_PASSWORD, invalidateDefaultPasswordCache, setDashboardAuthCookie, validateDashboardPassword, verifyDashboardPassword } from "@/lib/auth/dashboardSession";
 import { resetPasswordChangeProofs } from "@/lib/auth/passwordChangeProof";
 import { REAUTH_REQUIRED_CODE, reauthRequiredKeys } from "@/lib/auth/settingsReauth";
-import { checkLock, getClientIp, recordFail, recordSuccess } from "@/lib/auth/loginLimiter";
+import { checkLock, getClientIp, recordFail, recordSuccess, releaseReservation, reserveAttempt } from "@/lib/auth/loginLimiter";
 import { isMfaEnabled, verifySecondFactor } from "@/lib/auth/mfa";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
@@ -33,6 +33,11 @@ import { validateModelAutoSyncSettingsPatch } from "@/lib/modelAutoSync/catalog.
 const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
+
+const lockedResponse = ({ retryAfter }) => NextResponse.json(
+  { error: `Too many failed attempts. Try again in ${retryAfter}s.`, retryAfter },
+  { status: 429, headers: { ...SETTINGS_RESPONSE_HEADERS, "Retry-After": String(retryAfter) } }
+);
 
 // Mirrors validateProxyUrl in src/lib/network/outboundProxy.js (the schemes and
 // control-character rules applyOutboundProxyEnv enforces when applying the env).
@@ -85,35 +90,62 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
 }
 
 /**
- * Password step for security-weakening changes. A valid CLI token passes.
- * Wrong passwords share the login lockout; a request with no password only
- * asks for one.
+ * Password (and, with MFA on, second-factor) step for security-weakening
+ * changes. A valid CLI token passes. The initial/default password is never
+ * accepted: without a stored password the change is refused. Wrong guesses
+ * share the login lockout, and each one holds a reserved slot while it is
+ * checked so a concurrent burst cannot exceed it. A request with no password
+ * or no code only asks for one.
  *
  * @returns {Promise<Response|null>} The refusal, or null to continue.
  */
-async function requireSettingsReauth(request, body, password) {
-  // Only these keys can need a password, so other writes skip the read.
-  const keys = reauthRequiredKeys(body, await getSettings());
+async function requireSettingsReauth(request, body, { currentPassword, mfaCode }) {
+  // Only these keys can need a password; the stored row decides which changed.
+  const current = await getSettings();
+  const keys = reauthRequiredKeys(body, current);
   if (!keys.length || await hasValidCliToken(request)) return null;
-  const refuse = (error) => NextResponse.json(
-    { error, code: REAUTH_REQUIRED_CODE, fields: keys },
-    { status: 401, headers: SETTINGS_RESPONSE_HEADERS }
-  );
-  if (!password) return refuse("Enter your current dashboard password to change these security settings.");
-  const ip = getClientIp(request);
-  const lock = checkLock(ip);
-  if (lock.locked) {
+  if (!current.password) {
+    // Not REAUTH_REQUIRED: there is no password the dashboard could prompt for.
     return NextResponse.json(
-      { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter },
-      { status: 429, headers: { ...SETTINGS_RESPONSE_HEADERS, "Retry-After": String(lock.retryAfter) } }
+      { error: "No dashboard password is set, so this change cannot be confirmed. Set a password or re-login via OIDC.", code: "PASSWORD_NOT_SET", fields: keys },
+      { status: 403, headers: SETTINGS_RESPONSE_HEADERS }
     );
   }
-  if (!(await verifyDashboardPassword(password))) {
-    recordFail(ip);
-    return refuse("Invalid current password");
+  const mfaRequired = isMfaEnabled(current);
+  const refuse = (error) => NextResponse.json(
+    { error, code: REAUTH_REQUIRED_CODE, fields: keys, mfaRequired },
+    { status: 401, headers: SETTINGS_RESPONSE_HEADERS }
+  );
+  if (!currentPassword) return refuse("Enter your current dashboard password to change these security settings.");
+
+  // Reserve before any credential work, as the login route does (#2242).
+  const ip = getClientIp(request);
+  const reserved = reserveAttempt(ip);
+  if (reserved.locked) return lockedResponse(reserved);
+  let settled = false;
+  try {
+    let failure = null;
+    if (!(await verifyDashboardPassword(currentPassword))) {
+      failure = "Invalid current password";
+    } else if (mfaRequired) {
+      if (!mfaCode) return refuse("Enter your MFA code to change these security settings.");
+      if (!(await verifySecondFactor(mfaCode)).ok) failure = "Invalid MFA code";
+    }
+    if (failure) {
+      recordFail(ip);
+      settled = true;
+      const lock = checkLock(ip);
+      return lock.locked ? lockedResponse(lock) : refuse(failure);
+    }
+    // Concurrent failures may have locked the bucket while the checks ran.
+    const lock = checkLock(ip);
+    if (lock.locked) return lockedResponse(lock);
+    recordSuccess(ip);
+    settled = true;
+    return null;
+  } finally {
+    if (!settled) releaseReservation(ip);
   }
-  recordSuccess(ip);
-  return null;
 }
 
 export async function GET(request) {
@@ -177,6 +209,8 @@ export async function PATCH(request) {
 
     let passwordSessionEpoch;
     let expectedPasswordSessionEpoch = "initial";
+    // True once a password change has proved the stored password and any MFA.
+    let reauthenticated = false;
     if (Object.prototype.hasOwnProperty.call(body, "newPassword")) {
       if (!body.newPassword) {
         return NextResponse.json({ error: "Password must not be empty" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
@@ -191,15 +225,33 @@ export async function PATCH(request) {
       if (!body.currentPassword) {
         return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
-      if (!(await verifyDashboardPassword(body.currentPassword))) {
-        return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
-      }
-      if (isMfaEnabled(settings)) {
-        const secondFactor = await verifySecondFactor(body.mfaCode);
-        if (!secondFactor.ok) {
-          return NextResponse.json({ error: "Invalid MFA code" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
+      // Password changes share login's atomic attempt budget, including MFA.
+      const ip = getClientIp(request);
+      const reserved = reserveAttempt(ip);
+      if (reserved.locked) return lockedResponse(reserved);
+      let settled = false;
+      try {
+        let failure = null;
+        if (!(await verifyDashboardPassword(body.currentPassword))) {
+          failure = "Invalid current password";
+        } else if (isMfaEnabled(settings) && !(await verifySecondFactor(body.mfaCode)).ok) {
+          failure = "Invalid MFA code";
         }
+        if (failure) {
+          recordFail(ip);
+          settled = true;
+          const lock = checkLock(ip);
+          return lock.locked ? lockedResponse(lock) : NextResponse.json({ error: failure }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+        const lock = checkLock(ip);
+        if (lock.locked) return lockedResponse(lock);
+        recordSuccess(ip);
+        settled = true;
+      } finally {
+        if (!settled) releaseReservation(ip);
       }
+      // Without a stored hash only the initial password was checked.
+      reauthenticated = Boolean(settings.password);
 
       const salt = await bcrypt.genSalt(10);
       passwordSessionEpoch = crypto.randomBytes(16).toString("hex");
@@ -209,7 +261,7 @@ export async function PATCH(request) {
 
 
     // Verification input only; never persisted.
-    const { currentPassword } = body;
+    const { currentPassword, mfaCode } = body;
     delete body.currentPassword;
     delete body.newPassword;
     delete body.mfaCode;
@@ -236,9 +288,6 @@ export async function PATCH(request) {
         delete body.oidcClientSecret;
       }
     }
-
-    const reauthRefusal = await requireSettingsReauth(request, body, currentPassword);
-    if (reauthRefusal) return reauthRefusal;
 
     // Validate firecrawlBaseUrl if present
     if (Object.prototype.hasOwnProperty.call(body, "firecrawlBaseUrl")) {
@@ -498,6 +547,13 @@ export async function PATCH(request) {
       if (enabled && url && !isUsableProxyUrl(url)) {
         return NextResponse.json({ error: "Invalid outboundProxyUrl" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
+    }
+
+    // After validation, so a rejected request never spends a one-time MFA code.
+    // A second check would also reject the code the password change just used.
+    if (!reauthenticated) {
+      const reauthRefusal = await requireSettingsReauth(request, body, { currentPassword, mfaCode });
+      if (reauthRefusal) return reauthRefusal;
     }
 
     const willChangePassword = body.password !== undefined;

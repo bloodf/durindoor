@@ -9,6 +9,15 @@ const EXHAUSTION_PATTERN =
   /\b((?:not|doesn't\s+have|does\s+not\s+have)\s+enough\s+credits?|insufficient\s+(?:credits?|(?:account\s+|credit\s+)?balance)|please\s+top\s+up|top\s+up\s+to\s+continue|purchase\s+(more\s+)?credits?|add\s+credits?\s+to\s+continue|credit\s+balance\s+(is\s+)?(too\s+low|exhausted|empty)|recharge\s+(your|the)\s+account|out\s+of\s+funds)\b/gi;
 // A masked notice is short, and its refusal phrases occupy a meaningful share.
 const NOTICE_MAX_CHARS = 512;
+const QUOTED_SPAN = /"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<![\p{L}\p{N}])'[^'\n]*'(?![\p{L}\p{N}])/gu;
+const QUOTE_EDGES = /^["“”‘’'`\s]+|["“”‘’'`\s.!]+$/g;
+
+// Ignore quoted spans when surrounding words show the text is an answer about them.
+function unquotedText(trimmed) {
+  const unquoted = trimmed.replace(QUOTED_SPAN, " ");
+  const words = unquoted.match(/[\p{L}\p{N}]+/gu) ?? [];
+  return words.length > 1 ? unquoted : trimmed.replace(QUOTE_EDGES, "");
+}
 
 /** True when the provider itself counted output tokens. Gateway estimates do not count. */
 function reportsCompletionUsage(frame) {
@@ -47,7 +56,7 @@ export function createBillingNoticeGate(provider) {
     notice() {
       if (!this.holding) return null;
       const trimmed = text.trim();
-      const matches = [...trimmed.matchAll(EXHAUSTION_PATTERN)];
+      const matches = [...unquotedText(trimmed).matchAll(EXHAUSTION_PATTERN)];
       const phraseLength = matches.reduce((total, match) => total + match[0].length, 0);
       return phraseLength / trimmed.length >= 0.2 ? text : null;
     }

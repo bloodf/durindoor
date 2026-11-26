@@ -155,7 +155,8 @@ export default function LanDiscoveryPanel({ onAdded = null }) {
             <p className="font-medium text-dd-text">LAN discovery is turned off.</p>
             <p className="mt-1 text-dd-muted">
               To turn it on, an operator signed in to the dashboard sets <code>lanDiscoveryEnabled</code> to <code>true</code> in settings
-              (<code>PATCH /api/settings</code> with <code>{'{"lanDiscoveryEnabled": true}'}</code>), then presses Discover again.
+              (<code>PATCH /api/settings</code> with <code>{'{"lanDiscoveryEnabled": true, "currentPassword": "<dashboard password>"}'}</code>,
+              plus <code>mfaCode</code> when MFA is on), then presses Discover again.
             </p>
           </div>
         ) : null}

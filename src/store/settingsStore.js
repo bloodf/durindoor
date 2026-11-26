@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { CLIENT_STORE_TTL_MS } from "@/shared/constants/config";
 import api from "@/shared/utils/api";
-import { isRecord } from "@/shared/utils/typeChecks";
+import { isRecord, isString } from "@/shared/utils/typeChecks";
 import { REAUTH_REQUIRED_CODE } from "@/lib/auth/settingsReauth";
 
 let settingsRevision = 0;
@@ -55,16 +55,18 @@ async function readSettings(set, get, { revision, signal, cache, headers }) {
   }
 }
 
-// Security-weakening writes are refused until the current password is sent
-// with them: ask once and retry. A dismissed prompt keeps the refusal.
+// Security-weakening writes are refused until the current password (and the MFA
+// code, when the refusal asks) is sent with them: ask once and retry. A
+// dismissed prompt keeps the refusal.
 async function sendSettingsPatch(patch, confirmPassword) {
   try {
     return await api.patch("/api/settings", patch);
   } catch (error) {
     if (!confirmPassword || error.body?.code !== REAUTH_REQUIRED_CODE) throw error;
-    const currentPassword = await confirmPassword();
-    if (!currentPassword) throw error;
-    return api.patch("/api/settings", { ...patch, currentPassword });
+    // A password, or `{ currentPassword, mfaCode }`.
+    const answer = await confirmPassword(error.body);
+    if (!answer) throw error;
+    return api.patch("/api/settings", { ...patch, ...(isString(answer) ? { currentPassword: answer } : answer) });
   }
 }
 

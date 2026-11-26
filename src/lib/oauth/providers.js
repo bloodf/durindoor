@@ -320,7 +320,8 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   const loadRes = await fetch(ANTIGRAVITY_CONFIG.loadCodeAssistEndpoint, {
     method: "POST",
     headers: loadHeaders,
-    body: JSON.stringify({ metadata }),
+    // Keep project lookup and onboarding in the native client mode (upstream #141).
+    body: JSON.stringify({ metadata, mode: 1 }),
     proxyOptions,
     signal: loadSignal
   });
@@ -342,7 +343,7 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
       const onboardRes = await fetch(ANTIGRAVITY_CONFIG.onboardUserEndpoint, {
         method: "POST",
         headers: loadHeaders,
-        body: JSON.stringify({ tier_id: tierId, metadata }),
+        body: JSON.stringify({ tier_id: tierId, metadata, mode: 1 }),
         proxyOptions,
         signal: pollSignal
       });

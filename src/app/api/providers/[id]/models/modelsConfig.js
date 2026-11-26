@@ -142,6 +142,13 @@ export const parseOpenAIStyleModels = (data) => {
   return data?.data || data?.models || data?.results || [];
 };
 
+// Mistral keeps retired models in /v1/models and dates them with `deprecation`.
+// A missing, unreadable or future date keeps the card (OmniRoute #20087).
+const isRetiredModelCard = (card) => Date.parse(card?.deprecation) <= Date.now();
+
+export const parseMistralModels = (data) =>
+  parseOpenAIStyleModels(data).filter((card) => !isRetiredModelCard(card));
+
 export const parseGeminiCliModels = (data) => {
   if (Array.isArray(data?.models)) {
     return data.models.
@@ -700,7 +707,7 @@ export const PROVIDER_MODELS_CONFIG = {
   deepseek: createOpenAIModelsConfig("https://api.deepseek.com/models"),
   groq: createOpenAIModelsConfig("https://api.groq.com/openai/v1/models"),
   xai: createOpenAIModelsConfig("https://api.x.ai/v1/models"),
-  mistral: createOpenAIModelsConfig("https://api.mistral.ai/v1/models"),
+  mistral: { ...createOpenAIModelsConfig("https://api.mistral.ai/v1/models"), parseResponse: parseMistralModels },
   perplexity: createOpenAIModelsConfig("https://api.perplexity.ai/v1/models"),
   together: createOpenAIModelsConfig("https://api.together.xyz/v1/models"),
   fireworks: createOpenAIModelsConfig("https://api.fireworks.ai/inference/v1/models"),

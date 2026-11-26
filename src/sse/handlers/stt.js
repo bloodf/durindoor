@@ -1,3 +1,4 @@
+import { keepAbortChain } from "@/shared/utils/abortChain.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { modelKindError } from "./modelKind.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
@@ -42,7 +43,7 @@ async function readBoundedRequest(request, maxBytes) {
   }
   const headers = new Headers(request.headers);
   headers.delete("content-length");
-  return new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal });
+  return keepAbortChain(new Request(request.url, { method: request.method, headers, body: Buffer.concat(chunks), signal: request.signal }), request);
 }
 
 // Providers requiring credentials for STT

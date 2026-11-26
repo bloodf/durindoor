@@ -110,6 +110,9 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     return [];
   }
 
+  // Nothing may follow response.completed: a late delta would open items after the terminal.
+  if (state.completedSent) return [];
+
   const { events, emit } = createEventEmitter(state);
 
   const choice = chunk.choices[0];
@@ -583,7 +586,9 @@ function emitToolCall(state, emit, tc) {
   state.funcArgsBuf[tcIdx] ||= "";
 
   if (tc.function?.arguments) {
-    const delta = tc.function.arguments;
+    // Some upstreams send the arguments as a parsed object; the stream carries JSON text.
+    const raw = tc.function.arguments;
+    const delta = isString(raw) ? raw : JSON.stringify(raw);
     chargeRetained(state, delta.length);
     state.funcArgsBuf[tcIdx] += delta;
 

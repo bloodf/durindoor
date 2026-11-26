@@ -10,7 +10,7 @@ import path from "path";
 import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
-import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { assertWriterOwnsTarget, readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import { createFileTransaction } from "@/lib/cliTools/fileTransaction";
 import { buildCodexModelCatalog, loadBundledCodexCatalog } from "@/lib/cliTools/codexModelCatalog";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
@@ -330,7 +330,7 @@ export async function POST(request) {
   } catch (error) {
     console.log("Error updating codex settings:", error);
     await files.rollback();
-    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    const refusedToClobber = error?.code === "CLI_CONFIG_FOREIGN_OWNER" || String(error?.message || "").includes("refusing to overwrite it");
     return NextResponse.json(
       { error: refusedToClobber ? error.message : "Failed to update codex settings" },
       { status: 500 },
@@ -356,6 +356,9 @@ export async function DELETE() {
       readExistingConfig(authPath, (raw) => parseConfigObject(raw, JSON.parse)),
       readExistingConfig(backupPath, (raw) => parseConfigObject(raw, JSON.parse)),
     ]);
+
+    // Check every reset target before changing any file.
+    await Promise.all([configPath, authPath, backupPath, catalogPath].map(assertWriterOwnsTarget));
 
     if (!existingConfig) {
       await fs.unlink(catalogPath).catch((err) => {
@@ -418,9 +421,6 @@ export async function DELETE() {
         }
       }
 
-      await fs.unlink(backupPath).catch((err) => {
-        if (err?.code !== "ENOENT") throw err;
-      });
     } else {
       // No backup (legacy or user-only config): only remove fields when DurinDoor owns model_provider.
       const ownedByDurinDoor = parsed.model_provider === "9router";
@@ -450,6 +450,9 @@ export async function DELETE() {
     // Write updated config and remove generated catalog file if present
     const configContent = stringifyTOML(parsed);
     await writeConfigAtomic(configPath, configContent);
+    if (existingBackup) await fs.unlink(backupPath).catch((err) => {
+      if (err?.code !== "ENOENT") throw err;
+    });
     await fs.unlink(catalogPath).catch((err) => {
       if (err?.code !== "ENOENT") throw err;
     });
@@ -460,7 +463,7 @@ export async function DELETE() {
     });
   } catch (error) {
     console.log("Error resetting codex settings:", error);
-    const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
+    const refusedToClobber = error?.code === "CLI_CONFIG_FOREIGN_OWNER" || String(error?.message || "").includes("refusing to overwrite it");
     return NextResponse.json(
       { error: refusedToClobber ? error.message : "Failed to reset codex settings" },
       { status: 500 },

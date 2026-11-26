@@ -7,6 +7,7 @@ import { copyClientAdmissionFailure } from "open-sse/services/operationalMetrics
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { getRequestId } from "../utils/requestCorrelation.js";
+import { keepAbortChain } from "../../shared/utils/abortChain.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import { handleChat } from "./chat.js";
 
@@ -233,12 +234,12 @@ export async function handleCompletions(request) {
   const chatHeaders = new Headers(request.headers);
   chatHeaders.set("content-type", "application/json");
   chatHeaders.delete("content-length");
-  const chatRequest = new Request(request.url, {
+  const chatRequest = keepAbortChain(new Request(request.url, {
     method: request.method,
     headers: chatHeaders,
     body: JSON.stringify(adapted.chatBody),
     signal: request.signal
-  });
+  }), request);
 
   getRequestId(chatRequest, getRequestId(request));
   const response = await handleChat(chatRequest);

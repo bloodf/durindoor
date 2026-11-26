@@ -2,6 +2,7 @@ import zlib from "node:zlib";
 import { promisify } from "node:util";
 import { DEFAULT_MAX_PAYLOAD_BYTES, DEFAULT_MAX_SINGLE_PAYLOAD_BYTES } from "open-sse/services/payloadAdmission.js";
 import { authErrorResponse, errorResponse } from "open-sse/utils/error.js";
+import { keepAbortChain } from "../../shared/utils/abortChain.js";
 import { admit } from "../services/admission.js";
 import * as log from "./logger.js";
 import { getRequestId } from "./requestCorrelation.js";
@@ -104,7 +105,7 @@ export async function decodeAnthropicRequest(request, { abortedStatus = null } =
     const headers = new Headers(request.headers);
     headers.delete("content-encoding");
     headers.delete("content-length");
-    const decoded = new Request(request, { headers, body: expanded, duplex: "half", signal: request.signal });
+    const decoded = keepAbortChain(new Request(request, { headers, body: expanded, duplex: "half", signal: request.signal }), request);
     getRequestId(decoded, getRequestId(request));
     return { request: decoded };
   } catch (error) {

@@ -1,4 +1,0 @@
-
-### OpenAI batch input limits
-
-OpenAI batch input files are limited by `MAX_BATCH_BYTES` (default 104857600 bytes), `MAX_BATCH_LINE_BYTES` (default 1048576 bytes per JSONL line, excluding LF or CRLF), and `MAX_BATCH_ITEMS` (default 100000 nonblank lines). Set each to a positive integer to change its limit; invalid values use the default. Limits also apply when creating a batch from an existing stored file. For `/v1/files`, the entire multipart request is limited to `MAX_BATCH_BYTES` plus 1048576 bytes for multipart boundaries, headers, and other fields, for all file purposes. Requests exceeding that total return HTTP 413 before multipart parsing, including when Content-Length is absent. Batch files are also checked against `MAX_BATCH_BYTES` after parsing; other purposes are subject to the request limit.

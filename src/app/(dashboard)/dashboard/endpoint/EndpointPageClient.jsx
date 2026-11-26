@@ -20,8 +20,10 @@ import {
   TUNNEL_PING_INTERVAL_MS,
   TUNNEL_PING_MAX_MS,
   STATUS_POLL_FAST_MS,
+  STATUS_POLL_SLOW_MS,
   REACHABLE_MISS_THRESHOLD,
   CLIENT_PING_FAST_MS,
+  CLIENT_PING_SLOW_MS,
   getCompositeEndpointEnabled,
   getLocalEndpointUrl,
 } from "./endpointConstants";
@@ -173,8 +175,8 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     const allHealthy = tunnelHealthy && tsHealthy;
     const onVisible = () => { if (!document.hidden) syncTunnelStatus(); };
     document.addEventListener("visibilitychange", onVisible);
-    if (allHealthy) return () => document.removeEventListener("visibilitychange", onVisible);
-    const timer = setInterval(() => { if (!document.hidden) syncTunnelStatus(); }, STATUS_POLL_FAST_MS);
+    const pollMs = allHealthy ? STATUS_POLL_SLOW_MS : STATUS_POLL_FAST_MS;
+    const timer = setInterval(() => { if (!document.hidden) syncTunnelStatus(); }, pollMs);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
@@ -224,8 +226,8 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     probeBoth();
     const tunnelHealthy = !tunnelEnabled || tunnelReachable;
     const tsHealthy = !tsEnabled || tsReachable;
-    if (tunnelHealthy && tsHealthy) return;
-    const id = setInterval(probeBoth, CLIENT_PING_FAST_MS);
+    const pingMs = tunnelHealthy && tsHealthy ? CLIENT_PING_SLOW_MS : CLIENT_PING_FAST_MS;
+    const id = setInterval(probeBoth, pingMs);
     return () => clearInterval(id);
   }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
 

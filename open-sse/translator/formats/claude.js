@@ -160,6 +160,16 @@ function ownContentBlocks(message) {
   return { ...message, content: copyBlock(content) };
 }
 
+/**
+ * A lifted instruction turn leaves messages[], so its `output_config` moves to
+ * the top-level parameter. An explicit top-level value wins.
+ */
+function liftOutputConfig(body, message) {
+  if (body.output_config == null && isRecord(message.output_config)) {
+    body.output_config = message.output_config;
+  }
+}
+
 /** Wrap a client-supplied single content block without changing its data. */
 function normalizeMessageContent(msg) {
   const content = msg?.content;
@@ -771,6 +781,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           continue;
         }
         buffered.push(...blocks.filter((block) => USER_SYSTEM_FOLDABLE_BLOCKS.has(block?.type)));
+        liftOutputConfig(body, msg);
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
@@ -785,6 +796,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       messages.push(msg);
     }
     if (!foldSystemTurns) {
+      for (const message of messages) {
+        if (isInstructionRole(message.role)) liftOutputConfig(body, message);
+      }
       const hoisted = messages.
       filter((m) => isInstructionRole(m.role)).
       flatMap((m) => Array.isArray(m.content) ?

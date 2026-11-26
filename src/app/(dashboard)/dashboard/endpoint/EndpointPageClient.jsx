@@ -211,12 +211,16 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       setTunnelUrl(tUrl);
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
+      // A disabled endpoint has no probe; drop its last result so a re-enable
+      // starts unreachable until a completed probe passes (#2620).
+      if (!tEnabled) { tunnelMissRef.current = 0; setTunnelReachable(false); }
       setTunnelEnabled(tEnabled);
       setTunnelExternal(data.tunnel?.externalTunnel || null);
 
       const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
+      if (!tsEn) { tsMissRef.current = 0; setTsReachable(false); }
       setTsEnabled(tsEn);
       setTsExternal(data.tailscale?.systemTailscale || null);
     } catch { /* ignore poll errors */ }
@@ -244,12 +248,14 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
+        if (!tEnabled) { tunnelMissRef.current = 0; setTunnelReachable(false); }
         setTunnelEnabled(tEnabled);
         setTunnelExternal(data.tunnel?.externalTunnel || null);
 
         const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
+        if (!tsEn) { tsMissRef.current = 0; setTsReachable(false); }
         setTsEnabled(tsEn);
         setTsExternal(data.tailscale?.systemTailscale || null);
       }
@@ -369,6 +375,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
+        tunnelMissRef.current = 0; setTunnelReachable(false);
         setTunnelEnabled(false);
         setTunnelUrl("");
         setShowDisableTunnelModal(false);
@@ -578,6 +585,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/tailscale-disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
+        tsMissRef.current = 0; setTsReachable(false);
         setTsEnabled(false);
         setTsUrl("");
         setShowDisableTsModal(false);

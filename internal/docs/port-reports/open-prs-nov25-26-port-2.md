@@ -26,6 +26,7 @@ These were not changed.
 
 - Each of the six new test files had failing cases with the source changes reverted, then passed with them. Each also holds control cases.
 - After each fix, related test files were run and passed. The largest run covered Claude and translator tests (238 files, 3,781 tests). In the Kiro run, one unrelated test failed with `database is locked` while files shared one scratch `DATA_DIR`; its file passed when run alone (26 tests).
+- The first gate run failed on two streaming usage tests that also failed with the sources reset to the base. The base's #20233 port drops a usage chunk the client did not request. The integration branch's two test fixes were cherry-picked: both requests now send `stream_options.include_usage`, and their assertions are unchanged. All 743 files the unit gate selects then passed, as did ESLint on its 3 selected files and the anti-slop gate.
 - No live provider was called. The full suite was not run.
 
 Totals: 6 rows ported in this change, 0 already present, 0 not applicable.

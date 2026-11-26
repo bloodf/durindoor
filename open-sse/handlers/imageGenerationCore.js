@@ -10,6 +10,20 @@ import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeCh
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
+const OPENAI_IMAGE_ENUMS = Object.freeze({ complexity: ["low", "medium", "high"], moderation: ["auto", "low"] });
+
+// OmniRoute #20976: reject values OpenAI Images does not accept. null means unset.
+function openAIImageOptionError(body) {
+  for (const [field, allowed] of Object.entries(OPENAI_IMAGE_ENUMS)) {
+    if (body[field] != null && !allowed.includes(body[field])) return `${field} must be one of: ${allowed.join(", ")}`;
+  }
+  const compression = body.output_compression;
+  if (compression != null && !(Number.isInteger(compression) && compression >= 0 && compression <= 100)) {
+    return "output_compression must be an integer from 0 to 100";
+  }
+  return null;
+}
+
 function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
   if (isString(requestBody)) return requestBody;
@@ -114,6 +128,9 @@ export async function handleImageGenerationCore({
       body.output_format.trim().toLowerCase() === "gif" && body.output_compression != null) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "GIF output does not support output_compression");
   }
+
+  const optionError = provider === "openai" ? openAIImageOptionError(body) : null;
+  if (optionError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, optionError);
 
   const adapter = getImageAdapter(provider);
   if (!adapter) {

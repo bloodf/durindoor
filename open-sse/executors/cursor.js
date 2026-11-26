@@ -1,5 +1,5 @@
 import { projectCursorError } from "./cursorErrorProjection.js";
-import { classifyCursorError, sanitizeCursorErrorDetail } from "./cursorErrors.js";
+import { CURSOR_EMPTY_TURN_EVENT, classifyCursorError, sanitizeCursorErrorDetail } from "./cursorErrors.js";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
 import {
@@ -1288,7 +1288,7 @@ export class CursorExecutor extends BaseExecutor {
         flushThinkingFallback(onEvent);
         finished = true;
         if (emittedText) onEvent({ type: "done" });
-        else onEvent({ type: "error", value: "Cursor AgentService returned an empty turn" });
+        else onEvent({ type: "error", value: CURSOR_EMPTY_TURN_EVENT });
       };
       try {
         while (!finished) {
@@ -1490,7 +1490,7 @@ export class CursorExecutor extends BaseExecutor {
         const classified = classifyCursorError(agentError);
         return bindDispatch({
           response: new Response(JSON.stringify({ error: { message: classified.message, type: classified.type } }), {
-            status: agentError === "Cursor AgentService returned an empty turn" ? HTTP_STATUS.BAD_REQUEST : classified.status,
+            status: classified.status,
             headers: { "Content-Type": "application/json" },
           }),
           url,

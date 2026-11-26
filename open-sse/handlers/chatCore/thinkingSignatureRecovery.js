@@ -94,3 +94,44 @@ export function stripHistoricalThinkingForSignatureRecovery(body) {
   if (!changed) return body;
   return { ...body, messages: recoveredMessages };
 }
+
+/**
+ * `clear_thinking_*` context edits require thinking to be on, so they leave with
+ * it. Other edits stay; an edits list left empty drops `context_management`.
+ */
+function withoutClearThinkingEdits(contextManagement) {
+  if (!isObject(contextManagement) || !Array.isArray(contextManagement.edits)) return contextManagement;
+  const edits = contextManagement.edits.filter(
+    (edit) => !String(edit?.type ?? "").startsWith("clear_thinking"));
+  if (edits.length === contextManagement.edits.length) return contextManagement;
+  return edits.length > 0 ? { ...contextManagement, edits } : undefined;
+}
+
+/**
+ * Last-resort recovery body (OmniRoute #20063): drop every thinking block,
+ * including the active tool-use cycle, and drop extended thinking for this one
+ * request, because the API rejects a tool_use turn without a leading thinking
+ * block while thinking is on. Used only after the conservative strip failed or
+ * changed nothing, i.e. a foreign-signed block sits inside the protected cycle
+ * (a cross-provider fallback mid tool loop). Like the conservative strip, any
+ * assistant redacted_thinking disables it. Returns the original reference when
+ * nothing can change; the input is never mutated.
+ */
+export function stripAllThinkingForSignatureRecovery(body) {
+  if (!body || !isObject(body) || !Array.isArray(body.messages)) return body;
+  if (body.messages.some((message) => message?.role === "assistant" && hasBlock(message, "redacted_thinking"))) return body;
+
+  let changed = false;
+  const messages = body.messages.map((message) => {
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) return message;
+    const content = message.content.filter((block) => !isThinkingBlock(block));
+    if (content.length === message.content.length) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  if (!changed) return body;
+
+  const { thinking: _thinking, context_management: contextManagement, ...rest } = body;
+  const kept = withoutClearThinkingEdits(contextManagement);
+  return { ...rest, ...(kept === undefined ? null : { context_management: kept }), messages };
+}

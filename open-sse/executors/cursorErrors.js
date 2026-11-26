@@ -1,8 +1,15 @@
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { CURSOR_MODEL_UNAVAILABLE_MESSAGE } from "../config/errorConfig.js";
+
+export const CURSOR_EMPTY_TURN_EVENT = "Cursor AgentService returned an empty turn";
 
 /** Classify Cursor Connect and transport failures without exposing credentials or local paths. */
 export function classifyCursorError(raw) {
   const value = String(raw || "");
+  // Scoped to this connection and model: a 404, never an upstream 5xx (OmniRoute #19972).
+  if (value === CURSOR_EMPTY_TURN_EVENT) {
+    return { kind: "not_found", status: 404, type: "not_found_error", message: `${CURSOR_MODEL_UNAVAILABLE_MESSAGE}: ${CURSOR_EMPTY_TURN_EVENT}` };
+  }
   const text = value.toLowerCase();
   const quota = /too many requests|quota|rate[ -]limit|throttl|out of usage|increase limits|actionrequired/.test(text);
   const large = !quota && /tool catalog too large|tool registration too large|too many tools|message too large|payload too large|request too large|request exceeds .*size|request (?:body|size) exceeds .*(?:size|limit)|maximum allowed size/.test(text);

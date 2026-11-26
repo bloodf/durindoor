@@ -191,7 +191,9 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
       bodyText.replace(/<[^>]*>/g, '').trim().slice(0, 160) :
       `Upstream returned non-SSE response (${upstreamContentType})`)
     );
-    const status = providerResponse.status || 502;
+    // A 2xx error page is still a failed attempt: reporting 200 would reach the
+    // client and account fallback as a success status (upstream 9router #5864).
+    const status = providerResponse.ok ? HTTP_STATUS.BAD_GATEWAY : providerResponse.status || HTTP_STATUS.BAD_GATEWAY;
     if (log?.errorLine) log.errorLine(reqTag, "✗", `BLOCKED ${status} · ${provider}/${model} · non-SSE (${upstreamContentType})\n    ${shortMsg}`);else
     console.warn(`[STREAM] ${provider} | ${model} | blocked pipe: ${shortMsg} [${status}]`);
     streamController?.handleError?.(new Error(`upstream non-SSE: ${status}`));

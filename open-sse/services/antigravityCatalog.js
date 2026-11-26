@@ -99,6 +99,11 @@ export function buildAntigravityCatalogBody(connection) {
   return project ? { project } : {};
 }
 
+/** Discovery stubs the catalog advertises but chat cannot call (OmniRoute #19878). */
+function isUncallableAntigravityModelId(id) {
+  return id.includes("-disabled") || id.startsWith("tab_");
+}
+
 /**
  * Parse the catalog payload into the public model rows.
  *
@@ -112,7 +117,7 @@ export function buildAntigravityCatalogBody(connection) {
 export function parseAntigravityCatalogModels(data) {
   if (!isRecord(data) || !isRecord(data.models)) return null;
   return Object.entries(data.models)
-    .filter(([id, info]) => !info?.isInternal && !id.includes("-disabled") && !id.startsWith("tab_"))
+    .filter(([id, info]) => !info?.isInternal && !isUncallableAntigravityModelId(id))
     .map(([id, info]) => ({
       id,
       name: info?.displayName || id,
@@ -367,12 +372,15 @@ export function buildAntigravityCapabilityHintsPsdPatch(
 ) {
   const parsed = parseAntigravityModelCapabilityHints(catalogPayload);
   if (!parsed || parsed.modelIds == null) return null;
+  // The cached list replaces the next live probe, so it lists only public rows.
+  const publicIds = new Set(parseAntigravityCatalogModels(catalogPayload)
+    .map((model) => normalizeAntigravityModelId(model.id)));
   const routeFingerprint = antigravityCatalogRouteFingerprint(proxyOptions, userAgent);
   const value = buildPersistedAntigravityCapabilityHints(
     resolveAntigravityConnectionProject(connection) || "",
     antigravityCatalogEndpoint(),
     {
-      modelIds: parsed.modelIds,
+      modelIds: new Set([...parsed.modelIds].filter((id) => publicIds.has(id))),
       webSearchModelIds: parsed.webSearchModelIds,
       routeFingerprint,
       updatedAt: now,
@@ -411,7 +419,8 @@ export function reuseAntigravityCapabilityHints(
     return null;
   }
   return {
-    models: [...hints.modelIds].sort().map((id) => ({ id, name: id })),
+    models: [...hints.modelIds].filter((id) => !isUncallableAntigravityModelId(id)).sort()
+      .map((id) => ({ id, name: id })),
     source: "persisted_capability_hints",
     routeFingerprint: hints.routeFingerprint
   };

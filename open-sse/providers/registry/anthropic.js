@@ -25,6 +25,7 @@ export default {
   models: [
     // Official lifecycle table, 2026-10-01. Keep current short aliases
     // for dated pinned snapshots.
+    { id: "claude-fable-5-2", name: "Claude Fable 5.2" },
     { id: "claude-fable-5-1", name: "Claude Fable 5.1" },
     { id: "claude-mythos-5-1", name: "Claude Mythos 5.1" },
     { id: "claude-fable-5", name: "Claude Fable 5", lifecycle: "legacy" },

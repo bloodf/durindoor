@@ -72,6 +72,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         baseUrl: connection.providerSpecificData?.baseUrl || "",
         openaiStoreEnabled: connection.providerSpecificData?.openaiStoreEnabled === true,
         strictChatHistory: connection.providerSpecificData?.strictChatHistory === true,
+        nativeJsonSchema: connection.providerSpecificData?.nativeJsonSchema === true,
         gatewayUrl: connection.providerSpecificData?.gatewayUrl || "",
         enableSessionDispatch: connection.providerSpecificData?.[SESSION_DISPATCH_OPT_IN_KEY] === true,
         rpd: connection.providerSpecificData?.rateLimitOverrides?.rpd?.toString() ?? "",
@@ -205,7 +206,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       return { ...(buildRegionSpecificData() || {}), ...generic };
     }
     if (isStrictHistoryConnection) {
-      return { ...(connection?.providerSpecificData || {}), strictChatHistory: formData.strictChatHistory === true, ...generic };
+      return { ...(connection?.providerSpecificData || {}), strictChatHistory: formData.strictChatHistory === true, nativeJsonSchema: formData.nativeJsonSchema === true, ...generic };
     }
     if (isResponsesConnection) {
       return {
@@ -370,6 +371,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
         {connection?.provider === "minimax-code" ? <Input label="MiniMax Code gateway URL" value={formData.gatewayUrl} onChange={(e) => setFormData({ ...formData, gatewayUrl: e.target.value })} hint="Required for China accounts." /> : null}
         {isSessionDispatchConnection ? <Toggle checked={formData.enableSessionDispatch === true} onChange={(enableSessionDispatch) => setFormData({ ...formData, enableSessionDispatch })} label="Allow session dispatch" description="Off by default. When on, requests through this gateway spend this account's plan and rate limits. Check the provider's terms first." /> : null}
         {isStrictHistoryConnection ? <Toggle checked={formData.strictChatHistory === true} onChange={(strictChatHistory) => setFormData({ ...formData, strictChatHistory })} label="Strict chat history" description="Merge consecutive simple text turns for strict OpenAI-compatible chat providers." /> : null}
+        {isStrictHistoryConnection ? <Toggle checked={formData.nativeJsonSchema === true} onChange={(nativeJsonSchema) => setFormData({ ...formData, nativeJsonSchema })} label="Native JSON schema support" description="Send json_schema response formats unchanged instead of downgrading them to json_object." /> : null}
         {isResponsesConnection ? <Toggle checked={formData.openaiStoreEnabled === true} onChange={(openaiStoreEnabled) => setFormData({ ...formData, openaiStoreEnabled })} label="OpenAI Responses store" description="Allow this connection to retain Responses API state for continuation." /> : null}
         {requiresAccountId ? <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4"><h3 className="mb-3 text-[13px] font-semibold text-dd-text">{accountIdProviderLabel}</h3><Input label="Account ID" value={cloudflareData.accountId} onChange={(e) => setCloudflareData({ accountId: e.target.value })} placeholder={connection?.provider === "snowflake" ? "org-account" : "abc123def456..."} hint={connection?.provider === "snowflake" ? "Snowflake account identifier, for example org-account" : "Find Account ID in right sidebar of dash.cloudflare.com"} /></section> : null}
         <section className="rounded-dd-lg border border-dd-border-subtle bg-dd-surface-2 p-4">

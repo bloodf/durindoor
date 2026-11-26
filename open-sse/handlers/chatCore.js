@@ -379,6 +379,8 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   } :
   rawCredentials;
+  // Request-scoped caller identity for the opt-in prompt cache key; never sent upstream.
+  if (credentials && (apiKeyId || apiKey)) credentials._cachePrincipalId = apiKeyId || apiKey;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   if (isCursorProvider(provider)) {

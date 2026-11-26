@@ -42,6 +42,7 @@ export const INTERNAL_KEYS = Object.freeze([
 "_claudeCloaked",
 "_customToolNames",
 "_clientSessionId",
+"_cachePrincipalId",
 "_kiroUpstreamModel"]
 );
 

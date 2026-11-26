@@ -94,13 +94,17 @@ function stripClaudeIdentity(body) {
 // `prompt_cache_key` routing hint that pins a conversation to a cache shard,
 // the same mechanism the Codex executor uses. We do NOT enable it by default:
 // some strict openai-compatible gateways reject unknown fields. A custom
-// provider opts in via providerSpecificData.enablePromptCacheKey === true.
+// provider opts in via providerSpecificData.enablePromptCacheKey === true. The
+// injected hint is scoped to the gateway API key, connection, model and session.
 // Client-supplied keys pass only when selected transport advertises
 // `transport.quirks.preservePromptCacheKey`; final wire guard below shares this
 // configured seam and never replaces opaque client values (decolua/9router#3733).
-export function normalizePromptCacheKey(provider, sessionId) {
+export function normalizePromptCacheKey(provider, sessionId, { principalId, connectionId, model } = {}) {
   if (!sessionId) return "";
-  const scoped = `${provider || "openai-compatible"}:${sessionId}`;
+  // Client session ids are not unique across gateway API keys (OmniRoute #19803).
+  const scoped = JSON.stringify([
+    provider || "openai-compatible", String(principalId || ""), connectionId || "", model || "", sessionId,
+  ]);
   return `cc_${crypto.createHash("sha256").update(scoped).digest("hex").slice(0, 32)}`;
 }
 
@@ -119,7 +123,7 @@ export function openCodeGoSessionHeader(credentials, body = null) {
   return `ses_${crypto.createHash("sha256").update(sessionId).digest("hex").slice(0, 32)}`;
 }
 
-export function injectPromptCacheKey(provider, body, credentials) {
+export function injectPromptCacheKey(provider, body, credentials, model = body?.model) {
   if (!body || !isObject(body)) return body;
   if (credentials?.providerSpecificData?.enablePromptCacheKey !== true) return body;
   if (isString(body.prompt_cache_key) && body.prompt_cache_key) return body;
@@ -137,7 +141,11 @@ export function injectPromptCacheKey(provider, body, credentials) {
     scope: provider
   });
 
-  const promptCacheKey = normalizePromptCacheKey(provider, sessionId);
+  const promptCacheKey = normalizePromptCacheKey(provider, sessionId, {
+    principalId: credentials?._cachePrincipalId,
+    connectionId: credentials?.connectionId,
+    model,
+  });
   if (promptCacheKey) body.prompt_cache_key = promptCacheKey;
   return body;
 }
@@ -464,7 +472,7 @@ export class DefaultExecutor extends BaseExecutor {
     const clamped = this.config?.clampRequestBody?.(body);
     if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
-    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
+    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials), credentials);
 
     if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
     if (this.provider === "openrouter") transformed = withOpenRouterFallbacks(transformed);
@@ -543,7 +551,7 @@ export class DefaultExecutor extends BaseExecutor {
         Array.isArray(transformed.messages)) {
         transformed.messages = normalizeStrictChatHistory(transformed.messages);
       }
-      injectPromptCacheKey(this.provider, transformed, credentials);
+      injectPromptCacheKey(this.provider, transformed, credentials, model);
       injectOpenAIStore(transformed, this.provider, credentials, transportFormat);
       stripUnsupportedChatExtensions(transformed, credentials?.runtimeTransport, this.config);
       if (["kimi", "kimi-coding", "kimi-ai", "kimi-coding-apikey"].includes(this.provider) && transportFormat === FORMATS.OPENAI) {
@@ -696,8 +704,12 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   // DeepSeek and compatible providers use json_object; carry any schema in the prompt.
-  applyJsonSchemaFallback(body) {
-    if (this.provider !== "deepseek" && !this.provider?.startsWith?.("openai-compatible-")) return body;
+  // A compatible connection with native Structured Output opts out with
+  // providerSpecificData.nativeJsonSchema (OmniRoute #19762).
+  applyJsonSchemaFallback(body, credentials = null) {
+    const compatible = this.provider?.startsWith?.("openai-compatible-");
+    if (this.provider !== "deepseek" && !compatible) return body;
+    if (compatible && credentials?.providerSpecificData?.nativeJsonSchema === true) return body;
     const rf = body?.response_format;
     if (rf?.type !== "json_schema" || (!rf.json_schema?.schema && this.provider !== "deepseek")) return body;
 

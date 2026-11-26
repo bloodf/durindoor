@@ -32,7 +32,7 @@ test("injects a provider-safe hash from _clientSessionId when flag enabled", () 
     _clientSessionId: "claude:abc-123",
     providerSpecificData: { enablePromptCacheKey: true },
   });
-  assert.equal(body.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:abc-123"));
+  assert.equal(body.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:abc-123", { model: "model-a" }));
   assert.match(body.prompt_cache_key, /^cc_[a-f0-9]{32}$/);
 });
 
@@ -75,7 +75,7 @@ test("prefers client session id over connection fallback", () => {
     connectionId: "conn-zzz",
     providerSpecificData: { enablePromptCacheKey: true },
   });
-  assert.equal(body.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:session-1"));
+  assert.equal(body.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:session-1", { connectionId: "conn-zzz", model: "model-a" }));
 });
 
 test("guards non-object body", () => {
@@ -97,7 +97,7 @@ test("transformRequest injects provider-safe prompt_cache_key for opted-in provi
     _clientSessionId: "claude:conv-9",
     providerSpecificData: { enablePromptCacheKey: true },
   });
-  assert.equal(out.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:conv-9"));
+  assert.equal(out.prompt_cache_key, normalizePromptCacheKey(PROVIDER, "claude:conv-9", { model: "model-a" }));
 });
 
 test("transformRequest does NOT inject when flag missing", () => {

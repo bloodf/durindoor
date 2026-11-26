@@ -56,8 +56,10 @@ export function sanitizeProviderConnectionForClient(c) {
     if (supportsOpenAIStore(c.provider) && c.providerSpecificData.openaiStoreEnabled !== undefined) {
       psd.openaiStoreEnabled = c.providerSpecificData.openaiStoreEnabled;
     }
-    if (c.provider?.startsWith("openai-compatible-") && !c.provider.startsWith("openai-compatible-responses-") && isBoolean(c.providerSpecificData.strictChatHistory)) {
-      psd.strictChatHistory = c.providerSpecificData.strictChatHistory;
+    if (c.provider?.startsWith("openai-compatible-") && !c.provider.startsWith("openai-compatible-responses-")) {
+      for (const flag of ["strictChatHistory", "nativeJsonSchema"]) {
+        if (isBoolean(c.providerSpecificData[flag])) psd[flag] = c.providerSpecificData[flag];
+      }
     }
     safe.providerSpecificData = psd;
   }

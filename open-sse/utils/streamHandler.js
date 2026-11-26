@@ -207,6 +207,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
   return new ReadableStream({
     async pull(controller) {
+      streamController.handleClientPull?.();
       armKeepalive(controller);
       if (!streamController.isConnected()) {
         stopKeepalive();
@@ -337,6 +338,23 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   const clearFirstChunk = () => {
     if (firstChunkTimer) {clearTimeout(firstChunkTimer);firstChunkTimer = null;}
   };
+  // Upstream EOF ends both upstream watchdogs, but the request stays open until
+  // the client reads the buffered tail. A body nobody pulls would keep its
+  // concurrency slot for good (OmniRoute #19764); each client pull restarts this.
+  let drainTimer = null;
+  const clearDrain = () => {
+    if (drainTimer) {clearTimeout(drainTimer);drainTimer = null;}
+  };
+  const armDrain = () => {
+    clearDrain();
+    drainTimer = setTimeout(() => {
+      drainTimer = null;
+      abortMessage = "client stopped reading the stream";
+      streamController.handleError?.(new Error(abortMessage));
+      streamController.abort?.();
+    }, stallTimeoutMs);
+    drainTimer.unref?.();
+  };
   // Separate TTFT deadline prevents a header-only upstream from consuming the
   // longer inter-chunk stall window; first raw byte permanently disarms it.
   const armFirstChunk = () => {
@@ -371,10 +389,11 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     signal: streamController.signal,
     startTime: streamController.startTime,
     isConnected: () => streamController.isConnected(),
-    handleComplete: () => {dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleComplete();},
-    handleError: (e) => {dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleError(e);},
-    handleDisconnect: (r) => {dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();streamController.handleDisconnect(r);},
-    abort: () => {clearFirstChunk();clearStall();streamController.abort();},
+    handleComplete: () => {dbg(tag, `complete | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();clearDrain();streamController.handleComplete();},
+    handleError: (e) => {dbg(tag, `error: ${e?.message} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();clearDrain();streamController.handleError(e);},
+    handleDisconnect: (r) => {dbg(tag, `disconnect: ${r} | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();clearDrain();streamController.handleDisconnect(r);},
+    abort: () => {clearFirstChunk();clearStall();clearDrain();streamController.abort();},
+    handleClientPull: () => {if (drainTimer) armDrain();},
     setInterruptionFinalizer: (finalizer) => streamController.setInterruptionFinalizer?.(finalizer),
     handleActivity: () => streamController.handleActivity?.()
   };
@@ -399,7 +418,7 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
       armStall();
       controller.enqueue(chunk);
     },
-    flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();}
+    flush() {dbg(tag, `upstream EOF | chunks=${chunkCount} | bytes=${totalBytes} | dur=${Date.now() - t0}ms`);clearFirstChunk();clearStall();armDrain();}
   });
 
   let transformedBody = providerResponse.body.

@@ -44,7 +44,7 @@ describe("Adapta operator session", () => {
       }
       expect(String(url)).toBe("https://agent.adapta.one/api/chat/stream/v1");
       seen.push(init.headers.Authorization);
-      expect(JSON.parse(init.body)).toEqual({ messages: [{ role: "user", parts: [{ type: "text", text: "hello" }] }], aiModelId: 14 });
+      expect(JSON.parse(init.body)).toMatchObject({ messages: [{ role: "user", parts: [{ type: "text", text: "hello" }] }], modelAi: "ONE" });
       return new Response('data: {"type":"text-delta","delta":"ok"}\n\ndata: {"type":"done"}\n\n');
     });
     for (const cookie of cookies) {

@@ -21,13 +21,15 @@ describe("Grok CLI Responses history and tools (upstream decolua/9router#2647)",
     expect(out.input[0]).toEqual({ type: "message", role: "system", content: "rules" });
   });
 
-  it("answers dangling calls, drops duplicate calls and keeps the last duplicate output", () => {
+  it("answers duplicate and dangling calls in order", () => {
     const out = transform({
       input: [call("a"), call("a"), output("a", "first"), output("a", "second"), call("b"), user("next")],
     });
 
     expect(out.input.map((item) => [item.type, item.call_id, item.output])).toEqual([
       ["function_call", "a", undefined],
+      ["function_call", "a", undefined],
+      ["function_call_output", "a", "first"],
       ["function_call_output", "a", "second"],
       ["function_call", "b", undefined],
       ["function_call_output", "b", expect.stringContaining("was not executed")],

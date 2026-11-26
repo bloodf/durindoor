@@ -2050,15 +2050,18 @@ export function createSSEStream(options = {}) {
         // release buffered tool calls, so end it with an error (upstream #4486).
         // A translated Responses stream with no terminal event is cut off the same way
         // (upstream #4490). A Claude client on a Chat Completions upstream gets the
-        // same treatment when neither a finish reason nor [DONE] arrived: the null
-        // flush would close it with end_turn + message_stop (upstream #3860).
+        // same treatment when neither a finish reason nor [DONE] arrived (upstream
+        // #3860). A sentinel alone is compatible with text-only streams, but
+        // cannot complete buffered tool calls when upstream terminal tracking failed.
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
         const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
           !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
         const cutChatForClaude = sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.OPENAI &&
-          state.messageStartSent && !state.claudeFinishHandled && !streamDoneSent &&
-          !parseSSELine(buffer.trim(), targetFormat)?.done;
+          state.messageStartSent && !state.claudeFinishHandled && (
+            (state.claudeSawToolCalls && upstreamTerminal.outcome !== "success") ||
+            (!streamDoneSent && !parseSSELine(buffer.trim(), targetFormat)?.done)
+          );
         if (cutGemini || cutResponses || cutChatForClaude) {
           // Claude clients retry overloaded_error; a dropped Chat stream is transient.
           const claudeErrorType = cutChatForClaude ? "overloaded_error" : "api_error";

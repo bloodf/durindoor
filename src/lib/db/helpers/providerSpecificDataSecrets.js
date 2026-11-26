@@ -22,7 +22,7 @@ export const SAFE_PSD_EXPORT_FIELDS = Object.freeze([
 "githubLogin", "githubName", "githubEmail", "githubUserId",
 "username", "firstName", "lastName", "authMethod", "authKind",
 "profileArn", "codexFingerprintMode", "codexUltrafastMode", "aiCreditLimit",
-"openaiStoreEnabled", "strictChatHistory",
+"openaiStoreEnabled", "strictChatHistory", "nativeJsonSchema",
 // Bedrock mode markers — not credentials; Access Key Id is an identifier.
 "profile", "accessKeyId",
 // Expiry metadata for nested tokens (the token itself is secret).

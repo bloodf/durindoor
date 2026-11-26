@@ -464,7 +464,7 @@ export class DefaultExecutor extends BaseExecutor {
     const clamped = this.config?.clampRequestBody?.(body);
     if (clamped && isObject(clamped) && !Array.isArray(clamped)) body = clamped;
     applyGlmtModelAlias(this.provider, model, body);
-    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
+    let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials), credentials);
 
     if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
     if (this.provider === "openrouter") transformed = withOpenRouterFallbacks(transformed);
@@ -696,8 +696,12 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   // DeepSeek and compatible providers use json_object; carry any schema in the prompt.
-  applyJsonSchemaFallback(body) {
-    if (this.provider !== "deepseek" && !this.provider?.startsWith?.("openai-compatible-")) return body;
+  // A compatible connection with native Structured Output opts out with
+  // providerSpecificData.nativeJsonSchema (OmniRoute #19762).
+  applyJsonSchemaFallback(body, credentials = null) {
+    const compatible = this.provider?.startsWith?.("openai-compatible-");
+    if (this.provider !== "deepseek" && !compatible) return body;
+    if (compatible && credentials?.providerSpecificData?.nativeJsonSchema === true) return body;
     const rf = body?.response_format;
     if (rf?.type !== "json_schema" || (!rf.json_schema?.schema && this.provider !== "deepseek")) return body;
 

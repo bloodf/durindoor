@@ -61,9 +61,11 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
   { ...providerSpecificData } :
   {};
 
-  if (Object.hasOwn(next, "strictChatHistory")) {
-    next.strictChatHistory = provider?.startsWith("openai-compatible-") &&
-      !provider.startsWith("openai-compatible-responses-") && next.strictChatHistory === true;
+  // Boolean opt-ins that exist only on custom OpenAI-compatible chat connections.
+  for (const flag of ["strictChatHistory", "nativeJsonSchema"]) {
+    if (!Object.hasOwn(next, flag)) continue;
+    next[flag] = provider?.startsWith("openai-compatible-") &&
+      !provider.startsWith("openai-compatible-responses-") && next[flag] === true;
   }
 
   if (Object.hasOwn(next, "managementApiKey")) next.managementApiKey = null;

@@ -84,7 +84,7 @@ Positive decimal integers only. A resolved maximum below the base resets the who
 | `OBSERVABILITY_FLUSH_INTERVAL_MS` | `5000` | Flush interval. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR`. |
 | `LOG_USAGE_VERBOSE` | unset | `1` prints extra usage-tracking debug. |
-| `USAGE_BUFFER_TOKENS` | `2000` | Safety margin added to client-facing input/prompt token counts so coding clients compact before hitting upstream limits. Accepts any non-negative integer; `0` disables the margin. Recorded usage and cost billing stay unpadded. |
+| `USAGE_BUFFER_TOKENS` | `2000` | Safety margin added to client-facing input/prompt token counts so coding clients compact before hitting upstream limits. Accepts any non-negative integer; `0` disables the margin. Recorded usage and cost billing stay unpadded. A gateway estimate, such as Cursor's usage (Cursor reports no token counts), is recorded raw and gets the margin exactly once on every client route, streaming or not. Provider-reported usage on Claude Messages non-streaming and translated Responses streaming replies is forwarded without the margin. |
 | `STRIP_REASONING_CONTENT` | unset | `1` / `true` / `on` / `yes` strips non-streaming `reasoning_content` when the message also has `content`. Header `x-9router-reasoning: off` does the same per request. |
 | `DURINDOOR_REASONING_MIN_BUDGET` | unset (disabled) | Opt-in floor for thinking-model output budgets: a caller `max_tokens` in `[256, floor)` on a thinking-capable model is raised to the floor (clamped to the model's known output cap) so reasoning tokens cannot consume the whole budget. Unset = the existing buffer heuristic runs unchanged. |
 | `X-DurinDoor-Effort: auto` (header, not env) | n/a | Adaptive thinking effort: when a request carries no reasoning field of any shape (`reasoning_effort`, `reasoning`, `thinking`), the gateway resolves `auto` to `low`/`medium`/`high` from deterministic request-shape signals scoped to the current turn (last-user-message length, context size, prior tool results, tool-loop depth). Scoped to requests dispatched in the OpenAI Chat Completions shape; a no-op elsewhere. |
@@ -153,6 +153,12 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `ANTIGRAVITY_ONBOARD_MAX_ATTEMPTS` | `10` | Cloud Code `onboardUser` polls during Antigravity sign-in. |
 | `ANTIGRAVITY_ONBOARD_RETRY_DELAY_MS` | `5000` | Delay between those sign-in polls. |
 | `EAGER_PROJECT_ID_REFRESH` | unset | `true` refreshes Google project ids eagerly. |
+
+## OpenAI batch input limits
+
+OpenAI batch input files are limited by `MAX_BATCH_BYTES` (default 104857600 bytes), `MAX_BATCH_LINE_BYTES` (default 1048576 bytes per JSONL line, excluding LF or CRLF), and `MAX_BATCH_ITEMS` (default 100000 nonblank lines). Set each to a positive integer to change its limit; invalid values use the default. Limits also apply when creating a batch from an existing stored file. For `/v1/files`, the entire multipart request is limited to `MAX_BATCH_BYTES` plus 1048576 bytes for multipart boundaries, headers, and other fields, for all file purposes. Requests exceeding that total return HTTP 413 before multipart parsing, including when Content-Length is absent. Batch files are also checked against `MAX_BATCH_BYTES` after parsing; other purposes are subject to the request limit.
+
+The Next.js proxy applies its own body limit first: `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` (default `128mb`, see [Build, packaging, updater](#build-packaging-updater)). It is read when the app is built, not at startup. To accept uploads above about 127 MiB, raise `MAX_BATCH_BYTES` and rebuild with `NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE` set above `MAX_BATCH_BYTES` plus 1 MiB. Otherwise a body larger than the proxy limit reaches the route truncated and fails as an invalid multipart body (HTTP 400) instead of the 413 above.
 
 ## Web fetch and search
 

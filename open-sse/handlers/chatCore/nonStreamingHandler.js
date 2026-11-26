@@ -896,7 +896,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     saveRequestDetail(buildRequestDetail({
       comboNoLog,
       provider, model, connectionId,
-      latency: { ttft: totalLatency, total: totalLatency },
+      latency: { ttft: 0, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,

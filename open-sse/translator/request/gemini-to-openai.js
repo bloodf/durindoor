@@ -4,6 +4,7 @@ import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { geminiCliOutputText } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
 
 // Convert Gemini request to OpenAI format
@@ -218,7 +219,7 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
       const resp = part.functionResponse.response;
       const toolContent = resp && resp.result !== undefined
         ? (isString(resp.result) ? resp.result : JSON.stringify(resp.result))
-        : JSON.stringify(resp ?? {});
+        : geminiCliOutputText(resp) ?? JSON.stringify(resp ?? {});
       toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: responseCallId(ids, part.functionResponse),

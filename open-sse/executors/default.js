@@ -16,7 +16,7 @@ import { getCachedClaudeHeaders } from "../utils/claudeHeaderCache.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { applyDeepSeekV4ProAlias, injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
+import { extractClientSessionId, resolveSessionId } from "../utils/sessionManager.js";
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { refreshOpenferenceToken } from "../services/openferenceAuth.js";
 import { refreshCodebuddyToken } from "../services/tokenRefresh.js";
@@ -300,14 +300,23 @@ function applyExtraHeaders(headers, extraHeaders, credentials) {
   }
 }
 
+// One id per client session and account. Message text is not an identity, so a
+// request with no explicit session gets a fresh conversation.
+function codebuddyConversationId(credentials, { clientHeaders, body } = {}) {
+  const session = extractClientSessionId(clientHeaders, body);
+  if (!session) return crypto.randomUUID();
+  const hex = crypto.createHash("sha256").update(`codebuddy:${credentials.connectionId || ""}:${session}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 // Provider-specific header quirks kept as small hooks (not pure auth).
 const HEADER_HOOKS = {
   // CodeBuddy: the gateway's channel check rejects requests lacking the plugin's
   // conversation/request identifiers with 400 / 11128 "request illegal".
-  codebuddyHeaders: (h) => {
+  codebuddyHeaders: (h, c, request) => {
     const requestId = crypto.randomUUID();
     h["X-Request-ID"] = requestId;
-    h["X-Conversation-ID"] = crypto.randomUUID();
+    h["X-Conversation-ID"] = codebuddyConversationId(c, request);
     h["X-Conversation-Request-ID"] = requestId;
     h["X-Conversation-Message-ID"] = requestId;
   },
@@ -804,7 +813,7 @@ export class DefaultExecutor extends BaseExecutor {
     const desc = rt?.auth || AUTH_DESCRIPTORS[this.provider] || this.resolveAuthDescriptor();
     // Hooks run BEFORE auth so dynamic overlays (claude cached headers) can't clobber the token.
     for (const hook of desc.hooks || []) {
-      if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials);
+      if (hook !== "clineHeaders") HEADER_HOOKS[hook]?.(headers, credentials, { clientHeaders: requestContext?.clientHeaders, body });
     }
     // Platform keys and Kimi Coding OAuth tokens belong to separate accounts.
     // Never fall back to an access token on the platform API-key connection.

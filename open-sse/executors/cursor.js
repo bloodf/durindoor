@@ -267,11 +267,16 @@ function resolveAgentRunModel(model, reasoningEffort, catalogIds) {
   // Base Haiku takes the client's effort; an effort pinned in the id keeps its form.
   const isClientEffortHaiku = modelId === "claude-haiku-5-5" && !idHasEffortToken(original) &&
     parameters.some((param) => param.id === "effort" && CURSOR_EFFORT_SUFFIXES.includes(param.value));
-  if (!isSonnetMedium && !isClientEffortHaiku) return { modelId, parameters, omitModelDetails: false };
+  // OmniRoute #20210: Cursor may run a Grok 4.7 effort alias as Fast. A standard
+  // alias opts out by name; `-fast` ids stay whole and never reach this branch.
+  const isStandardGrokAlias = /^(?:cursor-)?grok-4\.7$/.test(modelId) && idHasEffortToken(original) &&
+    parameters.some((param) => param.id === "effort");
+  if (!isSonnetMedium && !isClientEffortHaiku && !isStandardGrokAlias) return { modelId, parameters, omitModelDetails: false };
 
+  const renamed = parameters.map((param) => param.id === "effort" ? { ...param, id: "reasoning_effort" } : param);
   return {
     modelId,
-    parameters: parameters.map((param) => param.id === "effort" ? { ...param, id: "reasoning_effort" } : param),
+    parameters: isStandardGrokAlias ? [...renamed, { id: "fast", value: "false" }] : renamed,
     omitModelDetails: true
   };
 }

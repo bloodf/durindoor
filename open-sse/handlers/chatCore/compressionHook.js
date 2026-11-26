@@ -170,9 +170,11 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
       const format = cfg.applyOpts?.format ?? bodyFormat(working);
       if (id === "headroom") step.format = format;
+      const engineConfig = { format, ...(cfg.applyOpts || {}) };
+      // An adaptive input budget may be tighter than the raw context window.
+      if (id === "lite" && overAdaptiveTarget) engineConfig.cachedPrefix = false;
       const opts = {
-        // An adaptive input budget may be tighter than the raw context window.
-        config: { format, ...(cfg.applyOpts || {}), ...(id === "lite" && overAdaptiveTarget ? { cachedPrefix: false } : {}) },
+        config: engineConfig,
         stepConfig: step
       };
       const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;

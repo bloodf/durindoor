@@ -59,10 +59,10 @@ async function unavailableOutcome(ctx, state, credentials) {
     log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
     notifyWebhookEvent("provider.unavailable", { provider, model, status }, { throttleKey: `${provider}/${model}` });
     const response = unavailableResponse(getClientStatusFromError(status, errorMsg), `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
-    // Preserve the failed attempt’s upstream code alongside retry metadata.
+    // Preserve an existing rate-limit code; otherwise include the upstream code.
     if (!state.lastErrorCode) return terminal(response);
     const body = await response.json();
-    body.error.code = state.lastErrorCode;
+    body.error.code ??= state.lastErrorCode;
     return terminal(new Response(JSON.stringify(body), { status: response.status, headers: response.headers }));
   }
   if (state.excludeConnectionIds.size === 0) {

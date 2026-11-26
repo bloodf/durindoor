@@ -56,7 +56,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Invalid provider node type" }, { status: 400 });
     }
 
-    const checked = validateProviderNode(body, { type: nodeType, strict: true, baseUrlDefault: NODE_TYPE_DEFAULT_BASE_URL.get(nodeType) });
+    const checked = validateProviderNode(body, { type: nodeType, strict: true });
     if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
     const { name: nodeName, prefix: nodePrefix, baseUrl: nodeBaseUrl, iconUrl } = checked.value;
     const iconFields = iconUrl !== undefined ? { iconUrl } : null;

@@ -4,6 +4,7 @@ import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from
 import {
   getNoAuthProviderCredentials,
   clearAccountError,
+  markAccountUnavailable,
 } from "../services/auth.js";
 import { getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getComboModels, getComboCanonicalName } from "../services/model.js";
@@ -202,6 +203,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     async runAttempt(credentials) {
       const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
       const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+      const usedCredential = refreshedCredentials.accessToken || refreshedCredentials.apiKey || null;
       // Cores and executors mutate the dispatched credentials before the callback runs.
       const presentedRefreshToken = refreshedCredentials.refreshToken;
       // Without a sent refresh token there is nothing to guard against.
@@ -217,6 +219,14 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         onStreamComplete: async (outcome, response) => {
           if (outcome.status === "success") {
             await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+          } else if (outcome.status === "failure" && !request.signal?.aborted &&
+            (outcome.statusCode === 401 || outcome.statusCode === 403 || outcome.statusCode === 404 || outcome.statusCode === 429 || outcome.statusCode >= 500 && outcome.statusCode <= 599)) {
+            // Headers are committed, so update health without retrying or changing
+            // the response. Guard the update with the credential actually sent.
+            await markAccountUnavailable(credentials.connectionId, outcome.statusCode, outcome.error?.message, provider, model, null, {
+              usedCredential,
+              ...dispatch,
+            });
           }
         },
         onCredentialsRefreshed: async (newCreds) => {

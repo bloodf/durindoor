@@ -709,8 +709,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     {
       const { body: unwrapped, error: envError } = unwrapClinepassEnvelope(responseBody, provider);
       if (envError) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envError.message);
+        const envStatus = envError.status || HTTP_STATUS.BAD_GATEWAY;
+        appendLog({ status: `FAILED ${envStatus}` });
+        return createErrorResult(envStatus, envError.message);
       }
       if (!isJsonRecord(unwrapped)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });

@@ -244,13 +244,20 @@ function flushToolBlocks(state, results) {
   for (const key of state.toolCalls.keys()) closeToolBlock(state, key, results);
 }
 
+// Cache completeness until more arguments arrive; block switches can revisit the
+// same partial buffer many times without changing its contents.
 function hasCompleteArgs(state, key) {
+  const buffer = state.toolArgBuffers?.get(key);
+  const cache = state.toolArgCompleteness ??= new Map();
+  const previous = cache.get(key);
+  if (previous && previous.buffer === buffer) return previous.complete;
+  let complete = false;
   try {
-    JSON.parse(state.toolArgBuffers?.get(key));
-    return true;
-  } catch {
-    return false;
-  }
+    JSON.parse(buffer);
+    complete = true;
+  } catch { /* incomplete or invalid JSON */ }
+  cache.set(key, { buffer, complete });
+  return complete;
 }
 
 // Text or thinking is about to open: close the tool calls that are already whole,
@@ -258,7 +265,7 @@ function hasCompleteArgs(state, key) {
 // with partial arguments stays open, because later fragments would be lost.
 function closeCompleteToolBlocks(state, results) {
   for (const key of state.toolCalls?.keys() ?? []) {
-    if (hasCompleteArgs(state, key)) closeToolBlock(state, key, results);
+    if (!state.toolCalls.get(key).closed && hasCompleteArgs(state, key)) closeToolBlock(state, key, results);
   }
 }
 
@@ -277,8 +284,8 @@ function resolveToolKey(state, tc, name) {
   const key = byIndex ? keyByIndex.get(tc.index) ?? tc.index : state.lastToolKey;
   const current = state.toolCalls.get(key);
   if (tc.id) {
-    for (const [knownKey, info] of state.toolCalls) {
-      if (info.id !== tc.id) continue;
+    const knownKey = state.toolKeyById?.get(tc.id);
+    if (knownKey !== undefined) {
       if (byIndex) keyByIndex.set(tc.index, knownKey);
       return knownKey;
     }
@@ -473,6 +480,7 @@ export function openaiToClaudeResponse(chunk, state) {
 
       const toolInfo = state.toolCalls.get(idx);
       if (toolInfo) {
+        (state.toolKeyById ??= new Map()).set(toolInfo.id, idx);
         // Capture a late-arriving id or name (streamed after the initial chunk).
         // A name may arrive after arguments have been buffered; record it before
         // deciding whether to emit the deferred content_block_start.

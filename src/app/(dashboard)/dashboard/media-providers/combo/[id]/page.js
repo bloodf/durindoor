@@ -176,7 +176,7 @@ export default function ComboDetailPage() {
     const s = settingsRes.ok ? await settingsRes.json() : {};
     const updated = { ...(s.comboStrategies || {}) };
     if (enabled) updated[combo.name] = { fallbackStrategy: "round-robin" };else
-    delete updated[combo.name];
+    updated[combo.name] = null;
     await requestSettings({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

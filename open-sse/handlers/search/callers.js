@@ -80,22 +80,34 @@ function pickFields(source, keys) {
 // `stream` and `outputSchema` are left out: both change the response into
 // streamed synthesized output, which the JSON search contract cannot carry.
 const EXA_OPTION_FIELDS = [
-  "category", "userLocation", "moderation", "additionalQueries", "objective",
+  "category", "userLocation", "moderation",
   "systemPrompt", "compliance", "startPublishedDate", "endPublishedDate"
-];
-const EXA_CONTENT_FIELDS = [
-  "text", "highlights", "summary", "extras", "subpages", "subpageTarget",
-  "livecrawlTimeout", "maxAgeHours"
 ];
 // Query, result count, domains and country come from the generic request only.
 const TAVILY_OPTION_FIELDS = [
-  "search_depth", "chunks_per_source", "time_range", "start_date", "end_date",
-  "include_published_date", "filter_by_published_date", "include_answer",
-  "include_raw_content", "include_images", "include_image_descriptions",
+  "time_range", "start_date", "end_date",
+  "include_published_date", "filter_by_published_date",
   "include_favicon", "include_domains_mode", "language", "filter_by_language",
-  "auto_parameters", "exact_match", "include_usage", "safe_search"
+  "exact_match", "include_usage", "safe_search"
 ];
 const TAVILY_TOPICS = new Set(["general", "news", "finance"]);
+
+/** Operator connection settings, never caller options, control paid search features.
+ * searchLimits supports maxResults (default 10), allowAdvanced and allowContent.
+ * Content is limited to Exa text or Tavily raw content; nested expansions are dropped.
+ */
+function searchLimits(params) {
+  const limits = params.providerSpecificData?.searchLimits || {};
+  return {
+    maxResults: Number.isInteger(limits.maxResults) && limits.maxResults > 0 ? Math.min(limits.maxResults, 100) : 10,
+    allowAdvanced: limits.allowAdvanced === true,
+    allowContent: limits.allowContent === true
+  };
+}
+
+function limitedResultCount(value, maximum) {
+  return Number.isFinite(value) ? Math.max(1, Math.min(Math.floor(value), maximum)) : Math.min(5, maximum);
+}
 
 /**
  * Resolve the search base URL, requiring caller-controlled overrides to be
@@ -192,12 +204,13 @@ function timeRangeStartDate(timeRange) {
 function buildExaRequest(config, params) {
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
   const exa = getProviderOptions(params, "exa");
+  const limits = searchLimits(params);
   const body = {
     query: params.query,
-    numResults: params.maxResults,
-    type: isString(exa.type) ? exa.type : "auto",
+    numResults: limitedResultCount(params.maxResults, limits.maxResults),
+    type: limits.allowAdvanced && ["deep", "deep-reasoning"].includes(exa.type) ? exa.type : "auto",
     // Exa reads content options only under `contents`.
-    contents: { text: true, highlights: true, ...pickFields(exa.contents, EXA_CONTENT_FIELDS) }
+    contents: { text: limits.allowContent && exa.contents?.text !== false, highlights: true }
   };
   if (includes.length) body.includeDomains = includes;
   if (excludes.length) body.excludeDomains = excludes;
@@ -294,10 +307,11 @@ function buildParallelRequest(config, params) {
 function buildTavilyRequest(config, params) {
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
   const tavily = getProviderOptions(params, "tavily");
+  const limits = searchLimits(params);
   const searchTopic = TAVILY_TOPICS.has(params.searchType) ? params.searchType : "general";
   const body = {
     query: params.query,
-    max_results: params.maxResults,
+    max_results: limitedResultCount(params.maxResults, limits.maxResults),
     topic: TAVILY_TOPICS.has(tavily.topic) ? tavily.topic : searchTopic
   };
   if (includes.length) body.include_domains = includes;
@@ -308,6 +322,12 @@ function buildTavilyRequest(config, params) {
   const startDate = hasOwnWindow ? undefined : timeRangeStartDate(params.timeRange);
   if (startDate) body.start_date = startDate;
   Object.assign(body, pickFields(tavily, TAVILY_OPTION_FIELDS));
+  // Ask for the provider's credit receipt so the ledger can retain real usage.
+  body.include_usage = true;
+  body.search_depth = limits.allowAdvanced && tavily.search_depth === "advanced" ? "advanced" : "basic";
+  if (limits.allowContent && [true, "markdown", "text"].includes(tavily.include_raw_content)) {
+    body.include_raw_content = tavily.include_raw_content;
+  }
   return {
     url: resolveBaseUrl(config, params),
     init: {

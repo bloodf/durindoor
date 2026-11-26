@@ -51,7 +51,8 @@ export default {
       // Claude-source requests for these models stay Claude-shaped to /v1/messages,
       // so signed thinking blocks survive. Matched by name: the live catalog ships
       // claude-* ids before the static list does (upstream 9router #2761).
-      claudeSourceNativeModels: /claude/i,
+      // Plain data (case-insensitive substring) so the public catalog stays JSON.
+      claudeSourceNativeModels: "claude",
     },
     usage: {
       url: "https://api.github.com/copilot_internal/user",

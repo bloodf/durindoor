@@ -53,7 +53,10 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
   return {
     accountSwitched,
     body: { ...structuredClone(ctx.body), model: `${provider}/${model}` },
-    modelInfo: { provider, model },
+    // Carry a catalog-resolved effort (OmniRoute #21347) to chatCore as a default.
+    modelInfo: ctx.modelInfo?.resolvedThinkingEffort
+      ? { provider, model, resolvedThinkingEffort: ctx.modelInfo.resolvedThinkingEffort }
+      : { provider, model },
     modelCapabilities: ctx.resolvedModelCapabilities,
     credentials: attempt.refreshedCredentials,
     log,

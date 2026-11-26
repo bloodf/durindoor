@@ -26,6 +26,21 @@ const FORMAT_TO_NATIVE = {
   kiro: "kiro"
 };
 
+/**
+ * Thinking intent implied by a catalog-resolved `-<effort>` model ID (OmniRoute
+ * #21347 port, see resolveSyncedClaudeEffortVariant in src/sse/services/model.js).
+ * Unlike a `model(level)` suffix, which overrides the body, this is a default:
+ * any explicit thinking/reasoning field in the request (or one injected by the
+ * provider thinking setting) wins and the resolved effort is dropped.
+ * @param {object} body - request body before translation
+ * @param {string|undefined} effort - resolved effort, if any
+ * @returns {{ mode: "level", level: string } | null}
+ */
+export function catalogEffortIntent(body, effort) {
+  if (!isString(effort) || !effort) return null;
+  return extractThinking(body) ? null : { mode: "level", level: effort };
+}
+
 // Extract unified thinking intent from a request body (post-translation, mixed shapes).
 // Returns { mode, budget?, level? } or null when no thinking intent present.
 export function extractThinking(body, model = null, provider = null, modelCapabilities = null) {

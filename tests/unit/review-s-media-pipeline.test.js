@@ -151,15 +151,16 @@ it("cancels generation without marking the account or attempting failover", asyn
   expect(mocks.markUnavailable).not.toHaveBeenCalled();
 });
 
-it("preserves edit dispatch when the client aborts during the upstream call", async () => {
+it("cancels an edit without marking the account or attempting failover", async () => {
   const controller = new AbortController();
+  const req = request("edits", { signal: controller.signal });
   mocks.fetch.mockImplementationOnce(async () => {
     controller.abort();
-    return Response.json(image);
+    throw controller.signal.reason;
   });
 
-  expect((await handleImageEdit(request("edits", { signal: controller.signal }))).status).toBe(200);
-  expect(mocks.fetch.mock.calls[0][1].signal).toBeUndefined();
+  expect((await handleImageEdit(req)).status).toBe(499);
+  expect(mocks.fetch.mock.calls[0][1].signal).toBe(req.signal);
   expect(mocks.selectAccount).toHaveBeenCalledOnce();
   expect(mocks.markUnavailable).not.toHaveBeenCalled();
 });

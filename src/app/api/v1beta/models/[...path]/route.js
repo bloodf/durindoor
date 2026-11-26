@@ -1,6 +1,7 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { inheritHttpObservation, observeHttpRequest } from "open-sse/services/operationalMetrics.js";
 import { handleChat } from "@/sse/handlers/chat.js";
+import { keepAbortChain } from "@/shared/utils/abortChain.js";
 import {
   clearAccountError,
   getProviderCredentials,
@@ -78,15 +79,17 @@ async function POSTHandler(request, { params }) {
     const convertedBody = convertGeminiToInternal(body, model, stream);
 
     // Create new request with converted body. It is plain JSON, so the client's
-    // representation headers no longer describe it.
+    // representation headers no longer describe it. Keep the client abort
+    // chain alive while the converted request is handled.
     const convertedHeaders = new Headers(request.headers);
     convertedHeaders.delete("content-encoding");
     convertedHeaders.delete("content-length");
-    const newRequest = new Request(request.url, {
+    const newRequest = keepAbortChain(new Request(request.url, {
       method: "POST",
       headers: convertedHeaders,
       body: JSON.stringify(convertedBody),
-    });
+      signal: request.signal,
+    }), request);
 
     inheritHttpObservation(newRequest);
     const response = await handleChat(newRequest, {

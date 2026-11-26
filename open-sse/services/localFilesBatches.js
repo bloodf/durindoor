@@ -173,6 +173,17 @@ export async function deleteFile(id, { filesRoot, ownerId = null, allowAllOwners
 const OPENAI_ALLOWED_URLS = new Set(["/v1/chat/completions", "/v1/messages", "/v1/embeddings"]);
 
 const DEFAULT_MAX_BATCH_ITEMS = 100_000;
+const DEFAULT_MAX_BATCH_BYTES = 100 * 1024 * 1024;
+const DEFAULT_MAX_BATCH_LINE_BYTES = 1024 * 1024;
+
+function positiveLimit(name, fallback) {
+  const raw = (process.env[name] ?? "").trim();
+  const value = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+export const maxBatchBytes = () => positiveLimit("MAX_BATCH_BYTES", DEFAULT_MAX_BATCH_BYTES);
+const maxBatchLineBytes = () => positiveLimit("MAX_BATCH_LINE_BYTES", DEFAULT_MAX_BATCH_LINE_BYTES);
 
 function resolveMaxBatchItems() {
   const raw = (process.env.MAX_BATCH_ITEMS ?? "").trim();
@@ -180,12 +191,18 @@ function resolveMaxBatchItems() {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_BATCH_ITEMS;
 }
 
-/** Count non-blank lines in place, so an oversized file is refused before any line is materialised. */
-function countItemLines(text) {
-  const nonBlankLine = /^.*\S.*$/gm;
-  let count = 0;
-  while (nonBlankLine.exec(text) !== null) count++;
-  return count;
+/** Scan LF/CRLF lines without allocating an array of lines. */
+function* jsonlLines(text) {
+  let start = 0;
+  let line = 1;
+  while (start <= text.length) {
+    const newline = text.indexOf("\n", start);
+    const end = newline === -1 ? text.length : newline;
+    yield { start, end: end > start && text[end - 1] === "\r" && newline !== -1 ? end - 1 : end, line };
+    if (newline === -1) break;
+    start = newline + 1;
+    line++;
+  }
 }
 
 /** OpenAI input JSONL → normalized rows {custom_id,method,url,body}. */
@@ -194,42 +211,53 @@ export function validateOpenAIJsonl(text) {
   const errors = [];
   const ids = new Set();
   const source = String(text || "");
+  const maxBytes = maxBatchBytes();
+  if (Buffer.byteLength(source) > maxBytes) {
+    return { rows, errors: [{ error: `batch exceeds MAX_BATCH_BYTES limit of ${maxBytes} bytes` }] };
+  }
   const maxItems = resolveMaxBatchItems();
-  const itemCount = countItemLines(source);
+  const maxLineBytes = maxBatchLineBytes();
+  let itemCount = 0;
+  for (const { start, end, line } of jsonlLines(source)) {
+    const raw = source.slice(start, end);
+    if (Buffer.byteLength(raw) > maxLineBytes) {
+      return { rows, errors: [{ line, error: `line exceeds MAX_BATCH_LINE_BYTES limit of ${maxLineBytes} bytes` }] };
+    }
+    if (raw.trim()) itemCount++;
+  }
   if (itemCount > maxItems) {
     return { rows, errors: [{ error: `batch has ${itemCount} items; MAX_BATCH_ITEMS limits a batch to ${maxItems}` }] };
   }
-  const lines = source.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
+  for (const { start, end, line } of jsonlLines(source)) {
+    const raw = source.slice(start, end);
     if (!raw.trim()) continue;
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      errors.push({ line: i + 1, error: "invalid JSON" });
+      errors.push({ line, error: "invalid JSON" });
       continue;
     }
     const { custom_id, method, url, body } = parsed || {};
     if (!isString(custom_id) || !custom_id) {
-      errors.push({ line: i + 1, error: "custom_id required" });
+      errors.push({ line, error: "custom_id required" });
       continue;
     }
     if (ids.has(custom_id)) {
-      errors.push({ line: i + 1, custom_id, error: "duplicate custom_id" });
+      errors.push({ line, custom_id, error: "duplicate custom_id" });
       continue;
     }
     ids.add(custom_id);
     if (method !== "POST") {
-      errors.push({ line: i + 1, custom_id, error: "method must be POST" });
+      errors.push({ line, custom_id, error: "method must be POST" });
       continue;
     }
     if (!OPENAI_ALLOWED_URLS.has(url)) {
-      errors.push({ line: i + 1, custom_id, error: `unsupported url ${url}` });
+      errors.push({ line, custom_id, error: `unsupported url ${url}` });
       continue;
     }
     if (!body || !isObject(body)) {
-      errors.push({ line: i + 1, custom_id, error: "body required" });
+      errors.push({ line, custom_id, error: "body required" });
       continue;
     }
     rows.push({ custom_id, method, url, body });
@@ -448,9 +476,34 @@ function startBatch(b, { filesRoot, executor, concurrency }) {
 export async function createOpenAIBatch({ input_file_id, endpoint, completion_window = "24h", metadata }, { filesRoot, executor, concurrency, ownerId = null, allowAllOwners = false } = {}) {
   assertSafeId(input_file_id);
   if (completion_window !== "24h") throw statusError("completion_window must be '24h'", 400);
-  const file = await getFileContent(input_file_id, { filesRoot, ownerId, allowAllOwners });
-  if (!file) throw statusError("input_file not found", 404);
-  const { rows, errors } = validateOpenAIJsonl(file.buffer.toString("utf8"));
+  const root = rootFor(filesRoot, input_file_id);
+  const meta = readMeta(root, input_file_id);
+  if (!meta || !canAccessOwner(meta.ownerId, ownerId, allowAllOwners)) throw statusError("input_file not found", 404);
+  // Bound the read even if the file or its metadata changed after upload.
+  const limit = maxBatchBytes();
+  let buffer;
+  let fd;
+  try {
+    fd = fs.openSync(contentPath(root, input_file_id), "r");
+    if (fs.fstatSync(fd).size > limit) throw statusError(`batch exceeds MAX_BATCH_BYTES limit of ${limit} bytes`, 400);
+    const chunks = [];
+    let total = 0;
+    while (total <= limit) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, limit + 1 - total));
+      const read = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (!read) break;
+      chunks.push(chunk.subarray(0, read));
+      total += read;
+    }
+    if (total > limit) throw statusError(`batch exceeds MAX_BATCH_BYTES limit of ${limit} bytes`, 400);
+    buffer = Buffer.concat(chunks, total);
+  } catch (error) {
+    if (error.statusCode) throw error;
+    throw statusError("input_file not found", 404);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+  const { rows, errors } = validateOpenAIJsonl(buffer.toString("utf8"));
   if (errors.length) {
     const e = statusError(`invalid input file: ${errors[0].error}`, 400);
     e.details = errors;

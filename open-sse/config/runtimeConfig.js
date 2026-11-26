@@ -122,7 +122,7 @@ export const SSE_KEEPALIVE_MS = (() => {
   const raw = process.env.SSE_KEEPALIVE_MS;
   if (raw == null || raw === "") return 10 * 1000;
   const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? n : 10 * 1000;
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, MAX_TIMER_DELAY_MS) : 10 * 1000;
 })();
 
 /**
@@ -136,7 +136,7 @@ export const STREAM_EARLY_EOF_PEEK_MS = (() => {
   const raw = process.env.STREAM_EARLY_EOF_PEEK_MS;
   if (raw == null || raw === "") return 10 * 1000;
   const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? n : 10 * 1000;
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, MAX_TIMER_DELAY_MS) : 10 * 1000;
 })();
 
 // Connect timeout for ollama-local: higher default because local models may need extra time

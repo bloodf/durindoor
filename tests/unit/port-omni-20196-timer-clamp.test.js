@@ -15,12 +15,19 @@ describe("OmniRoute #20196 - timeouts above the Node timer limit", () => {
     vi.stubEnv("STREAM_FIRST_CHUNK_TIMEOUT_MS", OVERSIZED);
     vi.stubEnv("STREAM_STALL_TIMEOUT_MS", OVERSIZED);
     vi.stubEnv("FETCH_CONNECT_TIMEOUT_MS", OVERSIZED);
+    vi.stubEnv("SSE_KEEPALIVE_MS", OVERSIZED);
+    vi.stubEnv("STREAM_EARLY_EOF_PEEK_MS", OVERSIZED);
+    vi.stubEnv("MAX_PROVIDER_BODY_BYTES", OVERSIZED);
     vi.resetModules();
     const config = await import("../../open-sse/config/runtimeConfig.js");
 
     expect(config.STREAM_FIRST_CHUNK_TIMEOUT_MS).toBe(TIMER_LIMIT_MS);
     expect(config.STREAM_STALL_TIMEOUT_MS).toBe(TIMER_LIMIT_MS);
     expect(config.FETCH_CONNECT_TIMEOUT_MS).toBe(TIMER_LIMIT_MS);
+    expect(config.SSE_KEEPALIVE_MS).toBe(TIMER_LIMIT_MS);
+    expect(config.STREAM_EARLY_EOF_PEEK_MS).toBe(TIMER_LIMIT_MS);
+    // Byte caps are not timers and keep the configured value.
+    expect(config.MAX_PROVIDER_BODY_BYTES).toBe(Number(OVERSIZED));
   });
 
   it("does not fire an oversized first-chunk watchdog at once", async () => {

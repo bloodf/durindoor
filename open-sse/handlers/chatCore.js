@@ -203,8 +203,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
     FORMATS.OPENAI_RESPONSES : null;
   // A pivot through OpenAI drops signed thinking blocks, so a provider with a
   // native Messages route keeps Claude-source requests Claude-shaped.
-  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE &&
-    PROVIDERS[provider]?.quirks?.claudeSourceNativeModels?.test(model) ? FORMATS.CLAUDE : null;
+  const claudeNativeMatch = PROVIDERS[provider]?.quirks?.claudeSourceNativeModels;
+  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE && claudeNativeMatch &&
+    String(model ?? "").toLowerCase().includes(claudeNativeMatch) ? FORMATS.CLAUDE : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model) || nativeClaudeFormat;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;

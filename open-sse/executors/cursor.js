@@ -25,11 +25,6 @@ import { shouldForceAgentMode } from "../utils/cursorToolMapping.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
 import { resolveCursorModels, resolveAutoModelSelection } from "../services/cursorModels.js";
 import { estimateUsage } from "../utils/usageTracking.js";
-
-// Executor estimates are accounting inputs; the gateway adds the client margin
-// only when projecting usage into a response.
-const estimateCursorUsage = (body, contentLength) =>
-  estimateUsage(body, contentLength, FORMATS.OPENAI, { buffer: false });
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
 import { FORMATS } from "../translator/formats.js";
@@ -46,6 +41,11 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import zlib from "zlib";
 import { createRequire } from "module";
 import crypto from "crypto";
+
+// Executor estimates are accounting inputs; the gateway adds the client margin
+// only when projecting usage into a response.
+const estimateCursorUsage = (body, contentLength) =>
+  estimateUsage(body, contentLength, FORMATS.OPENAI, { buffer: false });
 
 // Detect cloud environment
 const { isFunction, isObject, isString, isUndefined, isNumber } = require("../../src/shared/utils/typeChecks.cjs");

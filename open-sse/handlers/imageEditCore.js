@@ -145,12 +145,18 @@ export async function handleImageEditCore({
     if (signal?.aborted || err?.name === "AbortError") return createErrorResult(499, "Image edit request aborted");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
-  if (!res.ok) {
-    const errInfo = await parseUpstreamError(res, null);
-    return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
+  let text;
+  try {
+    if (!res.ok) {
+      const errInfo = await parseUpstreamError(res, null, { signal });
+      return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
+    }
+    text = await res.text();
+  } catch (error) {
+    if (signal?.aborted) return createErrorResult(499, "Image edit request aborted");
+    throw error;
   }
   if (onRequestSuccess) await onRequestSuccess();
-  const text = await res.text();
   let value = null;
   try { value = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
   const accounting = mediaAccounting(value, provider, "image");

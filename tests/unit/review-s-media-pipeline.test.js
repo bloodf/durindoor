@@ -164,3 +164,21 @@ it("cancels an edit without marking the account or attempting failover", async (
   expect(mocks.selectAccount).toHaveBeenCalledOnce();
   expect(mocks.markUnavailable).not.toHaveBeenCalled();
 });
+
+it.each([200, 429])("cancels an edit while reading an upstream %s body", async (status) => {
+  const controller = new AbortController();
+  const req = request("edits", { signal: controller.signal });
+  mocks.fetch.mockResolvedValueOnce({
+    ok: status === 200,
+    status,
+    headers: new Headers(),
+    text: async () => {
+      controller.abort();
+      throw controller.signal.reason;
+    },
+  });
+
+  expect((await handleImageEdit(req)).status).toBe(499);
+  expect(mocks.selectAccount).toHaveBeenCalledOnce();
+  expect(mocks.markUnavailable).not.toHaveBeenCalled();
+});

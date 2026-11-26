@@ -84,6 +84,11 @@ describe("OmniRoute #21275: a rebuilt request keeps the client abort after GC", 
     expect(source).toMatch(/await readBoundedRequest\(request,/);
   });
 
+  it("ties the Gemini v1beta derived request to the inbound request", () => {
+    const source = readFileSync(new URL("../../src/app/api/v1beta/models/[...path]/route.js", import.meta.url), "utf8");
+    expect(source).toMatch(/keepAbortChain\(new Request\(request.url,[\s\S]*?signal: request.signal[\s\S]*?\), request\)/);
+  });
+
   // These rebuilds sit in private helpers, so the call sites are pinned by source.
   it.each([
     "src/sse/handlers/stt.js",

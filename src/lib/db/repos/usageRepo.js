@@ -194,6 +194,7 @@ function normalizeLedgerTokens(tokens = {}) {
     tokens.output_tokens_details?.reasoning_tokens, tokens.thoughtsTokenCount) ?? 0;
   const creation = first(tokens.cache_creation_input_tokens,
     tokens.prompt_tokens_details?.cache_creation_tokens, tokens.input_tokens_details?.cache_creation_tokens) ?? 0;
+  const oneHourCreation = count(tokens.cache_creation_1h_input_tokens);
   const total = first(tokens.total_tokens, tokens.totalTokenCount);
   if (!Number.isSafeInteger(prompt + completion) || (total !== undefined && total !== prompt + completion)) {
     throw new TypeError("Usage total_tokens must equal input and output components");
@@ -203,6 +204,7 @@ function normalizeLedgerTokens(tokens = {}) {
       .filter((key) => Object.hasOwn(tokens, key)).map((key) => [key, tokens[key]])),
     prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
     cached_tokens: cached, reasoning_tokens: reasoning, cache_creation_input_tokens: creation,
+    ...(oneHourCreation > 0 ? { cache_creation_1h_input_tokens: oneHourCreation } : null),
   };
 }
 
@@ -349,7 +351,7 @@ async function calculateCost(provider, model, tokens) {
   const { pricing, provenance } = resolved;
 
   // Delegate to the shared cache-inclusive token pricing calculation.
-  const breakdown = calculateCostBreakdown(tokens, pricing);
+  const breakdown = calculateCostBreakdown(tokens, pricing, { provider, model });
   const componentSum = USAGE_COST_FIELDS.reduce((sum, field) => sum + breakdown[field], 0);
   const split = componentSum === breakdown.totalCost ?
   Object.fromEntries(USAGE_COST_FIELDS.map((field) => [field, breakdown[field]])) : null;

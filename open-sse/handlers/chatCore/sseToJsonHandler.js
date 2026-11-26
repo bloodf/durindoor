@@ -428,9 +428,11 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
   }
 
   const completion = aggregateParsedChunks(chunks, fallbackModel, { format: FORMATS.CLAUDE, providerBody, terminalObservations });
-  if (!completion || !nativeMessage) return { completion, stopReason };
+  // The Chat hop drops the 1-hour cache-write share, which only accounting needs.
+  const oneHourWrite = state.usage?.cache_creation_1h_input_tokens;
+  if (!completion || !nativeMessage) return { completion, stopReason, oneHourWrite };
   const message = foldClaudeEventsToMessage(terminalObservations.map(({ chunk }) => chunk));
-  return { completion, stopReason, message: decloakToolNames(message, toolNameMap) };
+  return { completion, stopReason, oneHourWrite, message: decloakToolNames(message, toolNameMap) };
 }
 
 /** Same test as the streaming path's onEmptyStream gate. The Chat hop's synthetic " " does not count. */
@@ -692,7 +694,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+      const billedUsage = claudeSSE?.oneHourWrite === undefined ? usage :
+        { ...usage, cache_creation_1h_input_tokens: claudeSSE.oneHourWrite };
+      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: billedUsage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;

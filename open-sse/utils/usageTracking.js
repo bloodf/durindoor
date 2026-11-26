@@ -167,6 +167,15 @@ export function filterUsageForFormat(usage, targetFormat) {
 }
 
 /**
+ * The 1-hour share of Claude cache writes, from the native `cache_creation` breakdown
+ * or the flat field DurinDoor keeps for pricing. Undefined when none was reported.
+ */
+export function oneHourCacheWrite(usage) {
+  const value = usage?.cache_creation_1h_input_tokens ?? usage?.cache_creation?.ephemeral_1h_input_tokens;
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
  * Normalize usage object - ensure all values are valid numbers
  */
 export function normalizeUsage(usage) {
@@ -187,6 +196,7 @@ export function normalizeUsage(usage) {
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
     details?.cache_creation_tokens ?? details?.cache_write_tokens;
   assignNumber("cache_creation_input_tokens", cacheWrite);
+  assignNumber("cache_creation_1h_input_tokens", oneHourCacheWrite(usage));
   // Alias reports are inclusive subsets, like OpenAI token details.
   if (usage.cache_creation_input_tokens == null && cacheWrite != null) {
     normalized.prompt_tokens_details = { ...details, cache_creation_tokens: cacheWrite };
@@ -331,6 +341,8 @@ export function canonicalizeUsage(usage) {
   if (isUsdReceipt(usage.cost_in_usd)) result.cost_in_usd = usage.cost_in_usd;
   if (isUsdReceipt(usage.cost_in_usd_ticks)) result.cost_in_usd_ticks = usage.cost_in_usd_ticks;
   if (reasoning > 0) result.reasoning_tokens = reasoning;
+  const oneHour = oneHourCacheWrite(usage);
+  if (oneHour !== undefined) result.cache_creation_1h_input_tokens = oneHour;
   // Carry the additive-reasoning marker through canonicalization so cost
   // pricing knows the reasoning slice is NOT already inside completion_tokens.
   if (usage.reasoning_included_in_output === 0) result.reasoning_included_in_output = 0;
@@ -363,7 +375,7 @@ export function enrichUsageCost(usage, provider, model) {
   const pricing = getPricingForModel(provider, model);
   if (!pricing) return usage;
 
-  const cost = calculateCostFromTokens(canonicalizeUsage(usage) || usage, pricing);
+  const cost = calculateCostFromTokens(canonicalizeUsage(usage) || usage, pricing, { provider, model });
   if (!Number.isFinite(cost) || cost < 0) return usage;
 
   // Client-format token counts may include a buffer. This public builtin
@@ -481,7 +493,8 @@ export function extractUsage(chunk) {
       prompt_tokens: u.input_tokens || 0,
       completion_tokens: u.output_tokens || 0,
       cache_read_input_tokens: u.cache_read_input_tokens,
-      cache_creation_input_tokens: u.cache_creation_input_tokens
+      cache_creation_input_tokens: u.cache_creation_input_tokens,
+      cache_creation: u.cache_creation
     });
     return provisional ? mark(provisionalOutputUsage, extracted) : extracted;
   }
@@ -494,6 +507,7 @@ export function extractUsage(chunk) {
       completion_tokens: chunk.usage.output_tokens || 0,
       cache_read_input_tokens: chunk.usage.cache_read_input_tokens,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
+      cache_creation: chunk.usage.cache_creation,
       output_tokens_details: chunk.usage.output_tokens_details
     });
     return hasFinalOutput ? mark(finalOutputReceipts, extracted) : extracted;

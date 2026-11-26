@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
-import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { assertWriterOwnsTarget, readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 
@@ -65,7 +65,7 @@ export async function GET() {
     });
   } catch (error) {
     console.log("Error checking cline settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to check cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to check cline settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }
 
@@ -88,6 +88,8 @@ export async function POST(request) {
     globalState.openAiModelId = model;
     globalState.planModeOpenAiModelId = model;
     await readJson(getSecretsPath());
+    // Refuse a foreign target before changing either settings file.
+    await Promise.all([getGlobalStatePath(), getSecretsPath()].map(assertWriterOwnsTarget));
     await writeConfigAtomic(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
 
     const secrets = (await readJson(getSecretsPath())) || {};
@@ -97,7 +99,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true, message: "Cline settings applied successfully!", globalStatePath: getGlobalStatePath() });
   } catch (error) {
     console.log("Error updating cline settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to update cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to update cline settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }
 
@@ -116,6 +118,8 @@ export async function DELETE() {
       globalState.planModeApiProvider = "cline";
     }
     await readJson(getSecretsPath());
+    // Refuse a foreign target before changing either settings file.
+    await Promise.all([getGlobalStatePath(), getSecretsPath()].map(assertWriterOwnsTarget));
     await writeConfigAtomic(getGlobalStatePath(), JSON.stringify(globalState, null, 2));
 
     const secrets = (await readJson(getSecretsPath())) || {};
@@ -125,6 +129,6 @@ export async function DELETE() {
     return NextResponse.json({ success: true, message: "DurinDoor settings removed from Cline" });
   } catch (error) {
     console.log("Error resetting cline settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to reset cline settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to reset cline settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }

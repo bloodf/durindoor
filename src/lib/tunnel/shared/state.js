@@ -22,7 +22,9 @@ export function loadState() {
 
 export function saveState(state) {
   ensureTunnelDir();
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  const merged = { ...loadState(), ...state };
+  if (fs.existsSync(STATE_FILE)) fs.chmodSync(STATE_FILE, 0o600);
+  fs.writeFileSync(STATE_FILE, JSON.stringify(merged, null, 2), { mode: 0o600 });
 }
 
 export function clearState() {

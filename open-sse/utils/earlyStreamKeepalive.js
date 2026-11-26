@@ -218,13 +218,16 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   let stopKeepalive = () => {};
   let upstreamReader = null;
   let aborted = false;
+  let resumePull = null;
   // Keep only the suffix needed to recognize two independently terminated SSE lines.
   let sseSuffix = "";
   let sseAtBoundary = true;
   const admissionSelection = createClientAdmissionSelection();
 
   const stream = new ReadableStream({
-    async start(controller) {
+    start(controller) {
+      // Let pull() run while the handler and upstream are pending.
+      (async () => {
       let stopped = false;
       const interval = setInterval(() => {
         if (stopped) return;
@@ -253,6 +256,7 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
         aborted = true;
         stopKeepalive();
         upstreamReader?.cancel().catch(() => {});
+        resumePull?.();
         try {
           controller.close();
         } catch {
@@ -280,10 +284,10 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
           if (response.body && isSse) {
             upstreamReader = response.body.getReader();
             while (true) {
-              // Do not read ahead of a stalled client: the queue would hold the whole reply.
-              // shortcut: 10 ms poll inside start(); a pull()-driven read is the cleaner form.
+              // Wait for consumer demand without polling while the client is stalled.
               while (!aborted && (controller.desiredSize ?? 1) <= 0) {
-                await new Promise((resolve) => setTimeout(resolve, 10));
+                await new Promise((resolve) => { resumePull = resolve; });
+                resumePull = null;
               }
               if (aborted) break;
               const { done, value } = await upstreamReader.read();
@@ -336,9 +340,14 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
 
           /* already closed */}
       }
+      })();
+    },
+    pull() {
+      resumePull?.();
     },
     cancel() {
       aborted = true;
+      resumePull?.();
       stopKeepalive();
       upstreamReader?.cancel().catch(() => {});
     }

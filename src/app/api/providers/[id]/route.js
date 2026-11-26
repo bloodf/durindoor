@@ -15,7 +15,7 @@ import { mergeProviderSpecificData } from "@/lib/db/helpers/mergeProviderMetadat
 import { buildOAuthProxyMetadataPatch } from "@/lib/oauth/proxySelection.js";
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { notifyQuotaAutoPingSettingChanged } from "@/shared/services/quotaAutoPing";
-import { normalizeProviderSpecificData } from "@/lib/providerNormalization";
+import { missingAzureEndpointError, normalizeProviderSpecificData } from "@/lib/providerNormalization";
 import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import { canManageAccessConfig, isOperatorRequest } from "@/dashboardGuard";
 import { omitMaskedProviderSecrets, pickSafeProviderSpecificData, stripConnectionSecrets } from "@/lib/providerRouteHandlers.js";
@@ -459,6 +459,14 @@ export async function PUT(request, { params }) {
           existing
         );
       }
+    }
+
+    // Validate endpoint edits against the merged data; legacy untouched records remain editable.
+    const azureField = existing.provider === "azure" ? "azureEndpoint" : existing.provider === "azure-openai" ? "baseUrl" : null;
+    if (azureField && Object.hasOwn(providerSpecificData || {}, azureField) &&
+        providerSpecificData[azureField] !== existing.providerSpecificData?.[azureField]) {
+      const error = missingAzureEndpointError(existing.provider, updateData.providerSpecificData);
+      if (error) return NextResponse.json({ error }, { status: 400 });
     }
 
     if (requiresProviderAccountId(existing.provider)) {

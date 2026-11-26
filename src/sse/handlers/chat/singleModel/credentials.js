@@ -32,7 +32,7 @@ function aborted(ctx) {
 }
 
 /** Every configured account is rate-limited, unavailable or the provider is disabled. */
-function unavailableOutcome(ctx, state, credentials) {
+async function unavailableOutcome(ctx, state, credentials) {
   const { provider, model } = ctx;
   if (state.antigravityTimeoutResponse && !credentials?.providerDisabled) return terminal(state.antigravityTimeoutResponse);
   if (state.earlyEofOriginal) return terminal(state.earlyEofOriginal);
@@ -58,7 +58,12 @@ function unavailableOutcome(ctx, state, credentials) {
     const retryAfter = combinedRateLimit ? combinedRateLimit.retryAt : credentials.retryAfter;
     log.warn("CHAT", `[${provider}/${model}] all accounts unavailable`);
     notifyWebhookEvent("provider.unavailable", { provider, model, status }, { throttleKey: `${provider}/${model}` });
-    return terminal(unavailableResponse(getClientStatusFromError(status, errorMsg), `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : ""));
+    const response = unavailableResponse(getClientStatusFromError(status, errorMsg), `[${provider}/${model}] ${errorMsg}`, retryAfter, retryAfter ? credentials.retryAfterHuman : "");
+    // Preserve an existing rate-limit code; otherwise include the upstream code.
+    if (!state.lastErrorCode) return terminal(response);
+    const body = await response.json();
+    body.error.code ??= state.lastErrorCode;
+    return terminal(new Response(JSON.stringify(body), { status: response.status, headers: response.headers }));
   }
   if (state.excludeConnectionIds.size === 0) {
     // 404 is right either way here, because /v1/models filters on isActive too,

@@ -1,0 +1,97 @@
+name: Release Gate
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Full history: the Vitest gate's ported-ledger test scans commit
+          # subjects (`port(upstream): #N`) across the whole repo history.
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 12.18.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.22.2
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            tests/pnpm-lock.yaml
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify pnpm
+        run: test "$(pnpm --version)" = "12.18.0"
+
+      - name: Install app dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install test dependencies
+        working-directory: tests
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Agent index drift gate
+        run: pnpm run check:agent-index
+
+      - name: Build with isolated application state
+        run: pnpm run build
+
+      - name: Run blocking Vitest gate
+        working-directory: tests
+        env:
+          BASELINE_BASE_REF: HEAD^
+          HOME: ${{ runner.temp }}/durindoor-home
+          DATA_DIR: ${{ runner.temp }}/durindoor-data
+        run: mkdir -p "$HOME" "$DATA_DIR" && pnpm run test:ci
+
+      - name: Verify test reports
+        if: always()
+        run: |
+          test -s tests/.test-results.json
+          test -s tests/.test-results.junit.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-vitest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/.test-results.json
+            tests/.test-results.junit.xml
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Install CLI dependencies
+        run: pnpm -C cli install --frozen-lockfile
+
+      - name: Smoke standalone artifact
+        run: pnpm run verify:installed "$PWD/.next/standalone/custom-server.js"
+
+      - name: Build, pack and smoke npm tarball
+        run: |
+          pnpm -C cli run build
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack ./cli --pack-destination "$RUNNER_TEMP/pack"
+          pnpm run verify:packed "$RUNNER_TEMP"/pack/durindoor-*.tgz
+
+      - name: Upload verified npm tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-npm-tarball
+          path: ${{ runner.temp }}/pack/durindoor-*.tgz
+          if-no-files-found: error

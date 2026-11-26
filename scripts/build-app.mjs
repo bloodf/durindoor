@@ -8,6 +8,8 @@ import { createIsolatedBuildEnvironment } from "./build-environment.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
 
 const require = createRequire(import.meta.url);
+// Shared source of runtime files for the standalone build and CLI sidecars.
+const packagingManifest = require("./packaging-manifest.json");
 // Concurrent package copies; bounded so the post-build step stays light on I/O.
 const COPY_CONCURRENCY = 8;
 
@@ -200,67 +202,19 @@ try {
       fs.cpSync(publicSource, publicDest, { recursive: true, dereference: true });
     }
 
-    fs.copyFileSync(path.join(process.cwd(), "custom-server.js"), path.join(standaloneDir, "custom-server.js"));
-    // The wrapper and launcher share this resolver outside Next's server trace.
-    fs.mkdirSync(path.join(standaloneDir, "src/lib/startup"), { recursive: true });
-    fs.copyFileSync(path.join(process.cwd(), "src/lib/startup/listenConfig.cjs"), path.join(standaloneDir, "src/lib/startup/listenConfig.cjs"));
-    // The CLI launcher loads this data-directory policy from the app bundle.
-    fs.mkdirSync(path.join(standaloneDir, "src/lib/updater"), { recursive: true });
-    fs.copyFileSync(path.join(process.cwd(), "src/lib/updater/dataDir.cjs"), path.join(standaloneDir, "src/lib/updater/dataDir.cjs"));
-    fs.copyFileSync(path.join(process.cwd(), "realtime-upgrade.cjs"), path.join(standaloneDir, "realtime-upgrade.cjs"));
-    // custom-server.js requires ./head-response-guard.cjs (OmniRoute #6908):
-    // a root-level sidecar outside Next's NFT trace, so it must be copied by
-    // hand or the standalone server crashes at boot with MODULE_NOT_FOUND.
-    fs.copyFileSync(path.join(process.cwd(), "head-response-guard.cjs"), path.join(standaloneDir, "head-response-guard.cjs"));
-    fs.copyFileSync(path.join(process.cwd(), "web-login-host-boundary.cjs"), path.join(standaloneDir, "web-login-host-boundary.cjs"));
-    fs.cpSync(path.join(process.cwd(), "src", "mitm"), path.join(standaloneDir, "src", "mitm"), {
-      recursive: true,
-    });
-    // Realtime WebSocket bridge: custom-server.js `require()`s these CJS helpers
-    // from bare Node where `@/` / `open-sse/` aliases don't resolve, and NFT
-    // does not trace dynamic `require()` paths of a post-build entry. Copy the
-    // sources preserving their on-disk relative layout so the `require(...)`
-    // specifiers inside custom-server.js still resolve.
-    const wsHandshakeDest = path.join(standaloneDir, "src", "shared", "utils", "wsHandshake.js");
-    fs.mkdirSync(path.dirname(wsHandshakeDest), { recursive: true });
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "utils", "wsHandshake.js"),
-      wsHandshakeDest,
-    );
-    // Realtime resource limits (CJS source of truth) — required at import time
-    // by both custom-server.js (maxPayload) and realtimeCore.js (item cap).
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "utils", "realtimeConfig.js"),
-      path.join(standaloneDir, "src", "shared", "utils", "realtimeConfig.js"),
-    );
-    // Runtime server code imports from `open-sse/*` via bare aliases that
-    // Next's NFT does not fully trace. The Dockerfile already repairs this by
-    // copying the whole open-sse tree; do the same for standalone builds from
-    // source so `pnpm run build && pnpm start` does not 500 on missing modules.
-    const openSseSource = path.join(process.cwd(), "open-sse");
-    const openSseDest = path.join(standaloneDir, "open-sse");
-    if (fs.existsSync(openSseDest)) {
-      fs.rmSync(openSseDest, { recursive: true, force: true });
+    for (const entry of packagingManifest) {
+      const source = path.join(process.cwd(), entry.path);
+      const dest = path.join(standaloneDir, entry.path);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      if (entry.directory) {
+        if (entry.path === "open-sse") fs.rmSync(dest, { recursive: true, force: true });
+        const options = { recursive: true };
+        if (entry.path === "open-sse") options.dereference = true;
+        fs.cpSync(source, dest, options);
+      } else {
+        fs.copyFileSync(source, dest);
+      }
     }
-    fs.cpSync(openSseSource, openSseDest, { recursive: true, dereference: true });
-    // OmniRoute #6828: custom-server.js requires this at its first line to strip
-    // empty-string env vars before app modules snapshot them.
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "utils", "normalizeEnv.js"),
-      path.join(standaloneDir, "src", "shared", "utils", "normalizeEnv.js"),
-    );
-    /** runtimeConfig.js imports this ESM helper outside Next's NFT trace. */
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "utils", "typeChecks.js"),
-      path.join(standaloneDir, "src", "shared", "utils", "typeChecks.js"),
-    );
-    // custom-server.js requires this CJS helper at import time (#551); like
-    // every post-build entry dependency it is outside Next's NFT trace, so a
-    // missing copy crash-loops the deployed server with MODULE_NOT_FOUND.
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "utils", "typeChecks.cjs"),
-      path.join(standaloneDir, "src", "shared", "utils", "typeChecks.cjs"),
-    );
     // sql.js is the last-resort pure-JS SQLite driver (src/lib/db/driver.js falls
     // back to it when better-sqlite3 and node:sqlite are both unavailable). NFT
     // traces the JS entry but NOT its sibling `sql-wasm.wasm`, which emscripten
@@ -274,12 +228,6 @@ try {
     for (const asset of ["sql-wasm.js", "sql-wasm.wasm"]) {
       fs.copyFileSync(require.resolve(`sql.js/dist/${asset}`), path.join(sqlJsDistDest, asset));
     }
-    const sharedConstantsDir = path.join(standaloneDir, "src", "shared", "constants");
-    fs.mkdirSync(sharedConstantsDir, { recursive: true });
-    fs.copyFileSync(
-      path.join(process.cwd(), "src", "shared", "constants", "processExitCodes.js"),
-      path.join(sharedConstantsDir, "processExitCodes.js"),
-    );
     // Fail the build (and CI) if the shipped egress code cannot resolve undici
     // from inside the bundle — the 4.9.4 tarball shipped without it. Resolution
     // walks up into the repo's own node_modules, so require an in-bundle path.

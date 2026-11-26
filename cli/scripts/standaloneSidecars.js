@@ -13,16 +13,11 @@ const path = require("path");
  * sidecars too, or the shipped CLI crashes at boot with MODULE_NOT_FOUND (the
  * exact failure OmniRoute #6908 fixed upstream for `head-response-guard.cjs`).
  *
- * Keep this list in sync with the root-level `./…` requires at the top of
- * `custom-server.js`. `src/mitm`, `src/shared`, and `open-sse` are covered by
- * their own copy steps in build-cli.js; only app-root files belong here.
+ * The shared packaging manifest identifies the app-root sidecars.
  */
-const STANDALONE_SIDECARS = [
-  "custom-server.js",
-  "realtime-upgrade.cjs",
-  "head-response-guard.cjs",
-  "web-login-host-boundary.cjs",
-];
+const STANDALONE_SIDECARS = require("../../scripts/packaging-manifest.json")
+  .filter((entry) => entry.sidecar)
+  .map((entry) => entry.path);
 
 /**
  * Copy every standalone sidecar from the app root into the CLI app bundle.

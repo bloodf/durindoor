@@ -41,7 +41,7 @@ describe("enableTunnel health fallback", () => {
   it("accepts the direct URL when relay registration is still unavailable", async () => {
     await expect(enableTunnel()).resolves.toMatchObject({ success: true });
     expect(waitForHealth).toHaveBeenCalledWith([
-      "https://rabc123.abc-tunnel.us",
+      "https://rabc123.relay.example",
       "https://direct.trycloudflare.com",
     ], expect.any(Object));
   });

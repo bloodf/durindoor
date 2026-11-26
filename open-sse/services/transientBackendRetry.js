@@ -87,7 +87,7 @@ export async function runWithTransientBackendRetry(action, options = {}) {
       const result = await action();
       lastResult = result;
       // Internal gateway metadata, never inferred from upstream status or text.
-      if (result.localAdmissionRejected === true || result.skipAntigravityTimeoutReplay === true || result.claudeRequestScoped === true) return result;
+      if (result.localAdmissionRejected === true || result.localProgrammingError === true || result.skipAntigravityTimeoutReplay === true || result.claudeRequestScoped === true) return result;
       if (result.ok) return result;
       if (!isResponseStatusRetryable(result.status)) return result;
       // Exhausted: return the last result rather than throwing

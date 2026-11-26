@@ -103,6 +103,14 @@ export async function processAttemptResult(ctx, state, attempt, result) {
   // Process-local admission pressure is terminal for this request. Retrying a
   // sibling would hit the same queue and must not cool a healthy account.
   if (result.localSchemaError === true) return terminal(result.response);
+  // Only code that knows a failure originated locally sets this marker (for
+  // example, the executor result guard). It is not inferred from a 502 or its
+  // message: provider and transport failures still follow their normal rules.
+  // Preserve it on the Response so the outer transient retry also stops.
+  if (result.localProgrammingError === true) {
+    result.response.localProgrammingError = true;
+    return terminal(result.response);
+  }
   if (result.localAdmissionRejected === true) {
     // Keep explicit locality on the Response across the outer transient retry.
     result.response.localAdmissionRejected = true;

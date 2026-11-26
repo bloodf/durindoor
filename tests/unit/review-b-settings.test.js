@@ -22,6 +22,8 @@ vi.mock("@/lib/settings/settingsPatchAuth", async (importOriginal) => {
   return { ...actual, canModifySecurityCriticalSettings: vi.fn(async () => true) };
 });
 
+vi.mock("@/dashboardGuard", async (importOriginal) => ({ ...(await importOriginal()), hasValidCliToken: async () => true }));
+
 vi.mock("open-sse/services/combo.js", () => ({
   resetComboRotation: vi.fn(),
   resetComboScoring: vi.fn(),

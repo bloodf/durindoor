@@ -12,11 +12,18 @@ const NOTICE_MAX_CHARS = 512;
 const QUOTED_SPAN = /"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|`[^`\n]*`|(?<![\p{L}\p{N}])'[^'\n]*'(?![\p{L}\p{N}])/gu;
 const QUOTE_EDGES = /^["“”‘’'`\s]+|["“”‘’'`\s.!]+$/g;
 
+// Words around a quote that mark an upstream error report rather than an answer:
+// a leading "... error:" or "... failed:" label, a 402/429 status, or a support hint.
+const ERROR_FRAME =
+  /^[^"“‘'`\n:]{0,40}\b(?:error|failed|failure)\s*:|\b(?:code|status|http|error)\s*[:=]?\s*4(?:02|29)\b|\bplease\s+contact\s+support\b/i;
+
 // Ignore quoted spans when surrounding words show the text is an answer about them.
+// Keep them when the surrounding words frame the text as an error report.
 function unquotedText(trimmed) {
   const unquoted = trimmed.replace(QUOTED_SPAN, " ");
   const words = unquoted.match(/[\p{L}\p{N}]+/gu) ?? [];
-  return words.length > 1 ? unquoted : trimmed.replace(QUOTE_EDGES, "");
+  if (words.length > 1 && !ERROR_FRAME.test(unquoted)) return unquoted;
+  return trimmed.replace(QUOTE_EDGES, "");
 }
 
 /** True when the provider itself counted output tokens. Gateway estimates do not count. */

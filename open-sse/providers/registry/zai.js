@@ -38,6 +38,11 @@ export default {
     { id: "glm-5-turbo", name: "GLM 5 Turbo" },
     { id: "glm-4.7-flash", name: "GLM 4.7 Flash (Free)", free: true },
     { id: "glm-4.7", name: "GLM 4.7" },
+    // OmniRoute #21221: zai has no live model discovery here, so this list is
+    // the only catalog. Upstream reports glm-5.4 answering on this API
+    // (2026-11-25); not checked live from DurinDoor. Capabilities and pricing
+    // come from the existing glm-5 patterns.
+    { id: "glm-5.4", name: "GLM 5.4" },
     { id: "glm-4.7-flashx", name: "GLM 4.7 FlashX" },
     { id: "glm-4.6", name: "GLM 4.6" },
     { id: "glm-4.5", name: "GLM 4.5" },

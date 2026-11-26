@@ -769,14 +769,6 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       );
       if (claudeCompat) translatedResponse = stripClaudeThinking(translatedResponse);
     }
-    if (invalidClassifierVerdict(sourceFormat, body, translatedResponse)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
-    // Chat clients get the completion as-is, so restore request-side tool-name
-    // aliases the way the streaming and forced-SSE paths do (#1433).
-    if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);
-    // Gemini clients: JSON projection bypasses the streaming translator's alias restore.
-    if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
-    if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
-
     let usage = extractUsageFromResponse(responseBody);
     // Reported usage always wins and is always persisted, but only once the
     // empty-content and fake-success checks below have decided the outcome: a
@@ -788,6 +780,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true, ...(failure ? { status: "error" } : null) });
     };
     const recordRefusal = (status) => usageReported ? persistUsage(status) : appendLog({ status });
+    if (invalidClassifierVerdict(sourceFormat, body, translatedResponse)) {
+      recordRefusal(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (invalid classifier decision)`);
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
+    }
+    // Chat clients get the completion as-is, so restore request-side tool-name
+    // aliases the way the streaming and forced-SSE paths do (#1433).
+    if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(translatedResponse, toolNameMap);
+    // Gemini clients: JSON projection bypasses the streaming translator's alias restore.
+    if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(translatedResponse, toolNameMap);
+    if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.

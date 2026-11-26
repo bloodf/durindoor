@@ -19,6 +19,7 @@
  * body undefined, so an envelope-only rule would never see the marker.
  */
 import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { CURSOR_MODEL_UNAVAILABLE_MESSAGE } from "./errorConfig.js";
 const MAX_ERROR_ENVELOPE_BYTES = 8_192;
 
 function readErrorEnvelope(body) {
@@ -281,7 +282,26 @@ function buildCloudflareAiRules() {
   }];
 }
 
+/**
+ * Cursor (OmniRoute #19972). A bare empty turn refuses one model, so only that
+ * model is locked. `modelOnly` keeps a live-only id outside the catalog from
+ * widening into an account-wide lock.
+ */
+function buildCursorRules() {
+  return [{
+    id: "cursor-empty-turn",
+    match: ({ status, body, errorText }) => {
+      if (status !== 404) return null;
+      const text = isString(errorText) && errorText ? errorText : JSON.stringify(body ?? "");
+      if (!text.includes(CURSOR_MODEL_UNAVAILABLE_MESSAGE)) return null;
+      return { reason: "model_access_denied", scope: "model", cooldownMs: 2 * 60 * 1000, modelOnly: true };
+    }
+  }];
+}
+
 export const providerRuleRegistry = new Map([
+["cursor", buildCursorRules()],
+["cu", buildCursorRules()],
 ...KILO_PROVIDER_IDS.map((provider) => [provider, buildKiloRules()]),
 ["cloudflare-ai", buildCloudflareAiRules()],
 ["agentrouter", buildAgentrouterRules()],

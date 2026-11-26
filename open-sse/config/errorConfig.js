@@ -3,6 +3,13 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export const CONTEXT_LENGTH_EXCEEDED_CODE = "context_length_exceeded";
 
+/**
+ * Message prefix for a bare Cursor empty turn: how Cursor refuses a model the
+ * plan or usage allowance does not cover (OmniRoute #19972). The Cursor error
+ * rule and the empty-stream bench match on it to keep the denial model-scoped.
+ */
+export const CURSOR_MODEL_UNAVAILABLE_MESSAGE = "Cursor model is not available on this account right now";
+
 export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },

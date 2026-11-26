@@ -36,6 +36,11 @@ const DEFAULT_SETTINGS = {
    * Missing providers retain provider-reset or configured backoff behavior.
    */
   retryDelayByProvider: {},
+  /**
+   * OmniRoute #20457: longest account lock taken from a relative quota
+   * countdown in a 429 body ("Resets in 76h25m43s"). 1 minute to 24 hours.
+   */
+  quotaProseMaxCooldownMs: 6 * 60 * 60 * 1000,
   /** Per-provider per-account RPM overrides (decolua/9router#3203); zero means unlimited. */
   rpmByProvider: {},
   /**
@@ -305,6 +310,7 @@ const constraints = {
   headroomTimeoutMs: { minimum: 1000, maximum: 120000, integer: true },
   dataRetentionDays: { minimum: 1, maximum: 3650, integer: true },
   globalConcurrentRequests: { minimum: 0, integer: true },
+  quotaProseMaxCooldownMs: { minimum: 60000, maximum: 24 * 60 * 60 * 1000, integer: true },
 };
 const routeValidatedKeys = new Set([
   "enableSessionCapture", "oidcAllowedSubjects", "oidcAllowedEmails", "oidcAllowedDomains",

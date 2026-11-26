@@ -142,6 +142,17 @@ export default function EndpointPageClient({ localPort = 20128 }) {
   const tsEverReachableRef = useRef(false);
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
   const [tsEverReachable, setTsEverReachable] = useState(false);
+  // Probe generations (#2627). A browser probe can still be in flight when its
+  // endpoint is disabled, re-enabled, or moved to another URL. Each probe
+  // records the generation it started under and is dropped on completion if
+  // the generation moved, so a stale result cannot undo a reset or count
+  // toward another target's streak. Effect reruns that keep the same target
+  // (for example the other provider's reachability flipping) do not bump the
+  // generation, so in-flight probes for an unchanged target still count.
+  const tunnelProbeGenRef = useRef(0);
+  const tsProbeGenRef = useRef(0);
+  const tunnelProbeTargetRef = useRef("");
+  const tsProbeTargetRef = useRef("");
 
   const [isRemoteHost, setIsRemoteHost] = useState(false);
   const { copied, copy } = useCopyToClipboard();
@@ -181,15 +192,32 @@ export default function EndpointPageClient({ localPort = 20128 }) {
   }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
 
   useEffect(() => {
+    // A new probe target (enabled state or URLs) retires probes for the old one.
+    const tunnelTarget = tunnelEnabled ? `${tunnelPublicUrl}\n${tunnelUrl}` : "";
+    if (tunnelTarget !== tunnelProbeTargetRef.current) {
+      tunnelProbeTargetRef.current = tunnelTarget;
+      tunnelProbeGenRef.current += 1;
+    }
+    const tsTarget = tsEnabled ? tsUrl : "";
+    if (tsTarget !== tsProbeTargetRef.current) {
+      tsProbeTargetRef.current = tsTarget;
+      tsProbeGenRef.current += 1;
+    }
     const probeBoth = async () => {
       if (document.hidden) return;
       if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
+        const gen = tunnelProbeGenRef.current;
         const ok = await clientPingAny(tunnelPublicUrl, tunnelUrl);
-        recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
+        if (gen === tunnelProbeGenRef.current) {
+          recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
+        }
       }
       if (tsEnabled && tsUrl) {
+        const gen = tsProbeGenRef.current;
         const ok = await clientPingUrl(tsUrl);
-        recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
+        if (gen === tsProbeGenRef.current) {
+          recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
+        }
       }
     };
     const anyEnabled = (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) || (tsEnabled && tsUrl);
@@ -212,15 +240,17 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
       // A disabled endpoint has no probe; drop its last result so a re-enable
-      // starts unreachable until a completed probe passes (#2620).
-      if (!tEnabled) { tunnelMissRef.current = 0; setTunnelReachable(false); }
+      // starts unreachable until a completed probe passes (#2620). Bumping the
+      // generation retires a probe still in flight, so it cannot restore the
+      // dropped result when it completes (#2627). Every reset below does the same.
+      if (!tEnabled) { tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false); }
       setTunnelEnabled(tEnabled);
       setTunnelExternal(data.tunnel?.externalTunnel || null);
 
       const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
-      if (!tsEn) { tsMissRef.current = 0; setTsReachable(false); }
+      if (!tsEn) { tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false); }
       setTsEnabled(tsEn);
       setTsExternal(data.tailscale?.systemTailscale || null);
     } catch { /* ignore poll errors */ }
@@ -248,14 +278,14 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
-        if (!tEnabled) { tunnelMissRef.current = 0; setTunnelReachable(false); }
+        if (!tEnabled) { tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false); }
         setTunnelEnabled(tEnabled);
         setTunnelExternal(data.tunnel?.externalTunnel || null);
 
         const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
-        if (!tsEn) { tsMissRef.current = 0; setTsReachable(false); }
+        if (!tsEn) { tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false); }
         setTsEnabled(tsEn);
         setTsExternal(data.tailscale?.systemTailscale || null);
       }
@@ -375,7 +405,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        tunnelMissRef.current = 0; setTunnelReachable(false);
+        tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false);
         setTunnelEnabled(false);
         setTunnelUrl("");
         setShowDisableTunnelModal(false);
@@ -585,7 +615,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/tailscale-disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        tsMissRef.current = 0; setTsReachable(false);
+        tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false);
         setTsEnabled(false);
         setTsUrl("");
         setShowDisableTsModal(false);

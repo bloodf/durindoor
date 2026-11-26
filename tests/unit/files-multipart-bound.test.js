@@ -41,6 +41,23 @@ describe("file upload admission", () => {
     expect(uploadFile).not.toHaveBeenCalled();
   });
 
+  it("returns a malformed body response when the upload stream is interrupted", async () => {
+    resolveResourceOwner.mockResolvedValue({ authorized: true });
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("--x\r\n"));
+        controller.error(new Error("upload interrupted"));
+      },
+    });
+    const request = new Request("http://localhost/v1/files", {
+      method: "POST", headers: { "content-type": "multipart/form-data; boundary=x" }, body: stream, duplex: "half",
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { message: "Invalid multipart body" } });
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
   it("retains the batch file limit and accepts other purposes", async () => {
     resolveResourceOwner.mockResolvedValue({ authorized: true });
     vi.stubEnv("MAX_BATCH_BYTES", "8");

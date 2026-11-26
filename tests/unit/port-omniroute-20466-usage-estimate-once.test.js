@@ -43,7 +43,9 @@ describe("OmniRoute #20466 estimates the request body once per stream", () => {
     for (const usage of usages) {
       expect(usage).toMatchObject({ prompt_tokens: expected.prompt_tokens, completion_tokens: expected.completion_tokens, estimated: true });
     }
-    expect(onComplete.mock.calls[0][1]).toMatchObject({ prompt_tokens: expected.prompt_tokens, completion_tokens: expected.completion_tokens });
+    // The recorded copy is the same estimate without the client context buffer (9router #3913).
+    const recorded = estimateUsage(plain, 300, "openai", { buffer: false });
+    expect(onComplete.mock.calls[0][1]).toMatchObject({ prompt_tokens: recorded.prompt_tokens, completion_tokens: recorded.completion_tokens });
     expect(counter.count).toBe(1);
   });
 });

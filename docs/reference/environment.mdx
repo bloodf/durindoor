@@ -116,7 +116,7 @@ The default guard mode is local-first: LAN and localhost provider URLs are allow
 
 ## Timeouts and stream bounds
 
-Most timeout variables parse an integer greater than zero. Invalid or nonpositive values use the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off.
+Most timeout variables parse an integer greater than zero. Invalid or nonpositive values use the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off. In the table below, a millisecond value above `2147483647` (the Node timer limit) is capped at it.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

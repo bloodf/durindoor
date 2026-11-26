@@ -198,3 +198,40 @@ export function toResponsesUsage(raw) {
 
   return usage;
 }
+
+/** Required counter of each Responses details object, then its optional counters. */
+const RESPONSES_DETAIL_COUNTERS = [
+  ["input_tokens_details", "cached_tokens", ["cache_write_tokens", "cache_creation_tokens"]],
+  ["output_tokens_details", "reasoning_tokens", []],
+];
+
+/**
+ * Return usage whose present detail objects carry integer counters. Strict
+ * Responses clients reject details without the required one. Sibling fields
+ * are kept, and an absent details object stays absent.
+ */
+export function withResponsesDetailCounters(usage) {
+  const next = { ...usage };
+  for (const [field, required, optional] of RESPONSES_DETAIL_COUNTERS) {
+    if (!next[field] || !isObject(next[field])) continue;
+    const details = { ...next[field] };
+    for (const key of [required, ...optional.filter((name) => name in details)]) {
+      if (!Number.isInteger(details[key]) || details[key] < 0) details[key] = 0;
+    }
+    next[field] = details;
+  }
+  return next;
+}
+
+/** Fill every required counter of the usage on a final Responses reply. */
+export function toRequiredResponsesUsage(usage) {
+  if (!usage || !isObject(usage) || Array.isArray(usage)) return usage;
+  const count = (value) => Number.isInteger(value) && value >= 0 ? value : 0;
+  const next = withResponsesDetailCounters(usage);
+  next.input_tokens = count(next.input_tokens);
+  next.output_tokens = count(next.output_tokens);
+  if (!Number.isInteger(next.total_tokens) || next.total_tokens < 0) {
+    next.total_tokens = next.input_tokens + next.output_tokens;
+  }
+  return next;
+}

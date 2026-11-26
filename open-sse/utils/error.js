@@ -182,6 +182,8 @@ function retryAfterReset(value, now, maxDelayMs) {
   if (!isString(value) || !value.trim() || value.length > 128) return null;
   const text = value.trim();
   if (/^\d{1,9}$/.test(text)) return relativeReset(text, 1000, now, maxDelayMs);
+  // Any other number is not an HTTP date, but Date.parse reads "-3000" as a year.
+  if (Number.isFinite(Number(text))) return null;
   return absoluteFromIso(text, now, maxDelayMs);
 }
 

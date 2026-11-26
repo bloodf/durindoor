@@ -1,11 +1,15 @@
 import { getCachedSharedModelMetadata, saveCachedSharedModelMetadata } from "@/lib/localDb";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
+import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import { classifyModelKind } from "./catalog.js";
 
 const VERSION = 1;
 const TTL_MS = 24 * 60 * 60 * 1000;
 const SOURCE_URL = "https://models.dev/api.json";
+// The real catalog is a few MiB; a larger reply is not read into memory.
+const MAX_CATALOG_BYTES = 16 * 1024 * 1024;
+const FETCH_TIMEOUT_MS = 5000;
 const PROVIDER_SOURCES = {
   openai: "openai",
   codex: "openai-codex",
@@ -108,10 +112,12 @@ export async function refreshSharedModelMetadata({ now = Date.now(), force = fal
     try {
       const response = await fetchCatalog(SOURCE_URL, {
         headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!response.ok) return cached;
-      const fresh = normalizeSharedModelMetadata(await response.json());
+      // An oversized body reads as "", which fails to parse and keeps the cache.
+      const text = await readBoundedResponseText(response, { maxBytes: MAX_CATALOG_BYTES, timeoutMs: FETCH_TIMEOUT_MS });
+      const fresh = normalizeSharedModelMetadata(JSON.parse(text));
       if (!Object.keys(fresh).length) return cached;
       const providers = { ...cached?.providers };
       const modelMetadata = { ...cached?.modelMetadata };

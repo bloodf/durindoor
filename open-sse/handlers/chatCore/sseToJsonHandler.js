@@ -21,6 +21,7 @@ import { createResponsesToolNameResolver } from "../../translator/response/opena
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { restoreClaudeToolNames, restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { toRequiredResponsesUsage } from "../../translator/concerns/usage.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -539,7 +540,8 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
           await markSuccess();
-          return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
+          const clientBody = jsonResponse.usage ? { ...jsonResponse, usage: toRequiredResponsesUsage(jsonResponse.usage) } : jsonResponse;
+          return { success: true, response: new Response(JSON.stringify(clientBody), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
         }
 
         const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {

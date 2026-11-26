@@ -10,7 +10,7 @@ import { DATA_DIR } from "@/lib/dataDir.js";
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 
 const require = createRequire(import.meta.url);
-const { resolveTrustedUnixBinary } = require("../../../mitm/trustedBinaries.js");
+const { resolveTrustedUnixBinary, isTrustedUnixFile } = require("../../../mitm/trustedBinaries.js");
 
 const execAsync = promisify(exec);
 
@@ -47,7 +47,7 @@ const MAC_TAILSCALED_CANDIDATES = ["/usr/local/bin/tailscaled", "/opt/homebrew/b
 
 export function resolveTailscaledBin({ isMac = IS_MAC, exists = fs.existsSync } = {}) {
   if (!isMac) return "tailscaled";
-  return MAC_TAILSCALED_CANDIDATES.find((candidate) => exists(candidate)) || MAC_TAILSCALED_CANDIDATES[0];
+  return MAC_TAILSCALED_CANDIDATES.find((candidate) => exists(candidate)) || null;
 }
 
 // ─── Cache + background refresh (avoid blocking event loop on dead daemon) ──
@@ -730,7 +730,7 @@ export function isDaemonAlive() {
 
 /**
  * Start tailscaled.
- * - With sudoPassword: TUN mode (root) → Funnel TLS works
+ * - With sudoPassword and a trusted root-owned daemon: TUN mode (root)
  * - Without: userspace-networking fallback (no sudo, but Funnel TLS unstable)
  * State always lives in ~/.9router/tailscale/ via --statedir.
  */
@@ -761,7 +761,9 @@ export async function startDaemonWithPassword(sudoPassword) {
 
   const currentMode = isDaemonTunMode(); // true=TUN, false=userspace, null=not running
   // No password but a healthy TUN daemon already runs → keep TUN, never downgrade-kill it.
-  const wantTun = sudoPassword ? true : currentMode === true;
+  const daemonCandidates = IS_MAC ? MAC_TAILSCALED_CANDIDATES : ["/usr/sbin/tailscaled", "/usr/bin/tailscaled", "/usr/local/sbin/tailscaled", "/usr/local/bin/tailscaled", "/snap/bin/tailscaled"];
+  const trustedDaemon = daemonCandidates.find((candidate) => isTrustedUnixFile(candidate, { fsImpl: fs, checkParents: true }));
+  const wantTun = sudoPassword ? Boolean(trustedDaemon) : currentMode === true;
 
   // Daemon already running in correct mode → reuse
   if (currentMode !== null && currentMode === wantTun) {
@@ -787,14 +789,16 @@ export async function startDaemonWithPassword(sudoPassword) {
   // Reclaim folder ownership (previous root daemon may have locked it)
   await ensureUserOwnedDir(TAILSCALE_DIR);
 
-  const tailscaledBin = resolveTailscaledBin();
+  const launchTun = Boolean(sudoPassword && trustedDaemon);
+  const tailscaledBin = launchTun ? fs.realpathSync(trustedDaemon) : resolveTailscaledBin();
+  if (!tailscaledBin) throw new Error("Tailscaled binary not found");
   const daemonArgs = [
   `--socket=${TAILSCALE_SOCKET}`,
   `--statedir=${TAILSCALE_DIR}`];
 
-  if (!wantTun) daemonArgs.push("--tun=userspace-networking");
+  if (!launchTun) daemonArgs.push("--tun=userspace-networking");
 
-  if (wantTun) {
+  if (launchTun) {
     // TUN mode: spawn via sudo, password via stdin. Detached so it survives parent exit.
     const sudoBin = resolveTrustedUnixBinary("sudo");
     const child = spawn(sudoBin, ["-S", tailscaledBin, ...daemonArgs], {

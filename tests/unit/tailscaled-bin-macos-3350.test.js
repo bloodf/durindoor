@@ -9,10 +9,10 @@ describe("upstream #3350: tailscaled path on macOS", () => {
       .toBe("/opt/homebrew/bin/tailscaled");
   });
 
-  it("keeps preferring the /usr/local daemon, and falls back to it", () => {
+  it("keeps preferring the /usr/local daemon and returns null when none exists", () => {
     const both = only("/usr/local/bin/tailscaled", "/opt/homebrew/bin/tailscaled");
     expect(resolveTailscaledBin({ isMac: true, exists: both })).toBe("/usr/local/bin/tailscaled");
-    expect(resolveTailscaledBin({ isMac: true, exists: () => false })).toBe("/usr/local/bin/tailscaled");
+    expect(resolveTailscaledBin({ isMac: true, exists: () => false })).toBeNull();
   });
 
   it("probes only fixed system paths, since the result can run under sudo", () => {

@@ -1,3 +1,4 @@
+export { STAGED_PROVIDERS } from "./staged.js";
 // Single source: build PROVIDERS + PROVIDER_MODELS from registry/{id}.js (transport + models co-located).
 import REGISTRY from "./registry/index.js";
 import { PROVIDER_DEFAULTS } from "./schema.js";

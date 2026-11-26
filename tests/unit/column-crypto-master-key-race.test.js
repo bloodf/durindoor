@@ -113,7 +113,7 @@ describe("columnCrypto first-start master key race", () => {
   it("concurrent first starts converge on one key; both ciphertexts decrypt after restart", async () => {
     const dataDir = path.join(workDir, "race-data");
     const barrier = path.join(workDir, "race-barrier");
-    fs.mkdirSync(dataDir);
+    fs.mkdirSync(dataDir, { mode: 0o700 });
     fs.mkdirSync(barrier);
     const env = { DATA_DIR: dataDir, TEST_BARRIER_DIR: barrier, TEST_BARRIER_PEERS: "2" };
 

@@ -19,6 +19,9 @@ import { writeJunitReport } from "../tests/__baseline__/junit.mjs";
 import { chromium } from "playwright";
 import { chromiumLaunchOptions } from "../tests/utils/chromiumLaunch.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
+import {
+  SHARD_OWNER_ENV, SHARD_PORT_ENV, SHARD_STATE_ENV, cleanupShardServer, newShardOwnerToken, reserveLoopbackPort,
+} from "./lib/website-shard-server.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 // Unknown or shared-risk paths deliberately require the existing full gate.
@@ -201,7 +204,10 @@ export function websiteBrowserInventoryCommand(web, browser, reportFile) {
   ];
 }
 
-export function websiteBrowserShardCommands(web, shards, { browser, outputRoot, reportRoot } = {}) {
+// Each shard owns one transient website server. Its private state file and
+// random owner token are fixed here; the port is reserved immediately before
+// the shard starts (websiteBrowserShardEnv) so that it is still free.
+export function websiteBrowserShardCommands(web, shards, { browser, outputRoot, reportRoot, ownerToken = newShardOwnerToken } = {}) {
   if (!Array.isArray(shards) || !shards.length) throw new Error("empty website browser shards");
   for (const [label, value] of [
     ["web", web], ["browser", browser], ["outputRoot", outputRoot], ["reportRoot", reportRoot],
@@ -221,6 +227,8 @@ export function websiteBrowserShardCommands(web, shards, { browser, outputRoot, 
     const verifyScreenshotsDir = path.join(outputRoot, `shard-${expectedIndex}-verify-screenshots`);
     const reviewScreenshotsDir = path.join(outputRoot, `shard-${expectedIndex}-review-screenshots`);
     const reportFile = path.join(reportRoot, `shard-${expectedIndex}.json`);
+    const serverStateFile = path.join(outputRoot, `shard-${expectedIndex}-server.json`);
+    const owner = ownerToken();
     return [
       expectedId,
       "node",
@@ -238,12 +246,45 @@ export function websiteBrowserShardCommands(web, shards, { browser, outputRoot, 
           PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile,
           WEBSITE_VERIFY_SCREENSHOTS: verifyScreenshotsDir,
           WEBSITE_REVIEW_SCREENSHOTS: reviewScreenshotsDir,
+          [SHARD_STATE_ENV]: serverStateFile,
+          [SHARD_OWNER_ENV]: owner,
         },
         reportFile,
         shard: expectedShard,
+        server: { owner, stateFile: serverStateFile },
       },
     ];
   });
+}
+
+// The child env is an explicit allowlist (testEnvironment plus these keys), so
+// the port has to be passed here; nothing is inherited from the host.
+export function websiteBrowserShardEnv(shardOpts, port) {
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("invalid website browser shard port");
+  return { ...shardOpts.env, [SHARD_PORT_ENV]: String(port) };
+}
+
+// Runs after every shard, whatever ended it: pass, failure, budget or silence
+// timeout, interrupt or spawn error. A failed cleanup is a failed check and
+// stops the remaining shards (fail closed).
+export async function websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanup = cleanupShardServer) {
+  const step = { id: `${shardId}-server-cleanup`, job: "website-build", kind: "check", port };
+  try {
+    const result = await cleanup({ owner: shardOpts.server.owner, port, stateFile: shardOpts.server.stateFile });
+    Object.assign(step, {
+      status: result.ok ? "passed" : "failed",
+      reason: result.ok
+        ? (result.foreignListener ? "shard server stopped; an unrelated listener on the port was left untouched" : "shard server stopped")
+        : result.reason,
+      verification: result.verification,
+      signalled: result.signalled,
+      survivors: result.survivors,
+      foreignListener: result.foreignListener,
+    });
+  } catch (error) {
+    Object.assign(step, { status: "failed", reason: `shard server cleanup could not be established: ${error.message}` });
+  }
+  return step;
 }
 
 export function validateWebsiteBrowserShardReport(reportFile, startedAt, exitCode, signal = null) {
@@ -786,7 +827,20 @@ if (!websiteRun) {
             continue;
           }
           rmSync(shardOpts.reportFile, { force: true });
-          const step = await run(shardId, "website-build", cmd, args, { cwd: shardOpts.cwd, env: shardOpts.env });
+          rmSync(shardOpts.server.stateFile, { force: true });
+          const port = await reserveLoopbackPort();
+          const step = await run(shardId, "website-build", cmd, args, {
+            cwd: shardOpts.cwd, env: websiteBrowserShardEnv(shardOpts, port),
+          });
+          const cleanupStep = await websiteBrowserShardCleanupStep(shardId, shardOpts, port);
+          cleanupStep.at = now();
+          evidence.steps.push(cleanupStep);
+          save();
+          if (cleanupStep.status !== "passed") {
+            anyFail = true;
+            dead = true;
+            continue;
+          }
           if (!ok(step)) {
             dead = true;
             continue;

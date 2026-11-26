@@ -12,7 +12,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
 import { translateRequest } from "../translator/index.js";
 import { parseTimeMs } from "../services/oauthCredentialManager.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
-import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, catalogEffortIntent, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache, dropClaudeCodeIdentitySystem } from "../translator/formats/claude.js";
 import { normalizeClaudeAssistantTail } from "../translator/concerns/claudeAssistantTail.js";
@@ -536,7 +536,10 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
   const thinkingControlled = requestedModelTier || body.thinking ||
   providerThinking?.mode === "none" || providerThinking?.mode === "off";
-  const thinkingIntent = modelThinkingIntent ||
+  // A `-<effort>` ID resolved against a synced Claude base (OmniRoute #21347)
+  // only fills in when neither the client nor the provider setting chose one.
+  const resolvedEffortIntent = catalogEffortIntent(body, modelInfo.resolvedThinkingEffort);
+  const thinkingIntent = modelThinkingIntent || resolvedEffortIntent ||
   (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,

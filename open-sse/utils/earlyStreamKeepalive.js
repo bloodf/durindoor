@@ -18,6 +18,7 @@
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { formatClaudeSseError } from "./sseFrames.js";
 import { ERROR_TYPES } from "../config/errorConfig.js";
+import { RESPONSE_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { createClientAdmissionSelection } from "../services/operationalMetrics.js";
 
 const ENCODER = new TextEncoder();
@@ -135,6 +136,33 @@ export function buildKeepaliveErrorFrame(format, { text = "", status = null, ret
   })}\n\n`);
 }
 
+/**
+ * Read a non-SSE body that will become one error frame. Returns null when the read
+ * fails or outlives `timeoutMs`; cancelling the reader ends a body that never would.
+ */
+async function readBoundedText(reader, timeoutMs) {
+  const decoder = new TextDecoder();
+  let text = "";
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    reader.cancel().catch(() => {});
+  }, timeoutMs);
+  deadline.unref?.();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(deadline);
+  }
+  return timedOut ? null : text + decoder.decode();
+}
+
 function normalizeError(maybeError) {
   if (maybeError instanceof Error) return maybeError;
   return new Error(
@@ -151,6 +179,8 @@ function normalizeError(maybeError) {
  * @param {number} [options.thresholdMs=2000]
  * @param {number} [options.intervalMs=2500]
  * @param {AbortSignal|null} [options.signal]
+ * @param {number} [options.bodyTimeoutMs=RESPONSE_BODY_TIMEOUT_MS] Deadline for reading a
+ *   non-SSE handler body after the stream committed. SSE bodies are not bounded here.
  * @param {Uint8Array} [options.keepaliveFrame]
  * @param {"chat"|"responses"|"claude"} [options.errorFormat="chat"] Wire format of the
  *   in-band error frame sent when the handler fails after the stream committed.
@@ -163,6 +193,7 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
   const signal = options.signal ?? null;
   const keepaliveFrame = options.keepaliveFrame ?? DEFAULT_KEEPALIVE_FRAME;
   const errorFormat = options.errorFormat ?? "chat";
+  const bodyTimeoutMs = options.bodyTimeoutMs ?? RESPONSE_BODY_TIMEOUT_MS;
   const fallbackErrorFrame = buildKeepaliveErrorFrame(errorFormat);
 
   const settled = handlerPromise.then(
@@ -233,7 +264,11 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
       try {
         const result = await settled;
         stopKeepalive();
-        if (aborted) return;
+        if (aborted) {
+          // Nobody will read this reply, so release its upstream body.
+          result.response?.body?.cancel().catch(() => {});
+          return;
+        }
 
         if (!result.ok) {
           controller.enqueue(fallbackErrorFrame);
@@ -263,12 +298,17 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
               }
             }
           } else {
-            let bodyReadFailed = false;
-            const text = response.body ?
-            await response.text().catch(() => { bodyReadFailed = true; return ""; }) :
-            "";
+            let text = "";
+            if (response.body) {
+              upstreamReader = response.body.getReader();
+              text = await readBoundedText(upstreamReader, bodyTimeoutMs);
+              // The error frame below stands alone, so a failed read has no partial line to close.
+              upstreamReader = null;
+            }
+            if (aborted) return;
+            const bodyReadFailed = text === null;
             controller.enqueue(buildKeepaliveErrorFrame(errorFormat, {
-              text,
+              text: text ?? "",
               status: response.status,
               retryAfterSeconds: readRetryAfterSeconds(response.headers)
             }));

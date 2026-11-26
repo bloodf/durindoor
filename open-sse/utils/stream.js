@@ -1924,6 +1924,21 @@ export function createSSEStream(options = {}) {
             reqLogger?.appendConvertedChunk?.(failedOutput);
             controller.enqueue(sharedEncoder.encode(failedOutput));
           }
+          // Chat output followed by EOF with neither a finish reason nor [DONE] was cut
+          // off. Appending [DONE] would pass the partial answer off as complete.
+          if (targetFormat === FORMATS.OPENAI && !isGeminiFamily && !streamDoneSent && !streamErrorPayload &&
+              openAIOutputSeen && passthroughFinishedChoices.size === 0) {
+            streamErrorPayload = {
+              type: "server_error",
+              code: "incomplete_upstream_stream",
+              message: "Upstream stream ended before a finish reason"
+            };
+            upstreamTerminal.fail();
+            const errorOutput = `${dataFrameOpen ? "\n" : ""}${formatTranslatedStreamError(streamErrorPayload, FORMATS.OPENAI, errorSecrets)}`;
+            reqLogger?.appendConvertedChunk?.(errorOutput);
+            controller.enqueue(sharedEncoder.encode(errorOutput));
+            streamDoneSent = true;
+          }
           if (
           !streamDoneSent &&
           !isGeminiFamily &&

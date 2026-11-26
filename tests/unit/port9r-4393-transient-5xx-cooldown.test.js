@@ -12,8 +12,13 @@ describe("upstream #4393 - short cooldown for transient 5xx", () => {
     expect(checkFallbackError(503, "rate limit exceeded")).toMatchObject({ shouldFallback: true, newBackoffLevel: 1 });
   });
 
-  it.each([408, 501, 529])("keeps the default transient cooldown for unlisted status %i", (status) => {
+  it.each([408, 529])("keeps the default transient cooldown for unlisted status %i", (status) => {
     expect(checkFallbackError(status, "upstream failed").cooldownMs).toBe(TRANSIENT_COOLDOWN_MS);
+  });
+
+  // OmniRoute #19688: 501 is a capability gap, not a transient fault.
+  it("gives a 501 no cooldown", () => {
+    expect(checkFallbackError(501, "upstream failed")).toMatchObject({ shouldFallback: false, cooldownMs: 0 });
   });
 
   it("leaves long 4xx cooldowns and request-scoped 4xx unchanged", () => {

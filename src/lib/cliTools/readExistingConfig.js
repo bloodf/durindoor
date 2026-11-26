@@ -37,6 +37,27 @@ export async function readExistingConfig(filePath, parse) {
   }
 }
 
+/**
+ * A temp-file-and-rename write makes the writer the new owner. Over a file that belongs
+ * to another uid (a container user over a bind-mounted host config) that locks the
+ * owner out, so refuse before anything is written.
+ */
+export async function assertWriterOwnsTarget(filePath) {
+  const writerUid = process.geteuid?.();
+  if (writerUid === undefined) return;
+  let existing;
+  try {
+    existing = await fs.lstat?.(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+  if (!Number.isInteger(existing?.uid) || existing.uid === writerUid) return;
+  const refusal = new Error(`Refusing to replace CLI config owned by uid ${existing.uid} from uid ${writerUid}: ${filePath}`);
+  refusal.code = "CLI_CONFIG_FOREIGN_OWNER";
+  throw refusal;
+}
+
 /** Atomically replace the resolved config target, retaining one private backup beside it. */
 export async function writeConfigAtomic(filePath, content) {
   // realpath follows existing links; readlink also handles a missing link target.
@@ -64,6 +85,7 @@ export async function writeConfigAtomic(filePath, content) {
       filePath = resolved;
     }
   }
+  await assertWriterOwnsTarget(filePath);
   const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomUUID()}.tmp`);
   const backupTemp = `${tempPath}.bak`;
   try {

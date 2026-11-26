@@ -131,7 +131,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. |
 | `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. |
 | `PROVIDER_BODY_TIMEOUT_MS` | `120000` | Bound for a successful non-streaming provider body. |
-| `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-json conversion. |
+| `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-JSON conversion, and for a late non-stream reply read behind the early keepalive. |
 | `MAX_PROVIDER_BODY_BYTES` | `8388608` | Max provider body bytes. |
 | `MAX_RESPONSES_OUTPUT_ITEMS` | `1024` | Cap on Responses output items. |
 | `CODEX_SSE_PEEK_TIMEOUT_MS` | `30000` (capped at 5 min) | Bound for the Codex SSE peek. |

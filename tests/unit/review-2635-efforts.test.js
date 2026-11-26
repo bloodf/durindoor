@@ -39,6 +39,8 @@ describe("unlisted OpenAI Responses family effort metadata (#2635)", () => {
     const low = customCaps({ thinkingEfforts: ["none", "low"] });
     expect(effortFor("high", low)).toBe("low");
     expect(effortFor("max", low)).toBe("low");
+    expect(effortFor("extreme", low)).toBe("low");
+    expect(effortFor("extreme", customCaps({ thinkingEfforts: ["none", "low", "high"] }))).toBe("high");
     const high = customCaps({ thinkingEfforts: ["medium", "xhigh"] });
     expect(effortFor("high", high)).toBe("xhigh");
   });
@@ -53,6 +55,9 @@ describe("unlisted OpenAI Responses family effort metadata (#2635)", () => {
     expect(effortFor("max")).toBe("max");
     expect(effortFor("xhigh")).toBe("xhigh");
     expect(effortFor("ultra")).toBe("max");
+    expect(effortFor("extreme")).toBe("high");
+    expect(effortFor("extreme", customCaps({ thinkingEfforts: [] }))).toBe("high");
+    expect(effortFor("high", customCaps({ thinkingEfforts: ["default"] }))).toBe("high");
     expect(translate({ reasoning: { effort: "ultra" } }).reasoning?.effort).toBe("max");
   });
 

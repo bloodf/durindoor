@@ -203,7 +203,7 @@ export function getThinkingLevels(provider, model) {
  * @param {object} caps
  */
 export function hasUnknownThinkingLevels(caps) {
-  return caps?.thinkingLevelsUnknown === true && !Array.isArray(caps.thinkingEfforts);
+  return caps?.thinkingLevelsUnknown === true && (!Array.isArray(caps.thinkingEfforts) || caps.thinkingEfforts.length === 0);
 }
 
 /**

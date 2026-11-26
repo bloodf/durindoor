@@ -405,9 +405,12 @@ export function clampTierToSupported(level, supported) {
     .filter((entry) => entry.rank >= 0)
     .sort((a, b) => a.rank - b.rank);
   if (!ranked.length) return level;
-  const requestedRank = EFFORT_TIER_ORDER.indexOf(level);
-  const nearest = ranked.find((entry) => entry.rank >= requestedRank);
-  return nearest ? nearest.tier : ranked[ranked.length - 1].tier;
+  const eligible = level === "none" ? ranked : ranked.filter((entry) => entry.tier !== "none");
+  if (!eligible.length) return level;
+  const rank = EFFORT_TIER_ORDER.indexOf(level);
+  const requestedRank = rank < 0 ? EFFORT_TIER_ORDER.indexOf("high") : rank;
+  const nearest = eligible.find((entry) => entry.rank >= requestedRank);
+  return nearest ? nearest.tier : eligible[eligible.length - 1].tier;
 }
 
 /**
@@ -441,12 +444,15 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
   // Adaptive intent must resolve to an OpenAI wire effort.
   if (level === "auto") level = "high";
-  if (hasUnknownThinkingLevels(caps)) return level === "ultra" ? "max" : level;
+  if (hasUnknownThinkingLevels(caps)) {
+    if (level === "ultra") return "max";
+    return EFFORT_TIER_ORDER.includes(level) ? level : "high";
+  }
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
     // Explicit tiers override an unknown fallback; clamp by rank instead of
     // falling through to a possible disable tier at the start of the list.
-    if (caps?.thinkingLevelsUnknown && Array.isArray(caps.thinkingEfforts)) {
+    if (Array.isArray(caps?.thinkingEfforts)) {
       return clampTierToSupported(level, allowed);
     }
     if (allowed.includes(level)) return level;

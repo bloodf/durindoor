@@ -1,5 +1,9 @@
 // HTTP status codes
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+
+/** Largest delay Node timers accept; a larger one fires after about 1 ms. */
+export const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
 export const HTTP_STATUS = {
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
@@ -63,11 +67,16 @@ export const PROXY_FETCH_POOL_CONFIG = Object.freeze({
 export const REASONING_HEADER = "x-9router-reasoning";
 
 // Parse a positive integer env override, falling back to a default.
-function envMs(name, def) {
+function envPositiveInt(name, def) {
   const raw = process.env[name];
   if (raw == null || raw === "") return def;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+/** Millisecond override for a timer budget, capped at the timer limit. */
+function envMs(name, def) {
+  return Math.min(envPositiveInt(name, def), MAX_TIMER_DELAY_MS);
 }
 
 /**
@@ -151,8 +160,8 @@ export const ACCOUNT_ERROR_MESSAGE_MAX_CHARS = 2000;
 // holding a concurrency slot forever or growing memory without limit.
 export const PROVIDER_BODY_TIMEOUT_MS = envMs("PROVIDER_BODY_TIMEOUT_MS", 120 * 1000);
 export const RESPONSE_BODY_TIMEOUT_MS = envMs("RESPONSE_BODY_TIMEOUT_MS", 120 * 1000);
-export const MAX_PROVIDER_BODY_BYTES = envMs("MAX_PROVIDER_BODY_BYTES", 8 * 1024 * 1024);
-export const MAX_RESPONSES_OUTPUT_ITEMS = envMs("MAX_RESPONSES_OUTPUT_ITEMS", 1024);
+export const MAX_PROVIDER_BODY_BYTES = envPositiveInt("MAX_PROVIDER_BODY_BYTES", 8 * 1024 * 1024);
+export const MAX_RESPONSES_OUTPUT_ITEMS = envPositiveInt("MAX_RESPONSES_OUTPUT_ITEMS", 1024);
 
 /**
  * Largest request body sent to Headroom compression. Larger payloads bypass

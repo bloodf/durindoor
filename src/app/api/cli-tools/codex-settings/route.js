@@ -125,7 +125,10 @@ const writeModelCatalog = async (selectedModels) => {
 
   const catalogPath = getCodexCatalogPath();
   try {
-    await fs.writeFile(catalogPath, JSON.stringify(catalog));
+    const content = JSON.stringify(catalog);
+    const current = await fs.readFile(catalogPath, "utf-8").catch(() => null);
+    // An equal catalog is left untouched; a new one replaces the old by rename.
+    if (current !== content) await writeConfigAtomic(catalogPath, content);
   } catch (error) {
     console.log("Could not write Codex model catalog:", error.message);
     return { warning: "Could not write Codex model catalog; /model picker was not updated" };

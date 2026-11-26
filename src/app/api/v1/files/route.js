@@ -1,7 +1,7 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Files collection — local filesystem store under ~/.9router/files/<id>. (DurinDoor data directory)
-import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
+import { uploadFile, listFiles, maxBatchBytes } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
@@ -51,6 +51,9 @@ async function POSTHandler(request) {
   const purpose = form.get("purpose") || "batch";
   if (!file || isString(file)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "file field is required");
+  }
+  if (purpose === "batch" && file.size > maxBatchBytes()) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `batch exceeds MAX_BATCH_BYTES limit of ${maxBatchBytes()} bytes`);
   }
   const buf = Buffer.from(await file.arrayBuffer());
   const meta = await uploadFile({ filename: file.name || "upload", bytes: buf, purpose }, ownership);

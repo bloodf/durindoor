@@ -315,15 +315,20 @@ export function createResponsesApiTransformStream(logger = null) {
         if (!frame.hasData) continue;
 
         let parsed;
+        let rawDone;
         try {
-          ({ parsed } = parseResponsesSseData(frame));
+          ({ parsed, rawDone } = parseResponsesSseData(frame));
         } catch {
           continue;
         }
+        // Nothing can trail [DONE], so a completion waiting for usage ends now.
+        if (rawDone && state.awaitingTrailingUsage) sendCompleted(controller);
         if (!isRecord(parsed) || state.completedSent) continue;
 
-        // A later usage object with no readable counts must not replace a good one.
-        if (terminalUsage(parsed.usage)) state.usage = parsed.usage;
+        // A later usage object with no readable counts must not replace a good one, and an
+        // all-zero placeholder must not complete the response before the real counts arrive.
+        const readableUsage = terminalUsage(parsed.usage);
+        if (readableUsage && readableUsage.input_tokens + readableUsage.output_tokens + readableUsage.total_tokens > 0) state.usage = parsed.usage;
         if (parsed.error) state.upstreamError = parsed.error;
         if (!parsed.choices?.length) {
           if (state.upstreamError !== null) {

@@ -202,6 +202,46 @@ function mergeAdjacentUserTurns(messages, index) {
 // keep their existing bodies.
 const TOOL_RESULT_CACHE_MARKER_TARGETS = new Set(["claude", "anthropic"]);
 
+// Anthropic's own wire. Other Claude-format hosts set their own thinking-history rules.
+function enforcesTrailingThinkingRule(provider) {
+  return provider === "claude" || provider === "anthropic" || Boolean(provider?.startsWith("anthropic-compatible"));
+}
+
+function isThinkingBlock(block) {
+  return block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING;
+}
+
+/**
+ * Anthropic answers 400 "The final block in an assistant message cannot be `thinking`".
+ * A past turn like that fails every later request, so trim its trailing thinking and
+ * drop it when nothing is left. The latest assistant turn must stay byte-exact.
+ */
+function dropTrailingHistoricalThinking(messages) {
+  const latest = messages.findLastIndex((msg) => msg.role === ROLE.ASSISTANT);
+  const result = [];
+  let removedAt = -1;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    let next = msg;
+    if (i !== latest && msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
+      const end = msg.content.findLastIndex((block) => !isThinkingBlock(block)) + 1;
+      if (end < msg.content.length) {
+        if (end === 0) {
+          removedAt = result.length;
+          continue;
+        }
+        next = { ...msg, content: msg.content.slice(0, end) };
+      }
+    }
+    result.push(next);
+    if (removedAt === result.length - 1) {
+      mergeAdjacentUserTurns(result, removedAt - 1);
+      removedAt = -1;
+    }
+  }
+  return result;
+}
+
 export function normalizesToolResultCacheMarkers(provider) {
   return TOOL_RESULT_CACHE_MARKER_TARGETS.has(provider);
 }
@@ -925,6 +965,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
       body.messages = body.messages.filter((msg) => !emptiedByServerToolFilter.has(msg));
     }
+
+    // After the filters above: removing a block can leave thinking last.
+    if (enforcesTrailingThinkingRule(provider)) body.messages = dropTrailingHistoricalThinking(body.messages);
   }
 
   reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
@@ -1036,6 +1079,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     // Pass 1.5: Fix tool_use/tool_result ordering
     // Each tool_use must have tool_result in the NEXT message (not same message with other content)
     filtered = fixToolUseOrdering(filtered);
+    if (enforcesTrailingThinkingRule(provider)) filtered = dropTrailingHistoricalThinking(filtered);
 
     body.messages = filtered;
     body.messages = ensureTrailingUserTurn(body.messages, originalLastRole);

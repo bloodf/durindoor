@@ -67,6 +67,8 @@ curl http://localhost:20128/v1/chat/completions \
   -d '{"model":"coding-default","messages":[{"role":"user","content":"Say hello."}],"stream":true}'
 ```
 
+To receive the trailing usage-only chunk (`"choices": []`) on a streaming Chat Completions request, send `stream_options.include_usage: true`. DurinDoor may ask the provider for usage to record the call; when you did not ask, it does not send you that extra chunk.
+
 Claude-format requests normally end on a user turn. A trailing assistant text prefill becomes a continuation user turn. Trailing `tool_use` blocks get error `tool_result` blocks. Opt out per request with `X-9Router-Assistant-Prefill: preserve`.
 
 `POST /v1/completions` is a router shim: `prompt` (string, or a one-element array) becomes one user message, then the chat core runs. Multiple prompts return 400. Streaming SSE `chat.completion.chunk` frames are rewritten to `text_completion`. Provider-native `/v1/completions` is not a goal.

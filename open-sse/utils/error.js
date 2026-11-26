@@ -619,6 +619,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
       if (quotaResetAt && quotaResetAt > (rateLimitEvidence.resetAtMs ?? 0)) {
         rateLimitEvidence.resetAtMs = quotaResetAt;
         rateLimitEvidence.source = "reset_header";
+        // The countdown marker describes the replaced deadline, not the response as a whole.
+        delete rateLimitEvidence.relativeCountdown;
       }
     }
 

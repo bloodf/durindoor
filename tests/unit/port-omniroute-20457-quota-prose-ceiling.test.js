@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseRateLimitEvidence } from "../../open-sse/utils/error.js";
+import { parseRateLimitEvidence, parseUpstreamError } from "../../open-sse/utils/error.js";
 import { validateSettingsPatch } from "../../src/lib/settings/settingsSchema.js";
 
 const mocks = vi.hoisted(() => ({
@@ -64,6 +64,27 @@ describe("OmniRoute #20457 - relative quota countdowns get their own ceiling", (
     expect(await lockMs("Individual quota reached. Resets in 1h2m3s.")).toBe(HOUR + 123_000);
     const header = evidenceFor({ bodyText: PROSE, headers: new Headers({ "retry-after": "270000" }) });
     expect(await lockMs("Rate limit exceeded", { rateLimitEvidence: header })).toBe(270_000_000);
+  });
+
+  it("keeps the Claude OAuth shared header deadline and its provenance over prose", async () => {
+    const deadline = NOW + 100 * HOUR;
+    const response = new Response(PROSE, { status: 429, headers: {
+      "anthropic-ratelimit-unified-7d-status": "rejected",
+      "anthropic-ratelimit-unified-7d-reset": String(deadline / 1000),
+    } });
+    const parsed = await parseUpstreamError(response, { provider: "claude", parseError: () => ({}) }, {
+      now: NOW, credentials: { accessToken: "mock-token" },
+    });
+    expect(parsed.rateLimitEvidence).toMatchObject({ state: "exhausted", scope: "connection", source: "reset_header", resetAtMs: deadline });
+    expect(parsed.rateLimitEvidence.relativeCountdown).toBeUndefined();
+    expect(await lockMs("Rate limit exceeded", { rateLimitEvidence: parsed.rateLimitEvidence })).toBe(100 * HOUR);
+  });
+
+  it("requires prose provenance at both lock updates even with a stale countdown marker", async () => {
+    const evidence = { state: "exhausted", source: "reset_header", resetAtMs: NOW + 10 * HOUR, relativeCountdown: true };
+    expect(await lockMs("Rate limit exceeded", { rateLimitEvidence: evidence })).toBe(10 * HOUR);
+    const result = await markAccountUnavailable("conn-1", 429, "Quota exceeded", "openai", "gpt-4o", evidence.resetAtMs, { rateLimitEvidence: evidence });
+    expect(result.cooldownMs).toBe(10 * HOUR);
   });
 
   it("keeps the default when the settings read fails", async () => {

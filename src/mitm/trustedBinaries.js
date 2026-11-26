@@ -18,7 +18,7 @@ const UNIX_CANDIDATES = Object.freeze({
   security: ["/usr/bin/security"]
 });
 
-function isTrustedUnixFile(filePath, { fsImpl = fs } = {}) {
+function isTrustedUnixFile(filePath, { fsImpl = fs, checkParents = false } = {}) {
   try {
     const linkStat = fsImpl.lstatSync(filePath);
     if (!linkStat.isFile() && !linkStat.isSymbolicLink?.()) return false;
@@ -28,6 +28,19 @@ function isTrustedUnixFile(filePath, { fsImpl = fs } = {}) {
     if (!stat.isFile()) return false;
     if (isNumber(stat.uid) && stat.uid !== 0) return false;
     if ((stat.mode & 0o022) !== 0) return false;
+    if (checkParents) {
+      if (stat.uid !== 0 || linkStat.uid !== 0) return false;
+      for (const binaryPath of [filePath, resolved]) {
+        let dir = path.dirname(binaryPath);
+        while (true) {
+          const directory = fsImpl.statSync(dir);
+          if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) !== 0) return false;
+          const parent = path.dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      }
+    }
     fsImpl.accessSync(filePath, fs.constants.X_OK);
     return true;
   } catch {

@@ -299,6 +299,7 @@ function convertClaudeMessage(msg, opts, imageBudget) {
     // that follows the tool messages (OpenAI tool messages can't hold images).
     const toolResultImages = [];
     let reasoningContent = "";
+    const omittedTypes = [];
     const nativeBlocks = msg.content.some((block) =>
     block?.type === CLAUDE_BLOCK.DOCUMENT ||
     block?.type === CLAUDE_BLOCK.SERVER_TOOL_USE ||
@@ -329,6 +330,8 @@ function convertClaudeMessage(msg, opts, imageBudget) {
           if (part) {
             if (opts?.preserveCacheControl && block.cache_control) part.cache_control = block.cache_control;
             parts.push(part);
+          } else {
+            omittedTypes.push("document");
           }
           break;
         }
@@ -355,6 +358,9 @@ function convertClaudeMessage(msg, opts, imageBudget) {
             });
           } else if (urlImagePart(block)) {
             parts.push(urlImagePart(block));
+          } else {
+            // e.g. source.type "file": OpenAI Chat cannot carry it.
+            omittedTypes.push("image");
           }
           break;
 
@@ -466,6 +472,12 @@ function convertClaudeMessage(msg, opts, imageBudget) {
       }
       result.tool_calls = toolCalls;
       return attachNativeBlocks(result, nativeBlocks || []);
+    }
+
+    // A turn made only of unsupported attachments must not vanish or arrive empty.
+    if (omittedTypes.length > 0 && parts.length === 0 && !reasoningContent) {
+      const notice = omittedTypes.map((type) => `[Attachment omitted: unsupported ${type} source]`).join("\n");
+      return attachNativeBlocks({ role, content: notice }, nativeBlocks || []);
     }
 
     // Native-only blocks can be restored by a subsequent OpenAI → Claude pivot.

@@ -1,5 +1,6 @@
 import { createErrorResult } from "../utils/error.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES } from "../config/runtimeConfig.js";
+import { readBounded } from "./codexSttAudio.js";
 import { refreshTokenByProvider } from "../services/tokenRefresh.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
@@ -73,6 +74,22 @@ function combineSignals(signal, timeoutMs) {
   }
   return signal || timeoutSignal || undefined;
 }
+
+/**
+ * Read a provider body under the shared complete-body cap. Resolves null when the body is over
+ * the cap (the stream is cancelled), and "" when it cannot be read.
+ */
+async function readVideoBody(response, signal) {
+  if (!response.body) return "";
+  try {
+    const bytes = await readBounded(response.body, MAX_PROVIDER_BODY_BYTES, signal, HTTP_STATUS.BAD_GATEWAY);
+    return new TextDecoder().decode(bytes);
+  } catch (error) {
+    return error?.status === HTTP_STATUS.BAD_GATEWAY ? null : "";
+  }
+}
+
+const OVERSIZED_BODY_MESSAGE = `video response body exceeded ${MAX_PROVIDER_BODY_BYTES} bytes`;
 
 // Only response evidence is billable. Requested duration and prompt length are
 // not measured output, and absent USD pricing must never become free usage.
@@ -210,12 +227,14 @@ export async function handleVideoProxyCore({
     }
   }
 
-  let bodyText = await upstream.text().catch(() => "");
+  let bodyText = await readVideoBody(upstream, fetchSignal);
 
   if (!upstream.ok) {
+    if (bodyText === null) return createErrorResult(upstream.status, `[${provider}] HTTP ${upstream.status}: ${OVERSIZED_BODY_MESSAGE}`);
     const message = sanitizeSecrets(bodyText || `HTTP ${upstream.status}`, credentials);
     return createErrorResult(upstream.status, `[${provider}] ${message.slice(0, 2000)}`);
   }
+  if (bodyText === null) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `[${provider}] ${OVERSIZED_BODY_MESSAGE}`);
   if (config.format === "minimax-multi" && requestId?.startsWith(MINIMAX_V1_JOB_PREFIX) && config.legacyFileRetrieveUrl) {
     try {
       const legacyTask = JSON.parse(bodyText);
@@ -223,7 +242,8 @@ export async function handleVideoProxyCore({
       const fileId = legacyTask?.file_id || legacyTask?.task?.file_id;
       if (status === "success" && fileId) {
         const fileResponse = await proxyAwareFetch(`${config.legacyFileRetrieveUrl}?file_id=${encodeURIComponent(fileId)}`, { headers: buildHeaders({ token: credentials?.accessToken || credentials?.apiKey, contentType: null, idempotencyKey: null }), signal: fetchSignal }, proxyOptions);
-        const filePayload = fileResponse.ok ? await fileResponse.json() : null;
+        // An unreadable or over-cap file lookup keeps the task body without a download URL.
+        const filePayload = fileResponse.ok ? JSON.parse(await readVideoBody(fileResponse, fetchSignal)) : null;
         if (filePayload?.file?.download_url) bodyText = JSON.stringify({ ...legacyTask, content: { url: filePayload.file.download_url } });
       }
     } catch {}

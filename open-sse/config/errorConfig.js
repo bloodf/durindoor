@@ -71,6 +71,10 @@ export const DEFAULT_ERROR_MESSAGES = {
  */
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Longest bench for a 429 or transient failure on a connection whose base URL is loopback
+// or private: one slow local generation must not park the key (OmniRoute #19632).
+export const LOCAL_ENDPOINT_MAX_COOLDOWN_MS = 5 * 1000;
+
 /**
  * Resolves the rate-limit backoff schedule from environment variables (#3352).
  * Invalid knobs retain their historical defaults; the configured maximum is

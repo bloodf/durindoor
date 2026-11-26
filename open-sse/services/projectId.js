@@ -1,4 +1,4 @@
-import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "./antigravityProvisioning.js";
+import { antigravityAgeRestrictionError, antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "./antigravityProvisioning.js";
 /**
  * Project ID Service - Fetch and cache real Project IDs from Google Cloud Code API
  *
@@ -245,7 +245,11 @@ async function fetchProjectId(accessToken, signal, proxyOptions, provider = null
   const projectId = antigravity ? extractAntigravityProject(data) : extractProjectId(data);
   if (projectId) return projectId;
 
-  if (antigravity) return onboardUser(accessToken, extractAntigravityOnboardTier(data), signal, proxyOptions, provider);
+  if (antigravity) {
+    const ageError = antigravityAgeRestrictionError(data);
+    if (ageError) throw ageError;
+    return onboardUser(accessToken, extractAntigravityOnboardTier(data), signal, proxyOptions, provider);
+  }
 
   // Determine the tier to use for onboarding
   let tierID = "legacy-tier";

@@ -8,7 +8,7 @@ import "../../../open-sse/utils/proxyFetch.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "../../../open-sse/config/grokCli.js";
 import crypto from "crypto";
 import { buildKimiDeviceHeaders } from "../../../open-sse/config/appConstants.js";
-import { antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "../../../open-sse/services/antigravityProvisioning.js";
+import { antigravityAgeRestrictionError, antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "../../../open-sse/services/antigravityProvisioning.js";
 import { readBoundedResponseText } from "../../../open-sse/utils/error.js";
 
 import { generatePKCE, generateState } from "./utils/pkce.js";
@@ -332,6 +332,8 @@ async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   // A new account can have no project until onboarding completes. Persist
   // only the project associated with this token, never a placeholder.
   if (!projectId) {
+    const ageError = antigravityAgeRestrictionError(data);
+    if (ageError) throw ageError;
     const maxAttempts = antigravityOnboardMaxAttempts();
     const retryDelayMs = antigravityOnboardRetryDelayMs();
     for (let i = 0; i < maxAttempts; i++) {

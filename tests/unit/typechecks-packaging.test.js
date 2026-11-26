@@ -22,15 +22,10 @@ describe("runtime packaging ships typeChecks.cjs (custom-server boot dependency)
     expect(serverSrc).toContain('require("./src/shared/utils/typeChecks.cjs")');
   });
 
-  it("build-app.mjs copies typeChecks.cjs into the standalone bundle", () => {
-    const buildSrc = readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8");
-    expect(buildSrc).toContain('"src", "shared", "utils", "typeChecks.cjs"');
-  });
-
-  it("Dockerfile copies typeChecks.cjs beside custom-server.js", () => {
+  it("ships typeChecks.cjs through the standalone manifest", () => {
+    const manifest = JSON.parse(readFileSync(path.join(ROOT, "scripts", "packaging-manifest.json"), "utf8"));
+    expect(manifest.map((entry) => entry.path)).toContain("src/shared/utils/typeChecks.cjs");
     const dockerSrc = readFileSync(path.join(ROOT, "Dockerfile"), "utf8");
-    expect(dockerSrc).toContain(
-      "COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs",
-    );
+    expect(dockerSrc).toContain("COPY --from=builder /app/.next/standalone ./");
   });
 });

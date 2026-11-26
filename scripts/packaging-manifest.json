@@ -1,0 +1,50 @@
+[
+  {
+    "path": "custom-server.js",
+    "sidecar": true
+  },
+  {
+    "path": "src/lib/startup/listenConfig.cjs"
+  },
+  {
+    "path": "src/lib/updater/dataDir.cjs"
+  },
+  {
+    "path": "realtime-upgrade.cjs",
+    "sidecar": true
+  },
+  {
+    "path": "head-response-guard.cjs",
+    "sidecar": true
+  },
+  {
+    "path": "web-login-host-boundary.cjs",
+    "sidecar": true
+  },
+  {
+    "path": "src/mitm",
+    "directory": true
+  },
+  {
+    "path": "src/shared/utils/wsHandshake.js"
+  },
+  {
+    "path": "src/shared/utils/realtimeConfig.js"
+  },
+  {
+    "path": "open-sse",
+    "directory": true
+  },
+  {
+    "path": "src/shared/utils/normalizeEnv.js"
+  },
+  {
+    "path": "src/shared/utils/typeChecks.js"
+  },
+  {
+    "path": "src/shared/utils/typeChecks.cjs"
+  },
+  {
+    "path": "src/shared/constants/processExitCodes.js"
+  }
+]

@@ -131,7 +131,7 @@ describe("#2213 cloudflared download pin + digest", () => {
       statSync: vi.fn(() => ({ size: 50 * 1024 * 1024 })),
       openSync: vi.fn(() => 7),
       readSync: vi.fn((_fd, buf) => {
-        buf.write("\x7fELF", 0, 4, "binary");
+        Buffer.from(process.platform === "win32" ? "4d5a0000" : process.platform === "darwin" ? "cffaedfe" : "7f454c46", "hex").copy(buf);
         return 4;
       }),
       closeSync: vi.fn(),
@@ -141,10 +141,12 @@ describe("#2213 cloudflared download pin + digest", () => {
       mkdtempSync: vi.fn(() => "/tmp/dd-cloudflared-env-test"),
       writeFileSync: vi.fn(),
       rmSync: vi.fn(),
+      createWriteStream: vi.fn(() => { throw new Error("cloudflared download attempted in test"); }),
     };
 
     vi.doMock("fs", () => ({ default: fsStub, ...fsStub }));
     vi.doMock("child_process", () => ({ execSync: vi.fn(() => ""), spawn }));
+    vi.doMock("https", () => ({ default: { get: vi.fn(() => { throw new Error("network access attempted in test"); }) } }));
     vi.doMock("@/lib/dataDir.js", () => ({ DATA_DIR: "/tmp/dd-cloudflared-env-data" }));
     vi.doMock("@/lib/tunnel/cloudflare/pid.js", () => ({
       savePid: vi.fn(),
@@ -163,6 +165,7 @@ describe("#2213 cloudflared download pin + digest", () => {
     delete process.env.SECRET_SHOULD_NOT_LEAK;
     vi.doUnmock("fs");
     vi.doUnmock("child_process");
+    vi.doUnmock("https");
     vi.doUnmock("@/lib/dataDir.js");
     vi.doUnmock("@/lib/tunnel/cloudflare/pid.js");
     vi.resetModules();
@@ -200,7 +203,7 @@ describe("#2213 updater pin + hash + CORS", () => {
   });
 
   it("ensureRuntimeUpdater compares content hashes, not file sizes", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-updater-hash-"));
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "dd-updater-hash-")));
     const bundled = path.join(dir, "bundled.js");
     const runtimeDir = path.join(dir, "runtime", "updater");
     fs.mkdirSync(runtimeDir, { recursive: true });

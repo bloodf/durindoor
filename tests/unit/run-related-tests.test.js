@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { expect, it } from "vitest";
 const runner = fileURLToPath(new URL("../../scripts/run-related-tests.mjs", import.meta.url));
 
 function runFixture({ testCount, failFirstBatch = false }) {
-  const root = mkdtempSync(join(tmpdir(), "related-runner-test-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "related-runner-test-")));
   try {
     const scripts = join(root, "scripts");
     const pkg = join(root, "tests/node_modules/vitest");

@@ -37,7 +37,7 @@ afterEach(async () => {
 describe("usage storage does not retain raw API keys", () => {
   it("writes only the stable key id and keeps caps, window totals and summaries", async () => {
     await database.saveRequestUsage({
-      timestamp: "2026-11-23T00:00:00.000Z", provider: "fixture", model: "model", apiKey: secret,
+      timestamp: "2026-11-23T12:00:00.000Z", provider: "fixture", model: "model", apiKey: secret,
       tokens: { prompt_tokens: 4, completion_tokens: 3 }, cost: 0.25, status: "ok", usageEventId: "stop-raw-event",
     });
 

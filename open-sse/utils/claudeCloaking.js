@@ -60,6 +60,16 @@ export function cloakClaudeTools(body) {
     clientDeclarations.push({ ...tool, name: suffixed });
   }
 
+  // Restore names from previously cloaked history to the current declaration.
+  const historyName = (name) => {
+    if (!isString(name)) return name;
+    let candidate = name;
+    while (!clientToolNames.has(candidate) && candidate.endsWith(CLAUDE_TOOL_SUFFIX)) {
+      candidate = candidate.slice(0, -CLAUDE_TOOL_SUFFIX.length);
+    }
+    return clientToolNames.has(candidate) ? suffix(candidate) : name;
+  };
+
   // Client tools first, then CC decoy tools (no overlap: client tools all have _cc suffix)
   const allTools = [...clientDeclarations, ...CC_DECOY_TOOLS];
 
@@ -69,13 +79,13 @@ export function cloakClaudeTools(body) {
   const renamedMessages = body.messages?.map((msg) => {
     if (!Array.isArray(msg.content)) return msg;
     const renamedContent = msg.content.map((block) => {
-      if (block?.type === CLAUDE_BLOCK.TOOL_USE && clientToolNames.has(block.name)) {
-        return { ...block, name: suffix(block.name) };
+      if (block?.type === CLAUDE_BLOCK.TOOL_USE) {
+        return { ...block, name: historyName(block.name) };
       }
       if (block?.type === CLAUDE_BLOCK.TOOL_RESULT && Array.isArray(block.content)) {
         const content = block.content.map((part) =>
-          part?.type === CLAUDE_BLOCK.TOOL_REFERENCE && clientToolNames.has(part.tool_name)
-            ? { ...part, tool_name: suffix(part.tool_name) }
+          part?.type === CLAUDE_BLOCK.TOOL_REFERENCE
+            ? { ...part, tool_name: historyName(part.tool_name) }
             : part
         );
         return { ...block, content };
@@ -93,9 +103,9 @@ export function cloakClaudeTools(body) {
   // renamed — never a decoy/built-in name (those are sent unsuffixed).
   if (
   body.tool_choice?.type === "tool" &&
-  clientToolNames.has(body.tool_choice.name))
+  historyName(body.tool_choice.name) !== body.tool_choice.name)
   {
-    cloakedBody.tool_choice = { ...body.tool_choice, name: suffix(body.tool_choice.name) };
+    cloakedBody.tool_choice = { ...body.tool_choice, name: historyName(body.tool_choice.name) };
   }
 
   return {
@@ -113,7 +123,11 @@ export function decloakToolName(name, toolNameMap, claudeCloaked = false) {
   const mapped = toolNameMap?.get(name);
   if (mapped) return mapped;
   if (!claudeCloaked || !isString(name) || !name.endsWith(CLAUDE_TOOL_SUFFIX) || CC_DEFAULT_TOOLS.has(name)) return name;
-  return name.length > CLAUDE_TOOL_SUFFIX.length ? name.slice(0, -CLAUDE_TOOL_SUFFIX.length) : name;
+  let original = name;
+  while (original.endsWith(CLAUDE_TOOL_SUFFIX)) {
+    original = original.slice(0, -CLAUDE_TOOL_SUFFIX.length);
+  }
+  return original && !CC_DEFAULT_TOOLS.has(original) ? original : name;
 }
 
 // Restore tool_use names in nested Claude response envelopes without changing other fields.

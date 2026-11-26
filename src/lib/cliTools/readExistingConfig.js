@@ -58,7 +58,9 @@ export async function assertWriterOwnsTarget(filePath) {
   throw refusal;
 }
 
-/** Atomically replace the resolved config target, retaining one private backup beside it. */
+/** Atomically replace the resolved config target, retaining one private backup beside it.
+ * @returns {Promise<string>} The target path written, for transaction rollback.
+ */
 export async function writeConfigAtomic(filePath, content) {
   // realpath follows existing links; readlink also handles a missing link target.
   const seen = new Set();
@@ -98,6 +100,7 @@ export async function writeConfigAtomic(filePath, content) {
       if (error?.code !== "ENOENT") throw error;
     }
     await fs.rename(tempPath, filePath);
+    return filePath;
   } catch (error) {
     // The temp names only need cleanup when a write/backup/rename failed. A
     // successful rename has already consumed them and should not require unlink.

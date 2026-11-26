@@ -6,18 +6,40 @@
 // model list and capability flags are copied verbatim. Image models (served
 // on /v1/images/generations) are not ported here.
 //
-// Chat and Responses live at different URLs, selected per model by the
+// Chat, Responses and Messages live at different URLs, selected per model by the
 // targetFormat tag through the transports below (no custom executor needed in
-// this tree). The Responses endpoint is stateless and REQUIRES store:false:
+// this tree). Claude models use the native /v1/messages route so cache_control
+// breakpoints survive (OmniRoute #21262).
+// The Responses endpoint is stateless and REQUIRES store:false:
 // a missing or client-supplied store:true returns HTTP 400 upstream, so
 // clampRequestBody forces it on Responses-shaped bodies only (Chat
 // Completions rejects unknown params, so it never gets a store field).
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
-function forceStatelessResponses(body) {
+// Claude Code's billing line changes every request and sits ahead of the cache
+// breakpoints, so it would invalidate the cached prefix on the Messages route.
+const BILLING_LINE = /^x-anthropic-billing-header:[^\n]*(?:\r?\n)?/i;
+
+function stripBillingLine(body) {
+  if (isString(body.system)) {
+    if (!BILLING_LINE.test(body.system)) return body;
+    const { system, ...rest } = body;
+    const text = system.replace(BILLING_LINE, "");
+    return text ? { ...rest, system: text } : rest;
+  }
+  if (!Array.isArray(body.system) || !body.system.some((block) => BILLING_LINE.test(block?.text ?? ""))) return body;
+  const system = body.system.flatMap((block) => {
+    if (!BILLING_LINE.test(block?.text ?? "")) return [block];
+    const text = block.text.replace(BILLING_LINE, "");
+    return text ? [{ ...block, text }] : [];
+  });
+  return { ...body, system };
+}
+
+function clampCheaperInferenceBody(body) {
   if (!body || !isObject(body)) return body;
   // Return a copy: never mutate the caller's body.
-  return Array.isArray(body.input) || isString(body.input) ? { ...body, store: false } : body;
+  return Array.isArray(body.input) || isString(body.input) ? { ...body, store: false } : stripBillingLine(body);
 }
 
 export default {
@@ -36,7 +58,7 @@ export default {
   transport: {
     baseUrl: "https://api.cheaperinference.com/v1/chat/completions",
     validateUrl: "https://api.cheaperinference.com/v1/models",
-    clampRequestBody: forceStatelessResponses,
+    clampRequestBody: clampCheaperInferenceBody,
   },
   transports: [
     {
@@ -49,6 +71,13 @@ export default {
       baseUrl: "https://api.cheaperinference.com/v1/responses",
       auth: { combined: true, header: "Authorization", scheme: "bearer" },
     },
+    {
+      format: "claude",
+      baseUrl: "https://api.cheaperinference.com/v1/messages",
+      // No count_tokens route is known for this gateway; preflight counts locally.
+      nativeTokenCount: false,
+      auth: { combined: true, header: "Authorization", scheme: "bearer", anthropicVersion: true },
+    },
   ],
   models: [
   { id: "aion-labs.aion-2-0", name: "Aion 2.0", supportsReasoning: true, toolCalling: true },
@@ -58,6 +87,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-haiku-4.5",
@@ -65,6 +95,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4-7-fast",
@@ -72,6 +103,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4-8-fast",
@@ -79,6 +111,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4.5",
@@ -86,6 +119,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4.6",
@@ -93,6 +127,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4.7",
@@ -100,6 +135,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-4.8",
@@ -107,6 +143,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-5",
@@ -114,6 +151,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-opus-5-fast",
@@ -121,6 +159,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-sonnet-4.5",
@@ -128,6 +167,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-sonnet-4.6",
@@ -135,6 +175,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "claude-sonnet-5",
@@ -142,6 +183,7 @@ export default {
     supportsVision: true,
     supportsReasoning: true,
     toolCalling: true,
+    targetFormat: "claude",
   },
   {
     id: "deepseek-v4-flash",

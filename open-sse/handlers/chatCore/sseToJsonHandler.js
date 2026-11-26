@@ -526,8 +526,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
         }
         const usage = jsonResponse.usage || {};
-        appendLog({ tokens: usage, status: "200 OK" });
-        saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+        // Written after the refusal gate: a refused reply is one failed row.
+        const recordUsage = (failure = null) => {
+          appendLog({ tokens: usage, status: failure || "200 OK" });
+          saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true, ...(failure ? { status: "error" } : null) });
+        };
         if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
         // Responses usage is already cache-inclusive after stream conversion.
@@ -536,6 +539,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         // When the client asked for the Responses API format, return the converted JSON directly.
         // responsesApiToOpenAICompletion would project it to chat.completion shape and lose Responses fields.
         if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          recordUsage();
           restoreOpenAIToolNames(jsonResponse, toolNameMap);
           logToolSemantics(log, { source: sourceFormat, target: targetFormat, mode: "sse-json-responses", requestBody: body, translatedBody, providerBody: jsonResponse, clientBody: jsonResponse });
 
@@ -564,7 +568,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         if (!claudeCompat && provider === "codex" && sourceFormat === FORMATS.CLAUDE && hasClaudeSearch(body)) {
           finalResp = responsesSearchToClaudeMessage(jsonResponse, finalResp, true);
         }
-        if (invalidClassifierVerdict(sourceFormat, body, finalResp)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
+        if (invalidClassifierVerdict(sourceFormat, body, finalResp)) {
+          recordUsage(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (invalid classifier decision)`);
+          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
+        }
+        recordUsage();
         // Chat clients get the projection as-is, so restore request-side aliases (#1406).
         if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
         if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);
@@ -709,10 +717,13 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
 
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
-      appendLog({ tokens: usage, status: "200 OK" });
       const billedUsage = claudeSSE?.oneHourWrite === undefined ? usage :
         { ...usage, cache_creation_1h_input_tokens: claudeSSE.oneHourWrite };
-      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: billedUsage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+      // Written after the refusal gate: a refused reply is one failed row.
+      const recordUsage = (failure = null) => {
+        appendLog({ tokens: usage, status: failure || "200 OK" });
+        saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: billedUsage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true, ...(failure ? { status: "error" } : null) });
+      };
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;
@@ -751,7 +762,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       const projected = projectCompletionToClientFormat(clientParsed, sourceFormat, { claudeCompat, model, customToolNames: customToolNameSet, resolveToolName });
       const nativeGemini = clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY;
       const finalResp = nativeGemini ? collectAntigravityGeminiSSE(sseText, toolNameMap) : claudeSSE?.message ? withNativeClaudeFields(projected, claudeSSE.message, claudeCompat) : projected;
-      if (invalidClassifierVerdict(sourceFormat, body, finalResp)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
+      if (invalidClassifierVerdict(sourceFormat, body, finalResp)) {
+        recordUsage(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (invalid classifier decision)`);
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Claude classifier returned an invalid decision");
+      }
+      recordUsage();
       // Chat clients get the projection as-is, so restore request-side aliases (#1406).
       if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(finalResp, toolNameMap);
       if (GEMINI_FAMILY_FORMATS.has(sourceFormat)) restoreGeminiToolNames(finalResp, toolNameMap);

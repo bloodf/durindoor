@@ -30,8 +30,8 @@ describe("#2300 dead baseline data", () => {
     try {
       hits = execFileSync(
         "git",
-        ["grep", "-lE", `${pattern}|__baseline__/current\\.json`, "--", ".",
-          ":!*.md", ":!*.mdx", ":!internal/**", ":!tests/unit/arch-a2300.test.js",
+        ["grep", "-lE", `${pattern}|__baseline__/current\\.json`, "--", "package.json", "tests/package.json", "scripts", "tests", ".github", "*vitest*", "*eslint*",
+          ":!tests/unit/arch-a2300.test.js",
           // Lists baseline-results.json only as a documented exception, not a use.
           ":!tests/unit/review-x-dead-baseline.test.js"],
         { cwd: repoRoot, encoding: "utf8" },
@@ -40,6 +40,15 @@ describe("#2300 dead baseline data", () => {
       if (error.status !== 1) throw error; // 1 = no matches
     }
     expect(hits.trim()).toBe("");
+    for (const file of DELETED) {
+      let imports = "";
+      try {
+        imports = execFileSync("git", ["grep", "-nE", `^[[:space:]]*(import|export|.*require\\().*${file.replaceAll(".", "\\.")}`, "--", "src", "open-sse"], { cwd: repoRoot, encoding: "utf8" });
+      } catch (error) {
+        if (error.status !== 1) throw error;
+      }
+      expect(imports.trim()).toBe("");
+    }
   });
 });
 

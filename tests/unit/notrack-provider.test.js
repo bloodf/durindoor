@@ -183,7 +183,7 @@ describe("NoTrack developer API provider (mocked, not live proof)", () => {
       { id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "ening" } }] },
       { id: "chatcmpl-1", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 41, completion_tokens: 118, total_tokens: 159 } },
     ]));
-    const result = await handleChatCore(chatCoreOptions({ stream: true }));
+    const result = await handleChatCore(chatCoreOptions({ stream: true, body: { ...chatBody(true), stream_options: { include_usage: true } } }));
     expect(result.success).toBe(true);
     const text = await result.response.text();
     const frames = text.split("\n\n").filter((frame) => frame.startsWith("data: {")).map((frame) => JSON.parse(frame.slice(6)));

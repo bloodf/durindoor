@@ -84,6 +84,204 @@ export function requiresWebsiteBuild(paths) {
     || p.startsWith("scripts/") || p.startsWith(".github/workflows/"));
 }
 
+// Deterministic Playwright sharding keeps each website browser command well
+// under the 300-second ceiling while covering the complete configured inventory.
+export const WEBSITE_BROWSER_SHARD_COUNT = 8;
+
+const LITERAL_PLAYWRIGHT_SPEC_RE = /^[\w./-]+\.spec\.(?:m|c)?[jt]s$/;
+
+export function extractPlaywrightTests(report) {
+  if (!Array.isArray(report?.suites)) {
+    throw new Error("Playwright JSON report has no suites[]");
+  }
+  if (!Array.isArray(report.errors) || report.errors.length > 0) {
+    throw new Error(`Playwright reported ${Array.isArray(report.errors) ? report.errors.length : "invalid"} error(s)`);
+  }
+  const entries = [];
+  const seen = new Set();
+  const walkSuite = (suite, parentTitles, isFileRoot) => {
+    const nextTitles = isFileRoot ? parentTitles : [...parentTitles, suite.title];
+    for (const spec of suite.specs || []) {
+      const file = spec.file || suite.file;
+      if (!isString(file) || !file.trim() || !isString(spec.title) || !spec.title.trim()) {
+        throw new Error("Playwright spec missing file or title");
+      }
+      const title = [...nextTitles, spec.title].join(" › ");
+      const tests = Array.isArray(spec.tests) ? spec.tests : [];
+      if (!tests.length) throw new Error(`Playwright spec has no tests[]: ${file} :: ${title}`);
+      for (const test of tests) {
+        const projectId = isString(test.projectId) ? test.projectId : "";
+        const projectName = isString(test.projectName) ? test.projectName : "";
+        const id = isString(spec.id) && spec.id.trim() ? spec.id : null;
+        const key = `${projectId}::${file}::${title}${id ? `::${id}` : ""}`;
+        if (seen.has(key)) throw new Error(`duplicate Playwright test key: ${key}`);
+        seen.add(key);
+        entries.push({
+          key, id, projectId, projectName, file, title,
+          ok: spec.ok === true,
+          status: test.status,
+          resultCount: Array.isArray(test.results) ? test.results.length : 0,
+        });
+      }
+    }
+    for (const childSuite of suite.suites || []) walkSuite(childSuite, nextTitles, false);
+  };
+  for (const fileSuite of report.suites) walkSuite(fileSuite, [], true);
+  return entries.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function collectWebsiteBrowserInventory(listReport) {
+  const tests = extractPlaywrightTests(listReport);
+  if (!tests.length) throw new Error("empty website browser test inventory");
+  const files = [...new Set(tests.map((entry) => entry.file))].sort();
+  const projects = Array.isArray(listReport?.config?.projects) ? listReport.config.projects : [];
+  for (const project of projects) {
+    const matches = Array.isArray(project?.testMatch) ? project.testMatch : [];
+    for (const match of matches) {
+      if (!isString(match) || !LITERAL_PLAYWRIGHT_SPEC_RE.test(match)) continue;
+      if (!files.some((file) => file === match || file.endsWith(`/${match}`))) {
+        throw new Error(`configured website browser suite produced zero tests: ${match}`);
+      }
+    }
+  }
+  return { tests, files };
+}
+
+export function selectWebsiteBrowserShards(inventory, count = WEBSITE_BROWSER_SHARD_COUNT) {
+  if (!Array.isArray(inventory) || !inventory.length) throw new Error("empty website browser test inventory");
+  if (!Number.isInteger(count) || count < 1) throw new Error("invalid website browser shard count");
+  const total = Math.min(count, inventory.length);
+  return Array.from({ length: total }, (_, index) => ({
+    index: index + 1,
+    total,
+    shard: `${index + 1}/${total}`,
+    id: `website-browser-shard-${index + 1}`,
+  }));
+}
+
+export function websiteBrowserInventoryCommand(web, browser, reportFile) {
+  for (const [label, value] of [["web", web], ["browser", browser], ["reportFile", reportFile]]) {
+    if (!isString(value) || !path.isAbsolute(value)) throw new Error(`website browser ${label} must be an absolute path`);
+  }
+  return [
+    "website-browser-inventory",
+    "node",
+    [path.join(web, "node_modules/@playwright/test/cli.js"), "test", "--list", "--reporter=json"],
+    {
+      cwd: web,
+      env: {
+        WEBSITE_CHROMIUM_EXECUTABLE: browser,
+        PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile,
+      },
+    },
+  ];
+}
+
+export function websiteBrowserShardCommands(web, shards, { browser, outputRoot, reportRoot } = {}) {
+  if (!Array.isArray(shards) || !shards.length) throw new Error("empty website browser shards");
+  for (const [label, value] of [
+    ["web", web], ["browser", browser], ["outputRoot", outputRoot], ["reportRoot", reportRoot],
+  ]) {
+    if (!isString(value) || !path.isAbsolute(value)) throw new Error(`website browser ${label} must be an absolute path`);
+  }
+  const total = shards.length;
+  return shards.map((entry, idx) => {
+    const expectedIndex = idx + 1;
+    const expectedShard = `${expectedIndex}/${total}`;
+    const expectedId = `website-browser-shard-${expectedIndex}`;
+    if (!entry || entry.index !== expectedIndex || entry.total !== total
+      || entry.shard !== expectedShard || entry.id !== expectedId) {
+      throw new Error(`invalid website browser shard entry at position ${expectedIndex}`);
+    }
+    const shardOutputDir = path.join(outputRoot, `shard-${expectedIndex}`);
+    const verifyScreenshotsDir = path.join(outputRoot, `shard-${expectedIndex}-verify-screenshots`);
+    const reviewScreenshotsDir = path.join(outputRoot, `shard-${expectedIndex}-review-screenshots`);
+    const reportFile = path.join(reportRoot, `shard-${expectedIndex}.json`);
+    return [
+      expectedId,
+      "node",
+      [
+        path.join(web, "node_modules/@playwright/test/cli.js"),
+        "test",
+        `--shard=${expectedShard}`,
+        "--reporter=list,json",
+        `--output=${shardOutputDir}`,
+      ],
+      {
+        cwd: web,
+        env: {
+          WEBSITE_CHROMIUM_EXECUTABLE: browser,
+          PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile,
+          WEBSITE_VERIFY_SCREENSHOTS: verifyScreenshotsDir,
+          WEBSITE_REVIEW_SCREENSHOTS: reviewScreenshotsDir,
+        },
+        reportFile,
+        shard: expectedShard,
+      },
+    ];
+  });
+}
+
+export function validateWebsiteBrowserShardReport(reportFile, startedAt, exitCode, signal = null) {
+  if (signal) throw new Error(`website browser shard terminated by signal ${signal}`);
+  if (exitCode !== 0) throw new Error(`website browser shard exited with status ${exitCode}`);
+  if (!existsSync(reportFile)) throw new Error("website browser shard did not create a JSON report");
+  if (statSync(reportFile).mtimeMs < startedAt - 1000) throw new Error("website browser shard JSON report is stale");
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportFile, "utf8"));
+  } catch (error) {
+    throw new Error(`website browser shard JSON report is not parseable: ${error.message}`);
+  }
+  const entries = extractPlaywrightTests(report);
+  if (!entries.length) throw new Error("website browser shard collected zero tests");
+  const stats = report.stats || {};
+  if (Number(stats.unexpected || 0) !== 0 || Number(stats.skipped || 0) !== 0 || Number(stats.flaky || 0) !== 0) {
+    throw new Error("website browser shard reported unexpected, skipped, or flaky tests");
+  }
+  if (Number(stats.expected || 0) !== entries.length) {
+    throw new Error("website browser shard expected test count mismatch");
+  }
+  for (const entry of entries) {
+    if (!entry.ok || entry.status !== "expected" || entry.resultCount < 1) {
+      throw new Error(`website browser test did not pass: ${entry.file} :: ${entry.title}`);
+    }
+  }
+  return { file: reportFile, sha256: digest(readFileSync(reportFile)), tests: entries.length, entries };
+}
+
+export function verifyWebsiteBrowserCoverage(inventory, shardResults) {
+  if (!Array.isArray(inventory) || !inventory.length) throw new Error("empty website browser test inventory");
+  if (!Array.isArray(shardResults) || !shardResults.length) throw new Error("missing website browser shard results");
+  const expected = new Set();
+  for (const entry of inventory) {
+    if (!isString(entry?.key) || !entry.key) throw new Error("invalid website browser inventory entry");
+    if (expected.has(entry.key)) throw new Error(`duplicate website browser inventory entry: ${entry.key}`);
+    expected.add(entry.key);
+  }
+  const executed = new Set();
+  for (let i = 0; i < shardResults.length; i++) {
+    const entries = shardResults[i]?.entries;
+    if (!Array.isArray(entries) || !entries.length) {
+      throw new Error(`website browser shard ${i + 1} executed zero tests`);
+    }
+    for (const entry of entries) {
+      if (!isString(entry?.key) || !entry.key) throw new Error("invalid website browser shard entry");
+      if (executed.has(entry.key)) throw new Error(`duplicate website browser test across shards: ${entry.key}`);
+      executed.add(entry.key);
+    }
+  }
+  const missing = [...expected].filter((key) => !executed.has(key));
+  if (missing.length) throw new Error(`website browser shards omitted ${missing.length} configured test(s)`);
+  const extra = [...executed].filter((key) => !expected.has(key));
+  if (extra.length) throw new Error(`website browser shards ran ${extra.length} unexpected test(s)`);
+  return {
+    totalTests: expected.size,
+    shards: shardResults.length,
+    files: [...new Set(inventory.map((entry) => entry.file))].sort(),
+  };
+}
+
 // Every full checkpoint exercises the same artifacts that release.yml publishes.
 // Commands stay separate so each retains the supervisor's 300-second ceiling.
 export function artifactCommands(src, packDirectory, version) {
@@ -516,21 +714,81 @@ if (!websiteRun) {
 } else {
   // Reuse the browser chosen for local evidence; child HOME stays private.
   const configuredBrowser = process.env.WEBSITE_CHROMIUM_EXECUTABLE || process.env.V5_CHROMIUM_EXECUTABLE;
-  const browser = configuredBrowser || chromiumLaunchOptions(chromium, dirs.src).executablePath || chromium.executablePath();
-  const browserAvailable = configuredBrowser || existsSync(browser);
-  const websiteSteps = [
+  const resolvedBrowser = configuredBrowser ? path.resolve(configuredBrowser) : null;
+  const browser = resolvedBrowser || chromiumLaunchOptions(chromium, dirs.src).executablePath || chromium.executablePath();
+  const browserAvailable = Boolean(resolvedBrowser || (browser && existsSync(browser)));
+  const websiteBuilt = await job("website-build", [
     ["pnpm-install-root", "pnpm", pnpmInstall],
     ["pnpm-install-website", "pnpm", pnpmInstall, { cwd: web }],
     ["website-build", "pnpm", ["run", "build"], { cwd: web }],
-  ];
-  if (browserAvailable) {
-    websiteSteps.push(["website-browser-suites", "pnpm", ["run", "test:browser"],
-      { cwd: web, env: { WEBSITE_CHROMIUM_EXECUTABLE: browser } }]);
-  }
-  await job("website-build", websiteSteps);
-  if (!browserAvailable) {
+  ]);
+  if (!websiteBuilt) {
+    skip("website-browser-inventory", "website-build", "website build did not pass", "not-run");
+  } else if (!browserAvailable) {
     console.log("browser suites skipped: no browser");
     skip("website-browser-suites", "website-build", "browser suites skipped: no browser");
+  } else {
+    const browserOutputRoot = path.join(dirs.tmp, "website-browser-output");
+    const browserReportRoot = path.join(out, "website-browser-reports");
+    mkdirSync(browserOutputRoot, { recursive: true, mode: 0o700 });
+    mkdirSync(browserReportRoot, { recursive: true, mode: 0o700 });
+    const inventoryFile = path.join(browserReportRoot, "inventory.json");
+    rmSync(inventoryFile, { force: true });
+    const [invId, invCmd, invArgs, invOpts] = websiteBrowserInventoryCommand(web, browser, inventoryFile);
+    const inventoryStep = await run(invId, "website-build", invCmd, invArgs, invOpts);
+    if (!ok(inventoryStep)) {
+      skip("verify-website-browser-reports", "website-build", "website browser inventory did not pass", "not-run");
+    } else {
+      try {
+        if (!existsSync(inventoryFile) || statSync(inventoryFile).mtimeMs < Date.parse(inventoryStep.startedAt) - 1000) {
+          throw new Error("missing or stale website browser inventory report");
+        }
+        const discovered = collectWebsiteBrowserInventory(JSON.parse(readFileSync(inventoryFile, "utf8")));
+        const shards = selectWebsiteBrowserShards(discovered.tests);
+        const shardCommands = websiteBrowserShardCommands(web, shards, {
+          browser,
+          outputRoot: browserOutputRoot,
+          reportRoot: browserReportRoot,
+        });
+        evidence.websiteBrowserInventory = discovered.tests.map((entry) => entry.key);
+        evidence.websiteBrowserShards = shards.map((entry) => entry.shard);
+        save();
+        const shardResults = [];
+        let dead = false;
+        let shardValidationError = null;
+        for (const [shardId, cmd, args, shardOpts] of shardCommands) {
+          if (dead) {
+            skip(shardId, "website-build", "earlier website browser shard did not pass", "not-run");
+            continue;
+          }
+          rmSync(shardOpts.reportFile, { force: true });
+          const step = await run(shardId, "website-build", cmd, args, { cwd: shardOpts.cwd, env: shardOpts.env });
+          if (!ok(step)) {
+            dead = true;
+            continue;
+          }
+          try {
+            const validated = validateWebsiteBrowserShardReport(
+              shardOpts.reportFile, Date.parse(step.startedAt), step.exitCode, step.signal,
+            );
+            shardResults.push(validated);
+            evidence.reports.push({ file: validated.file, sha256: validated.sha256, tests: validated.tests });
+            save();
+          } catch (error) {
+            dead = true;
+            shardValidationError = error;
+          }
+        }
+        if (shardValidationError) throw shardValidationError;
+        if (dead) throw new Error("one or more website browser shards failed");
+        evidence.websiteBrowserCoverage = verifyWebsiteBrowserCoverage(discovered.tests, shardResults);
+        evidence.steps.push({ id: "verify-website-browser-reports", job: "website-build", kind: "check", status: "passed", at: now() });
+        save();
+      } catch (error) {
+        anyFail = true;
+        skip("verify-website-browser-reports", "website-build", error.message, "failed");
+      }
+    }
   }
 }
 

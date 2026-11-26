@@ -1,0 +1,53 @@
+# #1072: verify-2 provider/connection port, rows 13-18
+
+Status: **COMPLETE**. This batch covers rows 13 to 18 of the `remaining` and `partial` rows in [verify-2](1072-close-verify-2.md), in table order. The older report is unchanged. Local code was inspected at `b2b7e169f12`. Each upstream PR is still open at the head SHA recorded below, fetched with `gh api repos/decolua/9router/pulls/<N>` and `gh api repos/decolua/9router/pulls/<N>/files --paginate`. Five rows were already ported in earlier commits that are ancestors of `HEAD`, and all of their focused tests pass on this tree. One row (`#1999`) removes an active provider and is a breaking product retirement requiring an owner decision rather than a provider or connection bug fix. No runtime code, tests, settings, pricing, Storybook inventory hashes, or failure baselines changed. No live provider calls or credentials were used.
+
+| Row | PR | Head | Final status | Evidence |
+| --- | --- | --- | --- | --- |
+| 13 | [#1921](https://github.com/decolua/9router/pull/1921) | `b61f9ea294ed` | already present | Commit `bc9f7388243` (`port(upstream): #1921 - add model filtering and bulk selection`) is an ancestor of `HEAD`. `src/app/(dashboard)/dashboard/providers/[id]/modelSelection.js` implements keyword/operator filtering (`contains`, `notContains`, `startsWith`, `endsWith`, `equals`), group filtering, A-to-Z/Z-to-A sorting, selection retention across hidden groups, and independent bulk execution with partial failure reporting. `src/app/(dashboard)/dashboard/providers/[id]/sections/buildModelsSection.jsx` and `src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js` wire filter controls, selection checkboxes (including disabled and custom/alias-backed rows), bulk enable/disable, and confirmed bulk delete. [disabled models route](../../../src/app/api/models/disabled/route.js) enables multiple IDs in one `DELETE` request and rejects empty `id=` with HTTP 400. Upstream's standalone `ModelFilterBar.js` and `ModelBulkActions.js` are absent locally because the controls live in `buildModelsSection.jsx` and `modelSelection.js`. [port9r-model-selection-1921.test.js](../../../tests/unit/port9r-model-selection-1921.test.js) and [port9r-model-bulk-enable-1921.test.js](../../../tests/unit/port9r-model-bulk-enable-1921.test.js) pass. Earlier report: [port 1921](1072-nov22-port-1921.md). |
+| 14 | [#1999](https://github.com/decolua/9router/pull/1999) | `3528c160d015` | not applicable: breaking provider retirement requires an owner decision; `gemini-cli` remains an active risk-notice route | Upstream deletes the `gemini-cli` provider across 35 files, including its registry entry, executor, OAuth service, usage handler, CLI menu entry, icon, baselines, and tests. In DurinDoor, [gemini-cli registry](../../../open-sse/providers/registry/gemini-cli.js) intentionally keeps `gemini-cli` active with `deprecated: true` and `deprecationNotice: "RISK_NOTICE"` (not `hidden: true`), and [retired providers docs](../../../docs/providers/retired.mdx) explicitly document it as an active risk-notice route whose warning does not disable routing, refresh, or quota handling. [gemini-cli executor](../../../open-sse/executors/gemini-cli.js), [Gemini OAuth service](../../../src/lib/oauth/services/gemini.js), and [gemini-usage-projectid.test.js](../../../tests/unit/gemini-usage-projectid.test.js) remain active and passing. Retiring a live provider would disrupt saved OAuth connections and is not a provider/connection bug fix or hardening change. Earlier assessment: [deferred 14](1072-nov22-deferred-14.md). |
+| 15 | [#2020](https://github.com/decolua/9router/pull/2020) | `b5752a58c4b4` | already present | Commits `f3d12d78de8` (`port(upstream): #2020 - clean up provider aliases atomically`) and `4c8c7916c0e` are ancestors of `HEAD`. [provider-nodes route](../../../src/app/api/provider-nodes/[id]/route.js) calls `deleteProviderNodeWithConnections` and returns HTTP 409 on `API_KEY_SCOPE_WOULD_BROADEN`. [nodesRepo.js](../../../src/lib/db/repos/nodesRepo.js) verifies exclusive prefix ownership (`ownsPrefix`), rewrites owned aliases on prefix rename, and deletes connections, node, exclusively owned `modelAliases`, and exclusively owned `customModels` in one transaction without unescaped `LIKE` queries. [custom models route](../../../src/app/api/models/custom/route.js) and [aliasRepo.js](../../../src/lib/db/repos/aliasRepo.js) accept and validate `maxInputTokens`/`max_input_tokens` and `maxOutputTokens`/`max_output_tokens` as persisted capabilities. Upstream's standalone `deleteModelAliasesByProvider` helper and `tests/unit/provider-cleanup.test.js` are absent locally because deletion is atomic in `nodesRepo.js`. [port9r-provider-cleanup-2020.test.js](../../../tests/unit/port9r-provider-cleanup-2020.test.js) and [provider-node-delete-custom-models.test.js](../../../tests/unit/provider-node-delete-custom-models.test.js) pass. Earlier report: [port 2020](1072-nov22-port-2020.md). |
+| 16 | [#2053](https://github.com/decolua/9router/pull/2053) | `de7b539c5777` | already present | Commit `5300f002494` (`port(upstream): #2053 - support SOCKS proxy dispatch`) is an ancestor of `HEAD`. [socksDispatcher.js](../../../open-sse/utils/socksDispatcher.js) adapts `socks-proxy-agent` to an Undici `Agent` dispatcher for `socks:`, `socks4:`, `socks4a:`, `socks5:`, and `socks5h:` URLs with credential-length validation, TLS verification, and credential-safe errors. [proxyFetch.js](../../../open-sse/utils/proxyFetch.js) and [proxyTest.js](../../../src/lib/network/proxyTest.js) route and probe SOCKS proxies through `createSocksDispatcher` while preserving SSRF and redirect validation. `src/app/(dashboard)/dashboard/proxy-pools/page.js` already implements `parseProxyLine` (auth-less and authenticated formats), red error notifications on failed tests, and the selective "Delete dead" modal. [port9r-socks-proxy-2053.test.js](../../../tests/unit/port9r-socks-proxy-2053.test.js), [review-m-redact-proxytest.test.js](../../../tests/unit/review-m-redact-proxytest.test.js), and [portor-socks-credential-length-20798.test.js](../../../tests/unit/portor-socks-credential-length-20798.test.js) pass. Earlier report: [port 2053](1072-nov22-port-2053.md). |
+| 17 | [#2111](https://github.com/decolua/9router/pull/2111) | `72f1b3129ae0` | already present | Commit `d6142f8596f` (`port(upstream): #2111 - route Antigravity through Gemini gateway`) is an ancestor of `HEAD`. Instead of bypassing mapped requests to passthrough (which drops model and reasoning overrides), [antigravity MITM handler](../../../src/mitm/handlers/antigravity.js) routes mapped requests to the native Gemini gateway (`/v1beta/models/<model>:streamGenerateContent?alt=sse` or `:generateContent`), applies `applyRequestOverrides`, wraps responses in the Cloud Code `{ response }` envelope, and preserves gateway errors. [geminiBridge.js](../../../src/app/api/v1beta/models/[...path]/geminiBridge.js) retains `reasoning_effort` overrides, and [MITM server](../../../src/mitm/server.js) retains peer-owner, host-allowlist, anti-loop, and unmapped passthrough guards. Upstream's `tests/unit/antigravity-mitm-bypass.test.js` is absent locally because DurinDoor fixes the response format without discarding mappings. [port9r-antigravity-gemini-2111.test.js](../../../tests/unit/port9r-antigravity-gemini-2111.test.js) passes. Earlier report: [port 2111](1072-nov22-port-2111.md). |
+| 18 | [#2954](https://github.com/decolua/9router/pull/2954) | `d32428b78d83` | already present | Commits `9805505a87b` (`port(upstream): normalize CodeBuddy requests and streams`) and `3720f178774` / `c228a36a848` (`port(upstream): #2954 - refresh CodeBuddy and Qoder profiles`) are ancestors of `HEAD`. [codebuddy-protocol.js](../../../open-sse/executors/codebuddy-protocol.js) centralizes request normalization (forced stream, reasoning opt-in/opt-out, empty-tool removal) and SSE chunk cleanup while preserving identity sanitization, unknown fields, and dispatch metadata for both [codebuddy-cn.js](../../../open-sse/executors/codebuddy-cn.js) and [codebuddy-intl.js](../../../open-sse/executors/codebuddy-intl.js). [refresh-profile route](../../../src/app/api/providers/[id]/refresh-profile/route.js) and [profile.js](../../../src/app/api/providers/[id]/refresh-profile/profile.js) enforce operator and exact-origin checks, refresh `codebuddy-cn` JWT claims and fixed-origin `qoder-cn` userinfo, strip raw phones, and store masked values; `src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx` exposes the dashboard refresh button. Upstream's `open-sse/protocol/codebuddy/`, `open-sse/services/codebuddyCnModels.js`, `src/shared/utils/codebuddyProfile.js`, `src/shared/utils/qoderworkProfile.js`, and `src/shared/utils/timezone.js` are absent locally by design: CN request fields remain unrestricted for compatibility, `codebuddy-cn` keeps its curated server-aligned catalog ([codebuddy-cn.js](../../../open-sse/providers/registry/codebuddy-cn.js)), and DurinDoor uses `qoder-cn` rather than `qoderwork-cn`. [port9r-codebuddy-normalization-2954.test.js](../../../tests/unit/port9r-codebuddy-normalization-2954.test.js) and [port9r-profile-refresh-2954.test.js](../../../tests/unit/port9r-profile-refresh-2954.test.js) pass. Earlier report: [port 2954](1072-nov22-port-2954.md). |
+
+## Upstream revisions
+
+- `#1921`: `b61f9ea294eddbcb8a501e85b887c0752ad197f0`
+- `#1999`: `3528c160d015291525dcc74c6661a63eb7473874`
+- `#2020`: `b5752a58c4b4bb40ad11d0ec1388efbbc87c69aa`
+- `#2053`: `de7b539c5777f3cee9f9d1f622514d989ea5ba0c`
+- `#2111`: `72f1b3129ae0d071cbe1e0f0b36d6805e98c5fa7`
+- `#2954`: `d32428b78d83d49558f36d77ac156df665c30e11`
+
+## Verification
+
+Focused verification passed on this tree (**11 files, 31 tests**):
+
+```sh
+cd tests
+DATA_DIR=$(mktemp -d) node node_modules/vitest/vitest.mjs run \
+  unit/port9r-model-bulk-enable-1921.test.js \
+  unit/port9r-model-selection-1921.test.js \
+  unit/gemini-usage-projectid.test.js \
+  unit/port9r-provider-cleanup-2020.test.js \
+  unit/provider-node-delete-custom-models.test.js \
+  unit/port9r-socks-proxy-2053.test.js \
+  unit/review-m-redact-proxytest.test.js \
+  unit/portor-socks-credential-length-20798.test.js \
+  unit/port9r-antigravity-gemini-2111.test.js \
+  unit/port9r-codebuddy-normalization-2954.test.js \
+  unit/port9r-profile-refresh-2954.test.js \
+  --maxWorkers=2
+```
+
+Required work-order gate command (run after staging this report with `git add`):
+
+```sh
+cd tests
+DATA_DIR=$(mktemp -d) node node_modules/vitest/vitest.mjs run \
+  unit/review-l-docs.test.js \
+  unit/1300-v5-storybook-inventory.test.js \
+  unit/model-catalog-consistency.test.js \
+  unit/review-r-settings-complete.test.js
+```

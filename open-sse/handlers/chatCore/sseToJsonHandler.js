@@ -8,7 +8,7 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
-import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
+import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { initState } from "../../translator/index.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
@@ -435,6 +435,14 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
   return { completion, stopReason, oneHourWrite, message: decloakToolNames(message, toolNameMap) };
 }
 
+/** Every choice ended with a plain "stop" and carried nothing the client can use. */
+function isEmptyStopCompletion(completion) {
+  return !(Number(completion.usage?.completion_tokens) > 0) && Array.isArray(completion.choices) &&
+    completion.choices.every(({ finish_reason, message }) => finish_reason === "stop" &&
+      !message?.content?.trim?.() && !message?.reasoning_content?.trim?.() &&
+      !message?.reasoning_encrypted_content && !message?.audio && !message?.tool_calls?.length);
+}
+
 /** Same test as the streaming path's onEmptyStream gate. The Chat hop's synthetic " " does not count. */
 function isEmptyClaudeCompletion(completion, stopReason) {
   const message = completion.choices?.[0]?.message;
@@ -689,6 +697,14 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           HTTP_STATUS.BAD_GATEWAY,
           INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE
         );
+      }
+
+      // A plain stop with no output and no billed tokens is a failed attempt, as on
+      // the non-streaming path (upstream 9router #5864). Claude keeps its own
+      // cooldown below; Antigravity's empty stop is a real answer.
+      if (!claudeSSE && provider !== "antigravity" && provider !== "agy" && isEmptyStopCompletion(parsed)) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Empty response content from ${provider}/${model}`, Date.now() + EMPTY_CONTENT_COOLDOWN_MS);
       }
 
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);

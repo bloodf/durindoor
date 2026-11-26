@@ -744,6 +744,17 @@ export function getClientStatusFromError(status, errorText = null) {
 }
 
 /**
+ * Message of an error envelope (`error`, `errors[]`, `response.error`) that an
+ * upstream sent with HTTP 2xx, or null (upstream 9router #5864).
+ */
+export function errorEnvelopeMessage(payload) {
+  const error = payload?.error || payload?.errors?.[0] || payload?.response?.error;
+  if (!error) return null;
+  const message = isString(error) ? error : error.message || error.detail || error.code || error.type;
+  return isString(message) && message ? message : "Upstream returned an error payload";
+}
+
+/**
  * Create error result for chatCore handler.
  * @param {number} statusCode - HTTP status retained for internal fallback state
  * @param {string} message - Error message

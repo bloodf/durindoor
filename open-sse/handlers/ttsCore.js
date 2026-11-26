@@ -17,7 +17,9 @@ export {
 
 // ── Response Formatter (DRY) ───────────────────────────────────
 function createTtsResponse(base64Audio, format, responseFormat) {
-  const audioBuffer = Buffer.from(base64Audio, "base64");
+  const audioBuffer = Buffer.from(base64Audio || "", "base64");
+  // A 200 that carried no decodable audio is an upstream failure (9router #5864).
+  if (!audioBuffer.length) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Upstream returned no audio");
 
   // JSON format: return base64 encoded audio
   if (responseFormat === "json") {

@@ -469,7 +469,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `uberllm` |  | apikey | `https://api.uberllm.dev/v1/chat/completions` |
 | `uc-direct` |  | apikey | `https://api.uncensored.com/api/v1/chat/completions` |
 | `udio` | openai | webCookie | `https://www.udio.com/api/generate-proxy` |
-| `uncloseai` |  | freeTier | `https://hermes.ai.unturf.com/v1/chat/completions` |
+| `uncloseai` |  | apikey | `https://hermes.ai.unturf.com/v1/chat/completions` |
 | `unifically` |  | apikey | `https://api.unifically.com/v1/chat/completions` |
 | `unorouter` |  | apikey | `https://api.unorouter.com/v1/chat/completions` |
 | `upstage` |  | apikey | `https://api.upstage.ai/v1/chat/completions` |

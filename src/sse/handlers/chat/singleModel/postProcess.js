@@ -5,7 +5,7 @@ import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "open-ss
 import { peekStreamForContent } from "open-sse/utils/streamContentPeek.js";
 import { HTTP_STATUS, STREAM_EARLY_EOF_PEEK_MS } from "open-sse/config/runtimeConfig.js";
 import { isRequestReplayBufferError } from "open-sse/services/accountFallback.js";
-import { isObject } from "../../../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../../shared/utils/typeChecks.js";
 import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { RETRY, terminal } from "./context.js";
@@ -122,6 +122,7 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     state.excludeConnectionIds.add(credentials.connectionId);
     state.lastError = result.error;
     state.lastStatus = result.status;
+    state.lastErrorCode = null;
     return RETRY;
   }
   if (!state.requestReplayAttempted && isRequestReplayBufferError(result.status, result.error)) {
@@ -143,6 +144,7 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     state.excludeConnectionIds.add(credentials.connectionId);
     state.lastError = "Provider quota capacity unavailable";
     state.lastStatus = HTTP_STATUS.SERVICE_UNAVAILABLE;
+    state.lastErrorCode = null;
     return RETRY;
   }
 
@@ -196,6 +198,8 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     state.excludeConnectionIds.add(credentials.connectionId);
     state.lastError = result.error;
     state.lastStatus = result.status;
+    const upstreamCode = resultErrorBody?.error?.code;
+    state.lastErrorCode = isString(upstreamCode) && upstreamCode ? upstreamCode : null;
     return RETRY;
   }
 

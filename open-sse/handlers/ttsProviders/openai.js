@@ -2,6 +2,7 @@
 import { Buffer } from "node:buffer";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { throwIfNotAudio } from "./_base.js";
 
 const DEFAULT_TTS_MODEL = PROVIDER_MEDIA.openai?.ttsConfig?.defaultModel;
 
@@ -26,6 +27,7 @@ export default {
       const err = await res.json().catch(() => ({}));
       throw new Error(err?.error?.message || `OpenAI TTS failed: ${res.status}`);
     }
+    await throwIfNotAudio(res);
     if (envelopeFormat !== "json") {
       return { success: true, response: new Response(res.body, { headers: { "Content-Type": res.headers.get("content-type") || "audio/mpeg", "Access-Control-Allow-Origin": "*" } }) };
     }

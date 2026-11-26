@@ -25,6 +25,7 @@ import { openAIResponsesBodyToClaude, openAIResponsesBodyToGemini, openAIRespons
 import { projectCompletionToClientFormat } from "../../translator/response/completionProjector.js";
 import { createResponsesToolNameResolver } from "../../translator/response/openai-responses.js";
 import { translateResponse, initState } from "../../translator/index.js";
+import { isSafetyStopPayload } from "../../utils/safetyStopFrame.js";
 import { formatSSE } from "../../utils/streamHelpers.js";
 import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
@@ -38,7 +39,7 @@ import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/respons
 import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { CLAUDE_BLOCK } from "../../translator/schema/blocks.js";
-import { CLAUDE_STOP, GEMINI_FINISH } from "../../translator/schema/finishReasons.js";
+import { CLAUDE_STOP, GEMINI_FINISH, OPENAI_FINISH } from "../../translator/schema/finishReasons.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
 import { unfenceJsonChoices } from "../../utils/jsonFence.js";
 import { classifyFakeSuccessBody, extractAssistantText } from "../../services/fakeSuccessBodyClassifier.js";
@@ -796,7 +797,11 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // "content_filter" (see fromOpenAIFinish) — check the raw provider body here
     // so neither path is mistaken for a retryable empty-content gateway fault.
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
-    if (!isNativeClaudeRefusal && !isTokenLimited &&
+    // A content filter or safety block is a finished (empty) answer that every
+    // sibling would repeat; the combo empty check already accepts it (#5864).
+    const isSafetyStop = isSafetyStopPayload(responseBody) ||
+      responseBody?.incomplete_details?.reason === OPENAI_FINISH.CONTENT_FILTER;
+    if (!isNativeClaudeRefusal && !isSafetyStop && !isTokenLimited &&
         !hasUsefulContent(translatedResponse) && !(clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && hasUsefulContent(responseBody)) && !isTrustedEmptyStop(translatedResponse, provider)) {
       recordRefusal(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)`);
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);

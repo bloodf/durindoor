@@ -94,7 +94,13 @@ function exhaustedResponse(ctx, state) {
   if (attemptedRateLimit) {
     return unavailableResponse(429, `[${provider}/${model}] ${state.lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
   }
-  return errorResponse(getClientStatusFromError(state.lastStatus, state.lastError), state.lastError || "All accounts unavailable");
+  // Without the upstream code the status default applies, and a 401 would read as
+  // `invalid_api_key`: "your gateway key is invalid" (OmniRoute #21119).
+  return errorResponse(
+    getClientStatusFromError(state.lastStatus, state.lastError),
+    state.lastError || "All accounts unavailable",
+    state.lastErrorCode ? { code: state.lastErrorCode } : null
+  );
 }
 
 /**

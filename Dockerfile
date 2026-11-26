@@ -49,23 +49,10 @@ ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/custom-server.js ./custom-server.js
-COPY --from=builder /app/web-login-host-boundary.cjs ./web-login-host-boundary.cjs
-# custom-server.js requires this at its first line (OmniRoute #6828 empty-env guard).
-COPY --from=builder /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js
-# open-sse/config/runtimeConfig.js imports this ESM helper at runtime.
-COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeChecks.js
-# custom-server.js requires this CJS helper at import time (#551).
-COPY --from=builder /app/src/shared/utils/typeChecks.cjs ./src/shared/utils/typeChecks.cjs
-COPY --from=builder /app/open-sse ./open-sse
-# Next file tracing can omit sibling files; MITM runs server.js as a separate process.
 # MITM DNS loads its host mapping at runtime, outside Next standalone tracing.
 COPY --from=builder /app/src/shared/constants/mitmToolHosts.js ./src/shared/constants/mitmToolHosts.js
-COPY --from=builder /app/src/mitm ./src/mitm
 # scripts/build-app.mjs materializes every runtime dependency and its closure
 # into .next/standalone above, including sql.js assets and optional native bindings.
 # Copying the isolated pnpm source tree here would replace that relocatable closure.

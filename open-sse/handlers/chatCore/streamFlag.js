@@ -41,3 +41,12 @@ export function resolveStreamFlag({
 
   return stream;
 }
+
+/**
+ * A client that omits `stream` but accepts only `text/event-stream` asked for
+ * SSE (upstream #1401). An explicit `stream` value always wins, and an Accept
+ * header that also lists `application/json` stays on the JSON default.
+ */
+export function acceptRequestsStream(bodyStream, clientPrefersSSE, clientPrefersJson) {
+  return bodyStream == null && clientPrefersSSE && !clientPrefersJson;
+}

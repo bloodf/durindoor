@@ -276,6 +276,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const handleBulkSubmit = async () => {
     const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return;
+    if (isCompatible && !formData.defaultModel.trim()) return;
     setSaving(true);
     setBulkResult(null);
 
@@ -341,6 +342,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             priority: 1,
             testStatus: "unknown",
             createOnly: true,
+            defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
             ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : null)
           })
         });
@@ -380,6 +382,15 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               <>One key per line. Format: <code>name|apiKey</code> or just <code>apiKey</code> (auto-named by index).</>
               }
             </p>
+            {isCompatible && (
+              <Input
+                label="Default Model"
+                value={formData.defaultModel}
+                onChange={(e) => setFormData({ ...formData, defaultModel: e.target.value })}
+                placeholder={isAnthropic ? "claude-sonnet-4-5" : "gpt-4o-mini"}
+                hint="Used for every key added in this bulk import."
+              />
+            )}
             <Textarea
               label="Credentials"
               className="min-h-[140px] font-mono"
@@ -394,7 +405,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               </div>
           }
             <div className="flex gap-2">
-              <Button variant="primary" onClick={handleBulkSubmit} className="w-full" disabled={saving || !bulkText.trim()}>
+              <Button variant="primary" onClick={handleBulkSubmit} className="w-full" disabled={saving || !bulkText.trim() || (isCompatible && !formData.defaultModel.trim())}>
                 {saving ? "Adding..." : "Add All Keys"}
               </Button>
               <Button onClick={onClose} variant="ghost" className="w-full">Cancel</Button>

@@ -406,6 +406,15 @@ export function computeThinkingBudget(current, cap) {
   return null;
 }
 
+// Opt into OpenRouter re-routing when a model's primary upstream is broken
+// (upstream decolua/9router#2887). A caller's explicit choice is left alone.
+function withOpenRouterFallbacks(body) {
+  if (!isRecord(body)) return body;
+  const preferences = body.provider ?? {};
+  if (!isRecord(preferences) || preferences.allow_fallbacks !== undefined) return body;
+  return { ...body, provider: { ...preferences, allow_fallbacks: true } };
+}
+
 export class DefaultExecutor extends BaseExecutor {
   constructor(provider) {
     const providerId = resolveProviderAlias(provider);
@@ -458,6 +467,7 @@ export class DefaultExecutor extends BaseExecutor {
     let transformed = this.applyJsonSchemaFallback(this.applyNousAttribution(model, body, stream, credentials));
 
     if (isOfficialAnthropicApiKey(this.provider, credentials)) transformed = stripClaudeIdentity(transformed);
+    if (this.provider === "openrouter") transformed = withOpenRouterFallbacks(transformed);
 
     const transportFormat = credentials?.runtimeTransport?.format?.replace(/-apikey$/, "") || this.config.format;
     transformed = applyDeepSeekV4ProAlias({
@@ -497,8 +507,11 @@ export class DefaultExecutor extends BaseExecutor {
       // IN 0 · OUT 0 (decolua/9router#3081, port of #3017 fix). Use the resolved
       // runtime transport: multi-endpoint providers may select Claude even when
       // their registry default is OpenAI, and Anthropic rejects stream_options.
-      if (transportFormat === "openai" && stream === true && transformed.messages && !transformed.stream_options) {
-        transformed.stream_options = { include_usage: true };
+      // The official OpenAI endpoint also gets it when the client's stream_options
+      // say nothing about usage (#3481). An explicit client value is kept.
+      const openAiUsageUnset = this.provider === "openai" && transformed.stream_options?.include_usage === undefined;
+      if (transportFormat === "openai" && stream === true && transformed.messages && (openAiUsageUnset || !transformed.stream_options)) {
+        transformed.stream_options = { ...transformed.stream_options, include_usage: true };
       }
       if (this.provider === "openai") {
         normalizeOpenAIToolCallIds(transformed);
@@ -690,7 +703,7 @@ export class DefaultExecutor extends BaseExecutor {
 
     const schema = rf.json_schema?.schema;
     const schemaJson = schema ? JSON.stringify(schema, null, 2) : null;
-    const prompt = schemaJson ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.` : "Respond with valid JSON only.";
+    const prompt = schemaJson ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text and no markdown code fences.` : "Respond with valid JSON only, with no markdown code fences.";
 
     const messages = Array.isArray(body.messages) ? body.messages.map((m) => ({ ...m })) : [];
     const sys = messages.find((m) => m.role === "system");

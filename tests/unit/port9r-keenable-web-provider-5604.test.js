@@ -122,7 +122,7 @@ describe("search request mapping", () => {
 
   it("rejects filters it cannot honor instead of dropping them", () => {
     const build = (extra) => () => buildSearchRequest(searchConfig, { ...baseParams, ...extra });
-    expect(build({ domainFilter: ["a.com", "b.com"] })).toThrow("one include domain");
+    expect(build({ domainFilter: ["a.com", "*.b.com"] })).toThrow("hosts only");
     expect(build({ offset: 5 })).toThrow("does not support offset");
     expect(build({ searchType: "news" })).toThrow("Unsupported Keenable search type");
     expect(build({ timeRange: "decade" })).toThrow("Unsupported Keenable time_range");
@@ -143,10 +143,10 @@ describe("search response mapping", () => {
         { title: 7, url: ["x"], snippet: {} }
       ]
     }, "sqlite wal", "web");
-    expect(normalized.totalResults).toBe(3);
+    expect(normalized.totalResults).toBe(2);
     expect(normalized.results[0]).toMatchObject({ title: "Write-Ahead Logging", url: "https://sqlite.org/wal.html", snippet: "WAL is faster", published_at: "2026-01-02", position: 1 });
     expect(normalized.results[1].snippet).toBe("Fallback text");
-    expect(normalized.results[2]).toMatchObject({ title: "", url: "", snippet: "" });
+    expect(normalized.results.map((result) => result.url)).toEqual(["https://sqlite.org/wal.html", page]);
     expect(normalizeSearchResponse("keenable", {}, "q", "web")).toEqual({ results: [], totalResults: 0 });
   });
 });

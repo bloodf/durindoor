@@ -17,7 +17,7 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { ChatPlaygroundExecutor, createChatPlaygroundSseStream, discoverChatPlaygroundModels, validateChatPlaygroundCookie } from "../../open-sse/executors/chatplayground.js";
+import { ChatPlaygroundExecutor, discoverChatPlaygroundModels, validateChatPlaygroundCookie } from "../../open-sse/executors/chatplayground.js";
 import provider, { chatplaygroundCookieProfile } from "../../open-sse/providers/registry/chatplayground.js";
 import { getCookieImportContract, buildImportedCookieHeader } from "../../src/lib/providers/cookieImport/contract.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";
@@ -32,13 +32,16 @@ const catalog = { data: [{ botId: MODEL, modelName: MODEL, displayName: "GPT 6 L
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
+const unifiedReply = (text) => [{ type: "text-delta", id: "0", delta: text }, { type: "finish", finishReason: "stop" }]
+  .map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
+
 function setUpstream(answer = "hello") {
   upstream.fetch.mockImplementation(async (url, init = {}) => {
     const mint = String(url).match(/\/sessions\/([^/]+)\/tokens/);
     if (mint) return json({ jwt: `jwt-${mint[1]}` });
-    if (String(url).endsWith("/api/user")) return json({ id: "user" });
+    if (String(url).endsWith("/api/me")) return json({ id: "user" });
     if (String(url).endsWith("/api/models")) return json(catalog);
-    if (String(url).includes("/api/chat/")) return new Response(answer);
+    if (String(url).endsWith("/api/chat")) return new Response(unifiedReply(answer));
     return json({}, 404);
   });
 }
@@ -107,9 +110,9 @@ describe("staged ChatPlayground provider", () => {
     setUpstream();
     await new ChatPlaygroundExecutor(upstream.fetch).execute({ model: MODEL, body: { messages: [] }, stream: false, credentials: { apiKey: COOKIE_A } });
     await new ChatPlaygroundExecutor(upstream.fetch).execute({ model: MODEL, body: { messages: [] }, stream: false, credentials: { apiKey: COOKIE_B } });
-    const chatCalls = upstream.fetch.mock.calls.filter(([url]) => String(url).includes("/api/chat/"));
+    const chatCalls = upstream.fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/chat"));
     expect(chatCalls.map(([, init]) => init.headers.Authorization)).toEqual(["Bearer jwt-sid-a", "Bearer jwt-sid-b"]);
-    upstream.fetch.mockImplementation(async (url) => String(url).includes("clerk") ? json({ jwt: "synthetic-clerk-jwt" }) : String(url).endsWith("/api/user") ? json({}, 403) : json({}, 429));
+    upstream.fetch.mockImplementation(async (url) => String(url).includes("clerk") ? json({ jwt: "synthetic-clerk-jwt" }) : String(url).endsWith("/api/me") ? json({}, 403) : json({}, 429));
     const unauthorized = await new ChatPlaygroundExecutor(upstream.fetch).execute({ model: MODEL, body: {}, credentials: { apiKey: COOKIE_A } });
     expect(unauthorized.response.status).toBe(403);
     upstream.fetch.mockImplementation(async (url) => String(url).includes("clerk") ? json({}, 429) : json({}));
@@ -120,18 +123,5 @@ describe("staged ChatPlayground provider", () => {
   it("discovers the live catalog for a valid imported cookie", async () => {
     setUpstream();
     await expect(discoverChatPlaygroundModels({ apiKey: COOKIE_A }, upstream.fetch)).resolves.toMatchObject({ models: [{ id: MODEL }] });
-  });
-
-  it("streams text while stripping a CHAT_ID marker split across network chunks", async () => {
-    const source = new ReadableStream({ start(controller) {
-      controller.enqueue(new TextEncoder().encode("hello CHAT_ID:ab"));
-      controller.enqueue(new TextEncoder().encode("c123 world"));
-      controller.close();
-    } });
-    const output = await new Response(createChatPlaygroundSseStream(source, MODEL)).text();
-    expect(output).toContain("hello ");
-    expect(output).toContain("world");
-    expect(output).not.toContain("CHAT_ID");
-    expect(output).toContain("data: [DONE]");
   });
 });

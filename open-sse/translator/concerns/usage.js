@@ -158,13 +158,19 @@ export function toResponsesUsage(raw) {
   const cachedTokens = hasExclusiveCache ?
   n(raw.cache_read_input_tokens) :
   isNumber(raw.cached_tokens) ? raw.cached_tokens : n(inputDetails.cached_tokens);
+  // `cache_write_tokens` is an inclusive alias, top-level or nested (OmniRoute #21110).
+  // A canonical count wins over an alias, including a reported zero. A malformed
+  // alias is ignored so it cannot create a creation counter.
+  const aliasCount = (value) => Number.isInteger(value) && value >= 0 ? value : undefined;
   const cacheCreationTokens = hasExclusiveCache ?
   n(raw.cache_creation_input_tokens) :
-  isNumber(raw.cache_creation_input_tokens) ? raw.cache_creation_input_tokens : n(inputDetails.cache_creation_tokens);
+  [raw.cache_creation_input_tokens, aliasCount(raw.cache_write_tokens),
+  inputDetails.cache_creation_tokens, aliasCount(inputDetails.cache_write_tokens)].find(isNumber) ?? 0;
   const inputTokens = hasExclusiveCache ? baseInputTokens + cachedTokens + cacheCreationTokens : baseInputTokens;
   if (hasExclusiveCache) {
     delete inputDetails.cached_tokens;
     delete inputDetails.cache_creation_tokens;
+    delete inputDetails.cache_write_tokens;
   }
 
   const usage = {

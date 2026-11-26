@@ -1,14 +1,15 @@
-import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { errorResponse } from "../utils/error.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { buildUnifiedPayload, createUnifiedChatStream, parseUnifiedReply, unifiedCompletion, unifiedRequestError } from "./chatplaygroundStream.js";
 
-const API = "https://app.chatplayground.ai/api";
+const API = "https://web.chatplayground.ai/api";
 const WEB = "https://web.chatplayground.ai";
+const CHAT = `${API}/chat`;
 const CLERK = "https://clerk.chatplayground.ai";
-const CLERK_QUERY = "?__clerk_api_version=2025-11-10&_clerk_js_version=5.127.2";
+const CLERK_QUERY = "?__clerk_api_version=2026-08-20&_clerk_js_version=6.43.0";
 
 function makeErrorResult(status, message, body, url) {
   return { response: errorResponse(status, message), url, headers: {}, transformedBody: body };
@@ -46,7 +47,7 @@ async function resolveChatPlaygroundHeaders(raw, fetcher) {
     minted = await fetcher(url, {
       method: "POST", redirect: "manual",
       headers: { accept: "*/*", "content-type": "application/x-www-form-urlencoded", origin: WEB, referer: `${WEB}/`, cookie: `__client=${parsed.__client}` },
-      body: "organization_id=&token=",
+      body: "organization_id=&tab_state=visible&token=",
     });
   } catch { return { ok: false, status: 502 }; }
   if (!minted.ok) return { ok: false, status: minted.status };
@@ -64,7 +65,7 @@ export async function validateChatPlaygroundCookie(raw, fetcher = fetch) {
   }
   let response;
   try {
-    response = await fetcher(`${API}/user`, {
+    response = await fetcher(`${API}/me`, {
       method: "GET", redirect: "manual",
       headers: {
         Accept: "application/json",
@@ -80,10 +81,12 @@ export async function validateChatPlaygroundCookie(raw, fetcher = fetch) {
   return { valid: response.ok, status: response.status };
 }
 
-function toCatalog(data) {
+/** Chat rows of the model catalog: unified rows carry `slug`, older ones `botId`. */
+export function chatPlaygroundCatalog(data) {
   const rows = Array.isArray(data) ? data : data?.data || data?.models || [];
-  return rows.filter((row) => row && isString(row.botId) && (!row.group || row.group === "chat"))
-    .map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId }));
+  return rows.map((row) => ({ row, id: isString(row?.slug) && row.slug ? row.slug : row?.botId }))
+    .filter(({ row, id }) => isString(id) && id && (!row.group || row.group === "chat"))
+    .map(({ row, id }) => ({ id, name: row.displayName || row.modelName || id }));
 }
 
 export async function discoverChatPlaygroundModels(credentials, fetcher = fetch) {
@@ -97,60 +100,13 @@ export async function discoverChatPlaygroundModels(credentials, fetcher = fetch)
   const response = await fetcher(`${API}/models`, { method: "GET", headers, redirect: "manual" });
   if (response.status >= 300 && response.status < 400) return { error: "ChatPlayground session was rejected", status: 401 };
   if (!response.ok) return { error: `Failed to fetch ChatPlayground models: ${response.status}`, status: response.status };
-  return { models: toCatalog(await response.json()) };
-}
-
-export function textToOpenAIStream(text, model) {
-  const chunks = [];
-  const id = `chatcmpl-${randomUUID().slice(0, 12)}`;
-  const makeChunk = (content, finishReason = null) => `data: ${JSON.stringify({ id, object: "chat.completion.chunk", model,
-    choices: [{ index: 0, delta: content ? { content } : {}, finish_reason: finishReason }] })}\n\n`;
-  for (let i = 0; i < text.length; i += 48) chunks.push(makeChunk(text.slice(i, i + 48)));
-  chunks.push(makeChunk("", "stop"), "data: [DONE]\n\n");
-  return new Response(chunks.join(""), { headers: { "Content-Type": "text/event-stream" } });
-}
-
-export function createChatPlaygroundSseStream(upstream, model) {
-  const reader = upstream.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  const id = `chatcmpl-${randomUUID().slice(0, 12)}`;
-  let pending = "";
-  const chunk = (content, finishReason = null) => `data: ${JSON.stringify({ id, object: "chat.completion.chunk", model,
-    choices: [{ index: 0, delta: content ? { content } : {}, finish_reason: finishReason }] })}\n\n`;
-  const clean = (value) => value.replace(/CHAT_ID:[a-zA-Z0-9_-]+/g, "").replace(/CITATIONS:[^\n]*/g, "");
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          const combined = pending + (done ? decoder.decode() : decoder.decode(value, { stream: true }));
-          const partial = combined.match(/(?:CHAT_ID:[a-zA-Z0-9_-]*|CHAT_?I?D?:?|CHA?T?_?)$/);
-          const keep = !done && partial && partial[0].length < 64 ? partial[0] : "";
-          const ready = keep ? combined.slice(0, -keep.length) : combined;
-          pending = keep;
-          const cleaned = clean(ready);
-          if (cleaned) controller.enqueue(encoder.encode(chunk(cleaned)));
-          if (done) break;
-        }
-        if (pending) {
-          const cleaned = clean(pending);
-          if (cleaned) controller.enqueue(encoder.encode(chunk(cleaned)));
-        }
-        controller.enqueue(encoder.encode(chunk("", "stop")));
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
-      } catch (error) { controller.error(error); }
-      finally { reader.releaseLock(); }
-    },
-    cancel(reason) { return reader.cancel(reason); },
-  });
+  return { models: chatPlaygroundCatalog(await response.json()) };
 }
 
 export class ChatPlaygroundExecutor extends BaseExecutor {
   /** @param {Function|null} fetcher test seam replacing the HTTP transport */
   constructor(fetcher = null) {
-    super("chatplayground", { baseUrl: `${API}/chat` });
+    super("chatplayground", { baseUrl: CHAT });
     this.fetcher = fetcher;
   }
 
@@ -163,39 +119,28 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
       quotaBearing,
       ...(this.fetcher ? { transport: (options) => this.fetcher(url, options) } : null)
     });
-    const raw = cookieOrJwt(credentials);
-    const auth = await resolveChatPlaygroundHeaders(raw, send);
+    // The unified route cannot express every Chat Completions request; refuse those unsent.
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const unsupported = unifiedRequestError(messages);
+    if (unsupported) return makeErrorResult(400, unsupported, body, CHAT);
+    const auth = await resolveChatPlaygroundHeaders(cookieOrJwt(credentials), send);
     if (signal?.aborted) throw requestAbortError(signal.reason);
     if (!auth.ok) return makeErrorResult(auth.status === 403 ? 403 : auth.status === 429 ? 429 : 401,
-      "ChatPlayground session is missing or expired", body, `${API}/user`);
-    const validation = await send(`${API}/user`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, redirect: "manual", signal });
+      "ChatPlayground session is missing or expired", body, `${API}/me`);
+    const validation = await send(`${API}/me`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/`, ...auth.headers }, redirect: "manual", signal });
     if (!validation.ok) return makeErrorResult(validation.status === 403 ? 403 : validation.status === 429 ? 429 : 401,
-      "ChatPlayground session is missing or expired", body, `${API}/user`);
+      "ChatPlayground session is missing or expired", body, `${API}/me`);
     const catalogResponse = await send(`${API}/models`, { headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, redirect: "manual", signal });
     if (catalogResponse.status >= 300 && catalogResponse.status < 400) return makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/models`);
     if (!catalogResponse.ok) return makeErrorResult(catalogResponse.status, `ChatPlayground model discovery failed (${catalogResponse.status})`, body, `${API}/models`);
     let catalog;
     try { catalog = await catalogResponse.json(); } catch { return makeErrorResult(502, "Invalid ChatPlayground model catalog", body, `${API}/models`); }
-    const modelRows = toCatalog(catalog);
-    const row = modelRows.find((entry) => entry.id.toLowerCase() === String(model || "").replace(/^(chatplayground|cpl)[/.]/i, "").toLowerCase());
+    const wanted = String(model || "").replace(/^(chatplayground|cpl)[/.]/i, "").toLowerCase();
+    const row = chatPlaygroundCatalog(catalog).find((entry) => entry.id.toLowerCase() === wanted);
     if (!row) return makeErrorResult(400, `ChatPlayground model not found: ${model || ""}`, body, `${API}/models`);
-    const modelData = (Array.isArray(catalog) ? catalog : catalog?.data || catalog?.models || []).find((entry) => entry.botId === row.id) || { botId: row.id, modelName: row.id, endpoint: "azure" };
-    const endpoint = ["azure", "lmsys", "perplexity"].includes(modelData.endpoint) ? modelData.endpoint : "azure";
-    const messages = Array.isArray(body.messages) ? body.messages : [];
-    const oversizedIndex = messages.findIndex((message) => {
-      const content = message?.content;
-      const length = isString(content) ? content.length : Array.isArray(content)
-        ? content.reduce((total, part) => total + (isString(part) ? part.length : (isString(part?.text) ? part.text.length : 0)), 0) : 0;
-      return length > 15_000;
-    });
-    if (oversizedIndex >= 0) return makeErrorResult(400, `Message at index ${oversizedIndex} exceeds ChatPlayground's 15000-character limit`, body, `${API}/chat`);
-    const payload = endpoint === "perplexity"
-      ? { messages, modelName: modelData.modelName || row.id, botId: row.id }
-      : endpoint === "lmsys"
-        ? { messages, model: modelData.modelName || row.id, botId: row.id }
-        : { messages, model: modelData.provider ? `${modelData.provider.toLowerCase()}/${modelData.modelName || row.id}` : (modelData.modelName || row.id), chatId: "", isRegenerate: false, promptTemplate: null, fileUrl: null, botId: row.id, submissionId: randomUUID(), noSave: true };
-    const response = await send(`${API}/chat/${endpoint}`, {
-      method: "POST", redirect: "manual", signal, headers: { Accept: stream ? "text/event-stream" : "*/*", "Content-Type": "application/json", Origin: WEB, Referer: `${WEB}/`,
+    const payload = buildUnifiedPayload(messages, row.id);
+    const response = await send(CHAT, {
+      method: "POST", redirect: "manual", signal, headers: { Accept: stream ? "text/event-stream" : "application/json", "Content-Type": "application/json", Origin: WEB, Referer: `${WEB}/`,
         ...auth.headers }, body: JSON.stringify(payload),
     }, true);
     // Every result after the chat send carries its quota ticket.
@@ -203,16 +148,14 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
       transferProviderAttemptDispatch(response, result.response);
       return { ...result, attemptStartedAt: sender.attemptStartedAt };
     };
-    if (response.status >= 300 && response.status < 400) return carry(makeErrorResult(401, "ChatPlayground session was rejected", body, `${API}/chat/${endpoint}`));
-    if (!response.ok) return carry(makeErrorResult(response.status, `ChatPlayground API error (${response.status})`, body, `${API}/chat/${endpoint}`));
-    if (stream && endpoint !== "perplexity" && response.body) {
-      return carry({ response: new Response(createChatPlaygroundSseStream(response.body, model), { headers: { "Content-Type": "text/event-stream" } }), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
+    if (response.status >= 300 && response.status < 400) return carry(makeErrorResult(401, "ChatPlayground session was rejected", body, CHAT));
+    if (!response.ok) return carry(makeErrorResult(response.status, `ChatPlayground API error (${response.status})`, body, CHAT));
+    const answered = (reply) => carry({ response: reply, url: CHAT, headers: {}, transformedBody: payload });
+    if (stream && response.body) {
+      return answered(new Response(createUnifiedChatStream(response.body, model), { headers: { "Content-Type": "text/event-stream" } }));
     }
-    const text = (await response.text()).replace(/CHAT_ID:[\w-]+/g, "").replace(/CITATIONS:[^\n]*/g, "").trim();
-    if (stream) return carry({ response: textToOpenAIStream(text, model), url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
-    return carry({ response: new Response(JSON.stringify({ id: `chatcmpl-${randomUUID().slice(0, 12)}`, object: "chat.completion", model,
-      choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), { headers: { "Content-Type": "application/json" } }),
-      url: `${API}/chat/${endpoint}`, headers: {}, transformedBody: payload });
+    const reply = parseUnifiedReply(await response.text());
+    if (reply.error) return carry(makeErrorResult(502, `ChatPlayground API error: ${reply.error}`, payload, CHAT));
+    return answered(unifiedCompletion(reply, model));
   }
 }

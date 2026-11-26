@@ -152,9 +152,17 @@ function startEvictTimer() {
   state.evictTimer.unref?.();
 }
 
+// Proxy URL schemes Chromium can honour, mapped to the one it is given.
+const PLAYWRIGHT_PROXY_SCHEMES = new Map([
+  ["http:", "http"], ["https:", "https"],
+  ["socks:", "socks5"], ["socks5:", "socks5"], ["socks5h:", "socks5"],
+  ["socks4:", "socks4"], ["socks4a:", "socks4"],
+]);
+
 /**
- * Convert a connection proxy URL (http://, https://, socks5://, with optional
- * credentials) into Playwright's launch/context proxy option.
+ * Convert a connection proxy URL (an http, https or SOCKS scheme, with optional
+ * credentials) into Playwright's launch/context proxy option. An unsupported
+ * scheme throws rather than becoming a different proxy type (OmniRoute #20796).
  * @param {string|null|undefined} proxyUrl
  * @returns {{server: string, username?: string, password?: string}|undefined}
  */
@@ -167,7 +175,9 @@ export function resolvePlaywrightProxy(proxyUrl) {
     console.warn("[BrowserPool] Ignoring an invalid proxy URL");
     return undefined;
   }
-  const scheme = url.protocol.startsWith("socks") ? "socks5" : url.protocol.replace(/:$/, "");
+  const scheme = PLAYWRIGHT_PROXY_SCHEMES.get(url.protocol);
+  // The parsed scheme is not echoed: in a scheme-less value it is the username.
+  if (!scheme) throw new Error("Unsupported browser proxy scheme; refusing to use this proxy");
   const proxy = { server: `${scheme}://${url.hostname}:${url.port}` };
   if (url.username) {
     proxy.username = decodeURIComponent(url.username);
@@ -471,10 +481,9 @@ export async function acquireBrowserContext(key, options) {
   const createPromise = (async () => {
     let context = null;
     try {
-      const [browser, proxy] = await Promise.all([
-        launchBrowser(options),
-        Promise.resolve(resolvePlaywrightProxy(options.proxyUrl)),
-      ]);
+      // Resolve first: a rejected proxy must not leave an ownerless browser launching.
+      const proxy = resolvePlaywrightProxy(options.proxyUrl);
+      const browser = await launchBrowser(options);
       const isStealth = headless && (state.engine === "obscura" || state.cloakLaunch !== null);
       const contextOptions = {
         userAgent: options.userAgent || DEFAULT_USER_AGENT,

@@ -172,9 +172,9 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     // pre-stream fallback is possible): bench the account so the client's
     // automatic retry of the in-stream error lands on the next one. Quota
     // exhaustion passes a precise resetsAtMs instead of the generic cooldown.
-    onUpstreamEmptyExhausted: async (reason, resetsAtMs) => {
+    onUpstreamEmptyExhausted: async (reason, resetsAtMs, status = HTTP_STATUS.BAD_GATEWAY) => {
       if (!Number.isSafeInteger(attempt.latestAttemptStartedAt) || attempt.latestAttemptStartedAt <= 0) return;
-      await markAccountUnavailable(credentials.connectionId, HTTP_STATUS.BAD_GATEWAY, reason, provider, model, resetsAtMs, {
+      await markAccountUnavailable(credentials.connectionId, status, reason, provider, model, resetsAtMs, {
         attemptStartedAt: attempt.latestAttemptStartedAt,
         credentialFingerprint: dispatchedCredential,
         signal: requestSignal

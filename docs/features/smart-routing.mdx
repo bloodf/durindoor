@@ -26,7 +26,7 @@ Open **Dashboard → Settings** or **Providers → your provider**. A provider o
 | Strategy | Use |
 | --- | --- |
 | Fill-first | Prefer the first eligible account. |
-| Round Robin | Rotate accounts after the sticky limit, which defaults to three calls and accepts 1–10. |
+| Round Robin | Rotate accounts after the sticky limit, which defaults to three calls and accepts 1–10. A provider override of `0` keeps the current account until it is unavailable. |
 | Cache Affinity | Keep a conversation on the same eligible account using its session ID; the assignment is stable across restarts. Without a session ID, use fill-first. |
 | Quota-weighted | Spread calls randomly across accounts with comparable fresh quota, weighted by remaining capacity. Without comparable quota, use fill-first order. |
 

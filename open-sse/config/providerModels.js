@@ -7,6 +7,7 @@ import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { dothooshFamilyFormats } from "../providers/dothooshCatalog.js";
 import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
+import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export { PROVIDER_MODELS };
@@ -199,8 +200,10 @@ export function resolveRequestedModelTier(thinkingIntent, body = null, provider 
  * Provider-level thinking override from dashboard settings, applied only when
  * the client did not set the matching field. Returns a new body.
  * on/off -> body.thinking; none strips thinking fields; levels -> reasoning_effort.
+ * A level also replaces a client intent that names none (bare adaptive, `auto`),
+ * except on native passthrough, which forwards the client's thinking fields as-is.
  */
-export function applyProviderThinkingOverride(body, providerThinking) {
+export function applyProviderThinkingOverride(body, providerThinking, { passthrough = false } = {}) {
   const mode = providerThinking?.mode;
   if (!mode || mode === "auto") return body;
   if (mode === "none") {
@@ -211,7 +214,25 @@ export function applyProviderThinkingOverride(body, providerThinking) {
   }
   if (mode === "on") return body.thinking ? body : { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
   if (mode === "off") return body.thinking ? body : { ...body, thinking: { type: "disabled" } };
+  if (!passthrough && isUnlevelledThinking(body)) return replaceUnlevelledThinking(body, mode);
   return body.reasoning_effort ? body : { ...body, reasoning_effort: mode };
+}
+
+/** "Think, level unspecified". `between_tools` is excluded: it names a thinking mode. */
+function isUnlevelledThinking(body) {
+  const intent = extractThinking(body);
+  return intent?.mode === "auto" && !intent.thinkingType;
+}
+
+// Each of these outranks reasoning_effort in extractThinking, so they have to go.
+function replaceUnlevelledThinking(body, level) {
+  const { thinking: _thinking, reasoningEffort: _camelEffort, output_config: outputConfig, ...rest } = body;
+  const { effort: _outputEffort, ...otherOutputConfig } = outputConfig || {};
+  return {
+    ...rest,
+    ...(Object.keys(otherOutputConfig).length && { output_config: otherOutputConfig }),
+    reasoning_effort: level
+  };
 }
 
 /** Upstream id chatCore will dispatch for this request (quota/cooldown keys). */

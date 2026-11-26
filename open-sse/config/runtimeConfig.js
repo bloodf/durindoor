@@ -142,6 +142,10 @@ export const COMBO_MODEL_TIMEOUT_MS = envMs("COMBO_MODEL_TIMEOUT_MS", 0);
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 
+// Cap on the upstream error reason persisted per account and replayed to clients
+// (decolua/9router#3219). 100 characters cut inside the upstream cause.
+export const ACCOUNT_ERROR_MESSAGE_MAX_CHARS = 2000;
+
 // Complete-body bounds for successful non-streaming responses and forced
 // stream-to-JSON conversion. These prevent a provider-controlled body from
 // holding a concurrency slot forever or growing memory without limit.

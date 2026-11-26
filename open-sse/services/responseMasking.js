@@ -4,8 +4,9 @@
 // Runs once at chatCore's client boundary, after format translation, so it
 // walks the shape the client parses: Chat Completions, Responses, Claude
 // Messages and Gemini (incl. the `{response: ...}` envelope), JSON and SSE.
-// Only visible text is rewritten. Tool calls, tool ids, function names, tool
-// arguments, signed thinking/reasoning and JSON structure are never touched.
+// Only visible text and strings inside a payload's top-level `usage` metadata
+// are rewritten. Tool calls, tool ids, function names, tool arguments, signed
+// thinking/reasoning and JSON structure are never touched.
 //
 // Streams keep a bounded carry per output index (Chat choice, Responses
 // output/content index, Claude block, Gemini candidate) so a secret split
@@ -39,6 +40,18 @@ const RESPONSES_TERMINAL = new Set(["response.completed", "response.incomplete",
 function keepPair(raw, cut) {
   const code = raw.charCodeAt(cut - 1);
   return cut > 0 && code >= 0xd800 && code <= 0xdbff ? cut - 1 : cut;
+}
+
+/**
+ * Mask one complete metadata string. It never gets a later chunk, so an
+ * unclosed private-key block is redacted to its end.
+ */
+function maskValue(text, opts, counts) {
+  const out = maskText(text, { ...opts, replace: true }, counts);
+  const open = opts.credentials ? out.search(KEY_BEGIN_RE) : -1;
+  if (open !== -1) counts.private_key = (counts.private_key ?? 0) + 1;
+  if (!opts.replace) return text;
+  return open === -1 ? out : `${out.slice(0, open)}[REDACTED:private_key]`;
 }
 
 /**
@@ -97,6 +110,7 @@ export function createIo(opts, counts, mask) {
   const io = {
     before,
     take,
+    value: (text) => maskValue(text, opts, counts),
     held: () => held,
     emittedKeys: () => [...emitted.keys()],
     // Set per frame by processFrame: serializes a payload into that frame's lines.
@@ -240,8 +254,24 @@ function geminiChunk(p, cands, io) {
   return changed;
 }
 
+/** Mask every string under `node` in place, without touching carried reply text. */
+function maskStrings(node, mask) {
+  if (!node || !isObject(node)) return false;
+  let changed = false;
+  for (const [key, value] of Object.entries(node)) {
+    if (isString(value)) changed = setField(node, key, mask(value)) || changed;
+    else changed = maskStrings(value, mask) || changed;
+  }
+  return changed;
+}
+
 function maskEvent(p, io) {
   if (!isObject(p)) return false;
+  const usageChanged = maskStrings(p.usage, io.value);
+  return maskReplyEvent(p, io) || usageChanged;
+}
+
+function maskReplyEvent(p, io) {
   if (isString(p.type) && p.type.startsWith("response.")) return responsesEvent(p, io);
   if (isString(p.type) && (p.type.startsWith("content_block_") || p.type.startsWith("message_"))) return claudeEvent(p, io);
   if (Array.isArray(p.choices)) return chatChunk(p, io);
@@ -455,7 +485,7 @@ function maskJsonBody(p, opts, counts) {
   const mask = (obj, field) => isString(obj[field]) && setField(obj, field, maskText(obj[field], opts, counts));
   const maskParts = (parts, isText) => Array.isArray(parts) &&
     parts.map((part) => isObject(part) && isText(part) && mask(part, "text")).some(Boolean);
-  let changed = false;
+  let changed = maskStrings(p.usage, (text) => maskValue(text, opts, counts));
   if (Array.isArray(p.choices)) {
     for (const choice of p.choices) {
       const msg = choice?.message;

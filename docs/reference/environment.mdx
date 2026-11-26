@@ -76,6 +76,7 @@ Positive decimal integers only. A resolved maximum below the base resets the who
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ENABLE_REQUEST_LOGS` | `false` (must be the string `true`) | Diagnostic request files under `cwd/logs`. No payloads, stream chunks, stacks, or URL query/fragment. |
+| `DURINDOOR_CLAUDE_TOOL_TYPE_REJECTING_PROVIDERS` | unset | Comma-separated provider ids (a compatible node uses its full id) whose Claude-format endpoint rejects tool `type: "custom"` with HTTP 400 ``unknown variant `custom` ``. The gateway removes only that field for listed providers. Typed server tools and unlisted providers are unchanged. |
 | `DURINDOOR_SANITIZE_IDENTITY` | unset | Opt-in (`1`/`true`/`on`/`yes`). Rewrites "OpenClaw", "OmniRoute" and "DurinDoor" prose in system/developer text and tool `description` strings before the request is sent upstream. User, assistant and tool messages, tool names, schema enum/default values, code spans, paths and tool-call arguments are never touched. |
 | `OBSERVABILITY_ENABLED` | unset | `true` enables Usage → Details persistence; `false` vetoes it. |
 | `OBSERVABILITY_MAX_RECORDS` | `200` | Cap on retained request-detail rows when settings omit it. |
@@ -252,6 +253,15 @@ See [ChatGPT Web](../providers/chatgpt-web.mdx) for the transports these tune.
 | `DURINDOOR_CGPT_WEB_IMAGE_CACHE_MAX_MB` | `10` | In-memory cache for generated images served at `/v1/chatgpt-web/image/<id>`. |
 | `DURINDOOR_PUBLIC_BASE_URL` | unset (then `BASE_URL`, `NEXT_PUBLIC_BASE_URL`, request headers, `localhost:$PORT`) | Public origin used in generated image links. |
 | `DURINDOOR_XVFB` | on in Docker | `0` stops the image entrypoint from starting Xvfb. |
+
+## Codex quota preflight
+
+By default, a request waits when the stored Codex quota reading needs a refresh.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DURINDOOR_CODEX_QUOTA_STALE_HEADROOM_PERCENT` | `0` (off) | Above `0`, a request does not wait when each window of a recent reading is at least this many percentage points above zero remaining, or above the quota routing floor when that is enabled. The quota refreshes in the background. |
+| `DURINDOOR_CODEX_QUOTA_STALE_MAX_AGE_MS` | `120000` | Oldest reading the shortcut may use. The maximum is `900000`. A window past its reset time or a failed last refresh always waits. |
 
 ## Optional routing classifier
 

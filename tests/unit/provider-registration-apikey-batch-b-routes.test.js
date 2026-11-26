@@ -133,14 +133,16 @@ const PROVIDERS = [
   {
     id: "chatplayground", model: "gpt-4o", answer: "pong from chatplayground",
     credential: `__client=synthetic-client; __session=${jwt({ sid: "sess_synthetic" })}`,
-    origins: ["https://app.chatplayground.ai", "https://clerk.chatplayground.ai"],
+    origins: ["https://web.chatplayground.ai", "https://clerk.chatplayground.ai"],
     handle: (url, init) => {
       if (url.startsWith("https://clerk.chatplayground.ai/v1/client/sessions/sess_synthetic/tokens")) return jsonResponse({ jwt: jwt({ sid: "sess_synthetic", minted: true }) });
-      if (url === "https://app.chatplayground.ai/api/user") return jsonResponse({ id: "user-synthetic" });
-      if (url === "https://app.chatplayground.ai/api/models") {
-        return jsonResponse({ data: [{ botId: "gpt-4o", displayName: "GPT-4o", modelName: "gpt-4o", provider: "openai", endpoint: "azure", group: "chat" }] });
+      if (url === "https://web.chatplayground.ai/api/me") return jsonResponse({ user: {} });
+      if (url === "https://web.chatplayground.ai/api/models") {
+        return jsonResponse([{ slug: "gpt-4o", displayName: "GPT-4o", provider: "openai", group: "chat" }]);
       }
-      if (url === "https://app.chatplayground.ai/api/chat/azure") return new Response("pong from chatplayground", { headers: { "Content-Type": "text/plain" } });
+      if (url === "https://web.chatplayground.ai/api/chat") {
+        return eventStream(sse({ type: "text-delta", id: "0", delta: "pong from chatplayground" }, { type: "finish", finishReason: "stop" }));
+      }
       return undefined;
     },
   },

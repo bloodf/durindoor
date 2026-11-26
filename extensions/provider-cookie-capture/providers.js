@@ -26,7 +26,7 @@ export const PROVIDERS = deepFreeze({
   },
   "chatplayground": {
     label: "ChatPlayground",
-    origin: "https://app.chatplayground.ai",
+    origin: "https://web.chatplayground.ai",
     cookieNames: ["__client", "__session"],
     cookiePrefixes: [],
   },

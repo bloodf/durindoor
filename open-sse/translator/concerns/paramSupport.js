@@ -132,7 +132,9 @@ const STRIP_RULES = [
 // NVIDIA NIM z-ai/glm-5.2 rejects both OpenAI-style `reasoning` and
 // Claude-style `thinking` request fields on its OpenAI-compatible wrapper.
 { provider: "nvidia", match: /z-ai\/glm-5\.2\b/i, drop: ["reasoning", "thinking"] },
-{ provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true }];
+{ provider: "volcengine-ark", match: /glm-5/i, clampToModelMaxOutput: true },
+// GLM 4.5V rejects more than 16K output; the glmt request default is 64K (OmniRoute #20693).
+{ provider: "glmt", match: /^glm-4\.5v$/i, maxOutputCap: 16384 }];
 
 function flattenTextParts(parts) {
   return parts.map((part) => {

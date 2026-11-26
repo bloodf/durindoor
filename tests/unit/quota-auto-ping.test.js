@@ -34,6 +34,8 @@ vi.mock("@/shared/constants/config", () => ({
       claude: {
         settingsKey: "claudeAutoPing",
         quotaKey: "session (5h)",
+        pingInactiveSession: true,
+        inactiveMinPingIntervalMs: 18000000,
         pingModel: "claude-haiku-4-5-20251001",
         pingText: "hi",
         pingMaxTokens: 1,
@@ -1265,6 +1267,165 @@ describe("quota auto-ping", () => {
     expect(vi.getTimerCount()).toBe(1);
 
     stopQuotaAutoPing(schedulerState);
+  });
+
+  describe("port-2850: guarded inactive Claude window (decolua/9router#2850)", () => {
+    const idle = { used: 0, total: 100, remaining: 100, resetAt: null };
+    const spent = { used: 100, total: 100, remaining: 0, resetAt: null };
+    const idleQuotas = { "session (5h)": idle, "weekly (7d)": idle };
+
+    function arrangeIdleClaude({ connection = {}, quotas = idleQuotas, proxyConfig, reactive = true } = {}) {
+      deps.getSettings.mockResolvedValue({ claudeAutoPing: { connections: { "claude-1": reactive } } });
+      deps.getProviderConnections.mockImplementation(async ({ provider }) => (
+        provider === "claude"
+          ? [{ id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token", ...connection }]
+          : []
+      ));
+      if (proxyConfig) deps.resolveConnectionProxyConfig.mockResolvedValue(proxyConfig);
+      getClaudeUsage.mockResolvedValue({ quotas });
+    }
+
+    it("starts an idle window and records only the ping time", async () => {
+      arrangeIdleClaude();
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(1);
+      expect(deps.claimConnectionPing).toHaveBeenCalledWith(
+        "claude-1",
+        { lastPingAt: undefined },
+        { lastPingAt: "2026-01-01T12:00:00.000Z" },
+      );
+      const update = deps.updateProviderConnection.mock.calls[0][1];
+      expect(update).toEqual({ lastPingAt: "2026-01-01T12:00:00.000Z", updatedAt: "2026-01-01T12:00:00.000Z" });
+    });
+
+    it.each([
+      ["the weekly row is absent", { "session (5h)": idle }],
+      ["the session row is absent", { "weekly (7d)": idle }],
+      ["the weekly quota is exhausted", { "session (5h)": idle, "weekly (7d)": spent }],
+      ["a model-scoped weekly quota is exhausted", { ...idleQuotas, "weekly fable (7d)": spent }],
+      ["the session quota is exhausted", { "session (5h)": spent, "weekly (7d)": idle }],
+    ])("does not start an idle window when %s", async (_case, quotas) => {
+      arrangeIdleClaude({ quotas });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+      expect(deps.claimConnectionPing).not.toHaveBeenCalled();
+    });
+
+    it("does not start an idle window again inside five hours", async () => {
+      arrangeIdleClaude({ connection: { lastPingAt: "2026-01-01T07:00:01.000Z" } });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+    });
+
+    it("starts an idle window once five hours have passed", async () => {
+      arrangeIdleClaude({ connection: { lastPingAt: "2026-01-01T07:00:00.000Z" } });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("honours a ping that another process recorded during the quota lookup", async () => {
+      arrangeIdleClaude();
+      let reads = 0;
+      deps.getProviderConnections.mockImplementation(async () => [{
+        id: "claude-1", provider: "claude", authType: "oauth", accessToken: "token",
+        ...(++reads > 1 ? { lastPingAt: "2026-01-01T11:59:59.000Z" } : {}),
+      }]);
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.claimConnectionPing).not.toHaveBeenCalled();
+      expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+    });
+
+    it("keeps a reset ping outside the five-hour guard", async () => {
+      arrangeIdleClaude({
+        connection: { lastPingAt: "2026-01-01T11:00:00.000Z" },
+        quotas: { "session (5h)": { ...idle, resetAt: "2026-01-01T11:59:00.000Z" }, "weekly (7d)": idle },
+      });
+      // A future reset in the first snapshot read keeps the elapsed one visible to the tick.
+      state.resetCache["claude:claude-1"] = "2026-01-01T11:59:00.000Z";
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(1);
+      expect(deps.updateProviderConnection).toHaveBeenCalledWith("claude-1", expect.objectContaining({
+        lastPingedResetKey: "2026-01-01T11:59:00.000Z",
+      }));
+    });
+
+    const poolConnection = { providerSpecificData: { proxyPoolId: "pool-1" } };
+
+    it.each([
+      ["fell back to a direct route", { source: "none", proxyPoolId: "pool-1", proxyPool: null }],
+      ["fell back to the legacy proxy", { source: "legacy", proxyPoolId: "pool-1", proxyPool: null }],
+      ["failed to resolve", { source: "error", proxyPoolId: null, proxyPool: null }],
+    ])("does not start an idle window when the selected proxy pool %s", async (_case, proxyConfig) => {
+      arrangeIdleClaude({ connection: poolConnection, proxyConfig });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+      expect(deps.claimConnectionPing).not.toHaveBeenCalled();
+    });
+
+    it("starts an idle window through the available selected proxy pool", async () => {
+      arrangeIdleClaude({
+        connection: poolConnection,
+        proxyConfig: {
+          source: "pool",
+          proxyPoolId: "pool-1",
+          proxyPool: { id: "pool-1" },
+          connectionProxyEnabled: true,
+          connectionProxyUrl: "http://proxy.test:8080",
+        },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(1);
+      expect(deps.proxyAwareFetch.mock.calls[0][2]).toMatchObject({ connectionProxyUrl: "http://proxy.test:8080" });
+    });
+
+    it("ignores a stale pool id when OAuth routing is explicitly direct", async () => {
+      arrangeIdleClaude({
+        connection: { providerSpecificData: { proxyPoolId: "pool-1", oauthProxy: { mode: "direct" } } },
+        proxyConfig: { source: "direct", proxyPoolId: null, proxyPool: null, disableEnvProxy: true },
+      });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases the claim when the idle ping is rejected", async () => {
+      arrangeIdleClaude({ connection: { lastPingAt: "2026-01-01T06:00:00.000Z" } });
+      deps.proxyAwareFetch.mockResolvedValue({ ok: false });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.claimConnectionPing).toHaveBeenLastCalledWith(
+        "claude-1",
+        { lastPingAt: "2026-01-01T12:00:00.000Z" },
+        { lastPingAt: "2026-01-01T06:00:00.000Z" },
+      );
+      expect(deps.updateProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("does not start an idle window without the reactive opt-in", async () => {
+      arrangeIdleClaude({ reactive: false });
+
+      await runQuotaAutoPingTick(deps, state);
+
+      expect(deps.proxyAwareFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe("anchored schedule (decolua/9router#4848)", () => {

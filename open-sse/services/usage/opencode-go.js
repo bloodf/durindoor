@@ -27,7 +27,12 @@ export function parseOpenCodeGoUsage(payload) {
 
   const quotas = {};
   let limitReached = false;
-  for (const [key, label] of Object.entries(WINDOW_LABELS)) {
+  // Known windows keep their display order; a new upstream window follows them,
+  // so a spent one is never hidden behind a healthy-looking table.
+  const extraKeys = Object.keys(windows).filter((key) => !Object.hasOwn(WINDOW_LABELS, key)).sort();
+  for (const key of [...Object.keys(WINDOW_LABELS), ...extraKeys]) {
+    const label = Object.hasOwn(WINDOW_LABELS, key) ? WINDOW_LABELS[key] : key.charAt(0).toUpperCase() + key.slice(1);
+    if (Object.hasOwn(quotas, label)) continue;
     const window = windows[key];
     if (!window || !isObject(window) || Array.isArray(window)) continue;
 

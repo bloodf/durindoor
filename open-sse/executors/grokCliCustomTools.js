@@ -23,8 +23,13 @@ function toFunctionTool(tool, name) {
   if (tool.strict !== undefined) fn.strict = tool.strict;
   return fn;
 }
+// Grok's own server-side X search calls replay as-is (upstream decolua/9router#2647).
+function isNativeXSearchCall(item) {
+  return item.type === "custom_tool_call" && isString(item.id) && item.id.startsWith("ctc_") &&
+    isString(item.call_id) && item.call_id.startsWith("xs_call-");
+}
 function convertHistoryItem(item) {
-  if (!isRecord(item)) return item;
+  if (!isRecord(item) || isNativeXSearchCall(item)) return item;
   if (item.type === "custom_tool_call") {
     const { id: _id, type: _type, input, ...rest } = item;
     return { type: "function_call", ...rest, arguments: JSON.stringify({ input: input ?? "" }) };

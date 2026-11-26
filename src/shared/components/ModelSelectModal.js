@@ -14,6 +14,7 @@ import { Chip } from "@/shared/ui/components/Chip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import CapacityBadges from "./CapacityBadges";
 import { passthroughAliasModels } from "../utils/passthroughAliasModels.js";
+import { getCircularComboNames } from "../utils/circularCombos.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { useOrcaRouterCatalog } from "@/shared/hooks/useOrcaRouterCatalog";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
@@ -80,7 +81,8 @@ export default function ModelSelectModal({
   modelAliases = {},
   kindFilter = null,
   addedModelValues = [],
-  closeOnSelect = true
+  closeOnSelect = true,
+  comboContext = null
 }) {
   // Filter activeProviders by active state and serviceKinds when kindFilter set (e.g. "webSearch", "webFetch")
   const filteredActiveProviders = useMemo(() => {
@@ -718,6 +720,12 @@ export default function ModelSelectModal({
     return list.filter((c) => c.name.toLowerCase().includes(query));
   }, [combos, searchQuery, kindFilter, visibleModelIds]);
 
+  // Choices that would make the edited combo reference itself. One already
+  // added stays enabled so it can be removed.
+  const circularCombos = getCircularComboNames(combos, comboContext);
+  const isCircularChoice = (name) => circularCombos.has(name) && !addedModelValues.includes(name);
+  const circularTitle = (name) => isCircularChoice(name) ? "Would create a circular combo" : undefined;
+
   // Sort models alphabetically, with added models floated to top
   const sortModels = (models) => {
     const added = models.filter((m) => addedModelValues.includes(m.value)).sort((a, b) => a.name.localeCompare(b.name));
@@ -853,7 +861,7 @@ export default function ModelSelectModal({
           <div className={`v5-model-picker-layout ${closeOnSelect ? "v5-model-picker-single" : ""}`}>
             <div className="v5-model-picker-catalog" role="region" aria-label="Available model catalog" tabIndex={0}>
               <div className="v5-model-picker-results" role="status">{discoveryPending || !visibleCatalogReady ? "Loading models…" : "Available models"}</div>
-              {(providerFilter === "all" || providerFilter === "combos") && filteredCombos.length > 0 ? <section aria-label="Combos"><h3>Nested combos <span>{filteredCombos.length}</span></h3>{filteredCombos.map((combo) => <button key={combo.id} type="button" className="v5-model-picker-row" aria-pressed={addedModelValues.includes(combo.name) || selectedModel === combo.name} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}>{combo.name}</button>)}</section> : null}
+              {(providerFilter === "all" || providerFilter === "combos") && filteredCombos.length > 0 ? <section aria-label="Combos"><h3>Nested combos <span>{filteredCombos.length}</span></h3>{filteredCombos.map((combo) => <button key={combo.id} type="button" className="v5-model-picker-row disabled:cursor-not-allowed disabled:opacity-40" disabled={isCircularChoice(combo.name)} title={circularTitle(combo.name)} aria-pressed={addedModelValues.includes(combo.name) || selectedModel === combo.name} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })}>{combo.name}</button>)}</section> : null}
               {Object.entries(filteredGroups).filter(([id]) => providerFilter === "all" || providerFilter === id).map(([id, group]) => <section key={id} aria-label={group.name}><h3><ProviderLogo provider={id} size={18} />{group.name}<span>{group.models.length}</span></h3>{group.models.map((model) => {
                 const custom = customModels.find((item) => item.id === model.id && (item.providerAlias === id || item.providerAlias === group.alias));
                 const caps = { ...getCaps(model.value) };
@@ -869,7 +877,7 @@ export default function ModelSelectModal({
           {filteredCombos.length > 0 ? <section aria-label="Combos"><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><span aria-hidden="true" className="material-symbols-outlined text-[14px] text-dd-accent">layers</span><span className="text-xs font-semibold text-dd-accent">Combos</span><span className="text-[10px] text-dd-muted">({filteredCombos.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{filteredCombos.map((combo) => {
             const isSelected = selectedModel === combo.name;
             const isAdded = addedModelValues.includes(combo.name);
-            return <Chip key={combo.id} size="sm" icon={isAdded ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })} label={<span className="inline-flex items-center gap-1.5">{combo.name}<CapacityBadges caps={getCaps(combo.name)} colorOverride="text-dd-muted" size={12} /></span>} />;
+            return <Chip key={combo.id} size="sm" className="disabled:cursor-not-allowed disabled:opacity-40" disabled={isCircularChoice(combo.name)} title={circularTitle(combo.name)} icon={isAdded ? "check" : undefined} selected={isSelected || isAdded} onClick={() => handleSelect({ id: combo.name, name: combo.name, value: combo.name })} label={<span className="inline-flex items-center gap-1.5">{combo.name}<CapacityBadges caps={getCaps(combo.name)} colorOverride="text-dd-muted" size={12} /></span>} />;
           })}</div></section> : null}
           {Object.entries(filteredGroups).map(([providerId, group]) => <section key={providerId} aria-label={group.name}><header className="sticky top-0 z-10 flex items-center gap-1.5 bg-dd-surface py-1"><ProviderLogo provider={providerId} size={14} className="rounded-dd" /><span className="text-xs font-semibold text-dd-accent">{group.name}</span><span className="text-[10px] text-dd-muted">({group.models.length})</span></header><div className="mt-2 flex flex-wrap gap-1.5">{group.models.map((model) => {
             const isSelected = selectedModel === model.value;
@@ -904,5 +912,6 @@ ModelSelectModal.propTypes = {
   modelAliases: PropTypes.object,
   kindFilter: PropTypes.string,
   addedModelValues: PropTypes.arrayOf(PropTypes.string),
-  closeOnSelect: PropTypes.bool
+  closeOnSelect: PropTypes.bool,
+  comboContext: PropTypes.object
 };

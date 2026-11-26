@@ -59,7 +59,7 @@ const BATCH = [
   { id: "lmarena", issue: 1198, alias: "lma", name: "Arena", model: "GPT OSS 120B", models: 7, executor: LmarenaExecutor,
     origin: "https://arena.ai", cookieNames: ["arena-auth-prod-v1"], cookiePrefixes: ["arena-auth-prod-v1."], localCatalog: true },
   { id: "chatplayground", issue: 1163, alias: "cpl", name: "ChatPlayground", model: null, liveCatalog: true, models: 0, executor: ChatPlaygroundExecutor,
-    origin: "https://app.chatplayground.ai", cookieNames: ["__client", "__session"], cookiePrefixes: [] },
+    origin: "https://web.chatplayground.ai", cookieNames: ["__client", "__session"], cookiePrefixes: [] },
   { id: "cloudflare-playground", issue: 1167, alias: "cfp", name: "Cloudflare AI Playground", model: "Granite 4.0 H Micro (IBM)", models: 20, executor: CloudflarePlaygroundExecutor, localCatalog: true, noAuth: true },
   { id: "poe", alias: "poe", name: "Poe", model: "Gemini 3.0 Pro", models: 3, executor: PoeExecutor },
   { id: "g4f-gemini", issue: 1185, alias: "g4fgem", name: "g4f Gemini", model: "Gemini 2.5 Pro (g4f)", models: 2, executor: DefaultExecutor },
@@ -222,7 +222,7 @@ describe("validation, test and model-list hooks", () => {
   it("ChatPlayground validates with a GET to its user endpoint, never a chat POST", async () => {
     const fetcher = vi.fn(async () => new Response("{}", { status: 401 }));
     expect(await probeRegistryProvider("chatplayground", "__client=synthetic; __session=synthetic", fetcher)).toMatchObject({ valid: false, status: 401 });
-    expect(fetcher.mock.calls.map(([url, init]) => `${init?.method ?? "GET"} ${url}`)).toEqual(["GET https://app.chatplayground.ai/api/user"]);
+    expect(fetcher.mock.calls.map(([url, init]) => `${init?.method ?? "GET"} ${url}`)).toEqual(["GET https://web.chatplayground.ai/api/me"]);
   });
 
   it.each(["cloudflare-playground"])("%s is never probed through its chat transport", (id) => {
@@ -274,7 +274,7 @@ describe("validation, test and model-list hooks", () => {
       const found = await fetchConnectionModels({ id: "synthetic", provider: "chatplayground", apiKey: "__client=a; __session=b" });
       expect(found.models).toEqual([{ id: "gpt-4o", name: "GPT-4o" }]);
       const [url, init] = fetcher.mock.calls[0];
-      expect(String(url)).toBe("https://app.chatplayground.ai/api/models");
+      expect(String(url)).toBe("https://web.chatplayground.ai/api/models");
       expect(new Headers(init.headers).get("cookie")).toBe("__client=a; __session=b");
       expect(new Headers(init.headers).get("authorization")).toBeNull();
     } finally {

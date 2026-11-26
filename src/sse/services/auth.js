@@ -9,7 +9,7 @@ import { formatRetryAfter, getActiveModelLockUntil, isModelLockActive, countElig
 import { AI_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
 import * as log from "../utils/logger.js";
-import { buildQuotaResourceKeys, evaluateProviderQuotaPreflight, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
+import { buildQuotaResourceKeys, canDeferQuotaRefresh, evaluateProviderQuotaPreflight, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
 import { rankQuotaConnections, pickQuotaWeightedConnection, pickEarliestResetConnection } from "@/shared/services/quotaSelection";
@@ -711,7 +711,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }) || availableConnections[0] :
       availableConnections[0];
     } else if (strategy === "round-robin") {
-      const stickyLimit = providerOverride.stickyRoundRobinLimit || selectionSettings.stickyRoundRobinLimit || 3;
+      // An explicit 0 keeps the current account until it is unavailable (upstream #3259).
+      const configuredStickyLimit = providerOverride.stickyRoundRobinLimit ?? selectionSettings.stickyRoundRobinLimit;
+      const stickyLimit = configuredStickyLimit === 0 ? Infinity : configuredStickyLimit || 3;
 
       const pickOldest = () => {
         const sortedByOldest = [...availableConnections].sort((a, b) => {
@@ -866,6 +868,19 @@ export async function getProviderCredentialsWithQuotaPreflight(provider, exclude
       return credentials;
     }
     refreshedConnectionIds.add(connectionId);
+
+    if (credentials._quotaPreflight.recentStaleWindows && canDeferQuotaRefresh(credentials._quotaPreflight, {
+      quotaSelection: (await getSettings()).quotaSelection || {},
+      connectionId,
+      provider: providerId
+    })) {
+      // No request signal: a cancelled request must not cancel the shared refresh.
+      // The tracker joins concurrent refreshes of one connection into one fetch.
+      Promise.resolve().then(() => quotaRefresher(connection, {})).catch(() => {
+        log.warn("QUOTA", `${provider} | background quota refresh failed for ${String(connectionId).slice(0, 8)}`);
+      });
+      return credentials;
+    }
 
     let refreshResult;
     try {

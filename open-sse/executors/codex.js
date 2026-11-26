@@ -127,6 +127,16 @@ function resolveCodexWireEffort(effort, config) {
   return aliases[effort] ?? effort;
 }
 
+/** Codex rejects `content` on an `additional_tools` input item (decolua/9router#2796). */
+function stripAdditionalToolsContent(input) {
+  if (!Array.isArray(input)) return input;
+  return input.map((item) => {
+    if (item?.type !== "additional_tools" || !("content" in item)) return item;
+    const { content, ...envelope } = item;
+    return envelope;
+  });
+}
+
 function estimateCodexInputTokens(body, stopAt = Number.POSITIVE_INFINITY) {
   let json;
   try {
@@ -359,6 +369,21 @@ function convertSystemToDeveloperRole(body) {
   }
 }
 
+// Legacy `{role, content: "text"}` items reach Codex /responses without the
+// message type or typed parts it expects, so repair only role-bearing messages.
+// Tool calls, reasoning and already-typed content pass through (upstream #3361).
+function normalizeCodexMessageItems(body) {
+  if (!Array.isArray(body.input)) return;
+  body.input = body.input.map((item) => {
+    if (!item || !isObject(item) || Array.isArray(item) || !item.role) return item;
+    if (item.type && item.type !== RESPONSES_ITEM.MESSAGE) return item;
+    const message = { ...item, type: RESPONSES_ITEM.MESSAGE };
+    if (!isString(item.content)) return message;
+    const partType = item.role === ROLE.ASSISTANT ? RESPONSES_ITEM.OUTPUT_TEXT : RESPONSES_ITEM.INPUT_TEXT;
+    return { ...message, content: [{ type: partType, text: item.content }] };
+  });
+}
+
 // Assistant history in the Responses API must use `output_text` (or `refusal`),
 // never `input_text` (which is user-only). codex-cli replays assistant turns as
 // `input_text` (or legacy `text`); normalize them so the Codex/OpenAI backend
@@ -470,7 +495,7 @@ function normalizeCodexTools(body, { dropFreePlanImageGeneration = false } = {})
   }
 }
 
-// Resolve prompt-cache session id: client session → assistant-text-hash → workspaceId → connection
+// Resolve prompt-cache session id: client session → conversation anchor → assistant-text-hash → workspaceId → connection
 function resolveCacheSessionId(body, credentials, requestContext = null) {
   return resolveSessionId({
     headers: requestContext?.clientHeaders || credentials?.rawHeaders,
@@ -1045,7 +1070,7 @@ export class CodexExecutor extends BaseExecutor {
       /^gpt-5\.6-luna(?:-max|\(max\))$/.test(model);
     if (responsesLite && !delegationModel) body.parallel_tool_calls = false;
     else if (!responsesLite && !isCompact) delete body.parallel_tool_calls;
-    // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
+    // Resolve conversation-stable session_id (priority: body → anchor → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)
     const normalized = normalizeResponsesInput(body.input);
@@ -1081,6 +1106,7 @@ export class CodexExecutor extends BaseExecutor {
 
     // Keep system prompts in body.input as role=developer so they stay in the cacheable prefix
     convertSystemToDeveloperRole(body);
+    normalizeCodexMessageItems(body);
     // Rewrite replayed assistant history input_text/text parts → output_text (#6932)
     normalizeCodexAssistantHistory(body);
     // Drop reasoning another provider sealed (Grok Build) before the replayed
@@ -1089,7 +1115,7 @@ export class CodexExecutor extends BaseExecutor {
     // recovery in execute().
     dropForeignReasoningItems(body);
     // Remove replay-only call item IDs and stored references that store=false cannot resolve.
-    body.input = normalizeStatelessResponseInput(body.input);
+    body.input = stripAdditionalToolsContent(normalizeStatelessResponseInput(body.input));
 
     if (Array.isArray(body.input)) {
       body.input = repairCodexToolHistory(body.input);

@@ -21,7 +21,8 @@ export default function useProviderSettings({ autoPingQueue, providerId, provide
       const override = {};
       if (strategy) override.fallbackStrategy = strategy;
       if (strategy === "round-robin" && stickyLimit !== "") {
-        override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
+        const limit = Number(stickyLimit);
+        override.stickyRoundRobinLimit = limit >= 0 ? limit : 3;
       }
 
       const updated = { ...current };

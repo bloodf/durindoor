@@ -1158,7 +1158,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // session_id in user_id must match X-Claude-Code-Session-Id for fingerprint consistency
   if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && apiKey) {
     const sid = sessionId || resolveSessionId({ headers: rawHeaders, body, connectionId, scope: "claude" });
-    body = applyCloaking(body, apiKey, sid);
+    // The connection id outlives a token refresh, so the synthetic identity does too.
+    body = applyCloaking(body, apiKey, sid, connectionId);
   }
 
   if (preserveResponseCache) capCacheControlBlocks(body);

@@ -604,12 +604,13 @@ function buildKeenableRequest(config, params) {
     throw new Error("Keenable domain_filter must be a list of strings");
   }
   const { includes, excludes } = parseDomainFilter(params.domainFilter);
-  if (includes.length > 1) throw new Error("Keenable search accepts one include domain");
   if (excludes.length > KEENABLE_MAX_EXCLUDES) {
     throw new Error(`Keenable search accepts at most ${KEENABLE_MAX_EXCLUDES} excluded domains`);
   }
   const body = { query: params.query, max_results: params.maxResults };
-  if (includes.length === 1) body.site = keenableHost(includes[0]);
+  // `site` takes one host. Several includes are not sent; the normalizer filters results.
+  const hosts = includes.map(keenableHost);
+  if (hosts.length === 1) body.site = hosts[0];
   if (excludes.length) body.exclude_domains = excludes.map(keenableHost);
   const publishedAfter = timeRangeStartDate(params.timeRange);
   if (publishedAfter) body.published_after = publishedAfter;

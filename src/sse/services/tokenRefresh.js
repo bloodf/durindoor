@@ -30,6 +30,7 @@ import {
   shouldRefreshCredentials as _shouldRefreshCredentials } from
 "open-sse/services/oauthCredentialManager.js";
 import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
+import { hasCodexIdentityClaims } from "open-sse/services/usage/codexCredentialBinding.js";
 import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
@@ -207,6 +208,8 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
         Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
       };
     }
+    // The repo compares rotated identity claims with the stored row under its write lock.
+    if (hasCodexIdentityClaims(updates)) guard = { ...guard, refreshRotation: true };
     const result = guard ?
     await updateProviderConnection(connectionId, updates, { ...guard, returnCommitResult: true }) :
     await updateProviderConnection(connectionId, updates);
@@ -308,7 +311,8 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
         guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
-      if (guardedCodex && !applied) return creds;
+      // Never dispatch a Codex token whose identity the store did not accept.
+      if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
 
       creds = {
         ...creds,

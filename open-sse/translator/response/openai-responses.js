@@ -14,7 +14,7 @@ import { buildChunk } from "../concerns/chunk.js";
 import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText, REASONING_PART_SEPARATOR } from "../concerns/reasoning.js";
-import { resolveInlineThinkingFormat } from "../../utils/inlineThinking.js";
+import { resolveInlineThinkingFormat, trackInlineExtractorHold } from "../../utils/inlineThinking.js";
 import { INLINE_THINKING_FORMATS } from "../../providers/schema.js";
 import { createThinkTagStreamExtractor } from "../../utils/thinkStripper.js";
 import { isInternalReasoningPlaceholder } from "../../utils/reasoningPlaceholder.js";
@@ -165,18 +165,18 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     const extractor = state.inlineResponsesExtractor ||= createThinkTagStreamExtractor();
     if (delta.reasoning_content != null && !isString(delta.reasoning_content)) {
       const pending = extractor.failOpen();
-      trackExtractorHold(state, 0, pending);
+      trackInlineExtractorHold(state, 0, pending);
       if (pending.content && isString(delta.content)) delta.content = pending.content + delta.content;
     } else if (isString(delta.content)) {
       const input = delta.content;
       const result = extractor.process(input);
-      trackExtractorHold(state, input.length, result);
+      trackInlineExtractorHold(state, input.length, result);
       delta.content = result.content;
       if (result.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + result.reasoning;
     }
     if (choice.finish_reason) {
       const pending = extractor.flush();
-      trackExtractorHold(state, 0, pending);
+      trackInlineExtractorHold(state, 0, pending);
       delta.content = (delta.content || "") + (pending.content || "");
       if (pending.reasoning) delta.reasoning_content = (delta.reasoning_content || "") + pending.reasoning;
     }
@@ -251,14 +251,6 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
 // Helper functions
 
-// The inline <think> extractor buffers text until its tags close: what went in
-// and has not come out yet is retained. Tag characters it consumes stay counted.
-function trackExtractorHold(state, inputLength, output) {
-  const held = state.inlineExtractorHeld || 0;
-  const next = Math.max(0, held + inputLength - retainedSize(output.content) - retainedSize(output.reasoning));
-  replaceRetained(state, held, next);
-  state.inlineExtractorHeld = next;
-}
 function startReasoning(state, emit, idx) {
   if (!state.reasoningId) {
     const outputIndex = state.nextOutputIndex++;
@@ -975,8 +967,9 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
   // Routed by item_id so interleaved parallel fragments stay on their own call.
   // Some providers key deltas by `call_id` or by a prefixed `fc_<id>`/`ctc_<id>`
   // form instead of the item id from output_item.added — try the raw key, the
-  // prefix-stripped key, then the most recent call's correlator before falling
-  // back to stream position. (#3772)
+  // prefix-stripped key, the event's own call_id and output_index, then the most
+  // recent call's correlator before falling back to stream position. (#3772,
+  // upstream 9router #2713)
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
@@ -985,6 +978,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
     const strippedItemId = rawItemId.replace(/^(?:fc|ctc)_/, "");
     const known = (rawItemId ? state.respToolChatIndex?.get(rawItemId) : undefined) ??
     (strippedItemId !== rawItemId ? state.respToolChatIndex?.get(strippedItemId) : undefined) ??
+    (data.call_id ? state.respToolChatIndex?.get(data.call_id) : undefined) ??
+    (Number.isInteger(data.output_index) ? state.respToolOutputIndex?.get(data.output_index) : undefined) ??
     (state.currentToolCallId ? state.respToolChatIndex?.get(state.currentToolCallId) : undefined);
     const idx = known ?? Math.max(0, (state.toolCallIndex || 1) - 1);
     const kind = state.respCustomToolKinds?.get(idx);

@@ -1,5 +1,9 @@
-import { getProviderQuotaConfig, PROVIDER_QUOTA_DEFAULTS } from "open-sse/config/providerQuota.js";
-import { QUOTA_SELECTION_DEFAULTS } from "open-sse/config/quotaSelection.js";
+import {
+  CODEX_QUOTA_STALE_SHORTCUT,
+  getProviderQuotaConfig,
+  PROVIDER_QUOTA_DEFAULTS } from
+"open-sse/config/providerQuota.js";
+import { QUOTA_SELECTION_DEFAULTS, resolveQuotaRoutingFloor } from "open-sse/config/quotaSelection.js";
 import { quotaScopedKey } from "open-sse/services/quota/normalize.js";
 import {
   QUOTA_IDENTITY_DEFAULTS,
@@ -310,6 +314,48 @@ function evaluateGate(rows, gate, exactResources, now, { connectionWide = false 
   return { decision: { ...MISSING_DECISION, reason: "stale", freshness: "stale" }, selected, gate };
 }
 
+function staleHeadroomPercent(env) {
+  const value = Number(env[CODEX_QUOTA_STALE_SHORTCUT.headroomEnv]);
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 100) : 0;
+}
+
+function staleMaxAgeMs(env) {
+  const value = Number(env[CODEX_QUOTA_STALE_SHORTCUT.maxAgeEnv]);
+  return Number.isFinite(value) && value > 0 ?
+  Math.min(value, CODEX_QUOTA_STALE_SHORTCUT.maxAgeCapMs) :
+  CODEX_QUOTA_STALE_SHORTCUT.defaultMaxAgeMs;
+}
+
+// The windows of a stale reading that is recent and complete enough to serve
+// while it refreshes, or null when the request has to wait.
+function recentStaleWindows(gateResults, now, env) {
+  if (staleHeadroomPercent(env) <= 0) return null;
+  const rows = gateResults.flatMap((result) => result.selected);
+  const maxAgeMs = staleMaxAgeMs(env);
+  const usable = rows.every((row) => {
+    const observedAt = timestamp(row?.timing?.observedAt);
+    const resetAt = timestamp(row?.timing?.resetAt);
+    return observedAt !== null && observedAt <= now && now - observedAt <= maxAgeMs &&
+    (resetAt === null || resetAt > now) &&
+    POSITIVE_STATES.has(row.state) && rowRatio(row) !== null;
+  });
+  return usable && rows.length > 0 ? rows.map(routingWindow) : null;
+}
+
+/**
+ * True when the caller may send now and refresh the quota in the background:
+ * every window of the recent stale reading is at least the configured number of
+ * percentage points above its cutoff (the routing floor when enabled, else 0).
+ */
+export function canDeferQuotaRefresh(decision, { quotaSelection = {}, connectionId, provider, env = process.env } = {}) {
+  const headroom = staleHeadroomPercent(env);
+  if (headroom <= 0 || !decision?.recentStaleWindows) return false;
+  return decision.recentStaleWindows.every(({ dimensionKey, ratio }) => {
+    const floor = resolveQuotaRoutingFloor(quotaSelection, { connectionId, provider, dimensionKey });
+    return (ratio - (floor.enabled ? floor.ratio : 0)) * 100 >= headroom;
+  });
+}
+
 function failedFetchDecision(fetchState, now, refreshSupported) {
   if (!fetchState || fetchState.outcome === "success") return null;
   const attemptedAt = timestamp(fetchState.attemptedAt);
@@ -459,7 +505,16 @@ export function evaluateProviderQuotaPreflight(snapshots = [], {
   const staleDecision = decisive.find((decision) => decision.reason === "tracker_error") ||
   decisive.find((decision) => decision.reason === "unknown") ||
   decisive.find((decision) => decision.reason === "stale");
-  if (staleDecision) return { ...staleDecision, shouldRefresh: refreshSupported };
+  if (staleDecision) {
+    const windows = config?.adapter === "codex" && staleDecision.reason === "stale" && refreshSupported ?
+    recentStaleWindows(gateResults, safeNow, process.env) :
+    null;
+    return {
+      ...staleDecision,
+      shouldRefresh: refreshSupported,
+      ...(windows ? { recentStaleWindows: windows } : null)
+    };
+  }
   if (runtimeRows.length > 0 || hasConfiguredRows) {
     return { ...MISSING_DECISION, reason: "stale", freshness: "stale", shouldRefresh: refreshSupported };
   }

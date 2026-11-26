@@ -45,8 +45,15 @@ export default {
       userAgent: "GitHubCopilotChat/0.38.0",
       apiVersion: "2025-04-01",
     },
-    // Chat accepts the Responses `prompt_cache_key` extension after lowering.
-    quirks: { preservePromptCacheKey: true },
+    quirks: {
+      // Chat accepts the Responses `prompt_cache_key` extension after lowering.
+      preservePromptCacheKey: true,
+      // Claude-source requests for these models stay Claude-shaped to /v1/messages,
+      // so signed thinking blocks survive. Matched by name: the live catalog ships
+      // claude-* ids before the static list does (upstream 9router #2761).
+      // Plain data (lowercase substring, matched case-insensitively) so the public catalog stays JSON.
+      claudeSourceNativeModels: "claude",
+    },
     usage: {
       url: "https://api.github.com/copilot_internal/user",
     },

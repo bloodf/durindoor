@@ -1271,6 +1271,34 @@ export function defaultClaudeToolType(tools) {
 }
 
 /**
+ * Whether the operator listed this provider id as one whose Anthropic-compatible
+ * endpoint rejects `type: "custom"` with HTTP 400 "unknown variant `custom`"
+ * (OmniRoute #20335). Read per call; unset lists nothing.
+ *
+ * @param {string} provider - Provider id, including a compatible node's full id.
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {boolean}
+ */
+export function rejectsClaudeCustomToolType(provider, env = process.env) {
+  return String(env.DURINDOOR_CLAUDE_TOOL_TYPE_REJECTING_PROVIDERS ?? "").
+  split(",").some((id) => id.trim() !== "" && id.trim() === provider);
+}
+
+/**
+ * Drop only the `type: "custom"` discriminator; typed server tools keep theirs.
+ *
+ * @param {Array<object>} tools - Tool definitions from a Claude-format body.
+ * @returns {Array<object>} Tools without the custom discriminator.
+ */
+export function stripClaudeCustomToolType(tools) {
+  return tools.map((tool) => {
+    if (tool?.type !== "custom") return tool;
+    const { type: _type, ...rest } = tool;
+    return rest;
+  });
+}
+
+/**
  * Whether Claude-format tools need explicit `type` defaulting before dispatch.
  *
  * Only gateways that declare the `requireClaudeToolType` quirk (MiniMax,

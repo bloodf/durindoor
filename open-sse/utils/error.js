@@ -7,7 +7,7 @@ import {
   MAX_RATE_LIMIT_COOLDOWN_MS,
   GEMINI_DAILY_QUOTA_PARK_MS } from
 "../config/errorConfig.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 import { NAIVE_RESET_TIMEZONES } from "../config/naiveResetTimezones.js";
 
@@ -132,6 +132,21 @@ const ANTIGRAVITY_CONTENT_REJECTION_TEXT = "Resource has been exhausted (e.g. ch
 
 function hasAntigravityQuotaSignal(bodyText) {
   return isString(bodyText) && ANTIGRAVITY_QUOTA_SIGNAL_MARKERS.some((marker) => bodyText.includes(marker));
+}
+
+/**
+ * decolua/9router#3394: Antigravity names an empty Google One AI credit balance
+ * only in `google.rpc.ErrorInfo.reason`. The 429 body is redacted after this
+ * module, so account fallback can only learn it from the evidence.
+ */
+function hasAntigravityCreditExhaustion(bodyText) {
+  if (!isString(bodyText) || bodyText.length > 64 * 1024) return false;
+  let root;
+  try {root = JSON.parse(bodyText);} catch {return false;}
+  const details = root?.error?.details ?? root?.details;
+  return Array.isArray(details) && details.slice(0, 50).some((detail) =>
+    isString(detail?.["@type"]) && detail["@type"].includes("ErrorInfo") &&
+    String(detail.reason || "").toUpperCase() === "INSUFFICIENT_G1_CREDITS_BALANCE");
 }
 
 function isAntigravityContentRejection(bodyText) {
@@ -429,10 +444,14 @@ export function parseRateLimitEvidence({
     }
   }
 
+  // An upstream reset stays authoritative; the flag only covers an open-ended one.
+  const creditsExhausted = isAntigravityProvider && !resetAtMs && hasAntigravityCreditExhaustion(bodyText);
+
   return {
-    state: explicitQuota || dailyExhausted ? "exhausted" : "cooldown",
+    state: explicitQuota || dailyExhausted || creditsExhausted ? "exhausted" : "cooldown",
     resetAtMs,
-    source: source || "local_policy"
+    source: source || "local_policy",
+    ...(creditsExhausted ? { creditsExhausted: true } : null)
   };
 }
 
@@ -846,7 +865,7 @@ export function formatProviderError(error, provider, model, statusCode) {
  * @returns {string}
  */
 export function describeProviderError(error) {
-  const clamp = (value, limit = 100) => sanitizeErrorMessage(value).replace(/\s+/g, " ").trim().slice(0, limit).trimEnd() || "Provider error";
+  const clamp = (value, limit = ACCOUNT_ERROR_MESSAGE_MAX_CHARS) => sanitizeErrorMessage(value).replace(/\s+/g, " ").trim().slice(0, limit).trimEnd() || "Provider error";
   if (isString(error)) return clamp(error);
   if (!error || !isObject(error)) return "Provider error";
 
@@ -864,7 +883,7 @@ export function describeProviderError(error) {
     const message = clamp(rawMessage);
     if (!code || message.includes(code)) return message;
     const suffix = ` (${code})`;
-    return `${clamp(rawMessage, 100 - suffix.length)}${suffix}`;
+    return `${clamp(rawMessage, ACCOUNT_ERROR_MESSAGE_MAX_CHARS - suffix.length)}${suffix}`;
   }
   return code ? `Provider error (${code})` : "Provider error";
 }

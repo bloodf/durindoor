@@ -61,7 +61,7 @@ import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from 
 import { checkModelLifecycle } from "./chatCore/modelLifecyclePolicy.js";
 import { classifyStreamAbandonReason } from "../utils/streamLifecycle.js";
 import { dedupeTools } from "../utils/toolDeduper.js";
-import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
+import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses, normalizeOpenAIToolNames, composeToolNameMaps, normalizeOpenRouterToolSchemas, defaultClaudeToolType, shouldDefaultClaudeToolType, rejectsClaudeCustomToolType, stripClaudeCustomToolType } from "../translator/concerns/toolCall.js";
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectCustomPrompt } from "../rtk/customPrompt.js";
@@ -92,6 +92,10 @@ import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeContextBudgetConfig } from "../services/compression/adaptiveCompression/types.js";
 
+// A rejected redispatch with one of these says something about the dispatched key.
+const CREDENTIAL_REJECTION_STATUSES = new Set([
+  HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.PAYMENT_REQUIRED, HTTP_STATUS.FORBIDDEN, HTTP_STATUS.RATE_LIMITED
+]);
 const TOP_LEVEL_STREAM_FORMATS = new Set([
 FORMATS.OPENAI,
 FORMATS.OPENAI_RESPONSES,
@@ -197,8 +201,13 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
   const nativeToolFormat = supportedFormats?.includes(FORMATS.OPENAI_RESPONSES) &&
     (needsNativeServerTools && !responsesClientsOnly || nativeMiniMax && sourceFormat === FORMATS.OPENAI_RESPONSES) ?
     FORMATS.OPENAI_RESPONSES : null;
+  // A pivot through OpenAI drops signed thinking blocks, so a provider with a
+  // native Messages route keeps Claude-source requests Claude-shaped.
+  const claudeNativeMatch = PROVIDERS[provider]?.quirks?.claudeSourceNativeModels;
+  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE && claudeNativeMatch &&
+    String(model ?? "").toLowerCase().includes(claudeNativeMatch) ? FORMATS.CLAUDE : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
-    nativeToolFormat || getModelTargetFormat(alias, model);
+    nativeToolFormat || getModelTargetFormat(alias, model) || nativeClaudeFormat;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
   const defaultFormat = getTargetFormat(provider, credentials);
   const preferredFormat = modelTargetFormat || directFormat || defaultFormat;
@@ -495,7 +504,12 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // format. Without credentials it must retain provider default endpoint.
   if (runtimeTransport && credentials) credentials.runtimeTransport = runtimeTransport;
   const stripList = getModelStrip(alias, cleanModel);
-  body = applyProviderThinkingOverride(body, providerThinking);
+  // Native passthrough: CLI tool and provider are the same ecosystem
+  // Skip all translation/normalization — only model and Bearer are swapped
+  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
+  const passthrough = isNativePassthrough(clientTool, provider);
+
+  body = applyProviderThinkingOverride(body, providerThinking, { passthrough });
   // Suffix intent, then body effort/budget (including the provider-level
   // override injected above), select `<model>-<tier>` catalog rows (upstream
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
@@ -619,11 +633,6 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   if (clientRawRequest) reqLogger.logClientRawRequest(clientRawRequest.endpoint, clientLogBody, clientRawRequest.headers);
   reqLogger.logRawRequest(body);
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
-
-  // Native passthrough: CLI tool and provider are the same ecosystem
-  // Skip all translation/normalization — only model and Bearer are swapped
-  const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
-  const passthrough = isNativePassthrough(clientTool, provider);
 
   const searchError = validateSearchRoute(body, sourceFormat, targetFormat, provider);
   if (searchError) {
@@ -934,7 +943,10 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // requireClaudeToolType get the explicit type. Applying it unconditionally breaks
   // Claude-format endpoints that only accept the legacy typeless tool shape — DeepSeek's
   // Anthropic-compatible endpoint 400s with "unknown variant `custom`" (#3905).
-  if (shouldDefaultClaudeToolType(provider, finalFormat, translatedBody.tools, PROVIDERS)) {
+  // An operator-listed provider rejects that discriminator, so the list wins over the default.
+  if (finalFormat === FORMATS.CLAUDE && Array.isArray(translatedBody.tools) && rejectsClaudeCustomToolType(provider)) {
+    translatedBody.tools = stripClaudeCustomToolType(translatedBody.tools);
+  } else if (shouldDefaultClaudeToolType(provider, finalFormat, translatedBody.tools, PROVIDERS)) {
     translatedBody.tools = defaultClaudeToolType(translatedBody.tools);
   }
 
@@ -1208,6 +1220,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   requestContext = Object.freeze({
     ...requestContext,
     sourceFormat,
+    // Shape of the body handed to the executor.
+    upstreamBodyFormat: finalFormat,
     modelCapabilities: preflightCaps,
     translatedToCodex: provider === "codex" && !passthrough && sourceFormat !== targetFormat,
   });
@@ -1861,7 +1875,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       if (!retryResult.response.ok) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
         const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });
-        throw new Error(`[${statusCode}] ${message}`);
+        throw Object.assign(new Error(`[${statusCode}] ${message}`), { upstreamStatus: statusCode });
       }
       if (!retryResult.response.body) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
@@ -1878,20 +1892,25 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         onInBandError: (error, attemptBody) => {
           if (error?.code === 401 || error?.code === 403) evictResponseDispatcher(attemptBody);
         },
-        onAttemptDiscarded: (attemptBody, _reason, { final } = {}) =>
+        onAttemptDiscarded: (attemptBody, _reason, { final, aborted } = {}) =>
         settleProviderAttemptDispatch(attemptBody, {
           success: false,
-          reason: final ? "upstream_error" : "fallback"
+          reason: aborted ? "abort" : final ? "upstream_error" : "fallback"
         }),
 
-        onExhausted: (reason, { upstreamError } = {}) => {
+        onExhausted: (reason, { upstreamError, status } = {}) => {
           if (!onUpstreamEmptyExhausted) return;
+          // A retry rejected for the credential's own sake keeps its status
+          // (OmniRoute #20993); anything else stays an empty-response 502.
+          const rejected = CREDENTIAL_REJECTION_STATUSES.has(status);
+          const outcomeStatus = rejected ? status : HTTP_STATUS.BAD_GATEWAY;
           // Quota-style exhaustion carries the reset time only inside the error
           // message ("Your quota will reset after 2h7m23s") — bench precisely.
-          const resetMs = executor.parseRetryFromErrorMessage?.(upstreamError?.message || reason);
+          const resetMs = executor.parseRetryFromErrorMessage?.((!rejected && upstreamError?.message) || reason);
           return onUpstreamEmptyExhausted(
-            formatProviderError(new Error(reason), provider, cleanModel, HTTP_STATUS.BAD_GATEWAY),
-            resetMs ? Date.now() + resetMs : undefined
+            formatProviderError(new Error(reason), provider, cleanModel, outcomeStatus),
+            resetMs ? Date.now() + resetMs : undefined,
+            outcomeStatus
           );
         }
       }),

@@ -4,12 +4,12 @@ import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateInputTokens, estimateOutputTokens, formatUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
-import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
+import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, isOpenAIResponsesLifecycleTerminal, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { createThinkTagStreamExtractor } from "./thinkStripper.js";
@@ -69,6 +69,15 @@ const sseLineEvent = (line) => parseSseFrame(line).eventName?.trim() || null;
 
 /** Forwarded `data:x` lines are written as `data: x`. */
 const spaceDataField = (line) => line.replace(/^data:(?! )/, "data: ");
+
+// A gateway's own charge (Cheaper Inference `buyer_cost_micro`) is not part of the
+// Messages usage contract, so a native Claude stream does not relay it
+// (OmniRoute #21136). Returns whether the event changed.
+function omitBuyerCost(event) {
+  if (event?.type !== "message_delta" || !event.usage || !Object.hasOwn(event.usage, "buyer_cost_micro")) return false;
+  delete event.usage.buyer_cost_micro;
+  return true;
+}
 
 /** A `data:` line holding only the start of a JSON value split over several data lines. */
 function startsSplitData(line) {
@@ -240,6 +249,13 @@ export function createSSEStream(options = {}) {
   // Passthrough tool-call (choice, index) keys already opened on the client wire.
   const openedToolCalls = new Set();
   let usage = null;
+  // The request body is fixed for the stream, so it is serialized at most once
+  // however many events need an estimate (OmniRoute #20466).
+  let inputEstimate = null;
+  const estimateStreamUsage = (outputLength, format) => {
+    inputEstimate ??= estimateInputTokens(body);
+    return formatUsage(inputEstimate, estimateOutputTokens(outputLength), format);
+  };
   // Delay estimates for clients requesting an OpenAI usage trailer.
   let pendingUsageEstimate = false;
   let usageChunkMeta = {};
@@ -603,12 +619,13 @@ export function createSSEStream(options = {}) {
   let currentOpenAIResponsesEvent = null;
   let currentUpstreamEvent = null;
   let openAIResponsesTerminalSeen = false;
+  let responsesLifecycleTerminalForwarded = false;
   let openAIResponsesDoneSent = false;
   const emitPendingUsageEstimate = (controller) => {
     if (!pendingUsageEstimate) return;
     pendingUsageEstimate = false;
     if (hasValidUsage(usage)) return;
-    usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+    usage = estimateStreamUsage(totalContentLength, FORMATS.OPENAI);
     const chunk = {
       id: usageChunkMeta.id,
       object: "chat.completion.chunk",
@@ -796,7 +813,7 @@ export function createSSEStream(options = {}) {
     const currentUsage = refreshProvisionalOutput(mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage, claudeOutputChars);
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
     provider !== "replicate" && totalContentLength > 0 ?
-    estimateUsage(body, totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
+    estimateStreamUsage(totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
     null;
     return {
       ...getAccumulatedCompletion(),
@@ -820,7 +837,7 @@ export function createSSEStream(options = {}) {
     if (translatedStreamFinalized) return;
     translatedStreamFinalized = true;
     if (provider !== "replicate" && !hasValidUsage(state?.usage) && totalContentLength > 0) {
-      state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
+      state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
     }
     if (hasValidUsage(state?.usage)) {
       logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
@@ -1060,6 +1077,8 @@ export function createSSEStream(options = {}) {
                 if (!parsed.created) {parsed.created = Math.floor(Date.now() / 1000);fieldsInjected = true;}
               }
 
+              if (omitBuyerCost(parsed)) fieldsInjected = true;
+
               // Strip Azure-specific non-standard fields from streaming chunks
               if (parsed.prompt_filter_results !== undefined) {
                 delete parsed.prompt_filter_results;
@@ -1269,7 +1288,7 @@ export function createSSEStream(options = {}) {
               if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && (providerBody?.stream_options?.include_usage === true || body?.stream_options?.include_usage === true)) {
                 pendingUsageEstimate = true;
               } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
-                const estimated = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
+                const estimated = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.OPENAI));
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
@@ -1294,7 +1313,7 @@ export function createSSEStream(options = {}) {
               targetFormat == null && parsed.candidates?.some?.((candidate) => candidate?.finishReason);
               if (immediateGeminiTerminal && onStreamComplete && !onStreamCompleteFired) {
                 if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
-                  usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
+                  usage = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.GEMINI));
                 }
                 onStreamCompleteFired = true;
                 onStreamComplete(
@@ -1401,6 +1420,17 @@ export function createSSEStream(options = {}) {
         if (sourceFormat === FORMATS.OPENAI) normalizeArrayContentChunk(parsed);
 
         if (upstreamErrorForwarded) continue;
+        // A Responses client gets one lifecycle terminal. A later one is still
+        // observed, so a contradiction counts against the attempt, but it is
+        // not forwarded (upstream 9router #2713).
+        if (responsesLifecycleTerminalForwarded && sourceFormat === FORMATS.OPENAI_RESPONSES) {
+          const lateEventName = getOpenAIResponsesEventName(currentOpenAIResponsesEvent, parsed);
+          if (isOpenAIResponsesLifecycleTerminal(lateEventName, parsed)) {
+            upstreamTerminal.observe({ chunk: parsed, eventName: lateEventName });
+            currentUpstreamEvent = null;
+            continue;
+          }
+        }
         // Capture raw diagnostics first; redact the public envelope (including
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
@@ -1443,6 +1473,7 @@ export function createSSEStream(options = {}) {
 
         if (isOpenAIResponsesStream && isOpenAIResponsesTerminalEvent(openAIResponsesEventName, parsed)) {
           openAIResponsesTerminalSeen = true;
+          responsesLifecycleTerminalForwarded ||= isOpenAIResponsesLifecycleTerminal(openAIResponsesEventName, parsed);
         }
 
         // For Ollama: done=true is the final chunk with finish_reason/usage, must translate
@@ -1546,7 +1577,7 @@ export function createSSEStream(options = {}) {
 
         // Antigravity terminal chunks carry final content and usageMetadata.
         if ((provider === "antigravity" || provider === "agy") && parsed.response?.candidates?.some?.((candidate) => candidate?.finishReason) && onStreamComplete && !onStreamCompleteFired) {
-          if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, FORMATS.GEMINI));
+          if (!hasValidUsage(state.usage) && totalContentLength > 0) state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, FORMATS.GEMINI));
           onStreamCompleteFired = true;
           onStreamComplete({
             ...getAccumulatedCompletion(),
@@ -1607,7 +1638,7 @@ export function createSSEStream(options = {}) {
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
-              const estimated = mergeUsage(state.usage ?? item.usage, estimateUsage(body, totalContentLength, sourceFormat));
+              const estimated = mergeUsage(state.usage ?? item.usage, estimateStreamUsage(totalContentLength, sourceFormat));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
@@ -1819,7 +1850,7 @@ export function createSSEStream(options = {}) {
             } else if (!(filterEmptyOpenAIFrames && /^(?:id|event|retry)(?::|$)/.test(trimmedBuffer))) {
               currentUpstreamEvent = observeBufferedUpstream(trimmedBuffer, currentUpstreamEvent);
               if (parsed) recordCompletionData(parsed, { content: true });
-              output = spaceDataField(buffer);
+              output = omitBuyerCost(parsed) ? `data: ${JSON.stringify(parsed)}` : spaceDataField(buffer);
               if (!/\r?\n\r?\n$/.test(output)) output = `${output.replace(/\s+$/, "")}\n\n`;
             }
             if (output && filterEmptyOpenAIFrames && sseLineData(trimmedBuffer) !== null) {
@@ -1847,7 +1878,7 @@ export function createSSEStream(options = {}) {
           emitPendingUsageEstimate(controller);
           usage = refreshProvisionalOutput(usage, claudeOutputChars);
           if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
-            usage = mergeUsage(usage, estimateUsage(body, totalContentLength, FORMATS.OPENAI));
+            usage = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.OPENAI));
           }
 
           if (hasValidUsage(usage)) {
@@ -2000,7 +2031,7 @@ export function createSSEStream(options = {}) {
           controller.enqueue(sharedEncoder.encode(output));
           // The partial output was still generated, so account for it.
           if (!hasValidUsage(state.usage) && totalContentLength > 0) {
-            state.usage = mergeUsage(state.usage, estimateUsage(body, totalContentLength, sourceFormat));
+            state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
           }
           if (hasValidUsage(state.usage)) logUsage(state.provider || targetFormat, state.usage, model, connectionId, apiKey);
           finalizeFailedStream();

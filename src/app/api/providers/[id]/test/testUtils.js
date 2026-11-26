@@ -1085,7 +1085,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
           const res = await fetchWithConnectionProxy(`${baseUrls[connection.provider]}/models`, {
             headers: { Authorization: `Bearer ${connection.apiKey}` }
           }, effectiveProxy);
-          return { valid: res.ok, error: res.ok ? null : "Invalid API key" };
+          // A valid Token Plan key may lack permission to list models (upstream #3311).
+          const valid = res.ok || connection.provider === "xiaomi-tokenplan" && res.status === 403;
+          return { valid, error: valid ? null : "Invalid API key" };
         }
       case "blackbox":{
           const baseUrl = PROVIDERS["blackbox"]?.baseUrl?.replace(/\/chat\/completions$/, "") || "https://api.blackbox.ai/v1";

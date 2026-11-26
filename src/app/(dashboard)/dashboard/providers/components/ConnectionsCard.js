@@ -369,7 +369,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       const current = data.providerStrategies || {};
       const override = {};
       if (strategy) override.fallbackStrategy = strategy;
-      if (strategy === "round-robin" && stickyLimit !== "") override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
+      if (strategy === "round-robin" && stickyLimit !== "") override.stickyRoundRobinLimit = Number(stickyLimit) >= 0 ? Number(stickyLimit) : 3;
       const updated = { ...current };
       if (Object.keys(override).length === 0) delete updated[providerId];else
       updated[providerId] = override;
@@ -484,7 +484,7 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
             <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs text-dd-muted">Sticky:</span>
                 <input
-                type="number" min={1} value={providerStickyLimit}
+                type="number" min={0} title="0 keeps one account until it is unavailable" value={providerStickyLimit}
                 onChange={(e) => {setProviderStickyLimit(e.target.value);saveStrategy("round-robin", e.target.value);}}
                 className="w-16 px-2 py-1 text-xs border border-dd-border rounded-md bg-dd-surface focus:outline-none focus:border-dd-accent" />
               

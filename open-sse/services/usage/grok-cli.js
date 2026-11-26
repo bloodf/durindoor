@@ -70,7 +70,7 @@ function humanizeIdentifier(value) {
   return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
+export function buildGrokCliHeaders(accessToken, providerSpecificData = {}) {
   const psd = providerSpecificData || {};
   const headers = {
     Authorization: `Bearer ${accessToken}`,

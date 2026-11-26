@@ -3,7 +3,7 @@ title: Docker
 description: Run a container with persistent data, stable secrets, and a verified client connection.
 ---
 
-Run `ghcr.io/bloodf/durindoor` with a persistent volume. Images support `linux/amd64` and `linux/arm64`. Docker supplies Node.js, so the host does not need a Node installation.
+Run `ghcr.io/bloodf/durindoor` with a persistent volume. Images support `linux/amd64` and `linux/arm64`. Docker supplies Node.js, so the host does not need a Node installation. The image includes `npm` and `npx` for MCP stdio instances. It does not include Yarn or Corepack, so a custom MCP command cannot call them.
 
 ## Prepare secrets and storage
 

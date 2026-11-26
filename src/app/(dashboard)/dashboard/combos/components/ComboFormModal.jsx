@@ -422,6 +422,7 @@ export default function ComboFormModal({ isOpen, combo, onClose, onSave, activeP
         kindFilter={kindFilter}
         addedModelValues={models}
         closeOnSelect={false}
+        comboContext={{ id: combo?.id, names: [combo?.name, name.trim()] }}
       />
     </>
   );

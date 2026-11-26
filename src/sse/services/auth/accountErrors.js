@@ -21,7 +21,11 @@ import * as log from "../../utils/logger.js";
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 const FREE_TIER_STATIC_COOLDOWN_CAP_MS = 60 * 1000;
-function antigravity429Fallback(errorText, errorBody) {
+function antigravity429Fallback(errorText, errorBody, evidence = null) {
+  // A redacted 429 has no credit wording left; the evidence still names it (#3394).
+  if (evidence?.source === "antigravity_credits" || evidence?.creditsExhausted === true) {
+    return { delay: 24 * 60 * 60 * 1000, exhausted: true, credits: true };
+  }
   const text = `${isString(errorText) ? errorText : ""} ${JSON.stringify(errorBody || {})}`.toLowerCase();
   const credits = /google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
   const exhausted = /quota[_ ]exhausted|quota reached|individual quota|enable overages|free tier|daily limit|google_one_ai|insufficient[_ ](?:g1_)?credits?|not enough credits?|credits? exhausted|credit balance|minimumcreditamountforusage|minimum credit|g1_credits/.test(text);
@@ -42,6 +46,15 @@ function isCodexPermanentOAuthError(provider, status, errorText) {
   if (provider !== "codex" || Number(status) !== 401) return false;
   const text = String(errorText || "").toLowerCase();
   return CODEX_PERMANENT_OAUTH_ERRORS.some((sig) => text.includes(sig));
+}
+
+// One request above the whole rate limit (Groq: "Limit 8000, Requested 36955")
+// cannot succeed on a sibling account either (OmniRoute #21051). Requested at or
+// below the limit is a used-up window, which another account can still serve.
+function isRequestLargerThanRateLimit(status, errorText) {
+  if (Number(status) !== 413) return false;
+  const match = /\blimit:?\s*(\d+),\s*requested:?\s*(\d+)/i.exec(String(errorText || ""));
+  return Boolean(match) && Number(match[2]) > Number(match[1]);
 }
 
 function githubMonthlyResetMs(status, errorText, provider) {
@@ -65,6 +78,8 @@ function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
   const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
   return candidate.startsWith("{") && isQoderQuotaExhaustedBody(candidate);
 }
+const FREEBUFF_TRANSIENT_STATUSES = new Set([408, 409, 425, 429]);
+
 const SHORT_COOLDOWN_PROVIDERS = new Set([
 ...Object.keys(FREE_PROVIDERS),
 ...Object.keys(FREE_TIER_PROVIDERS)]
@@ -172,6 +187,8 @@ function dispatchStamp(context) {
 
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  // A reset hint must not turn this into account rotation or a lock.
+  if (isRequestLargerThanRateLimit(status, errorText)) return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
   throwIfAborted(signal);
   const observedAt = dispatchStamp(context);
@@ -189,6 +206,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
     log.warn("AUTH", `${connectionId.slice(0, 8)} hit recoverable Cloud Code project 403; fallback without cooldown`);
     return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  // Every Freebuff admission bills a session hour on the account that takes it
+  // (OmniRoute #20655), so a transient failure neither rotates nor cools down.
+  // Spent Freebucks and rejected credentials still take the ordinary path.
+  const freebuff = resolveProviderId(provider) === "freebuff";
+  const freebucksSpent = freebuff && context?.rateLimitEvidence?.state === "exhausted";
+  if (freebuff && !freebucksSpent && (FREEBUFF_TRANSIENT_STATUSES.has(Number(status)) || Number(status) >= 500)) {
+    log.warn("AUTH", `${connectionId.slice(0, 8)} Freebuff transient failure; keeping this account [${status}]`);
+    return { shouldFallback: false, cooldownMs: 0 };
   }
 
   if (isCodexPermanentOAuthError(provider, status, errorText)) {
@@ -336,7 +363,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
   const ag429 = (provider === "antigravity" || provider === "agy") && Number(status) === 429 ?
-  antigravity429Fallback(errorText, context?.errorBody) : null;
+  antigravity429Fallback(errorText, context?.errorBody, callerEvidence) : null;
   const evidenceState = effectiveEvidence?.state === "exhausted" || ag429?.exhausted ? "exhausted" : "cooldown";
   // Precedence: (1) caller-supplied normalized evidence is authoritative — its
   // null reset is a deliberate rejection of any legacy reset; (2) a reset parsed
@@ -416,7 +443,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     status
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection" || (provider === "claude" && callerEvidence?.scope === "connection");
-  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
+  // Freebucks are one pool per account, so every model on it is spent.
+  const accountWide = Boolean(freebucksSpent || githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
   const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {
     accountWide,

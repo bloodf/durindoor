@@ -10,7 +10,7 @@
   "permissions": ["activeTab"],
   "optional_permissions": ["cookies", "scripting"],
   "optional_host_permissions": [
-    "https://app.chatplayground.ai/*",
+    "https://web.chatplayground.ai/*",
     "https://arena.ai/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",

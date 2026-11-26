@@ -68,6 +68,18 @@ export function mediaAccounting(value, provider, modality) {
   return accounting;
 }
 
+/**
+ * Codex hosted image-tool token counts (`tool_usage.image_gen`, OmniRoute #20684).
+ * Kept in ledger metadata only: putting them in `tokens` would price them at the
+ * host model's text rates.
+ */
+export function imageToolUsage(response) {
+  const usage = response?.tool_usage?.image_gen;
+  const count = (value) => (Number.isFinite(value) && value > 0 ? value : 0);
+  const counts = { input_tokens: count(usage?.input_tokens), output_tokens: count(usage?.output_tokens) };
+  return counts.input_tokens + counts.output_tokens > 0 ? counts : null;
+}
+
 /** Count returned artifacts, not requested images or adapter placeholder rows. */
 export function returnedImageUnits(accounting, normalized) {
   if (Array.isArray(normalized?.data)) {

@@ -16,6 +16,7 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { flattenGrokCliNamespaceTools, restoreGrokCliNamespaceIdentity } from "./grokCliNamespaceTools.js";
 import { convertGrokBuildCustomTools, restoreGrokBuildCustomToolCalls } from "./grokCliCustomTools.js";
 import { normalizeGrokCliToolSchemas } from "./grokCliToolSchema.js";
+import { limitGrokCliTools, normalizeGrokCliHistory, normalizeGrokCliToolChoice } from "./grokCliResponsesCompat.js";
 
 // Server-generated item id prefixes that /responses cannot resolve when store=false.
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -202,7 +203,6 @@ function stripStoredItemReferences(body) {
 /** Flatten Chat Completions tool shape → Responses flat format; keep hosted tools. */
 function normalizeGrokCliTools(body) {
   if (!Array.isArray(body.tools)) return;
-  const validNames = new Set();
   body.tools = body.tools.filter((tool) => {
     if (!tool || !isObject(tool) || Array.isArray(tool)) return false;
     const type = isString(tool.type) ? tool.type : "";
@@ -253,16 +253,8 @@ function normalizeGrokCliTools(body) {
     if (description) tool.description = description;
     tool.parameters = parameters;
     if (strict !== undefined) tool.strict = strict;
-    validNames.add(name);
     return true;
   });
-
-  if (body.tool_choice && isObject(body.tool_choice) && !Array.isArray(body.tool_choice)) {
-    if (body.tool_choice.type === "function") {
-      const n = isString(body.tool_choice.name) ? body.tool_choice.name.trim() : "";
-      if (!n || !validNames.has(n)) delete body.tool_choice;
-    }
-  }
 }
 
 function resolveEffortFromModel(modelId) {
@@ -445,6 +437,8 @@ export class GrokCliExecutor extends BaseExecutor {
     // how a foreign (OpenAI) reasoning item is told apart from one of Grok Build's own.
     sanitizeGrokCliReasoningReplay(body.input);
     stripStoredItemReferences(body);
+    // Pair replayed tool calls with their outputs and repair item shapes (#2647).
+    body.input = normalizeGrokCliHistory(body.input);
     const turnIdx = resolveGrokCliTurnIdx(sessionId, body.input);
     if (requestContext) {
       requestContext.grokCliSessionId = sessionId;
@@ -459,9 +453,12 @@ export class GrokCliExecutor extends BaseExecutor {
     }
     normalizeGrokCliTools(body);
     // xAI cli-chat-proxy enforces a maximum of 200 tools per request. Upstream decolua/9router#2534.
-    if (Array.isArray(body.tools) && body.tools.length > GROK_CLI_MAX_TOOLS) {
-      body.tools = body.tools.slice(0, GROK_CLI_MAX_TOOLS);
+    if (Array.isArray(body.tools)) {
+      body.tools = limitGrokCliTools(body.tools, body.tool_choice, GROK_CLI_MAX_TOOLS);
     }
+    const toolChoice = normalizeGrokCliToolChoice(body.tool_choice, body.tools);
+    if (toolChoice === undefined) delete body.tool_choice;
+    else body.tool_choice = toolChoice;
     // Grok Build refuses a root anyOf/oneOf tool schema with a `$ref` or non-object
     // branch (`invalid_client_tool_schema`), e.g. Codex desktop's `automation_update`.
     // Upstream OmniRoute#14649.
@@ -523,6 +520,8 @@ export class GrokCliExecutor extends BaseExecutor {
       delete body.reasoning;
     }
     delete body.reasoning_effort;
+    // Grok's top effort level is spelled xhigh.
+    if (body.reasoning?.effort === "max") body.reasoning = { ...body.reasoning, effort: "xhigh" };
 
     // Encrypted reasoning for store=false multi-turn continuity.
     if (body.reasoning && body.reasoning.effort !== "none") {

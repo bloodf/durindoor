@@ -41,6 +41,15 @@ const UNIX_TAILSCALE_CANDIDATES = [
 "/snap/bin/tailscale" // Snap package
 ];
 
+// Intel and Apple Silicon Homebrew. The result can be spawned through sudo, so
+// never derive it from PATH, DATA_DIR or the resolved CLI.
+const MAC_TAILSCALED_CANDIDATES = ["/usr/local/bin/tailscaled", "/opt/homebrew/bin/tailscaled"];
+
+export function resolveTailscaledBin({ isMac = IS_MAC, exists = fs.existsSync } = {}) {
+  if (!isMac) return "tailscaled";
+  return MAC_TAILSCALED_CANDIDATES.find((candidate) => exists(candidate)) || MAC_TAILSCALED_CANDIDATES[0];
+}
+
 // ─── Cache + background refresh (avoid blocking event loop on dead daemon) ──
 const PROBE_TTL_MS = 10000;
 const PROBE_TIMEOUT_MS = 1500;
@@ -778,7 +787,7 @@ export async function startDaemonWithPassword(sudoPassword) {
   // Reclaim folder ownership (previous root daemon may have locked it)
   await ensureUserOwnedDir(TAILSCALE_DIR);
 
-  const tailscaledBin = IS_MAC ? "/usr/local/bin/tailscaled" : "tailscaled";
+  const tailscaledBin = resolveTailscaledBin();
   const daemonArgs = [
   `--socket=${TAILSCALE_SOCKET}`,
   `--statedir=${TAILSCALE_DIR}`];

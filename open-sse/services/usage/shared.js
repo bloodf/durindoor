@@ -85,17 +85,23 @@ function waitWithAbort(promise, signal, onAbort) {
   });
 }
 
-/** Fetch headers and body under one absolute deadline. */
-export async function fetchTextWithTimeout(url, opts, ms = 10000, proxyOptions = null) {
+/** Fetch headers, then run `read` on the response, under one absolute deadline. */
+export async function fetchReadWithTimeout(url, opts, read, ms = 10000, proxyOptions = null) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), ms);
   try {
     const response = await proxyAwareFetch(url, { ...opts, signal: controller.signal }, proxyOptions);
-    const text = await waitWithAbort(Promise.resolve().then(() => response.text()), controller.signal, () => {
+    const body = await waitWithAbort(Promise.resolve().then(() => read(response)), controller.signal, () => {
       Promise.resolve(response.body?.cancel?.()).catch(() => {});
     });
-    return { response, text };
+    return { response, body };
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/** Fetch headers and body text under one absolute deadline. */
+export async function fetchTextWithTimeout(url, opts, ms = 10000, proxyOptions = null) {
+  const { response, body } = await fetchReadWithTimeout(url, opts, (r) => r.text(), ms, proxyOptions);
+  return { response, text: body };
 }

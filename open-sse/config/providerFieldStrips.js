@@ -26,6 +26,50 @@ export function findOffendingField(errorText = "") {
     return re.test(text) && !isNestedPathError(text, field);
   }) || null;
 }
+// Replay-only assistant extensions a strict upstream may reject inside
+// messages[] (port of decolua/9router #3325). An allowlist: nothing the
+// conversation depends on (role, content, tool_calls) can ever be dropped.
+const DROPPABLE_MESSAGE_FIELDS = new Set([
+"reasoning_content", "reasoning", "reasoning_details", "encrypted_content", "refusal", "annotations"]);
+
+const REJECTED_MESSAGE_PROPERTY = /\bmessages\.\d+['"`]?\s*:\s*property\s+['"`]([a-z_]+)['"`]\s+(?:is\s+)?unsupported/gi;
+
+function rejectedMessagePaths(errorText) {
+  let payload;
+  try { payload = JSON.parse(errorText); } catch { return []; }
+  const details = payload?.detail ?? payload?.error?.detail ?? payload?.message?.detail;
+  if (!Array.isArray(details)) return [];
+  return details.
+  filter((detail) => detail?.type === "extra_forbidden" && Array.isArray(detail.loc) &&
+  detail.loc[0] === "body" && detail.loc[1] === "messages").
+  map((detail) => detail.loc[detail.loc.length - 1]);
+}
+
+/**
+ * The assistant-message field an upstream rejection names, or null. A 400 must
+ * use the "messages.N : property 'x' is unsupported" wording; a 422 may echo
+ * user content, so only its structured validation paths are trusted.
+ */
+export function findRejectedMessageField(status, errorText, body) {
+  if (!Array.isArray(body?.messages) || !isString(errorText)) return null;
+  const named = status === 422 ? rejectedMessagePaths(errorText) :
+  status === 400 ? [...errorText.matchAll(REJECTED_MESSAGE_PROPERTY)].map((match) => match[1]) : [];
+  return named.find((field) => DROPPABLE_MESSAGE_FIELDS.has(field) &&
+  body.messages.some((message) => message?.role === "assistant" && Object.hasOwn(message, field))) || null;
+}
+
+/** Copy of `body` without `fields` on assistant turns; user-authored fields stay. */
+export function stripAssistantMessageFields(body, fields) {
+  return {
+    ...body,
+    messages: body.messages.map((message) => {
+      if (message?.role !== "assistant") return message;
+      const next = { ...message };
+      for (const field of fields) delete next[field];
+      return next;
+    })
+  };
+}
 // A 422 may echo user content. Only trust structured top-level validation paths.
 export function findRejected422Field(errorText, body) {
   let payload;

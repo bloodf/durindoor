@@ -8,6 +8,7 @@ import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/s
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
 import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
+import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS } from "open-sse/config/runtimeConfig.js";
 import {
   advanceAntigravityGeneration,
   deleteAntigravityRotationRows,
@@ -33,6 +34,7 @@ import {
   connectionHasMultipleCredentials,
   credentialKeyId
 } from "../../../shared/utils/credentialFingerprint.js";
+import { codexRotationMismatch } from "open-sse/services/usage/codexCredentialBinding.js";
 
 export { SENSITIVE_CONNECTION_FIELDS };
 
@@ -570,6 +572,9 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
   refuseIfReauth = false,
   // The patch carries a new sign-in or import, not a refresh of the stored one.
   replacesCredential = false,
+  // The patch carries rotated tokens from a refresh grant. Implied by
+  // expectedRefreshContext.
+  refreshRotation = false,
   antigravityLeaseCommit = false,
   advanceAntigravityGeneration: shouldAdvanceAntigravityGeneration = false
 } = {}) {
@@ -604,6 +609,14 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
       return;
     }
     if (refuseIfReauth && isDurableReauthPinned(existing)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
+    // A refresh must never move a Codex connection to another ChatGPT identity.
+    const identityMismatch = !replacesCredential && (refreshRotation || expectedRefreshContext) &&
+      codexRotationMismatch(existing, data);
+    if (identityMismatch) {
+      console.warn(`[TOKEN_REFRESH] Rejected Codex OAuth identity change during token rotation: ${identityMismatch}`);
       result = returnCommitResult ? { applied: false, connection: existing } : existing;
       return;
     }
@@ -764,7 +777,7 @@ export async function recordProviderConnectionFallbackState(id, {
   // Caller-supplied diagnostics must already be secret-safe; this persistence
   // boundary accepts only the bounded single-line shape produced by
   // describeProviderError and otherwise falls back to the fixed reason code.
-  const validatedReason = isString(reason) && reason.trim() === reason && reason.length > 0 && reason.length <= 100 && !/[\r\n]/.test(reason) ? reason : null;
+  const validatedReason = isString(reason) && reason.trim() === reason && reason.length > 0 && reason.length <= ACCOUNT_ERROR_MESSAGE_MAX_CHARS && !/[\r\n]/.test(reason) ? reason : null;
   const storedReason = reasonCode === "rate_limited" ? safeReasons.rate_limited : validatedReason || safeReasons[reasonCode] || safeReasons.provider_error;
   const db = await getAdapter();
   let result = null;

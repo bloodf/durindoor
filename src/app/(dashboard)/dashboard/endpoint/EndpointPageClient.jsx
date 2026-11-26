@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSettingsStore from "@/store/settingsStore";
 import { get } from "@/shared/utils/api";
 import { requestJSON } from "../providers/workflowRequests.js";
@@ -21,13 +21,12 @@ import {
   TUNNEL_PING_MAX_MS,
   STATUS_POLL_FAST_MS,
   STATUS_POLL_SLOW_MS,
-  REACHABLE_MISS_THRESHOLD,
   CLIENT_PING_FAST_MS,
   CLIENT_PING_SLOW_MS,
   getCompositeEndpointEnabled,
   getLocalEndpointUrl,
 } from "./endpointConstants";
-import { clientPingUrl, clientPingAny } from "./endpointPing";
+import { clientPingUrl, clientPingAny, recordProbeResult } from "./endpointPing";
 import EndpointRow, { EndpointValue } from "./components/EndpointRow";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
@@ -139,8 +138,6 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const tunnelMissRef = useRef(0);
   const tsMissRef = useRef(0);
-  const tunnelClientReachableRef = useRef(false);
-  const tsClientReachableRef = useRef(false);
   const tunnelEverReachableRef = useRef(false);
   const tsEverReachableRef = useRef(false);
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
@@ -188,37 +185,11 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       if (document.hidden) return;
       if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
         const ok = await clientPingAny(tunnelPublicUrl, tunnelUrl);
-        tunnelClientReachableRef.current = ok;
-        if (ok) {
-          tunnelMissRef.current = 0;
-          setTunnelReachable(true);
-          if (!tunnelEverReachableRef.current) {
-            tunnelEverReachableRef.current = true;
-            setTunnelEverReachable(true);
-          }
-        } else {
-          tunnelMissRef.current += 1;
-          if (tunnelMissRef.current >= REACHABLE_MISS_THRESHOLD) setTunnelReachable(false);
-        }
-      } else {
-        tunnelClientReachableRef.current = false;
+        recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
       }
       if (tsEnabled && tsUrl) {
         const ok = await clientPingUrl(tsUrl);
-        tsClientReachableRef.current = ok;
-        if (ok) {
-          tsMissRef.current = 0;
-          setTsReachable(true);
-          if (!tsEverReachableRef.current) {
-            tsEverReachableRef.current = true;
-            setTsEverReachable(true);
-          }
-        } else {
-          tsMissRef.current += 1;
-          if (tsMissRef.current >= REACHABLE_MISS_THRESHOLD) setTsReachable(false);
-        }
-      } else {
-        tsClientReachableRef.current = false;
+        recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
     };
     const anyEnabled = (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) || (tsEnabled && tsUrl);
@@ -231,21 +202,6 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     return () => clearInterval(id);
   }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
 
-  const updateReachable = useCallback((_unused, clientRef, missRef, setter, everRef, everSetter) => {
-    const reachable = clientRef.current;
-    if (reachable) {
-      missRef.current = 0;
-      setter(true);
-      if (!everRef.current) {
-        everRef.current = true;
-        everSetter(true);
-      }
-    } else {
-      missRef.current += 1;
-      if (missRef.current >= REACHABLE_MISS_THRESHOLD) setter(false);
-    }
-  }, []);
-
   const syncTunnelStatus = async () => {
     try {
       // Background status reads fail open: unusable status leaves last confirmed state intact.
@@ -257,14 +213,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
       setTunnelEnabled(tEnabled);
       setTunnelExternal(data.tunnel?.externalTunnel || null);
-      updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
       const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
       setTsEnabled(tsEn);
       setTsExternal(data.tailscale?.systemTailscale || null);
-      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
     } catch { /* ignore poll errors */ }
   };
 
@@ -292,14 +246,12 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
         setTunnelEnabled(tEnabled);
         setTunnelExternal(data.tunnel?.externalTunnel || null);
-        updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
         const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
         setTsEnabled(tsEn);
         setTsExternal(data.tailscale?.systemTailscale || null);
-        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
       setSettingsKnown(true); setLoadError("");
     } catch (error) {

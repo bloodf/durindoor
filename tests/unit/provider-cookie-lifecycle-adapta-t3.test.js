@@ -189,13 +189,13 @@ describe("Adapta Web saved cookie lifecycle", () => {
     const catalog = await discovered.json();
     expect(catalog.source).toBe("local_catalog");
     expect(catalog.models.map((m) => m.id)).toEqual(expect.arrayContaining([
-      "adapta-one", "adapta-gpt", "adapta-claude", "adapta-gemini", "adapta-grok", "adapta-deepseek", "adapta-llama",
+      "adapta-one", "adapta-claude-5-5-sonnet", "adapta-gpt-6-luna",
     ]));
     expect(JSON.stringify(catalog)).not.toContain("synthetic-a");
     expect(outbound).not.toHaveBeenCalled();
 
     const ids = (await (await routes.models.GET(json("/v1/models", null, "GET"))).json()).data.map((m) => m.id);
-    expect(ids).toEqual(expect.arrayContaining([ADAPTA_MODEL, "adp-web/adapta-claude"]));
+    expect(ids).toEqual(expect.arrayContaining([ADAPTA_MODEL, "adp-web/adapta-claude-5-5-sonnet"]));
 
     outbound.mockImplementation(adaptaTransport({ live: new Set(["synthetic-a"]) }));
     const jsonRes = await chat(ADAPTA_MODEL);

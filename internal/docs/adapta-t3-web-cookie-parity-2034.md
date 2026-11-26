@@ -119,9 +119,10 @@ No upstream file was copied; these are local fixes.
 
 - No remote plan, quota or allowance API. The Usage card is DurinDoor's own
   recorded history, not the provider's remaining allowance.
-- Adapta's registry model ids all map to the same internal `aiModelId` (14,
-  the auto-select model), matching the OmniRoute source. The lane names are
-  catalog entries, not distinct upstream models.
+- Adapta's registry model ids each send a catalog key as `modelAi`, following
+  [OmniRoute #18673](https://github.com/cheaper-inference/OmniRoute/pull/18673).
+  That pull request was open when ported and the keys have only been checked
+  against closed mocks.
 - The Adapta session cache is per cookie and per egress route and is not
   shared between connections, so a second connection re-exchanges its own
   Clerk session.

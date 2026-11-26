@@ -46,6 +46,16 @@ describe("OmniRoute #20233: no unrequested usage-only chunk for Chat clients", (
     expect(events.filter((event) => event.choices?.length === 0)).toHaveLength(1);
   });
 
+  it("keeps requested usage on the final passthrough event", async () => {
+    const { events, recorded } = await run([content, finish, usageOnly], { body: asked });
+    const last = events.at(-1);
+    // Prompt tokens may carry the router's buffer, so compare the untouched completion count.
+    expect(last.usage.completion_tokens).toBe(REAL.completion_tokens);
+    expect(last.usage.total_tokens).toBe(last.usage.prompt_tokens + last.usage.completion_tokens);
+    expect(recorded.completion_tokens).toBe(REAL.completion_tokens);
+    expect(events.some((event) => event.choices?.[0]?.finish_reason === "stop")).toBe(true);
+  });
+
   it("keeps an upstream chunk the router did not ask for", async () => {
     const { events } = await run([content, finish, usageOnly], { body: silent, providerBody: silent });
     expect(events.filter((event) => event.choices?.length === 0)).toHaveLength(1);

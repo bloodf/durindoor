@@ -16,7 +16,7 @@
  */
 
 import { extractThinking, parseSuffix } from "../translator/concerns/thinkingUnified.js";
-import { assertValidAwsRegion } from "../../src/lib/oauth/constants/oauth.js";
+import { assertValidAwsRegion } from "../../src/shared/utils/awsRegion.js";
 import { effortToBudget } from "../translator/concerns/thinking.js";
 import {
   resolveKiroRegion as resolveKiroRegionFromCredentials,

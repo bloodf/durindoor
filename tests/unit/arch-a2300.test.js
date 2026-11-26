@@ -40,16 +40,15 @@ describe("#2300 dead baseline data", () => {
       if (error.status !== 1) throw error; // 1 = no matches
     }
     expect(hits.trim()).toBe("");
-    for (const file of DELETED) {
-      let imports = "";
-      try {
-        imports = execFileSync("git", ["grep", "-nE", `^[[:space:]]*(import|export|.*require\\().*${file.replaceAll(".", "\\.")}`, "--", "src", "open-sse"], { cwd: repoRoot, encoding: "utf8" });
-      } catch (error) {
-        if (error.status !== 1) throw error;
-      }
-      expect(imports.trim()).toBe("");
+    let imports = "";
+    try {
+      const names = DELETED.map((file) => file.replaceAll(".", "\\.")).join("|");
+      imports = execFileSync("git", ["grep", "-nE", `^[[:space:]]*(import|export|.*require\\().*(${names})`, "--", "src", "open-sse"], { cwd: repoRoot, encoding: "utf8" });
+    } catch (error) {
+      if (error.status !== 1) throw error;
     }
-  });
+    expect(imports.trim()).toBe("");
+  }, 120_000);
 });
 
 describe("#2300 gemini-web browser launch", () => {

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { loadState, saveState, generateShortId } from "../shared/state.js";
 import { spawnQuickTunnel, killCloudflared, isCloudflaredRunning, setUnexpectedExitHandler } from "./cloudflared.js";
 import { clearPid } from "./pid.js";
@@ -21,11 +22,18 @@ export function isTunnelReconnecting() { return svc.spawnInProgress; }
 let onUnexpectedExit = null;
 export function setTunnelUnexpectedExitCallback(cb) { onUnexpectedExit = cb; }
 
-async function registerTunnelUrl(shortId, tunnelUrl) {
-  await workerFetch(`${WORKER_URL}/api/tunnel/register`, {
+function stableUrl(shortId) {
+  if (!WORKER_URL || !shortId) return "";
+  const relay = new URL(WORKER_URL);
+  return `${relay.protocol}//r${shortId}.${relay.host}`;
+}
+
+async function registerTunnelUrl(shortId, tunnelUrl, ownershipSecret) {
+  if (!WORKER_URL) return;
+  await workerFetch(`${WORKER_URL.replace(/\/$/, "")}/api/tunnel/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ shortId, tunnelUrl })
+    body: JSON.stringify({ shortId, tunnelUrl, ownershipSecret })
   });
 }
 
@@ -44,11 +52,11 @@ export async function enableTunnel(localPort = getAppPort()) {
     if (isCloudflaredRunning()) {
       const existing = loadState();
       if (existing?.tunnelUrl && existing?.shortId) {
-        const publicUrl = `https://r${existing.shortId}.abc-tunnel.us`;
+        const publicUrl = stableUrl(existing.shortId);
         // Reuse only if BOTH direct + public URL alive (avoid stale socket after network change)
         const [directOk, publicOk] = await Promise.all([
           probeUrlAlive(existing.tunnelUrl),
-          probeUrlAlive(publicUrl),
+          publicUrl ? probeUrlAlive(publicUrl) : Promise.resolve(true),
         ]);
         if (directOk && publicOk) {
           console.log(`[Tunnel] already running, reuse: ${existing.tunnelUrl}`);
@@ -64,11 +72,14 @@ export async function enableTunnel(localPort = getAppPort()) {
 
     const existing = loadState();
     const shortId = existing?.shortId || generateShortId();
+    // Persist ownership before registering so a restart can reclaim this ID.
+    const ownershipSecret = existing?.ownershipSecret || randomBytes(32).toString("hex");
+    saveState({ shortId, ownershipSecret });
 
     const onUrlUpdate = async (url) => {
       if (token.cancelled) return;
       console.log(`[Tunnel] url updated: ${url}`);
-      await registerTunnelUrl(shortId, url);
+      await registerTunnelUrl(shortId, url, ownershipSecret);
       saveState({ shortId, tunnelUrl: url });
       await updateSettings({ tunnelEnabled: true, tunnelUrl: url });
     };
@@ -83,15 +94,15 @@ export async function enableTunnel(localPort = getAppPort()) {
     console.log(`[Tunnel] spawned: ${tunnelUrl}`);
     throwIfCancelled(token);
 
-    const publicUrl = `https://r${shortId}.abc-tunnel.us`;
-    await registerTunnelUrl(shortId, tunnelUrl);
+    const publicUrl = stableUrl(shortId);
+    await registerTunnelUrl(shortId, tunnelUrl, ownershipSecret);
     saveState({ shortId, tunnelUrl });
     await updateSettings({ tunnelEnabled: true, tunnelUrl });
-    console.log(`[Tunnel] registered shortId=${shortId} publicUrl=${publicUrl}`);
+    if (publicUrl) console.log(`[Tunnel] registered shortId=${shortId} publicUrl=${publicUrl}`);
 
     // Either registered health endpoint proves this tunnel is serving;
     // keep the relay first because its stable public URL remains the preferred path.
-    const healthyUrl = await waitForHealth([publicUrl, tunnelUrl], token);
+    const healthyUrl = await waitForHealth([publicUrl, tunnelUrl].filter(Boolean), token);
     if (healthyUrl === publicUrl) {
       console.log("[Tunnel] public URL healthy");
       // Direct tunnel probe is best-effort: DNS for *.trycloudflare.com can be slow/blocked
@@ -100,7 +111,7 @@ export async function enableTunnel(localPort = getAppPort()) {
       } else {
         console.log("[Tunnel] direct URL healthy");
       }
-    } else {
+    } else if (publicUrl) {
       console.warn(`[Tunnel] relay not answering yet, continuing via direct URL: ${healthyUrl}`);
     }
 
@@ -141,7 +152,7 @@ export async function getTunnelStatus() {
   const settingsEnabled = settings.tunnelEnabled === true;
   const state = loadState();
   const shortId = state?.shortId || "";
-  const publicUrl = shortId ? `https://r${shortId}.abc-tunnel.us` : "";
+  const publicUrl = stableUrl(shortId);
   const tunnelUrl = state?.tunnelUrl || "";
 
   // Lazy: skip PID probe entirely when user disabled tunnel

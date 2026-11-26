@@ -1,4 +1,5 @@
-import { loadState, generateShortId } from "../shared/state.js";
+import { randomBytes } from "node:crypto";
+import { loadState, saveState } from "../shared/state.js";
 import { startFunnel, stopFunnel, isTailscaleRunning, isTailscaleRunningStrict, isTailscaleLoggedIn, isTailscaleLoggedInStrict, isSystemDaemonRunning, getActualFunnelUrl, startLogin, startDaemonWithPassword, provisionCert } from "./tailscale.js";
 import { waitForHealth } from "./healthCheck.js";
 import { getSettings, updateSettings } from "@/lib/localDb";
@@ -36,8 +37,9 @@ export async function enableTailscale(localPort = getAppPort()) {
     throwIfCancelled(token);
 
     const existing = loadState();
-    const shortId = existing?.shortId || generateShortId();
-    const tsHostname = shortId;
+    // Use a separate persisted identity so the relay capability is not exposed.
+    const tsHostname = existing?.tailscaleHostname || `durindoor-${randomBytes(8).toString("hex")}`;
+    saveState({ tailscaleHostname: tsHostname });
 
     const loggedIn = await isTailscaleLoggedInStrict();
     console.log(`[Tailscale] loggedIn=${loggedIn}`);

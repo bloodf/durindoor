@@ -4,7 +4,8 @@
  * Drives the user's own signed-in gemini.google.com session. A pooled
  * Playwright Chromium opens a fresh context per request, seeds it with the
  * connection's Google cookies, types one flat prompt into the composer and
- * captures the first `StreamGenerate` response the page itself sends. No
+ * captures the first `StreamGenerate` response the page itself sends, or reads
+ * the rendered answer when none arrives (see gemini-web-dom.js). No
  * request envelope is forged outside the page, so the page's own bootstrap
  * (SNlM0e token, f.sid, bl) and conversation creation stay Google's code.
  *
@@ -28,6 +29,7 @@ import { createExecutorSender } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildToolModeResponse } from "./chatgptWebTools.js";
+import { isGeminiSignedOut, snapshotGeminiDom, waitForGeminiAnswer } from "./gemini-web-dom.js";
 import { prepareToolMessages } from "../translator/webTools.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
 import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
@@ -410,6 +412,8 @@ async function selectMode(page, mode, timeout = 5000) {
   const toggle = await page.waitForSelector(mode.toggle, { timeout }).catch(() => null);
   if (!toggle) return { confirmed: false, reason: "control_not_found" };
   await toggle.click();
+  // The signed-out "Sign in" item can exist only inside the open mode menu.
+  if (await isGeminiSignedOut(page)) return { confirmed: false, reason: "signed_out" };
   const indicator = await page.waitForSelector(mode.indicator, { timeout }).catch(() => null);
   if (!indicator) return { confirmed: false, reason: "indicator_not_found" };
   const text = await readIndicatorText(indicator);
@@ -548,6 +552,31 @@ const SESSION_EXPIRED_MESSAGE =
 
 function sessionExpired(status = 401) {
   return errorResponse(status, SESSION_EXPIRED_MESSAGE, { type: "authentication_error", code: "gemini_web_session_expired" });
+}
+
+function signedOut() {
+  return errorResponse(
+    401,
+    "Gemini Web session is signed out: the stored cookie expired or was rotated. Export a fresh cookie from a signed-in browser and update the connection.",
+    { type: "authentication_error", code: "gemini_web_signed_out" },
+  );
+}
+
+/**
+ * Click the composer, re-querying it when Gemini re-rendered it (it does so
+ * shortly after load) and the first handle came back detached.
+ */
+async function focusComposer(page) {
+  for (let attempt = 1; ; attempt++) {
+    const composer = await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
+    try {
+      await composer.click();
+      return;
+    } catch (error) {
+      if (attempt >= 3 || !/not attached|detached/i.test(String(error?.message))) throw error;
+      await page.waitForTimeout(500);
+    }
+  }
 }
 
 function quotaExceeded() {
@@ -697,9 +726,12 @@ export class GeminiWebExecutor extends BaseExecutor {
       // A redirect to the Google sign-in page is an expired or missing session.
       if (AUTH_FAILURE_STATUSES.has(navigation?.status?.()) || SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return this.result(input, sessionExpired());
       await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
+      // A signed-out page still has a composer, so readiness alone proves nothing.
+      if (await isGeminiSignedOut(page)) return this.result(input, signedOut());
 
       if (model) {
         const selection = await selectMode(page, MODEL_MODES[modelId]);
+        if (selection.reason === "signed_out") return this.result(input, signedOut());
         if (!selection.confirmed) {
           log?.warn?.("GEMINI-WEB", `Rejected request: could not confirm Gemini UI mode for "${modelId}" (${selection.reason})`);
           return this.result(input, errorResponse(400, modeFailureMessage(modelId, selection.reason), {
@@ -709,6 +741,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       }
       if (wantsExtendedThinking) {
         const selection = await selectMode(page, EXTENDED_THINKING_MODE);
+        if (selection.reason === "signed_out") return this.result(input, signedOut());
         if (!selection.confirmed) {
           log?.warn?.("GEMINI-WEB", `Rejected request: could not confirm Extended Thinking (${selection.reason})`);
           return this.result(input, errorResponse(400, modeFailureMessage("Extended Thinking", selection.reason), {
@@ -717,8 +750,9 @@ export class GeminiWebExecutor extends BaseExecutor {
         }
       }
 
-      const composer = await page.waitForSelector(COMPOSER_SELECTOR, { timeout: 10_000 });
-      await composer.click();
+      await focusComposer(page);
+      // Only an answer newer than what the page already shows belongs to this prompt.
+      const baseline = await snapshotGeminiDom(page);
       // insertText dispatches one input event, so an embedded newline cannot
       // trigger the composer's Enter-submits handler before the explicit Enter.
       await page.keyboard.insertText(prompt);
@@ -732,10 +766,17 @@ export class GeminiWebExecutor extends BaseExecutor {
         },
       });
 
-      await Promise.race([responsePromise, page.waitForTimeout(resolveResponseTimeoutMs())]);
+      const domText = await waitForGeminiAnswer(page, {
+        baseline,
+        network: responsePromise,
+        isDecided: () => Boolean(responseText) || upstreamStatus !== null,
+        timeoutMs: resolveResponseTimeoutMs(),
+      });
+      // Fixed here: a StreamGenerate read still in flight must not change the answer later.
+      const answerText = responseText || domText;
       if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
 
-      if (!responseText) {
+      if (!answerText) {
         if (upstreamStatus === 401 || upstreamStatus === 403) return carry(sessionExpired(upstreamStatus));
         if (upstreamStatus === 429) return carry(quotaExceeded());
         if (SIGN_IN_PAGE.test(String(page.url?.() ?? ""))) return carry(sessionExpired());
@@ -750,15 +791,15 @@ export class GeminiWebExecutor extends BaseExecutor {
 
       if (hasTools) {
         const cid = `chatcmpl-gwe-${crypto.randomUUID().slice(0, 12)}`;
-        const buffered = new Response(JSON.stringify(chatCompletion(responseText, modelId)), {
+        const buffered = new Response(JSON.stringify(chatCompletion(answerText, modelId)), {
           status: 200, headers: { "Content-Type": "application/json" },
         });
         return carry(await buildToolModeResponse(buffered, requestedTools, Boolean(stream), {
           cid, created: Math.floor(Date.now() / 1000), model: modelId, idSeed: "gwe",
         }));
       }
-      if (stream) return carry(sseResponse(modelId, responseText));
-      return carry(new Response(JSON.stringify(chatCompletion(responseText, modelId)), {
+      if (stream) return carry(sseResponse(modelId, answerText));
+      return carry(new Response(JSON.stringify(chatCompletion(answerText, modelId)), {
         status: 200, headers: { "Content-Type": "application/json" },
       }));
     } catch (error) {

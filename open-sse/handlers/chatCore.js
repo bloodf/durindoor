@@ -1888,10 +1888,10 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         onInBandError: (error, attemptBody) => {
           if (error?.code === 401 || error?.code === 403) evictResponseDispatcher(attemptBody);
         },
-        onAttemptDiscarded: (attemptBody, _reason, { final } = {}) =>
+        onAttemptDiscarded: (attemptBody, _reason, { final, aborted } = {}) =>
         settleProviderAttemptDispatch(attemptBody, {
           success: false,
-          reason: final ? "upstream_error" : "fallback"
+          reason: aborted ? "abort" : final ? "upstream_error" : "fallback"
         }),
 
         onExhausted: (reason, { upstreamError, status } = {}) => {

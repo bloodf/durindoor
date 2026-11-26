@@ -152,6 +152,11 @@ function classifyEvent(parsed, meaningfulSeen) {
  * a status-neutral failure: it settles its dispatch reservation, is not
  * retried and does not cool the account.
  *
+ * Once the client cancels, nothing more is spent on its behalf: no further
+ * retry, no exhaustion callback, and a replacement body that arrives late is
+ * cancelled unread. The abandoned attempt is reported to onAttemptDiscarded
+ * with `{ aborted: true }` (OmniRoute #21140).
+ *
  * @param {ReadableStream} options.body       attempt 1's body
  * @param {() => Promise<ReadableStream>} options.reexecute  re-issue the
  *   identical request; resolves to the new attempt's body, throws on failure
@@ -180,6 +185,15 @@ export function createEmptyRetryStream({
   let currentReader = null;
   let currentBody = body;
   let downstreamGone = false;
+  let cancelReason;
+  let wakeBackoff = null;
+  // An attempt the client walked away from still holds a dispatch ticket. It is
+  // settled as an abort: never retried, never held against the account.
+  const discardAbandoned = async (attemptBody) => {
+    try {
+      await onAttemptDiscarded?.(attemptBody, "cancelled", { final: true, aborted: true });
+    } catch {/* nobody is left to report a settlement failure to */}
+  };
   // Trailing-byte budget for an attempt that already confirmed a provider
   // terminal. It can never exceed the raw-byte stall budget.
   const terminalDrainTimeoutMs = Math.min(stallTimeoutMs, TERMINAL_DRAIN_TIMEOUT_MS);
@@ -369,6 +383,9 @@ export function createEmptyRetryStream({
           return;
         }
 
+        // A downstream cancel ends the pending read like an empty upstream does.
+        if (downstreamGone) return discardAbandoned(currentBody);
+
         const reason = held ? held.reason : endReason;
         log?.warn?.("STREAM", `ANTIGRAVITY | empty (${reason}) | attempt ${attempt + 1}/${EMPTY_STREAM_MAX_RETRIES + 1}`);
 
@@ -386,16 +403,29 @@ export function createEmptyRetryStream({
 
         // Abort-aware backoff, then splice the retried attempt into this stream.
         await new Promise((resolve) => {
+          if (downstreamGone) return resolve();
           const t = setTimeout(resolve, baseDelayMs * 2 ** attempt);
-          signal?.addEventListener?.("abort", () => {clearTimeout(t);resolve();}, { once: true });
+          wakeBackoff = () => {clearTimeout(t);resolve();};
+          signal?.addEventListener?.("abort", wakeBackoff, { once: true });
         });
+        wakeBackoff = null;
         if (signal?.aborted) return abortStream();
+        if (downstreamGone) return;
 
         try {
-          currentBody = await reexecute();
-          currentReader = currentBody.getReader();
+          const nextBody = await reexecute();
+          if (downstreamGone || signal?.aborted) {
+            // The replacement arrived after the client left: close it unread.
+            // The upstream may never acknowledge, so the cancel is not awaited.
+            nextBody.cancel(cancelReason ?? signal?.reason).catch(() => {});
+            await discardAbandoned(nextBody);
+            return abortStream();
+          }
+          currentBody = nextBody;
+          currentReader = nextBody.getReader();
         } catch (error) {
           if (error?.name === "AbortError" || signal?.aborted) return abortStream();
+          if (downstreamGone) return;
           return exhaust(error?.message || "retry request failed", {
             status: error?.upstreamStatus,
             notifyProvider: !isQuotaDispatchUnavailable(error)
@@ -406,6 +436,8 @@ export function createEmptyRetryStream({
 
     cancel(reason) {
       downstreamGone = true;
+      cancelReason = reason;
+      wakeBackoff?.();
       try {currentReader?.cancel(reason)?.catch?.(() => {});} catch {/* already closed */}
     }
   });

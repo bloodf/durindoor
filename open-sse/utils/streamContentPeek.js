@@ -14,6 +14,7 @@ import { extractStreamErrorPayload } from "./streamLifecycle.js";
 import { isSafetyStopPayload } from "./safetyStopFrame.js";
 import { createNoticeGate, isUnavailableNotice } from "./unavailableNotice.js";
 import { jsonDocumentFrame } from "./jsonDocumentFrame.js";
+import { createBillingNoticeGate } from "./billingNotice.js";
 
 const SSE_CONTENT_TYPE = "text/event-stream";
 export const STREAM_PEEK_MAX_BYTES = 256 * 1024;
@@ -180,6 +181,9 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  *   a model/client-unavailable notice (`notice` holds it, hasContent is false).
  *   Possible notices are held until they diverge or the stream ends; a timeout
  *   or limit replays them as content.
+ * - "billing_notice": only with billingNoticeProvider on the fake-success
+ *   allowlist; the complete short answer is a billing refusal (`billingNotice`
+ *   holds it, hasContent is false). Held text otherwise replays as content.
  *
  * With releaseOnProgress, "progress" means a lifecycle event arrived and no
  * verdict followed within PEEK_PROGRESS_GRACE_MS (long silent thinking or tool
@@ -192,11 +196,11 @@ function replayStream(reader, chunks, { done = false, error = null, pendingRead 
  *
  * @param {Response} response
  * @param {number} [timeoutMs]
- * @param {{detectUnavailableNotice?: boolean, releaseOnProgress?: boolean}} [options]
+ * @param {{detectUnavailableNotice?: boolean, releaseOnProgress?: boolean, billingNoticeProvider?: string|null}} [options]
  * @returns {Promise<{hasContent:boolean, outcome:string, body:ReadableStream|null,
  *   streamError: {type?: string, code?: string, message?: string}|null}>}
  */
-export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, { detectUnavailableNotice = false, releaseOnProgress = false } = {}) {
+export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, { detectUnavailableNotice = false, releaseOnProgress = false, billingNoticeProvider = null } = {}) {
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
   if (!contentType.includes(SSE_CONTENT_TYPE) || !response.body) {
     return { hasContent: true, outcome: "content", body: null, streamError: null };
@@ -216,12 +220,17 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
   const gate = detectUnavailableNotice ? createNoticeGate() : null;
   const startsGrace = detectUnavailableNotice ? isSilentDelta : isLifecycleProgress;
   let notice = null;
+  const billing = createBillingNoticeGate(billingNoticeProvider);
+  let billingNotice = null;
+  const holding = () => gate?.holding || billing?.holding;
   const result = (verdict, replay = {}) => {
     if (replay.done && verdict === "empty" && gate?.holding && isUnavailableNotice(gate.text)) notice = gate.text;
+    if (replay.done && verdict === "empty" && !notice) billingNotice = billing?.notice() ?? null;
     // Held text is real output unless the complete stream is a notice.
     let outcome = verdict;
     if (notice) outcome = "unavailable_notice";else
-    if (gate?.holding && ["empty", "error", "timeout"].includes(verdict)) outcome = "content";
+    if (billingNotice) outcome = "billing_notice";else
+    if (holding() && ["empty", "error", "timeout"].includes(verdict)) outcome = "content";
     const body = replayStream(reader, chunks, replay);
     if (hasTokenLimitTerminal) trackStreamTokenLimit(body, hasTokenLimitTerminal);
     return {
@@ -229,7 +238,8 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       outcome,
       body,
       streamError,
-      ...(notice ? { notice } : null)
+      ...(notice ? { notice } : null),
+      ...(billingNotice ? { billingNotice } : null)
     };
   };
   let safetyStop = false;
@@ -240,16 +250,18 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
   // first error envelope otherwise.
   const inspect = (line) => {
     if (frameCarriesContent(line)) {
-      const frame = gate ? parseDataLine(line) : null;
+      const frame = gate || billing ? parseDataLine(line) : null;
       if (!frame) return true;
-      const decision = gate.push(frame);
-      return decision !== "hold";
+      // Both gates see every frame; either one may keep holding.
+      const decisions = [gate?.push(frame), billing?.push(frame)];
+      return !decisions.includes("hold");
     }
     const parsed = parseDataLine(line);
     if (isSafetyStopPayload(parsed)) {
       safetyStop = true;
       return true;
     }
+    if (billing?.observe(parsed)) return true;
     if (!streamError) streamError = extractStreamErrorPayload(parsed);
     if (releaseOnProgress && !sawProgress) sawProgress = startsGrace(parsed);
     return false;
@@ -264,7 +276,7 @@ export async function peekStreamForContent(response, timeoutMs = STREAM_FIRST_CH
       if (next?.timedOut) return result("timeout", { pendingRead: read });
       if (next?.graceElapsed) {
         // An error or a possible unavailable notice keeps the peek in charge.
-        if (!streamError && !gate?.holding) return result("progress", { pendingRead: read });
+        if (!streamError && !holding()) return result("progress", { pendingRead: read });
         grace = null;
         continue;
       }

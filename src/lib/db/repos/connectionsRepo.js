@@ -34,6 +34,7 @@ import {
   connectionHasMultipleCredentials,
   credentialKeyId
 } from "../../../shared/utils/credentialFingerprint.js";
+import { codexRotationMismatch } from "open-sse/services/usage/codexCredentialBinding.js";
 
 export { SENSITIVE_CONNECTION_FIELDS };
 
@@ -568,6 +569,9 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
   refuseIfReauth = false,
   // The patch carries a new sign-in or import, not a refresh of the stored one.
   replacesCredential = false,
+  // The patch carries rotated tokens from a refresh grant. Implied by
+  // expectedRefreshContext.
+  refreshRotation = false,
   antigravityLeaseCommit = false,
   advanceAntigravityGeneration: shouldAdvanceAntigravityGeneration = false
 } = {}) {
@@ -602,6 +606,14 @@ export function applyProviderConnectionPatchInTx(db, id, data, {
       return;
     }
     if (refuseIfReauth && isDurableReauthPinned(existing)) {
+      result = returnCommitResult ? { applied: false, connection: existing } : existing;
+      return;
+    }
+    // A refresh must never move a Codex connection to another ChatGPT identity.
+    const identityMismatch = !replacesCredential && (refreshRotation || expectedRefreshContext) &&
+      codexRotationMismatch(existing, data);
+    if (identityMismatch) {
+      console.warn(`[TOKEN_REFRESH] Rejected Codex OAuth identity change during token rotation: ${identityMismatch}`);
       result = returnCommitResult ? { applied: false, connection: existing } : existing;
       return;
     }

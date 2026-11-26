@@ -196,7 +196,10 @@ describe("local CI website Playwright sharding", () => {
         PLAYWRIGHT_JSON_OUTPUT_FILE: path.join(reportRoot, `shard-${i + 1}.json`),
         WEBSITE_VERIFY_SCREENSHOTS: path.join(outputRoot, `shard-${i + 1}-verify-screenshots`),
         WEBSITE_REVIEW_SCREENSHOTS: path.join(outputRoot, `shard-${i + 1}-review-screenshots`),
+        WEBSITE_TRANSIENT_STATE_FILE: path.join(outputRoot, `shard-${i + 1}-server.json`),
+        WEBSITE_TRANSIENT_OWNER: opts.server.owner,
       });
+      expect(opts.server.owner).toMatch(/^[a-f0-9]{32}$/);
       expect(args).not.toContain("--pass-with-no-tests");
       expect(JSON.stringify([args, opts])).not.toMatch(/\/tmp\/omc-docs|\/tmp\/durindoor-|durindoor\.vercel\.app|reuseExistingServer/);
     }

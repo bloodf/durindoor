@@ -440,7 +440,11 @@ export function openaiToClaudeResponse(chunk, state) {
   emitText(inline.text, state, results);
 
   // Tool calls
-  if (delta?.tool_calls) {
+  if (delta?.tool_calls?.length) {
+    // Release text held for a possible think tag before opening a tool block.
+    const pending = flushInlineThinking(state);
+    emitThinking(pending.reasoning, state, results);
+    emitText(pending.text, state, results);
     for (const tc of delta.tool_calls) {
       // Strip the legacy proxy_ prefix from an incoming tool name (if any),
       // then normalize lowercase Anthropic built-ins (bash→Bash, read→Read, etc.).

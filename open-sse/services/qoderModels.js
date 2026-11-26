@@ -24,7 +24,7 @@ import { createCatalogCache } from "./catalogCache.js";
 import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1h (the Kiro catalog uses 5 minutes)
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Stable cache key per access credential and region. Account IDs alone do not

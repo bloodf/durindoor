@@ -33,6 +33,8 @@ vi.mock("@/lib/auth/loginLimiter", () => ({
   checkLock: mocks.checkLock,
   recordFail: mocks.recordFail,
   recordSuccess: mocks.recordSuccess,
+  reserveAttempt: () => mocks.checkLock(),
+  releaseReservation: () => {},
   getClientIp: () => "203.0.113.7",
 }));
 vi.mock("@/dashboardGuard", () => ({ hasValidCliToken: mocks.hasValidCliToken, isOperatorRequest: vi.fn(async () => true) }));
@@ -44,7 +46,7 @@ vi.mock("@/lib/settings/settingsPatchAuth", async () => ({
 const { PATCH } = await import("../../src/app/api/settings/route.js");
 
 const CURRENT = {
-  requireLogin: true, requireApiKey: true, tunnelDashboardAccess: false, authMode: "password",
+  password: "stored-hash", requireLogin: true, requireApiKey: true, tunnelDashboardAccess: false, authMode: "password",
   oidcIssuerUrl: "https://id.example", oidcAllowedEmails: ["ops@example.com"],
 };
 const patch = (body) => PATCH(new Request("http://localhost/api/settings", { method: "PATCH", body: JSON.stringify(body) }));

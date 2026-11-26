@@ -72,7 +72,7 @@ const {
 describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSettings.mockResolvedValue({ requireLogin: true, authMode: "password" });
+    mocks.getSettings.mockResolvedValue({ password: "stored-hash", requireLogin: true, authMode: "password" });
     mocks.updateSettings.mockImplementation(async (updates) => ({ ...updates }));
     mocks.canModifySecurityCriticalSettings.mockResolvedValue(false);
   });
@@ -134,7 +134,8 @@ describe("settings PATCH mass-assignment protection (GHSA-vmjq)", () => {
     mocks.canModifySecurityCriticalSettings.mockResolvedValue(true);
     expect((await PATCH({ json: async () => ({ enableSessionCapture: "true" }) })).status).toBe(400);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
-    await PATCH({ json: async () => ({ enableSessionCapture: true }) });
+    mocks.verifyDashboardPassword.mockResolvedValue(true);
+    await PATCH({ headers: new Headers(), json: async () => ({ enableSessionCapture: true, currentPassword: "current-password" }) });
     expect(mocks.updateSettings).toHaveBeenCalledWith({ enableSessionCapture: true });
   });
 

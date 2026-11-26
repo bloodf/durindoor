@@ -408,7 +408,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, comboId =
     !hasOutputTokens(usage))
     {
       log?.warn?.("CHATCORE", `${provider}/${model} stream completed with no usable output`);
-      try {Promise.resolve(onEmptyStream()).catch(() => console.error("[Stream] empty-stream cooldown failed"));}
+      try {Promise.resolve(onEmptyStream(contentObj?.upstreamError)).catch(() => console.error("[Stream] empty-stream cooldown failed"));}
       catch {console.error("[Stream] empty-stream cooldown failed");}
     }
 

@@ -39,6 +39,8 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
     model,
     messages,
     stream,
+    // Gemini replies carry usageMetadata, so the bridge asks the Chat stream for usage.
+    ...(stream ? { stream_options: { include_usage: true } } : null),
     ...(geminiBody.reasoning_effort && { reasoning_effort: geminiBody.reasoning_effort }),
     max_tokens: geminiBody.generationConfig?.maxOutputTokens,
     temperature: geminiBody.generationConfig?.temperature,

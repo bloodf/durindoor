@@ -2,9 +2,10 @@ import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
-import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
+import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { budgetToEffort } from "../concerns/thinking.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { applyGeminiStopSequences, applyGeminiToolChoice, geminiTurnRole } from "./gemini-to-openai.js";
 
 // Convert Antigravity request to OpenAI format
 // Antigravity body: { project, model, userAgent, requestType, requestId, request: { contents, systemInstruction, tools, toolConfig, generationConfig, sessionId } }
@@ -39,6 +40,7 @@ export function antigravityToOpenAIRequest(model, body, stream) {
       const effort = budgetToEffort(config.thinkingConfig.thinkingBudget || 0);
       if (effort) result.reasoning_effort = effort;
     }
+    applyGeminiStopSequences(result, config);
   }
 
   // System instruction
@@ -81,6 +83,8 @@ export function antigravityToOpenAIRequest(model, body, stream) {
       }
     }
   }
+
+  applyGeminiToolChoice(result, req.toolConfig);
 
   return result;
 }
@@ -131,7 +135,8 @@ function normalizeSchemaTypes(schema) {
 // Convert Antigravity content to OpenAI message
 // Handles: text, thought, thoughtSignature, functionCall, functionResponse, inlineData
 function convertContent(content) {
-  const role = content.role === GEMINI_ROLE.MODEL ? ROLE.ASSISTANT : content.role === GEMINI_ROLE.USER ? ROLE.USER : content.role;
+  // The Gemini role is optional; the Gemini translator's rule applies here too.
+  const role = geminiTurnRole(content);
 
   if (!content.parts || !Array.isArray(content.parts)) {
     return null;
@@ -182,6 +187,11 @@ function convertContent(content) {
       });
     }
 
+    // File reference, carried like the Gemini translator does
+    if (isString(part.fileData?.fileUri) && part.fileData.fileUri) {
+      textParts.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: part.fileData.fileUri } });
+    }
+
     // Function call
     if (part.functionCall) {
       toolCalls.push({
@@ -209,7 +219,8 @@ function convertContent(content) {
   // plus an assistant message for any co-located tool calls / text.
   if (toolResults.length > 0) {
     if (toolCalls.length > 0 || textParts.length > 0 || reasoningContent) {
-      const assistantMsg = { role: ROLE.ASSISTANT };
+      // A user turn can carry a tool result plus a follow-up: keep the follow-up a user message.
+      const assistantMsg = { role: toolCalls.length > 0 ? ROLE.ASSISTANT : role };
       if (textParts.length > 0) {
         assistantMsg.content = collapseTextParts(textParts);
       }

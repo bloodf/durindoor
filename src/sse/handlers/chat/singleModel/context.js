@@ -107,6 +107,8 @@ export async function createLoopState(ctx) {
     // attempt's normalized event; fallback retries overwrite it.
     lastTokenSaverEvent: null,
     accountAttempts: 0,
+    // Connection of the latest upstream send; a later send elsewhere is an account switch.
+    sentConnectionId: null,
     upstreamModel,
     quotaFamily,
     modelCandidates,

@@ -15,6 +15,7 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { observeValidationResponse, refineValidationResult, traceValidation } from "@/lib/providers/validationRejection.js";
 import { buildPerplexitySessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from "open-sse/services/tokenRefresh.js";
@@ -42,7 +43,7 @@ export function fetchValidationProbe(url, options = {}, transport = fetch) {
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeoutSignal])
     : timeoutSignal;
-  return transport(url, { ...options, signal });
+  return Promise.resolve(transport(url, { ...options, signal })).then(observeValidationResponse);
 }
 
 function guardBlockedResponse(err) {
@@ -203,7 +204,6 @@ async function resolveProbeSessionToken(request, provider, connectionId, session
   return connection.sessionToken || connection.providerSpecificData?.sessionToken || sessionToken;
 }
 
-// POST /api/providers/validate - Validate API key with provider
 /** Probe auth for compatible nodes: an empty key yields no auth header at all. */
 function compatibleNodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
   const headers = {};
@@ -213,7 +213,16 @@ function compatibleNodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
   return headers;
 }
 
+// POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
+  const { value: response, last } = await traceValidation(() => validateProviderKey(request));
+  if (!last || last.status < 400) return response;
+  const result = await response.clone().json();
+  const refined = refineValidationResult(result, last);
+  return refined === result ? response : NextResponse.json(refined, { status: response.status });
+}
+
+async function validateProviderKey(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);

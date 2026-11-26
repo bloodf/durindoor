@@ -121,7 +121,7 @@ describe("CursorExecutor AgentService exec_request handling", () => {
 
     it(`rejects an empty ${frames.length ? "explicit turn" : "EOF"} for non-stream clients`, async () => {
       const { result } = await runAgent({ frames, stream: false });
-      expect(result.response.status).toBe(400);
+      expect(result.response.status).toBe(404);
       expect((await result.response.json()).error.message).toContain("empty turn");
     });
   }
@@ -335,7 +335,7 @@ describe("CursorExecutor AgentService exec_request handling", () => {
       stream: false,
       frames: [thinkingFrame("private reasoning <|final|>never visible"), turnEndedFrame()],
     });
-    expect(bufferedRun.result.response.status).toBe(400);
+    expect(bufferedRun.result.response.status).toBe(404);
     expect(await bufferedRun.result.response.text()).not.toContain("private reasoning");
   });
 

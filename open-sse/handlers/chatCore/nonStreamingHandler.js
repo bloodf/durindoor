@@ -709,8 +709,9 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     {
       const { body: unwrapped, error: envError } = unwrapClinepassEnvelope(responseBody, provider);
       if (envError) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envError.message);
+        const envStatus = envError.status || HTTP_STATUS.BAD_GATEWAY;
+        appendLog({ status: `FAILED ${envStatus}` });
+        return createErrorResult(envStatus, envError.message);
       }
       if (!isJsonRecord(unwrapped)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
@@ -776,16 +777,16 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     if (sourceFormat === FORMATS.CLAUDE) restoreClaudeToolNames(translatedResponse, toolNameMap);
 
     let usage = extractUsageFromResponse(responseBody);
-    // Reported usage always wins and is persisted immediately, as before. When
-    // the provider sent none, persistence waits until the response has passed
-    // the empty-content and fake-success checks below so a failed reply never
-    // records an estimate.
+    // Reported usage always wins and is always persisted, but only once the
+    // empty-content and fake-success checks below have decided the outcome: a
+    // refused reply is one failed row with the billed tokens. When the provider
+    // sent no usage, a failed reply records no estimate.
     const usageReported = Boolean(usage);
-    const persistUsage = () => {
-      appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+    const persistUsage = (failure = null) => {
+      appendLog({ tokens: usage, status: failure || "200 OK" });
+      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true, ...(failure ? { status: "error" } : null) });
     };
-    if (usageReported) persistUsage();
+    const recordRefusal = (status) => usageReported ? persistUsage(status) : appendLog({ status });
 
     // A Claude-native refusal (stop_reason "refusal") is a finished turn even when
     // its only content is an optional, possibly null/blank explanation string.
@@ -797,7 +798,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     const isNativeClaudeRefusal = responseBody?.stop_reason === CLAUDE_STOP.REFUSAL;
     if (!isNativeClaudeRefusal && !isTokenLimited &&
         !hasUsefulContent(translatedResponse) && !(clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && hasUsefulContent(responseBody)) && !isTrustedEmptyStop(translatedResponse, provider)) {
-      appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
+      recordRefusal(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)`);
       log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 with no usable content`);
       return createErrorResult(
         HTTP_STATUS.BAD_GATEWAY,
@@ -819,7 +820,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         provider
       );
       if (fakeSuccessReason) {
-        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (fake success: ${fakeSuccessReason})` });
+        recordRefusal(`FAILED ${HTTP_STATUS.BAD_GATEWAY} (fake success: ${fakeSuccessReason})`);
         log?.warn?.("CHATCORE", `${provider}/${model} returned HTTP 200 disguising a ${fakeSuccessReason} failure`);
         return createErrorResult(
           HTTP_STATUS.BAD_GATEWAY,
@@ -834,8 +835,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     // and the content generated. Client-facing usage is left untouched.
     if (!usageReported) {
       usage = estimateNonStreamingUsage(finalBody || translatedBody || body, translatedResponse);
-      persistUsage();
     }
+    persistUsage();
 
     /**
      * Upstream PR #3111 logs resolved route/session identity from the provider
@@ -900,7 +901,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     saveRequestDetail(buildRequestDetail({
       comboNoLog,
       provider, model, connectionId,
-      latency: { ttft: totalLatency, total: totalLatency },
+      latency: { ttft: 0, total: totalLatency },
       tokens: usage || { prompt_tokens: 0, completion_tokens: 0 },
       request: extractRequestConfig(body, stream),
       providerRequest: finalBody || translatedBody || null,

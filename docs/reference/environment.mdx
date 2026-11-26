@@ -123,7 +123,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `GITHUB_CREDIT_USAGE_CACHE_TTL_MS` | `30000` | Reuse a GitHub Copilot credit reading for this duration before checking the local credit cutoff again. |
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. |
 | `DURINDOOR_NONSTREAM_KEEPALIVE_MS` | `0` (off) | Non-streaming `/v1/messages` responses slower than this start sending JSON whitespace. `OMNIROUTE_NONSTREAM_KEEPALIVE_MS` is read when it is unset. See the trade-off below. |
-| `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. |
+| `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. After upstream ends, the same budget limits how long the client may go without reading before the request is released. |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. |
 | `STREAM_MAX_RETAINED_BYTES` | `67108864` | Per-stream cap on tool arguments, reasoning text and thinking signatures held by stream translators. Past it the stream fails. `0` disables it. |
 | `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. |

@@ -71,8 +71,8 @@ const STRIP_RULES = [
  * context_management is supported there once its beta flag travels (see default.js).
  */
 { provider: "opencode-go", match: /claude/i, dropOutputConfigFields: ["task_budget"] },
-/** Claude Opus 5.5 also rejects the remaining sampling controls. */
-{ match: /claude-opus-5[-.]5/i, drop: ["top_p", "top_k"] },
+/** Claude Opus 5.5 and Fable 5.2 (OmniRoute #19850) also reject the remaining sampling controls. */
+{ match: /claude-(?:opus-5[-.]5|fable-5[-.]2)/i, drop: ["top_p", "top_k"] },
 // GitHub Copilot GPT-5.4+ (within 5.x) and GPT-6.x: temperature unsupported.
 { provider: "github", match: /^gpt-(?:5\.(?:[4-9]|[1-9]\d+)|6(?:\.\d+)?)(?:-|$)/i, drop: ["temperature"] },
 // OpenAI GPT-6 Astra supports neither sampling nor top-logprob controls.

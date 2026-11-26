@@ -533,7 +533,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           saveRequestDetail(buildRequestDetail({
             comboNoLog,
             ...ctx,
-            latency: { ttft: totalLatency, total: totalLatency },
+            latency: { ttft: 0, total: totalLatency },
             tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
             response: { content: jsonResponse.output?.map?.((o) => o.type === "message" ? o.content?.map?.((c) => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
             status: "success"
@@ -565,7 +565,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         saveRequestDetail(buildRequestDetail({
           comboNoLog,
           ...ctx,
-          latency: { ttft: totalLatency, total: totalLatency },
+          latency: { ttft: 0, total: totalLatency },
           tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
           response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
           status: "success"
@@ -699,7 +699,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       saveRequestDetail(buildRequestDetail({
         comboNoLog,
         ...ctx,
-        latency: { ttft: totalLatency, total: totalLatency },
+        latency: { ttft: 0, total: totalLatency },
         tokens: usage,
         response: {
           content: parsed.choices?.[0]?.message?.content || null,

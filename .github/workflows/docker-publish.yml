@@ -6,6 +6,16 @@ name: Build and Push Docker Image
 # Docker images only build on v* tags (controlled production), never nightly-*.
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing vX.Y.Z tag to publish"
+        required: true
+        type: string
+      promote_latest:
+        description: "Promote this republish to latest"
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       release_tag:

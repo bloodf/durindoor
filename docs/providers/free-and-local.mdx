@@ -119,6 +119,7 @@ Discovery supplies context and output limits, supported inputs and outputs, tool
 Where it shows up:
 
 - `GET /v1/models`: with no model selection saved on the OpenRouter connection, the free models are listed next to the static embedding, TTS, image and rerank rows. With a saved selection, the list stays as selected and the catalog only fills in capabilities and limits.
+- `GET /v1/models/systemone`: OpenRouter hides System One decision models from its default `/api/v1/models` listing, so DurinDoor also reads `GET https://openrouter.ai/api/v1/models?output_modalities=decisions` (without credentials, using the connection's proxy policy), classifies those entries as `systemone`, and keeps them listed even when synced OpenRouter models exist. If that secondary fetch fails, the primary catalog stays usable.
 - Provider page: the suggested-models list shows the same free models with their context windows.
 - Model pickers: fetching models for an OpenRouter connection (provider page, model selector, playground) returns only the free models, so paid models such as Claude or GPT never show up there.
 - Routing: chat requests to an OpenRouter model use the discovered capabilities. Vision, routing, and context checks use discovered capabilities when available.

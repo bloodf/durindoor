@@ -310,11 +310,17 @@ export const LIVE_MODEL_RESOLVERS = {
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
     return models.length ? { models } : null;
   },
-  // Without an explicit selection, list OpenRouter's free models; with one,
-  // the whole public catalog only enriches the selected IDs' capabilities.
+  // Without an explicit selection, list OpenRouter's free models plus discovered
+  // System One decision models; with one, the whole public catalog enriches the
+  // selected IDs' capabilities and kinds.
   openrouter: async (conn) => {
     const enabled = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.enabledModels : null;
-    const models = await resolveOpenRouterModels({ freeOnly: !(Array.isArray(enabled) && enabled.length > 0) });
+    const { proxyOptions } = await liveResolverOptions(conn);
+    const models = await resolveOpenRouterModels({
+      freeOnly: !(Array.isArray(enabled) && enabled.length > 0),
+      includeDecisions: true,
+      proxyOptions
+    });
     return models?.length ? { models } : null;
   },
   cline: async (conn) => {

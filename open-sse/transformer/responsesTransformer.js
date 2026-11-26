@@ -90,6 +90,7 @@ export function createResponsesApiTransformStream(logger = null) {
     reasoningBuf: "",
     reasoningPartAdded: false,
     reasoningDone: false,
+    reasoningReopens: 0,
     inThinking: false,
     funcArgsBuf: {},
     funcNames: {},
@@ -124,7 +125,8 @@ export function createResponsesApiTransformStream(logger = null) {
   const startReasoning = (controller, idx) => {
     if (!state.reasoningId) {
       const outputIndex = state.nextOutputIndex++;
-      state.reasoningId = `rs_${state.responseId}_${idx}`;
+      const suffix = state.reasoningReopens ? `_${state.reasoningReopens}` : "";
+      state.reasoningId = `rs_${state.responseId}_${idx}${suffix}`;
       state.reasoningIndex = outputIndex;
 
       emit(controller, "response.output_item.added", {
@@ -146,6 +148,14 @@ export function createResponsesApiTransformStream(logger = null) {
       });
       state.reasoningPartAdded = true;
     }
+  };
+
+  // A closed item takes no more deltas: reasoning that resumes gets a new one.
+  const reopenReasoning = () => {
+    state.reasoningReopens++;
+    state.reasoningId = "";
+    state.reasoningBuf = "";
+    state.reasoningDone = false;
   };
 
   const emitReasoningDelta = (controller, text) => {
@@ -364,8 +374,12 @@ export function createResponsesApiTransformStream(logger = null) {
 
         // Handle reasoning_content (OpenAI native format)
         if (delta.reasoning_content && !isInternalReasoningPlaceholder(delta.reasoning_content)) {
-          startReasoning(controller, idx);
-          emitReasoningDelta(controller, delta.reasoning_content);
+          // Trailing whitespace is not worth a new item.
+          if (state.reasoningDone && delta.reasoning_content.trim()) reopenReasoning();
+          if (!state.reasoningDone) {
+            startReasoning(controller, idx);
+            emitReasoningDelta(controller, delta.reasoning_content);
+          }
         }
 
         // Handle text content (may contain <think> tags)

@@ -16,13 +16,6 @@ name: Release Tag
 # **Actions → Release Tag → Run workflow** with `version: X.Y.Z` as the
 # documented fallback (see internal/docs/release-process.mdx).
 #
-# CRITICAL — token choice: events created with GITHUB_TOKEN do NOT trigger
-# other workflows, so `release: published` (release.yml, the npm publisher)
-# only fires when the Release is created with a PAT. Set the RELEASE_PAT
-# secret (fine-grained PAT, contents:write on this repo) for the fully
-# automated chain. Without it the Release is still created with
-# GITHUB_TOKEN, but release.yml will NOT fire and the CLI must be published
-# manually (see internal/docs/release-process.mdx).
 on:
   push:
     branches:
@@ -36,6 +29,8 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
 
 concurrency:
   group: release-tag
@@ -49,15 +44,17 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.head_commit.message, 'chore(release): bump version to')
+    outputs:
+      tag: v${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           # Pin the checkout: the pushed bump commit for automatic runs,
           # main for manual dispatches (never the selector's arbitrary ref).
           ref: ${{ github.event_name == 'push' && github.event.head_commit.id || 'main' }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24.22.2
 
@@ -128,36 +125,17 @@ jobs:
         run: node scripts/release-notes.mjs extract "${{ steps.version.outputs.version }}" > release-notes.md
 
       - name: Check for RELEASE_PAT
-        id: pat
         env:
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
         run: |
-          if [ -n "$RELEASE_PAT" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::RELEASE_PAT secret is not configured."
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "::error::RELEASE_PAT is required to create the release."
+            exit 1
           fi
-
-      - name: Warn when GITHUB_TOKEN will suppress the npm publish
-        if: steps.pat.outputs.present == 'false'
-        run: |
-          echo "::warning::============================================================"
-          echo "::warning::RELEASE_PAT is absent. The GitHub Release will be created"
-          echo "::warning::with GITHUB_TOKEN, whose events do NOT trigger other"
-          echo "::warning::workflows — release.yml (npm publish) will NOT fire."
-          echo "::warning::Manual fallback after this run completes: DELETE the"
-          echo "::warning::release just created, then re-create it with a maintainer PAT"
-          echo "::warning::so the published event fires:"
-          echo "::warning::  gh release delete v\$VERSION --repo bloodf/durindoor --yes"
-          echo "::warning::  gh release create v\$VERSION --repo bloodf/durindoor --title v\$VERSION --notes-file release-notes.md --target \$TARGET_SHA"
-          echo "::warning::or publish the CLI manually: npm run cli:publish with NPM_TOKEN."
-          echo "::warning::See internal/docs/release-process.mdx (Manual fallback)."
-          echo "::warning::============================================================"
 
       - name: Create tag and GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           gh release create "v$VERSION" \
@@ -165,3 +143,25 @@ jobs:
             --title "v$VERSION" \
             --notes-file release-notes.md \
             --target "${{ steps.version.outputs.target }}"
+
+  gate:
+    needs: tag
+    uses: ./.github/workflows/release-gate.yml
+    with:
+      release_tag: ${{ needs.tag.outputs.tag }}
+
+  npm:
+    needs: [tag, gate]
+    uses: ./.github/workflows/release.yml
+    with:
+      release_tag: ${{ needs.tag.outputs.tag }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  docker:
+    needs: [tag, gate]
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      release_tag: ${{ needs.tag.outputs.tag }}
+      # Prerelease tags must not move the stable image alias.
+      promote_latest: ${{ !contains(needs.tag.outputs.tag, '-') }}

@@ -17,20 +17,10 @@ describe("runtime packaging ships the ESM type checks helper", () => {
     );
   });
 
-  it("build-app.mjs copies typeChecks.js into the standalone bundle", () => {
-    const buildSrc = readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8");
-    expect(buildSrc).toContain(
-      'path.join(process.cwd(), "src", "shared", "utils", "typeChecks.js")',
-    );
-    expect(buildSrc).toContain(
-      'path.join(standaloneDir, "src", "shared", "utils", "typeChecks.js")',
-    );
-  });
-
-  it("Dockerfile copies typeChecks.js beside the existing runtime helpers", () => {
+  it("ships typeChecks.js through the standalone manifest", () => {
+    const manifest = JSON.parse(readFileSync(path.join(ROOT, "scripts", "packaging-manifest.json"), "utf8"));
+    expect(manifest.map((entry) => entry.path)).toContain("src/shared/utils/typeChecks.js");
     const dockerSrc = readFileSync(path.join(ROOT, "Dockerfile"), "utf8");
-    expect(dockerSrc).toContain(
-      "COPY --from=builder /app/src/shared/utils/typeChecks.js ./src/shared/utils/typeChecks.js",
-    );
+    expect(dockerSrc).toContain("COPY --from=builder /app/.next/standalone ./");
   });
 });

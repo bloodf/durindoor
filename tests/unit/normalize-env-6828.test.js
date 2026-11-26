@@ -138,15 +138,10 @@ describe("custom-server.js SOCKS5 experimental warning filter contract", () => {
 
 
 describe("runtime packaging ships the helper", () => {
-  it("build-app.mjs copies normalizeEnv.js into the standalone bundle", () => {
-    const buildSrc = readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8");
-    expect(buildSrc).toContain('"src", "shared", "utils", "normalizeEnv.js"');
-  });
-
-  it("Dockerfile copies normalizeEnv.js beside custom-server.js", () => {
+  it("ships normalizeEnv.js through the standalone manifest", () => {
+    const manifest = JSON.parse(readFileSync(path.join(ROOT, "scripts", "packaging-manifest.json"), "utf8"));
+    expect(manifest.map((entry) => entry.path)).toContain("src/shared/utils/normalizeEnv.js");
     const dockerSrc = readFileSync(path.join(ROOT, "Dockerfile"), "utf8");
-    expect(dockerSrc).toContain(
-      "COPY --from=builder /app/src/shared/utils/normalizeEnv.js ./src/shared/utils/normalizeEnv.js",
-    );
+    expect(dockerSrc).toContain("COPY --from=builder /app/.next/standalone ./");
   });
 });

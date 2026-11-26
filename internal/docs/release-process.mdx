@@ -3,7 +3,7 @@ title: Release process
 description: Release Prepare, Release Tag, npm publish of the durindoor CLI, and rollback.
 ---
 
-Releases are a three-workflow chain on `bloodf/durindoor`. A human triggers **Release Prepare**. Merging the release PR to `main` fires **Release Tag**, which tags `vX.Y.Z` and creates the GitHub Release. Publishing that Release fires **Release**, which publishes the CLI to npm.
+A human triggers **Release Prepare** on `bloodf/durindoor`. Merging its release PR to `main` fires **Release Tag**, the release entry point. It creates the tag and GitHub Release, runs the shared gate, then calls the npm and Docker publishers.
 
 ```text
 workflow_dispatch (bump)
@@ -17,25 +17,23 @@ Release Prepare (release-prepare.yml)
 Release Tag (release-tag.yml)
   tag vX.Y.Z, gh release create
         |
-        | release: published
+        |
         v
-Release (release.yml)
-  lint, check:agent-index, build, test:ci, npm run cli:publish
+Release Gate (release-gate.yml)
+  lint, check:agent-index, build, test:ci, artifact smoke
+        |
+        +--> Release (release.yml): publish verified npm tarball
+        +--> Docker (docker-publish.yml): build and publish tag source
 ```
 
 ## Secrets
 
 Two repository secrets:
 
-- `NPM_TOKEN`: used by `release.yml` as `NODE_AUTH_TOKEN` when it runs `npm run cli:publish`.
+- `NPM_TOKEN`: used by `release.yml` as `NODE_AUTH_TOKEN` when it publishes the verified tarball.
 - `RELEASE_PAT`: a fine-grained personal access token with `contents: write` and `pull-requests: write` on this repository.
 
-Events created with `GITHUB_TOKEN` do not trigger other workflows. Both prepare and tag authenticate writes with `${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}`.
-
-Without `RELEASE_PAT`:
-
-- Prepare still pushes the branch and opens a draft PR. CI, Tests and Commitlint are manual fallbacks regardless of token. The integration owner must validate the exact reviewed base/head using the externally frozen full local gate before marking ready or merging. See [local CI](./local-ci.md).
-- Tag still creates the GitHub Release, but `release.yml` never fires, so npm publish does not run. See [Manual fallback](#manual-fallback).
+Release Prepare can fall back to `GITHUB_TOKEN` if `RELEASE_PAT` is absent. Release Tag requires `RELEASE_PAT` and fails before creating a release when it is missing. Configure the secret and rerun Release Tag.
 
 ## Cutting a release
 
@@ -53,7 +51,7 @@ Checkout is pinned to `main` no matter which ref the dispatch UI selects.
 gh workflow run release-prepare.yml --repo bloodf/durindoor -f bump=auto
 ```
 
-Merging the release PR is the automation cutover: the push to `main` fires Release Tag, which tags `vX.Y.Z`, extracts that version's section from `CHANGELOG.md` (`node scripts/release-notes.mjs extract X.Y.Z`), and creates the GitHub Release. Publishing the Release fires `release.yml`, which runs lint, `check:agent-index`, build, the tests package CI script with `BASELINE_BASE_REF=HEAD^`, then `npm run cli:publish`.
+Merging the release PR is the automation cutover: the push to `main` fires Release Tag, which tags `vX.Y.Z`, extracts that version's section from `CHANGELOG.md` (`node scripts/release-notes.mjs extract X.Y.Z`), and creates the GitHub Release. It calls the shared gate for lint, `check:agent-index`, build, the tests package CI script with `BASELINE_BASE_REF=HEAD^`, and artifact smoke checks. On success it calls the npm and Docker publishers with the tag.
 
 The squash title is part of the contract. Release Tag runs on a main push only when the head commit subject starts with `chore(release): bump version to`. It then requires the first subject line to be exactly `chore(release): bump version to X.Y.Z`, or that string plus the repository's ` (#PR)` squash suffix, and the version in that subject must equal both `package.json` versions at the pushed commit. If a maintainer merges with a renamed title, tagging does not fire. Fallback: Actions, Release Tag, Run workflow with `version: X.Y.Z`. The manual path pins checkout to `main`, checks the requested version against both manifests, and tags that SHA.
 
@@ -85,9 +83,9 @@ All three are covered in `tests/unit/release-notes.test.js`. `extract` reads `CH
 
 ## Other publish jobs
 
-`.github/workflows/docker-publish.yml` builds GHCR images on `v*` tags (`ghcr.io/bloodf/durindoor`) and on `workflow_dispatch`. It does not build `nightly-*` tags.
+`.github/workflows/docker-publish.yml` is called by Release Tag after the shared gate and builds GHCR images (`ghcr.io/bloodf/durindoor`) from the tagged source and Dockerfile.
 
-`.github/workflows/nightly.yml` lists `cron: '0 2 * * *'` (02:00 UTC) and `workflow_dispatch`. After lint, `check:agent-index`, build, and `test:ci`, it publishes a GitHub pre-release `nightly-YYYY-MM-DD` (`date -u +%Y-%m-%d`) when that tag does not already exist. A comment in the workflow says the schedule can be disabled in repository settings.
+`.github/workflows/nightly.yml` runs only by `workflow_dispatch`. After lint, `check:agent-index`, build, and `test:ci`, it publishes a GitHub pre-release `nightly-YYYY-MM-DD` when that day's tag does not already exist.
 
 ## Failure and rollback
 
@@ -104,20 +102,6 @@ All three are covered in `tests/unit/release-notes.test.js`. `extract` reads `CH
 
 ## Manual fallback
 
-When `RELEASE_PAT` is missing, `release-tag.yml` still creates the Release with `GITHUB_TOKEN` but `release.yml` does not fire. Either:
-
-```bash
-gh release delete vX.Y.Z --repo bloodf/durindoor --yes
-gh release create vX.Y.Z --repo bloodf/durindoor --title vX.Y.Z --target <bump-commit-sha> --notes-file release-notes.md
-```
-
-or publish the CLI directly after the full gate:
-
-```bash
-npm run lint && npm run build && (cd tests && npm run test:ci)
-NPM_TOKEN=... npm run cli:publish
-```
-
-A maintainer can also re-run **Actions, Release Tag, Run workflow** with an explicit `version` input.
+If `RELEASE_PAT` is missing, configure it and run **Actions, Release Tag, Run workflow** with the version. If a tag already exists after a failed gate or publisher, investigate the failed run and use the appropriate recovery procedure; Release Tag refuses to overwrite it.
 
 Release Prepare never enables auto-merge. On retry it disables previously enabled auto-merge and returns an existing release PR to draft before updating the branch. Failures in that hold step block the push. Only the integration owner may mark the PR ready and merge after independent review, exact-head full validation and the final live base/head check.

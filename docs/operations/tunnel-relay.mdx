@@ -1,0 +1,8 @@
+---
+title: Self-hosted tunnel relay
+description: Configure an optional self-hosted relay for stable tunnel URLs.
+---
+
+The tunnel relay is an optional component you deploy in your own Cloudflare account. DurinDoor ships no project-operated or shared default relay. The stable URL is off until `TUNNEL_WORKER_URL` points at your own relay. The app then registers with a per-install ownership secret kept in the tunnel state file (mode `0600`).
+
+See [the relay deployment guide](https://github.com/bloodf/durindoor/tree/main/relay) for Worker routes, DNS, KV and Durable Object setup, and the registration API. Each short ID is claimed with a persistent secret of at least 32 characters; keep it private. The relay terminates TLS and sees plaintext traffic, including credentials and request bodies. Use only infrastructure you trust and protect the gateway itself.

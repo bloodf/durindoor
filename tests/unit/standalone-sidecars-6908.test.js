@@ -90,8 +90,8 @@ describe("standalone artifact packaging (repo manifest + build wiring)", () => {
   });
 
   it("root standalone build copies head-response-guard.cjs next to custom-server.js", () => {
-    const src = fs.readFileSync(path.join(REPO_ROOT, "scripts", "build-app.mjs"), "utf8");
-    expect(src).toMatch(/custom-server\.js["'].*standaloneDir/s);
+    const src = fs.readFileSync(path.join(REPO_ROOT, "scripts", "packaging-manifest.json"), "utf8");
+    expect(src).toContain("custom-server.js");
     expect(src).toContain("head-response-guard.cjs");
   });
 

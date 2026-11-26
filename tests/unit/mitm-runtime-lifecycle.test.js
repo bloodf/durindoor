@@ -53,9 +53,8 @@ describe("MITM runtime lifecycle packaging", () => {
   });
 
   it("copies the CLI worker handoff constant into the standalone runtime", () => {
-    const buildScript = fs.readFileSync(path.join(repoRoot, "scripts", "build-app.mjs"), "utf8");
-    expect(buildScript).toContain('"processExitCodes.js"');
-    expect(buildScript).toContain("sharedConstantsDir");
+    const buildScript = fs.readFileSync(path.join(repoRoot, "scripts", "packaging-manifest.json"), "utf8");
+    expect(buildScript).toContain("src/shared/constants/processExitCodes.js");
   });
 
   it("canonicalizes relative DATA_DIR before the standalone server loads", () => {

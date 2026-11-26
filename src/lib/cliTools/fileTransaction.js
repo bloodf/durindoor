@@ -19,8 +19,8 @@ export function createFileTransaction() {
   return {
     async write(filePath, content, writer = writeConfigAtomic) {
       const before = await readIfPresent(filePath);
-      await writer(filePath, content);
-      applied.push({ filePath, before, content });
+      const writtenPath = await writer(filePath, content);
+      applied.push({ filePath: writtenPath || filePath, before, content });
     },
     /** Undo newest first. A file another writer has changed since is left alone. */
     async rollback() {

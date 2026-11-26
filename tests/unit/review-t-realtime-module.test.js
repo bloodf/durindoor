@@ -16,7 +16,7 @@ describe("realtime upgrade module extraction", () => {
   });
 
   it("standalone build copies realtime-upgrade.cjs beside custom-server.js", () => {
-    const build = readFileSync(path.join(root, "scripts/build-app.mjs"), "utf8");
+    const build = readFileSync(path.join(root, "scripts/packaging-manifest.json"), "utf8");
     expect(build).toContain('"realtime-upgrade.cjs"');
   });
 });

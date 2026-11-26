@@ -20,6 +20,7 @@ const efforts = (id, name, out, ctx, list = QUALITY) => list.map(([suffix, label
 const fastEfforts = (id, name, out, ctx) => QUALITY.flatMap(([suffix, label]) => [model(`${id}-${suffix}-fast`, `${name} ${label} Fast`, out, ctx), model(`${id}-${suffix}`, `${name} ${label}`, out, ctx)]);
 const gpt = (id, name) => GPT.flatMap(([suffix, label]) => [model(`${id}-${suffix}-priority`, `${name} ${label} Fast`, 128000, 1000000), model(`${id}-${suffix}`, `${name} ${label}`, 128000, 1000000)]);
 const HML = [["max", "Max"], ["high", "High"], ["low", "Low"]];
+const MHM = [["max", "Max"], ["high", "High"], ["medium", "Medium"]];
 
 // Curated upstream catalog (authenticated `devin models list` on 2026-09-02, per the pinned source).
 // Live ids from GetCliModelConfigs discovery win membership; these entries supply names and limits.
@@ -40,6 +41,15 @@ export const DEVIN_MODEL_CATALOG = [
   model("kimi-k2-7", "Kimi K2.7", 16000, 262144),
   ...efforts("glm-5-3", "GLM-5.3", 128000, 1000000, HML),
   ...efforts("glm-5-3-flash", "GLM-5.3 Flash", 128000, 1000000, HML),
+  // SWE-2.x rows from OmniRoute #21288 (15c2403d2bdb). Ids are Devin's own; there is no bare `swe-2` or `swe-2-flash`.
+  model("swe-2-1", "SWE-2.1", 65536, 262144),
+  ...efforts("swe-2-1", "SWE-2.1", 65536, 262144),
+  model("swe-2-1-lightning", "SWE-2.1 Ultrafast", 65536, 262144),
+  ...QUALITY.map(([suffix, label]) => model(`swe-2-1-${suffix}-lightning`, `SWE-2.1 Ultrafast ${label}`, 65536, 262144)),
+  ...efforts("swe-2", "SWE-2", 128000, 262000, MHM),
+  ...MHM.map(([suffix, label]) => model(`swe-2-${suffix}-lightning`, `SWE-2 ${label} Ultrafast`, 128000, 262144)),
+  ...efforts("swe-2-flash", "SWE-2 Flash", 131072, 262144, MHM),
+  ...MHM.map(([suffix, label]) => model(`swe-2-flash-${suffix}-lightning`, `SWE-2 Flash ${label} Ultrafast`, 131072, 262144)),
   model("swe-1-7", "SWE-1.7 Max", 128000, 262000),
   model("swe-1-7-medium", "SWE-1.7 Medium", 128000, 262000),
   model("swe-1-7-lightning", "SWE-1.7 Lightning Max", 96000, 202752),

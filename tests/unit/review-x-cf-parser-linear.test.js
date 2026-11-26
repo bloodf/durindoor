@@ -11,7 +11,7 @@ it("bounds work on balanced invalid nested brackets", () => {
 });
 
 it("finds a tagged call after many balanced brackets", () => {
-  const text = `${"[]".repeat(5000)} <tool>{"name":"read","arguments":{}}</tool>`;
+  const text = `${"[]".repeat(5000)} <tool>{"name":"read","arguments":{},"_nonce":"test"}</tool>`;
   const result = parseCfToolReply(text, context);
   expect(result.content).toBe("[]".repeat(5000));
   expect(result.toolCalls).toHaveLength(1);

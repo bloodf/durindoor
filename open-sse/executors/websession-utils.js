@@ -178,10 +178,20 @@ export function errorJson(status, message, type = "upstream_error", extra = {}) 
   return jsonResponse({ error: { message: sanitizeErrorMessage(message), type, ...extra } }, status);
 }
 
+// RFC 9110 `token`, the only legal shape of a field name. fetch/undici throws on
+// anything else, so one name such as "admin@example.com" (browser autofill)
+// fails every request that carries it.
+const HTTP_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+export function isValidHttpHeaderName(name) {
+  return isString(name) && HTTP_HEADER_NAME.test(name);
+}
+
+/** Merge caller-supplied headers, skipping names that are not HTTP tokens (OmniRoute #20062). */
 export function mergeUpstreamExtraHeaders(headers, extraHeaders) {
   if (!extraHeaders || !isObject(extraHeaders)) return headers;
   for (const [key, value] of Object.entries(extraHeaders)) {
-    if (isString(value) && value.trim()) headers[key] = value;
+    if (isValidHttpHeaderName(key) && isString(value) && value.trim()) headers[key] = value;
   }
   return headers;
 }

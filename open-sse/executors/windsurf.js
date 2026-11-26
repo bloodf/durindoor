@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isValidHttpHeaderName } from "./websession-utils.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const WS_BASE_URL = "https://server.self-serve.windsurf.com";
@@ -436,7 +437,7 @@ function parseGrpcWebFrames(buf) {
 function mergeExtraHeaders(headers, upstreamExtraHeaders) {
   if (!upstreamExtraHeaders || !isObject(upstreamExtraHeaders)) return headers;
   for (const [key, value] of Object.entries(upstreamExtraHeaders)) {
-    if (value == null) continue;
+    if (value == null || !isValidHttpHeaderName(key)) continue;
     headers[key] = String(value);
   }
   return headers;

@@ -22,6 +22,22 @@ export function resolveDevinBin() {
   return "devin";
 }
 
+/** Advisory filesystem check only; a later spawn can still fail. */
+export function isDevinBinAvailable({ agentic = false } = {}) {
+  const bin = agentic ? process.env.CLI_DEVIN_BIN?.trim() : resolveDevinBin();
+  if (!bin || (agentic && (!path.isAbsolute(bin) || process.platform === "win32"))) return false;
+  const hasDirectory = bin.includes("/") || (process.platform === "win32" && bin.includes("\\"));
+  const candidates = hasDirectory ? [bin] : (process.env.PATH || "").split(path.delimiter).map((dir) => path.join(dir || ".", bin));
+  return candidates.some((candidate) => {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
 export function rpc(method, params, id) {
   const message = { jsonrpc: "2.0", method, params };
   if (id !== undefined) message.id = id;

@@ -50,7 +50,7 @@ import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDeta
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
-import { resolveStreamFlag } from "./chatCore/streamFlag.js";
+import { acceptRequestsStream, resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
@@ -584,7 +584,8 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   // ask for a JSON completion?" answerable when the response is routed.
   const rawClientStream = clientRawRequest?.body ? clientRawRequest.body.stream : body.stream;
   const clientRequestedNonStreaming = rawClientStream === false;
-  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const sseAcceptStream = acceptRequestsStream(body.stream, clientPrefersSSE, clientPrefersJson);
+  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sseAcceptStream || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
   (executorOverride?.forceStream === true || PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
   // Image generation models require non-streaming (Google v1internal:generateContent)
@@ -605,7 +606,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   let stream = isCompactRequest ? false : resolveStreamFlag({
     providerRequiresStreaming,
-    bodyStream: body.stream,
+    bodyStream: sseAcceptStream ? true : body.stream,
     forceNonStreaming:
     isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy") ||
     providerForcesNonStreaming ||

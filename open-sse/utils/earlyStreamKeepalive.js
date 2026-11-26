@@ -245,6 +245,12 @@ export async function withEarlyStreamKeepalive(handlerPromise, options = {}) {
           if (response.body && isSse) {
             upstreamReader = response.body.getReader();
             while (true) {
+              // Do not read ahead of a stalled client: the queue would hold the whole reply.
+              // shortcut: 10 ms poll inside start(); a pull()-driven read is the cleaner form.
+              while (!aborted && (controller.desiredSize ?? 1) <= 0) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+              if (aborted) break;
               const { done, value } = await upstreamReader.read();
               if (done) break;
               if (value) {

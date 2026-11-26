@@ -60,7 +60,7 @@ through the normal connection path.
 | Z.ai Web | Extension and dashboard | `chat.z.ai` profile requires the `token` cookie. |
 | MaxAI | Extension and dashboard | `www.maxai.co` profile requires `access_token`, `device_id` and `user_id` from the same browser session. |
 | Arena | Extension and dashboard | `arena.ai` profile requires `arena-auth-prod-v1`; numbered `arena-auth-prod-v1.N` chunks must be contiguous. |
-| ChatPlayground | Extension and dashboard | `app.chatplayground.ai` profile requires `__client` and `__session`. |
+| ChatPlayground | Extension and dashboard | `web.chatplayground.ai` profile requires `__client` and `__session`. |
 | DeepSeek Web | Manual token | The credential is the `userToken` from local storage, saved as an API-key credential; there is no cookie to capture. |
 | PromptQL | Extension and dashboard | `prompt.ql.app` profile requires `__Host-next-auth.csrf-token` and `next-auth.session-token`. Chat resolves the playground JWT and project ID through the imported session and saves them on that connection. |
 | Notion AI Web | Extension and dashboard | `app.notion.com` profile requires `token_v2`. |

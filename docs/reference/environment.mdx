@@ -76,6 +76,7 @@ Positive decimal integers only. A resolved maximum below the base resets the who
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ENABLE_REQUEST_LOGS` | `false` (must be the string `true`) | Diagnostic request files under `cwd/logs`. No payloads, stream chunks, stacks, or URL query/fragment. |
+| `DURINDOOR_CLAUDE_TOOL_TYPE_REJECTING_PROVIDERS` | unset | Comma-separated provider ids (a compatible node uses its full id) whose Claude-format endpoint rejects tool `type: "custom"` with HTTP 400 ``unknown variant `custom` ``. The gateway removes only that field for listed providers. Typed server tools and unlisted providers are unchanged. |
 | `DURINDOOR_SANITIZE_IDENTITY` | unset | Opt-in (`1`/`true`/`on`/`yes`). Rewrites "OpenClaw", "OmniRoute" and "DurinDoor" prose in system/developer text and tool `description` strings before the request is sent upstream. User, assistant and tool messages, tool names, schema enum/default values, code spans, paths and tool-call arguments are never touched. |
 | `OBSERVABILITY_ENABLED` | unset | `true` enables Usage → Details persistence; `false` vetoes it. |
 | `OBSERVABILITY_MAX_RECORDS` | `200` | Cap on retained request-detail rows when settings omit it. |

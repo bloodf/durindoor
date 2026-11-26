@@ -23,10 +23,10 @@ function deriveUuid(seed) {
 
 // Generate fake user ID in current Claude Code JSON format:
 // {"device_id":"<64hex>","account_uuid":"<uuid>","session_id":"<uuid>"}
-// device_id/account_uuid derive from apiKey (stable per account), session_id per-conversation
-function generateFakeUserID(sessionId, apiKey) {
-  const deviceId = apiKey ? createHash("sha256").update(`device:${apiKey}`).digest("hex") : randomBytes(32).toString("hex");
-  const accountUuid = apiKey ? deriveUuid(`account:${apiKey}`) : randomUUID();
+// device_id/account_uuid derive from identitySeed (stable per account), session_id per-conversation
+function generateFakeUserID(sessionId, identitySeed) {
+  const deviceId = identitySeed ? createHash("sha256").update(`device:${identitySeed}`).digest("hex") : randomBytes(32).toString("hex");
+  const accountUuid = identitySeed ? deriveUuid(`account:${identitySeed}`) : randomUUID();
   const sessionUuid = sessionId || randomUUID();
   return `{"device_id":"${deviceId}","account_uuid":"${accountUuid}","session_id":"${sessionUuid}"}`;
 }
@@ -164,9 +164,11 @@ const CC_DECOY_TOOLS = [
  * @param {object} body - Claude API request body
  * @param {string} apiKey - API key or OAuth token
  * @param {string} [sessionId] - Session ID to align with X-Claude-Code-Session-Id header
+ * @param {string} [connectionId] - Seeds device_id/account_uuid; an OAuth token changes at
+ *   every refresh, so it only seeds them when there is no connection id (OmniRoute #20239)
  * @returns {object} Modified body
  */
-export function applyCloaking(body, apiKey, sessionId) {
+export function applyCloaking(body, apiKey, sessionId, connectionId = null) {
   if (!apiKey || !apiKey.includes("sk-ant-oat")) return body;
 
   const result = { ...body };
@@ -189,7 +191,7 @@ export function applyCloaking(body, apiKey, sessionId) {
   // Inject fake user ID into metadata (session_id must match X-Claude-Code-Session-Id)
   const existingUserId = result.metadata?.user_id;
   if (!existingUserId) {
-    result.metadata = { ...result.metadata, user_id: generateFakeUserID(sessionId, apiKey) };
+    result.metadata = { ...result.metadata, user_id: generateFakeUserID(sessionId, connectionId || apiKey) };
   }
 
   return result;

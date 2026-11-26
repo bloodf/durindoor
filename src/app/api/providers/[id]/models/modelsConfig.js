@@ -44,6 +44,7 @@ import {
 "open-sse/providers/orcarouterCatalog.js";
 import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
 import { discoverCloudflareModels } from "open-sse/services/cloudflareModels.js";
+import { chatPlaygroundCatalog } from "open-sse/executors/chatplayground.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -427,11 +428,11 @@ export const PROVIDER_MODELS_CONFIG = {
       staticModels: getStaticProviderModels("cloudflare-ai")
     })
   },
-  // ChatPlayground's catalog is read with the session Cookie header and lists each bot by `botId`.
+  // ChatPlayground's catalog is read with the session Cookie header and lists each chat model by slug.
   chatplayground: {
-    url: "https://app.chatplayground.ai/api/models", method: "GET", headers: {},
+    url: "https://web.chatplayground.ai/api/models", method: "GET", headers: {},
     buildHeaders: (_token, connection) => ({ Cookie: connection.apiKey }),
-    parseResponse: (data) => (data?.data || data?.models || []).filter((row) => row?.botId).map((row) => ({ id: row.botId, name: row.displayName || row.modelName || row.botId })),
+    parseResponse: chatPlaygroundCatalog,
   },
   empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },

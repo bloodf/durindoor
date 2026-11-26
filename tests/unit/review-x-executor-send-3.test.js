@@ -164,9 +164,9 @@ const cases = [
     unchargedFirst: 2,
     setup() {
       serve((url) => {
-        if (url.endsWith("/api/user")) return Response.json({});
-        if (url.endsWith("/api/models")) return Response.json([{ botId: "bot", modelName: "bot" }]);
-        return new Response("hi");
+        if (url.endsWith("/api/me")) return Response.json({});
+        if (url.endsWith("/api/models")) return Response.json([{ slug: "bot" }]);
+        return new Response('data: {"type":"text-delta","delta":"hi"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\n');
       });
       return new ChatPlaygroundExecutor();
     },

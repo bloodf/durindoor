@@ -160,7 +160,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `chatgpt-plan` | openai-responses | oauth | `` |
 | `chatgpt-web` | openai | webCookie | `https://chatgpt.com/backend-api/conversation` |
 | `chatgpt-web-codex` | openai | webCookie | `https://chatgpt.com/backend-api/f/conversation` |
-| `chatplayground` | openai | webCookie | `https://app.chatplayground.ai/api/chat` |
+| `chatplayground` | openai | webCookie | `https://web.chatplayground.ai/api/chat` |
 | `cheaperinference` |  | apikey | `https://api.cheaperinference.com/v1/chat/completions` |
 | `chenzk` | openai | apikey | `https://chenzk.top/v1/chat/completions` |
 | `chipotle` | openai | free | `https://amelia.chipotle.com` |

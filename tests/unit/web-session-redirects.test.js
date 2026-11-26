@@ -101,7 +101,7 @@ const fetchProviders = [
     ["/messages", {}], ["?logDeltas=1"],
   ] },
   { id: "chatplayground", Executor: ChatPlaygroundExecutor, apiKey: playgroundCookie, chat: [
-    ["/tokens", { jwt: "fixture-access" }], ["/api/user", {}], ["/api/models", catalog], ["/api/chat/azure"],
+    ["/tokens", { jwt: "fixture-access" }], ["/api/me", {}], ["/api/models", catalog], ["web.chatplayground.ai/api/chat"],
   ] },
   { id: "maxai", Executor: MaxaiExecutor, apiKey: "access_token=fixture; device_id=fixture; user_id=fixture", providerSpecificData: signing, validate: "/models/get_config", chat: [["api.maxai.me/"]] },
 ];
@@ -171,7 +171,7 @@ it.each([target, "https://accounts.google.com/signin", "https://www.google.com/"
 );
 
 it("ChatPlayground stops on a user validation redirect", async () => {
-  const steps = [["/tokens", { jwt: "fixture-access" }], ["/api/user"]];
+  const steps = [["/tokens", { jwt: "fixture-access" }], ["/api/me"]];
   stubRequests(steps);
   await expect(validateChatPlaygroundCookie(playgroundCookie, wire))
     .resolves.toMatchObject({ valid: false, status: 302, error: expect.stringMatching(/session/i) });

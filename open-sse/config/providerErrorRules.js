@@ -260,8 +260,30 @@ function buildKiloRules() {
   }];
 }
 
+/**
+ * Cloudflare Workers AI (OmniRoute #20343). HTTP 403 code 5035, "Model X is not
+ * available on the Workers Free plan", gates one model: the same token keeps
+ * serving every free model. Executors hand this body over as raw text, so the
+ * upstream sentence decides. `modelOnly` keeps an id outside the catalog from
+ * widening into an account-wide lock.
+ */
+const CLOUDFLARE_PAID_PLAN_TEXT = /not available on the workers free plan/i;
+
+function buildCloudflareAiRules() {
+  return [{
+    id: "cloudflare-ai-model-requires-paid-plan",
+    match: ({ status, body, errorText }) => {
+      if (status !== 403) return null;
+      const text = isString(errorText) && errorText ? errorText : JSON.stringify(body ?? "");
+      if (!CLOUDFLARE_PAID_PLAN_TEXT.test(text)) return null;
+      return { reason: "model_access_denied", scope: "model", cooldownMs: 2 * 60 * 1000, modelOnly: true };
+    }
+  }];
+}
+
 export const providerRuleRegistry = new Map([
 ...KILO_PROVIDER_IDS.map((provider) => [provider, buildKiloRules()]),
+["cloudflare-ai", buildCloudflareAiRules()],
 ["agentrouter", buildAgentrouterRules()],
 ["y-api", buildYApiRules()],
 ...["opencode", "opencode-go", "opencode-zen"].map((provider) => [provider, [{

@@ -90,6 +90,7 @@ export function deriveImageEditsUrl(imageConfig) {
  * @param {object|null} [options.jsonBody]
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} [options.log]
+ * @param {AbortSignal} [options.signal] - Client cancellation signal forwarded to the provider
  * @param {function} [options.onRequestSuccess]
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
@@ -99,7 +100,8 @@ export async function handleImageEditCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const mediaCfg = PROVIDER_MEDIA[provider];
@@ -138,8 +140,9 @@ export async function handleImageEditCore({
   log?.debug?.("IMAGE-EDIT", `${provider} | ${model} | ${editConfig.baseUrl}`);
   let res;
   try {
-    res = await proxyAwareFetch(editConfig.baseUrl, { method: "POST", headers, body: isNativeJson ? JSON.stringify(upstream) : upstream }, resolveCredentialProxyOptions(credentials));
+    res = await proxyAwareFetch(editConfig.baseUrl, { method: "POST", headers, body: isNativeJson ? JSON.stringify(upstream) : upstream, signal }, resolveCredentialProxyOptions(credentials));
   } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") return createErrorResult(499, "Image edit request aborted");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
   if (!res.ok) {

@@ -260,3 +260,16 @@ describe.each(ENDPOINTS)("$name stale in-flight probe (#2627)", (endpoint) => {
     expect(reachableAt(endpoint.newUrl)).toBe(false);
   });
 });
+
+
+it("does not start an old Tailscale probe after a delayed Cloudflare probe completes", async () => {
+  hold.add(CF);
+  await mount(ENDPOINTS[1].status({ enabled: true, other: true }));
+  server.status = ENDPOINTS[1].status({ enabled: false, other: true });
+  await advance(STATUS_POLL_SLOW_MS);
+  const stale = release(CF);
+  const tailscaleCalls = () => globalThis.fetch.mock.calls.filter(([url]) => String(url).startsWith(TS + "/"));
+  const before = tailscaleCalls().length;
+  await settle(() => stale.forEach((probe) => probe.pass()));
+  expect(tailscaleCalls()).toHaveLength(before);
+});

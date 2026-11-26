@@ -205,6 +205,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     }
     const probeBoth = async () => {
       if (document.hidden) return;
+      const tsGen = tsProbeGenRef.current;
       if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
         const gen = tunnelProbeGenRef.current;
         const ok = await clientPingAny(tunnelPublicUrl, tunnelUrl);
@@ -212,10 +213,9 @@ export default function EndpointPageClient({ localPort = 20128 }) {
           recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
         }
       }
-      if (tsEnabled && tsUrl) {
-        const gen = tsProbeGenRef.current;
+      if (tsEnabled && tsUrl && tsGen === tsProbeGenRef.current) {
         const ok = await clientPingUrl(tsUrl);
-        if (gen === tsProbeGenRef.current) {
+        if (tsGen === tsProbeGenRef.current) {
           recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
         }
       }

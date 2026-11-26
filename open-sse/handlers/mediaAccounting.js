@@ -87,3 +87,22 @@ export function returnedImageUnits(accounting, normalized) {
     accounting.meta.nativeUnitsSource = "returned-images";
   }
 }
+
+/**
+ * Evidence for a client cancel that came after the provider answered 2xx but
+ * before its body was fully read. The provider accepted the request and may
+ * bill it, yet no returned image was observed: native units stay empty and an
+ * unknown cost stays unknown, tagged so the ledger says why. A usage or USD
+ * receipt already read from the body is kept as it was.
+ */
+export function cancelledAccounting(accounting) {
+  const meta = { ...accounting.meta, clientCancelled: "after-upstream-headers" };
+  delete meta.nativeUnitsSource;
+  return {
+    ...accounting,
+    state: "cancelled",
+    nativeUnits: {},
+    costSource: accounting.costStatus === "known" ? accounting.costSource : "client-cancelled",
+    meta,
+  };
+}

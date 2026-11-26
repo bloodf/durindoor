@@ -8,7 +8,7 @@ import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
-import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { cancelledAccounting, imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 const OPENAI_IMAGE_ENUMS = Object.freeze({ complexity: ["low", "medium", "high"], moderation: ["auto", "low"] });
 
@@ -83,6 +83,10 @@ function imageFailureMessage(body) {
  * @param {function} [options.onStreamComplete] - Awaited once with ({status, statusCode, accounting, error}, response); statusCode carries a classified terminal provider failure.
  * Codex completion resolves (never rejects) after this callback and upstream cleanup.
  * Status is success, failure, or abort; only success has complete accounting.
+ * A client cancel after 2xx headers carries `cancelledUsage` (#2647) only with evidence:
+ * a buffered body is answered once the work is done, so its 2xx is completion evidence;
+ * a stream's 2xx only proves the work started, so it needs a usage receipt already read.
+ * Streams report it on the abort outcome; buffered bodies return 499 with it.
  * Callback rejection resolves failure with failed accounting and a client error event.
  * @returns {Promise<{ success: boolean, response: Response, accounting?: object, completion?: Promise<object>, status?: number, error?: string }>}
  */
@@ -332,6 +336,8 @@ export async function handleImageGenerationCore({
   const attachToolUsage = () => {
     if (toolUsage) accounting.meta.imageToolUsage = toolUsage;
   };
+  const buffered = !adapter.stream || /json/i.test(providerResponse.headers?.get?.("content-type") || "");
+  const cancelEvidence = () => (buffered || hasReceipt ? cancelledAccounting(accounting) : undefined);
   try {
     if (adapter.parseResponse) {
       parsed = await adapter.parseResponse(providerResponse, {
@@ -357,6 +363,7 @@ export async function handleImageGenerationCore({
           attachToolUsage();
           if (outcome.status === "success") returnedImageUnits(accounting, outcome.value);
           outcome.accounting = accounting;
+          if (outcome.status === "abort") outcome.cancelledUsage = cancelEvidence();
           try {
             // Clear account health before the ledger write, so a health failure
             // cannot turn an already-persisted operation into a failed completion.
@@ -380,7 +387,15 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    if (isAbort(parseError)) return adapter.async ? withAcceptedJob(abortedResult()) : abortedResult();
+    if (isAbort(parseError)) {
+      if (adapter.async) return withAcceptedJob(abortedResult());
+      // The unread body held the outcome and usage. Keep any receipt read so far
+      // and invent nothing; see cancelEvidence for when a 2xx is evidence at all.
+      if (!signal?.aborted) return abortedResult();
+      attachToolUsage();
+      const cancelledUsage = cancelEvidence();
+      return cancelledUsage ? { ...abortedResult(), cancelledUsage } : abortedResult();
+    }
     // An adapter may tag a parse/validation error with an explicit HTTP status
     // (e.g. 422 for a per-request content rejection) to distinguish it from a
     // generic upstream failure. Only honor a sane client/server error status;

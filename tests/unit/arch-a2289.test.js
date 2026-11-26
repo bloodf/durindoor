@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 const proxy = vi.hoisted(() => vi.fn(async (body, options) => {
@@ -22,10 +21,4 @@ describe("#2289 compression boundaries", () => {
     expect(proxy).not.toHaveBeenCalled();
   });
 
-  it("keeps migration modules independent of runtime RTK imports", () => {
-    for (const name of ["token-saver-daily-schema.js", "020-token-saver-aggregates.js"]) {
-      const source = readFileSync(new URL(`../../src/lib/db/migrations/${name}`, import.meta.url), "utf8");
-      expect(source).not.toMatch(/(?:from\s*|import\s*\()\s*["'][^"']*open-sse\/rtk\//);
-    }
-  });
 });

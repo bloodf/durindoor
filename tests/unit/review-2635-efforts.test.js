@@ -35,6 +35,14 @@ describe("unlisted OpenAI Responses family effort metadata (#2635)", () => {
     expect(effortFor("minimal", caps)).toBe("low");
   });
 
+  it("clamps declared tiers by rank without accidentally disabling reasoning", () => {
+    const low = customCaps({ thinkingEfforts: ["none", "low"] });
+    expect(effortFor("high", low)).toBe("low");
+    expect(effortFor("max", low)).toBe("low");
+    const high = customCaps({ thinkingEfforts: ["medium", "xhigh"] });
+    expect(effortFor("high", high)).toBe("xhigh");
+  });
+
   it("honors declared efforts from synced metadata without operator keys", () => {
     const caps = { ...getCapabilitiesForModel("openai", MODEL), thinkingEfforts: ["medium", "xhigh"] };
     expect(effortFor("max", caps)).toBe("xhigh");

@@ -444,6 +444,11 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (hasUnknownThinkingLevels(caps)) return level === "ultra" ? "max" : level;
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
+    // Explicit tiers override an unknown fallback; clamp by rank instead of
+    // falling through to a possible disable tier at the start of the list.
+    if (caps?.thinkingLevelsUnknown && Array.isArray(caps.thinkingEfforts)) {
+      return clampTierToSupported(level, allowed);
+    }
     if (allowed.includes(level)) return level;
     if (["minimal", "none"].includes(level) && allowed.includes("low")) return "low";
     if (level === "ultra" && allowed.includes("max")) return "max";

@@ -1252,7 +1252,8 @@ export class CursorExecutor extends BaseExecutor {
     // so strict clients such as Claude Code accept the completed stream.
     const responseId = `chatcmpl-msg_${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
-    const composerModel = isComposerModel(model);
+    // Check resolved runModel so `auto`/`default` resolving to Composer still extracts `</think>` text.
+    const composerModel = isComposerModel(runModel);
     let pending = Buffer.alloc(0);
     let finished = false;
     let thinkingAcc = "";
@@ -1260,6 +1261,7 @@ export class CursorExecutor extends BaseExecutor {
     let composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
     let emittedNativeText = false;
     let emittedText = false;
+    let emittedToolCall = false;
 
     const flushComposerPending = (onEvent) => {
       if (!composerExtractor || emittedNativeText) return;
@@ -1287,7 +1289,7 @@ export class CursorExecutor extends BaseExecutor {
       const finishTurn = () => {
         flushThinkingFallback(onEvent);
         finished = true;
-        if (emittedText) onEvent({ type: "done" });
+        if (emittedText || emittedToolCall) onEvent({ type: "done" });
         else onEvent({ type: "error", value: CURSOR_EMPTY_TURN_EVENT });
       };
       try {
@@ -1362,6 +1364,7 @@ export class CursorExecutor extends BaseExecutor {
                 if (name) {
                   log?.info?.("CURSOR", `AgentService MCP tool_call ${name}`);
                   if (composerModel) flushComposerPending(onEvent);
+                  emittedToolCall = true;
                   finished = true;
                   onEvent({
                     type: "tool_call",
@@ -1412,12 +1415,13 @@ export class CursorExecutor extends BaseExecutor {
       finished = false;
       emittedText = false;
       emittedNativeText = false;
+      emittedToolCall = false;
       thinkingAcc = "";
       blobStore.clear();
       composerExtractor = composerModel ? createComposerThinkingExtractor() : null;
       pending = Buffer.alloc(0);
       await consume(onEvent);
-      return { sawContent: emittedText };
+      return { sawContent: emittedText || emittedToolCall };
     };
 
     // Wrap events so we never retry once real output has reached the client.

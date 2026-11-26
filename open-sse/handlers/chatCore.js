@@ -1591,6 +1591,17 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       finishTimeline("error", "error", "quota capacity unavailable");
       return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
     }
+    if (error?.localSchemaError === true && error?.statusCode === HTTP_STATUS.BAD_REQUEST) {
+      finishProviderRequest();
+      finishActiveDashboardSession("error");
+      await settleQuota(false, "pre_dispatch");
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => {});
+      finishTimeline("error", "error", error.message);
+      const result = createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      result.localSchemaError = true;
+      result.response[Symbol.for("durindoor.localSchemaError")] = true;
+      return { ...result, attemptStartedAt: latestProviderAttemptStartedAt };
+    }
     finishProviderRequest();
     finishActiveDashboardSession("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });

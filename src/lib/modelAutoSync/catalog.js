@@ -133,6 +133,8 @@ const EXPLICIT_KINDS = new Set(["llm", "image", "imageToText", "tts", "embedding
  */
 export function classifyModelKind(id, raw = {}) {
   if (EXPLICIT_KINDS.has(raw?.kind || raw?.type)) return raw.kind || raw.type;
+  const outputModalities = raw?.architecture?.output_modalities ?? raw?.output_modalities;
+  if (Array.isArray(outputModalities) && outputModalities.includes("decisions")) return "systemone";
   const methods = Array.isArray(raw?.supportedGenerationMethods) ? raw.supportedGenerationMethods : null;
   const lower = String(id).toLowerCase();
   for (const [pattern, kind] of KIND_RULES) {

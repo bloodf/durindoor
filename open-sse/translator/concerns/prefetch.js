@@ -34,6 +34,20 @@ function collectImageRefs(body, sourceFormat) {
       }
     }
   };
+  // Responses carries images in message content and in tool-output arrays.
+  const pushResponses = (input) => {
+    for (const item of Array.isArray(input) ? input : []) {
+      for (const parts of [item?.content, item?.output]) {
+        for (const part of Array.isArray(parts) ? parts : []) {
+          if (part?.type !== "input_image") continue;
+          const url = isString(part.image_url) ? part.image_url : part.image_url?.url;
+          if (isRemoteUrl(url)) refs.push({ get: () => url, set: (v) => {
+              if (isString(part.image_url)) part.image_url = v;else part.image_url.url = v;
+            } });
+        }
+      }
+    }
+  };
   const pushGemini = (contents) => {
     for (const c of contents || []) {
       for (const p of c.parts || []) {
@@ -60,6 +74,10 @@ function collectImageRefs(body, sourceFormat) {
           }
         }
       }
+      break;
+    case FORMATS.OPENAI_RESPONSES:
+      pushOpenAI(body.messages);
+      pushResponses(body.input);
       break;
     case FORMATS.GEMINI:
     case FORMATS.GEMINI_CLI:

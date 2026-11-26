@@ -65,7 +65,9 @@ The catalog is the fixed list in OmniRoute and has no discovery endpoint. Each m
 | Connection did not opt in | 403 `freebuff_dispatch_disabled`, no upstream call |
 | No token on the connection | 401 `Freebuff Auth Token required` |
 | Freebuff answers 401 or 403 at session, run or chat | 401 `authentication_error`, sign in again |
-| Freebuff answers 429 (session queue, ad or usage limit) | 429 `rate_limit_error`, `Retry-After` kept when sent |
+| Freebuff answers 429 (session queue, ad or short throttle) | 429 `rate_limit_error`, `Retry-After` kept when sent. The account is not cooled down and the request does not move to another account |
+| Freebuff answers 408, 409, 425 or 5xx | The error is returned. The account is not cooled down and the request does not move to another account, because each new admission uses a session hour |
+| Freebucks are spent (429 or 402 with Freebucks evidence) | 429 `rate_limit_error`. The whole account is cooled down until the reported reset (one hour when none is reported) and another account can serve |
 | Session 409 without an `instanceId` | 409 upstream error |
 | Any other non-2xx | The same status as an upstream error with a short excerpt |
 | Network failure | 502 |

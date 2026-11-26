@@ -32,6 +32,17 @@ export const PROVIDER_QUOTA_DEFAULTS = deepFreeze({
   maxResponseBytes: 1024 * 1024
 });
 
+/**
+ * Opt-in Codex preflight shortcut (OmniRoute #20721): a recent stale reading with
+ * enough headroom is used while the quota refresh runs in the background.
+ */
+export const CODEX_QUOTA_STALE_SHORTCUT = deepFreeze({
+  headroomEnv: "DURINDOOR_CODEX_QUOTA_STALE_HEADROOM_PERCENT",
+  maxAgeEnv: "DURINDOOR_CODEX_QUOTA_STALE_MAX_AGE_MS",
+  defaultMaxAgeMs: 120_000,
+  maxAgeCapMs: 15 * 60_000
+});
+
 const PREFLIGHT_POLICY = deepFreeze({
   google: { gates: [{ aggregate: "all-required", selectors: [{ resource: "requested", dimensionNamespaces: ["requests"] }] }] },
   codex: { gates: [{ choose: "first-present", aggregate: "all-required", selectors: [{ resource: "requested", dimensionNamespaces: ["requests"] }, { resource: "account", dimensionNamespaces: ["requests"] }] }] },

@@ -31,6 +31,7 @@ describe("OmniRoute #6330 — SenseNova Token Plan support", () => {
     expect(modelIds).toEqual([
       "glm-5.3",
       "sensenova-6.8-flash",
+      "sensenova-6.8-flash-lite",
       "sensenova-6.7-flash-lite",
       "deepseek-v4-flash",
       "glm-5.2",

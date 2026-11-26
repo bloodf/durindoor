@@ -6,6 +6,7 @@
  */
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { isValidContext7LibraryId } from "../../shared/context7LibraryId.js";
+import { parseDomainFilter } from "./callers.js";
 
 /** Build a unified SearchResult object. */
 function makeResult(providerId, item, idx, now) {
@@ -336,13 +337,27 @@ function normalizeGlmSearch(data, _query, _searchType) {
   return { results, totalResults: results.length };
 }
 
-function normalizeKeenable(data, _query, _searchType) {
+/** True when the result's host passes the caller's filter; a domain covers its subdomains. */
+function matchesDomainFilter(url, domainFilter) {
+  const host = URL.parse(url)?.hostname.toLowerCase() ?? "";
+  const { includes, excludes } = parseDomainFilter(domainFilter);
+  const within = (entry) => {
+    const domain = entry.trim().toLowerCase();
+    return host === domain || host.endsWith(`.${domain}`);
+  };
+  return (includes.length === 0 || includes.some(within)) && !excludes.some(within);
+}
+
+// Keenable takes only one include domain and its results are external data, so the
+// whole filter is enforced here and only plain http(s) links pass (OmniRoute #20634).
+function normalizeKeenable(data, _query, _searchType, domainFilter) {
   const now = new Date().toISOString();
-  const items = Array.isArray(data?.results) ? data.results.filter((item) => item !== null && isObject(item)) : [];
+  const items = Array.isArray(data?.results) ? data.results.filter((item) => item !== null && isObject(item) &&
+    isString(item.url) && /^https?:\/\//i.test(item.url) && matchesDomainFilter(item.url, domainFilter)) : [];
   const results = items.map((item, idx) =>
     makeResult("keenable", {
       title: isString(item.title) ? item.title : "",
-      url: isString(item.url) ? item.url : "",
+      url: item.url,
       snippet: (isString(item.snippet) && item.snippet) || (isString(item.description) ? item.description : ""),
       published_at: isString(item.published_at) ? item.published_at : null
     }, idx, now)
@@ -374,7 +389,7 @@ const NORMALIZERS = {
  * Dispatch to the appropriate normalizer based on providerId.
  * @returns {{results: Array, totalResults: number|null}}
  */
-export function normalizeSearchResponse(providerId, data, query, searchType) {
+export function normalizeSearchResponse(providerId, data, query, searchType, domainFilter) {
   const fn = NORMALIZERS[providerId];
-  return fn ? fn(data, query, searchType) : { results: [], totalResults: null };
+  return fn ? fn(data, query, searchType, domainFilter) : { results: [], totalResults: null };
 }

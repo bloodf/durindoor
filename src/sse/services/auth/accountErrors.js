@@ -78,6 +78,8 @@ function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
   const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
   return candidate.startsWith("{") && isQoderQuotaExhaustedBody(candidate);
 }
+const FREEBUFF_TRANSIENT_STATUSES = new Set([408, 409, 425, 429]);
+
 const SHORT_COOLDOWN_PROVIDERS = new Set([
 ...Object.keys(FREE_PROVIDERS),
 ...Object.keys(FREE_TIER_PROVIDERS)]
@@ -204,6 +206,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (isRecoverableCloudCodeProject403(provider, status, errorText)) {
     log.warn("AUTH", `${connectionId.slice(0, 8)} hit recoverable Cloud Code project 403; fallback without cooldown`);
     return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  // Every Freebuff admission bills a session hour on the account that takes it
+  // (OmniRoute #20655), so a transient failure neither rotates nor cools down.
+  // Spent Freebucks and rejected credentials still take the ordinary path.
+  const freebuff = resolveProviderId(provider) === "freebuff";
+  const freebucksSpent = freebuff && context?.rateLimitEvidence?.state === "exhausted";
+  if (freebuff && !freebucksSpent && (FREEBUFF_TRANSIENT_STATUSES.has(Number(status)) || Number(status) >= 500)) {
+    log.warn("AUTH", `${connectionId.slice(0, 8)} Freebuff transient failure; keeping this account [${status}]`);
+    return { shouldFallback: false, cooldownMs: 0 };
   }
 
   if (isCodexPermanentOAuthError(provider, status, errorText)) {
@@ -431,7 +443,8 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     status
   );
   const providerRuleConnectionWide = fallbackResult.scope === "connection" || (provider === "claude" && callerEvidence?.scope === "connection");
-  const accountWide = Boolean(githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
+  // Freebucks are one pool per account, so every model on it is spent.
+  const accountWide = Boolean(freebucksSpent || githubResetAtMs || accountWideRuntime || passthroughConnectionError || providerRuleConnectionWide || ag429?.credits);
   const isolatedSearch = context?.webSearch === true && !accountWide;
   const fallbackModel = resolveFallbackModelScope(provider, model, {
     accountWide,

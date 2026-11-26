@@ -86,6 +86,8 @@ export default {
   models: [
     { id: "glm-5.3", name: "GLM-5.3" },
     { id: "sensenova-6.8-flash", name: "SenseNova 6.8 Flash" },
+    // No published context or capability flags; the Token Plan output ceiling applies (OmniRoute #20693).
+    { id: "sensenova-6.8-flash-lite", name: "SenseNova 6.8 Flash-Lite", maxOutputTokens: 65536 },
   // SenseNova Token Plan chat models (validated 2026-07-06). The /models
   // list also advertises sensenova-u1-fast, but chat completions 404 for it;
   // U1 Fast belongs to image flows, so omit it here.

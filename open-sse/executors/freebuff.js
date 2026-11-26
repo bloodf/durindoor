@@ -22,6 +22,7 @@ import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { buildErrorBody } from "../utils/error.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS } from "../config/errorConfig.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
   FREEBUFF_AGENT_BY_MODEL,
@@ -58,6 +59,31 @@ function snippet(text) {
   return String(text || "").replace(/\s+/g, " ").trim().slice(0, ERROR_TEXT_LIMIT);
 }
 
+const DEFAULT_EXHAUSTED_RESET_MS = 60 * 60 * 1000;
+
+/**
+ * True only when the body proves the account's Freebucks pool is spent
+ * (OmniRoute #20655). A short throttle uses the same 429 status.
+ */
+export function isFreebucksExhausted(status, detail) {
+  const text = String(detail || "");
+  if ((status !== 429 && status !== 402) || !/freebucks/i.test(text)) return false;
+  if (/freebucksShortfall/i.test(text)) return true;
+  const recent = /"recentCount"\s*:\s*(\d+)/.exec(text);
+  const limit = /"limit"\s*:\s*(\d+)/.exec(text);
+  if (recent && limit && Number(limit[1]) > 0 && Number(recent[1]) >= Number(limit[1])) return true;
+  return /"pool"\s*:\s*"freebucks"/i.test(text) && /"balance"\s*:\s*0(?![\d.])/.test(text);
+}
+
+/** Retry-After for a spent pool: the header, else the body's reset, else one hour. */
+function exhaustedRetryAfter(detail, header, now = Date.now()) {
+  if (header) return header;
+  const relative = Number(/"retryAfterMs"\s*:\s*(\d+)/.exec(detail)?.[1]);
+  const absolute = Date.parse(/"resetAt"\s*:\s*"([^"]+)"/.exec(detail)?.[1] || "") - now;
+  const ms = [relative, absolute].find((value) => value > 0) ?? DEFAULT_EXHAUSTED_RESET_MS;
+  return String(Math.ceil(Math.min(ms, MAX_RATE_LIMIT_COOLDOWN_MS) / 1000));
+}
+
 /**
  * Credential / quota error mapping shared by session, run and chat failures.
  * 401/403 -> 401 authentication_error (re-login required), 429 -> 429
@@ -73,12 +99,23 @@ export function mapFreebuffError(status, detail, stage = "request") {
       message: `Freebuff rejected the auth token at ${stage}; sign in to Freebuff again.${text ? ` (${text})` : ""}`,
     };
   }
+  if (isFreebucksExhausted(status, detail)) {
+    // `insufficient_quota` is what marks the evidence as exhaustion, not a throttle.
+    return {
+      status: 429,
+      type: "rate_limit_error",
+      code: "insufficient_quota",
+      message: `Freebuff Freebucks are exhausted at ${stage}.`,
+    };
+  }
   if (status === 429) {
     return {
       status: 429,
       type: "rate_limit_error",
       code: "freebuff_rate_limited",
-      message: `Freebuff session, ad or usage limit reached at ${stage}.${text ? ` (${text})` : ""}`,
+      // No upstream text and no quota wording: the shared 429 parser would read
+      // either as a spent quota, which only Freebucks evidence may claim.
+      message: `Freebuff rate limit reached at ${stage}.`,
     };
   }
   return {
@@ -87,6 +124,12 @@ export function mapFreebuffError(status, detail, stage = "request") {
     code: `freebuff_http_${status}`,
     message: `Freebuff ${stage} failed (${status})${text ? `: ${text}` : ""}`,
   };
+}
+
+function upstreamErrorResult(res, detail, stage, extra) {
+  const info = mapFreebuffError(res.status, detail, stage);
+  const header = res.headers.get("retry-after");
+  return errorResult(info, extra, info.code === "insufficient_quota" ? exhaustedRetryAfter(detail, header) : header);
 }
 
 function errorResult(info, extra = {}, retryAfter = null) {
@@ -209,7 +252,7 @@ export class FreebuffExecutor extends BaseExecutor {
         instanceId = isString(data.instanceId) ? data.instanceId : "";
       } else {
         const text = res.ok ? "" : await res.text().catch(() => "");
-        return errorResult(mapFreebuffError(res.status, text, "session"), { transformedBody: payload }, res.headers.get("retry-after"));
+        return upstreamErrorResult(res, text, "session", { transformedBody: payload });
       }
     } catch (error) {
       if (signal?.aborted) throw error;
@@ -285,7 +328,7 @@ export class FreebuffExecutor extends BaseExecutor {
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      const failed = errorResult(mapFreebuffError(response.status, text, "chat"), { transformedBody: upstreamBody }, response.headers.get("retry-after"));
+      const failed = upstreamErrorResult(response, text, "chat", { transformedBody: upstreamBody });
       transferProviderAttemptDispatch(response, failed.response);
       return { ...failed, attemptStartedAt: sender.attemptStartedAt };
     }

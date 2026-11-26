@@ -730,9 +730,7 @@ export default function ProviderDetailSections({ addConnectionError, allSelected
 
           })()}
         </div>
-        {!!modelsTestError &&
-        <p className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
-        }
+        <p role="status" aria-live="polite" className="text-xs text-dd-danger mb-3 break-words">{modelsTestError}</p>
         {!!modelsTestMessage &&
         <p className="text-xs text-dd-success mb-3 break-words">{modelsTestMessage}</p>
         }

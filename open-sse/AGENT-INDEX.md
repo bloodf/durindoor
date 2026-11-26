@@ -463,6 +463,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tortoise` |  | freeTier | `` |
 | `trae` | openai | oauth | `https://core-normal.trae.ai/api/remote/v1` |
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
+| `trustedrouter` | openai | apikey | `https://api.trustedrouter.com/v1/chat/completions` |
 | `twinmind` | openai | apikey | `https://api2.twinmind.com/api/v3` |
 | `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |

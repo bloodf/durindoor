@@ -1,4 +1,5 @@
 import { FILTERS } from "../../suggested-models/filters.js";
+import { parseTrustedRouterModels } from "open-sse/providers/trustedrouterCatalog.js";
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
 import geminiInteractions, { GEMINI_MODELS_URL } from "open-sse/providers/registry/gemini-interactions.js";
@@ -442,6 +443,7 @@ export const PROVIDER_MODELS_CONFIG = {
     parseResponse: chatPlaygroundCatalog,
   },
   empiriolabs: { ...createOpenAIModelsConfig("https://api.empiriolabs.ai/v1/models?available=true"), parseResponse: parseEmpirioLabsChatModels },
+  trustedrouter: { ...createOpenAIModelsConfig("https://api.trustedrouter.com/v1/models"), apiKeyOnly: true, redirect: "manual", parseResponse: parseTrustedRouterModels },
   "opencode-server": { customResolver: (connection) => fetchOpenCodeServerModels(connection) },
   replicate: {
     url: "https://api.replicate.com/v1/models/meta/meta-llama-3-70b-instruct",

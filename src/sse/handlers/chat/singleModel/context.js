@@ -116,6 +116,21 @@ export async function createLoopState(ctx) {
   };
 }
 
+/** The request scope every account selection for this request runs under. */
+export function accountSelectionOptions(ctx, state) {
+  return {
+    connectionRecovery: true,
+    signal: ctx.requestSignal,
+    modelCandidates: state.modelCandidates,
+    healthModel: state.upstreamModel || ctx.model,
+    quotaFamily: state.quotaFamily,
+    resourceKeys: state.quotaResourceKeys,
+    apiKeyId: ctx.apiKeyId,
+    allowedConnectionIds: ctx.comboRouting?.allowedConnectionIds || null,
+    restrictionApplied: ctx.comboRouting?.restrictionApplied === true
+  };
+}
+
 export function proxyOptionsFromCredentials(credentials) {
   const config = credentials?.providerSpecificData || {};
   return {

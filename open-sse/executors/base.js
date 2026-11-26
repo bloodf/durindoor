@@ -282,7 +282,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null, accountFailoverAvailable = false }) {
     if (signal?.aborted) throw requestAbortError(signal.reason);
     // Callers (direct execute() calls, tests) may omit requestContext entirely.
     // Allocate a fresh per-call object so executor request-scoped metadata
@@ -361,6 +361,8 @@ export class BaseExecutor {
     // Schedule retry via resolveAttempts. Returns true when caller should `urlIndex--; continue`
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
+      // The caller has another account ready, so a 503 goes back to it unretried.
+      if (accountFailoverAvailable && response?.status === HTTP_STATUS.SERVICE_UNAVAILABLE) return false;
       const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
       if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts || !transportBudgetLeft(urlIndex)) return false;
       const matchedRule = skipRules ?

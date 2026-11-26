@@ -348,7 +348,8 @@ export class AntigravityExecutor extends BaseExecutor {
     const finalBody = result.transformedBody;
     if (!wantsGeminiLongDecode(this.provider, finalBody?.model || options.model, finalBody?.request?.generationConfig)) return result;
     const nextHop = async (continuationToken) =>
-      (await super.execute({ ...options, body: { ...options.body, request: { ...options.body?.request, continuationToken } } })).response;
+      // A continuation hop cannot change account, so it keeps its in-place retries.
+      (await super.execute({ ...options, accountFailoverAvailable: false, body: { ...options.body, request: { ...options.body?.request, continuationToken } } })).response;
     return withGeminiLongDecode(result, { stream: options.stream, nextHop, signal: options.signal, log: options.log });
   }
   buildUrl(model, stream, urlIndex = 0) {

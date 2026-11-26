@@ -56,6 +56,23 @@ export function normalizeProviderId(provider) {
   return providerByName?.id || trimmed;
 }
 
+const hasText = (value) => isString(value) && value.trim() !== "";
+
+/**
+ * Why a new Azure connection could never reach the operator's resource, or null.
+ * With no endpoint, `azure-openai` falls back to the registry's example host and
+ * `azure` to api.openai.com, so the Azure key would go to the wrong host. `azure`
+ * also accepts the AZURE_ENDPOINT fallback its executor reads (OmniRoute #20103).
+ * Takes normalized providerSpecificData.
+ * @returns {string|null}
+ */
+export function missingAzureEndpointError(provider, providerSpecificData, env = process.env) {
+  const field = provider === "azure-openai" ? "baseUrl" : provider === "azure" ? "azureEndpoint" : null;
+  if (!field || hasText(providerSpecificData?.[field])) return null;
+  if (provider === "azure" && hasText(env.AZURE_ENDPOINT)) return null;
+  return `Azure OpenAI resource endpoint is required (providerSpecificData.${field})`;
+}
+
 export function normalizeProviderSpecificData(provider, body = {}, providerSpecificData = null) {
   const next = providerSpecificData && isObject(providerSpecificData) ?
   { ...providerSpecificData } :

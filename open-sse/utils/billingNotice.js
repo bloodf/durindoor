@@ -2,12 +2,12 @@
 // upstream can answer HTTP 200 and deliver its billing refusal as ordinary text
 // deltas. It shares the classifier's provider allowlist, because the text must
 // be held until the stream ends before it can be judged.
-import { classifyFakeSuccessBody, isFakeSuccessBodyAllowlistedProvider } from "../services/fakeSuccessBodyClassifier.js";
+import { isFakeSuccessBodyAllowlistedProvider } from "../services/fakeSuccessBodyClassifier.js";
 import { textOnlyDelta } from "./unavailableNotice.js";
 
 const EXHAUSTION_PATTERN =
-  /\b(enough\s+credits?|not\s+enough\s+credits?|please\s+top\s+up|top\s+up\s+to\s+continue|purchase\s+(more\s+)?credits?|add\s+credits?\s+to\s+continue|credit\s+balance\s+(is\s+)?(too\s+low|exhausted|empty)|recharge\s+(your|the)\s+account|out\s+of\s+funds)\b/i;
-// A masked notice is a short canned message; longer text is a real answer.
+  /\b((?:not|doesn't\s+have|does\s+not\s+have)\s+enough\s+credits?|insufficient\s+(?:credits?|(?:account\s+|credit\s+)?balance)|please\s+top\s+up|top\s+up\s+to\s+continue|purchase\s+(more\s+)?credits?|add\s+credits?\s+to\s+continue|credit\s+balance\s+(is\s+)?(too\s+low|exhausted|empty)|recharge\s+(your|the)\s+account|out\s+of\s+funds)\b/gi;
+// A masked notice is short, and its refusal phrases occupy a meaningful share.
 const NOTICE_MAX_CHARS = 512;
 
 /** True when the provider itself counted output tokens. Gateway estimates do not count. */
@@ -46,7 +46,10 @@ export function createBillingNoticeGate(provider) {
     },
     notice() {
       if (!this.holding) return null;
-      return EXHAUSTION_PATTERN.test(text) || classifyFakeSuccessBody(text, provider) ? text : null;
+      const trimmed = text.trim();
+      const matches = [...trimmed.matchAll(EXHAUSTION_PATTERN)];
+      const phraseLength = matches.reduce((total, match) => total + match[0].length, 0);
+      return phraseLength / trimmed.length >= 0.2 ? text : null;
     }
   };
 }

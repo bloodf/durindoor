@@ -2,6 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
+import { resolveSearchBaseUrl } from "open-sse/handlers/search/baseUrl.js";
 import { getProviderConnectionById, getProviderNodeById } from "@/lib/localDb";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
@@ -100,6 +101,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   if (cfg.authType === "none") return true; // no-auth (e.g. searxng)
 
   let url = cfg.baseUrl;
+  let transport = fetch;
   const headers = { "Content-Type": "application/json" };
   let body;
 
@@ -110,6 +112,13 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     case "x-subscription-token":headers["x-subscription-token"] = apiKey;break;
     case "key":{
         const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
+        // Probe the destination the search handler calls: a base URL saved on the connection wins,
+        // behind the same public-only guard.
+        const { baseUrl, source } = resolveSearchBaseUrl(cfg, { providerSpecificData });
+        if (source === "operator") {
+          url = baseUrl;
+          transport = (target, init) => guardedProbeFetch(target, init, "public-only");
+        }
         url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
         break;
       }
@@ -123,7 +132,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
 
   const options = { method: cfg.method, headers, body };
   if (cfg.preventRedirects) options.redirect = "error";
-  const res = await fetchValidationProbe(url, options);
+  const res = await fetchValidationProbe(url, options, transport);
   return res.ok || provider === "parallel" && res.status === 422;
 }
 
@@ -551,7 +560,13 @@ export async function POST(request) {
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)
-      const webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
+      let webResult;
+      try {
+        webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
+      } catch (err) {
+        if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+        throw err;
+      }
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,

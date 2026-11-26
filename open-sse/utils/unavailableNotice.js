@@ -60,7 +60,7 @@ function couldBecomeNotice(text) {
 }
 
 /** The text of a frame that carries visible text and nothing else, otherwise null. */
-function textOnlyDelta(frame) {
+export function textOnlyDelta(frame) {
   const delta = frame.choices?.[0]?.delta;
   if (delta) {
     const other = delta.reasoning_content || delta.reasoning || delta.tool_calls?.length || delta.function_call;

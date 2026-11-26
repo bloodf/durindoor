@@ -14,6 +14,7 @@ import { isLocalStreamLifecycleError, isRequestScopedStreamError } from "../util
 import { hasTokenLimitCompletion } from "../utils/streamTerminal.js";
 import { peekStreamForContent } from "../utils/streamContentPeek.js";
 import { isUnavailableNotice } from "../utils/unavailableNotice.js";
+import { resolveProviderId } from "../../src/shared/constants/providers.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
@@ -1803,12 +1804,12 @@ export async function handleComboChat({
         }
 
         // OmniRoute #21066: a 200 saying the model is gone is a failed member.
-        const failOverNotice = (notice) => {
+        const failOverNotice = (notice, status = HTTP_STATUS.GONE, kind = "an unavailable") => {
           const message = sanitizeErrorMessage(notice).slice(0, 300);
-          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.GONE);
+          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, status);
           releaseFailedAffinity(modelStr, i);
-          recordFailure(HTTP_STATUS.GONE, message);
-          log.warn("COMBO", `Model ${modelStr} answered 200 with an unavailable notice, trying next`);
+          recordFailure(status, message);
+          log.warn("COMBO", `Model ${modelStr} answered 200 with ${kind} notice, trying next`);
         };
         const jsonNotice = await detectUnavailableNotice(result);
         if (jsonNotice) {
@@ -1819,10 +1820,15 @@ export async function handleComboChat({
         let successfulResult = result;
         const contentType = (result.headers?.get?.("content-type") || "").toLowerCase();
         if (contentType.includes(SSE_CONTENT_TYPE)) {
-          const { hasContent, body: replayBody, streamError, notice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true, releaseOnProgress: true });
+          const { hasContent, body: replayBody, streamError, notice, billingNotice } = await peekStreamForContent(result, undefined, { detectUnavailableNotice: true, releaseOnProgress: true, billingNoticeProvider: resolveProviderId(splitModelString(modelStr).provider) });
           if (notice) {
             replayBody?.cancel("combo member reported itself unavailable").catch(() => {});
             failOverNotice(notice);
+            continue;
+          }
+          if (billingNotice) {
+            replayBody?.cancel("combo member answered with a billing notice").catch(() => {});
+            failOverNotice(billingNotice, HTTP_STATUS.PAYMENT_REQUIRED, "a billing");
             continue;
           }
           if (!hasContent && result.claudeFast === true) {

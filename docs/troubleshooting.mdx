@@ -83,6 +83,8 @@ Wait for the reset shown on **Usage** or **Quota Tracker**, honor `Retry-After`,
 
 A known upstream retry hint is passed through; otherwise a rate-limit response can advertise exponential backoff. Billing exhaustion still cools the account but omits `Retry-After`. Verify the reset or capacity before retrying. See [Quota tracking](./features/quota-tracking.mdx).
 
+A connection whose saved base URL names a loopback or private-network host is benched for at most 5 seconds after HTTP `408`, `429` or `5xx`. It ignores longer reset hints and does not climb the backoff ladder. A retry delay you configure for the provider still applies.
+
 When eligible accounts are all rate-limited, chat preserves HTTP 429 and uses the earliest known availability for the requested model if every account has a known reset. When a combo exhausts its fallbacks, it can report the earliest valid retry hint from its retryable members. It accepts delay-seconds, HTTP dates, and existing JSON reset timestamps.
 
 ## Request aborted

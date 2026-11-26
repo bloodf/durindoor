@@ -13,9 +13,9 @@ describe("website browser validation", () => {
     expect(job).toMatch(/name: Build website[\s\S]*?working-directory: website[\s\S]*?run: pnpm run build[\s\S]*?name: Install Chromium[\s\S]*?working-directory: website[\s\S]*?run: pnpm exec playwright install --with-deps chromium[\s\S]*?name: Run website browser suites[\s\S]*?working-directory: website[\s\S]*?run: pnpm exec playwright test/);
   });
 
-  it("runs the browser script under the local website condition and reports missing browsers", () => {
+  it("runs sharded browser suites under the local website condition and reports missing browsers", () => {
     const local = read("scripts/local-ci.mjs");
-    expect(local).toMatch(/if \(!websiteRun\)[\s\S]*?else \{[\s\S]*?website-build[\s\S]*?website-browser-suites[\s\S]*?test:browser[\s\S]*?await job\("website-build", websiteSteps\)/);
+    expect(local).toMatch(/if \(!websiteRun\)[\s\S]*?else \{[\s\S]*?website-build[\s\S]*?websiteBrowserInventoryCommand[\s\S]*?selectWebsiteBrowserShards[\s\S]*?websiteBrowserShardCommands[\s\S]*?verifyWebsiteBrowserCoverage/);
     expect(local).toContain("browser suites skipped: no browser");
     expect(JSON.parse(read("website/package.json")).scripts["test:browser"]).toBe("playwright test");
   });

@@ -190,6 +190,7 @@ function resolveFormat(targetFormat, model, provider, caps = null) {
   if (transportFmt) return transportFmt;
   const providerFmt = provider ? PROVIDERS[provider]?.thinkingFormat : null;
   if (providerFmt) return providerFmt;
+  if (resolvedCaps.thinkingLevelsUnknown && targetFormat === FORMATS.OPENAI_RESPONSES) return "openai-responses";
   if (resolvedCaps.thinkingFormat) return resolvedCaps.thinkingFormat;
   return FORMAT_TO_NATIVE[targetFormat] || "openai";
 }
@@ -435,6 +436,7 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
   if (!level) return level;
   // Adaptive intent must resolve to an OpenAI wire effort.
   if (level === "auto") level = "high";
+  if (caps?.thinkingLevelsUnknown) return level;
   const allowed = caps ? getThinkingLevelsFromCapabilities(caps, provider, model) : getThinkingLevels(provider, model);
   if (Array.isArray(allowed)) {
     if (allowed.includes(level)) return level;

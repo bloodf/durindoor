@@ -204,6 +204,7 @@ export function getThinkingLevels(provider, model) {
  */
 export function getThinkingLevelsFromCapabilities(caps, provider = null, model = null) {
   if (!caps || !caps.reasoning) return null;
+  if (caps.thinkingLevelsUnknown) return null;
   const modelId = model || "";
   const hit = PATTERN_THINKING.find((p) =>
     (!p.provider || p.provider === provider) && matchPattern(p.pattern, modelId));

@@ -83,8 +83,10 @@ async function connectViaHttpProxy(proxyUrl, targetHost, targetPort, timeoutMs, 
     const options = { host: proxyHost, port: proxyPort };
     // IP literals have no SNI; keep host set so TLS verifies the certificate
     // against the IP. DNS names retain SNI and normal certificate verification.
+    const proxyTlsOptions = { ...options, ALPNProtocols: ["http/1.1"] };
+    if (!net.isIP(proxyHost)) proxyTlsOptions.servername = proxyHost;
     const socket = proxy.protocol === "https:"
-      ? tls.connect({ ...options, ...(net.isIP(proxyHost) ? {} : { servername: proxyHost }), ALPNProtocols: ["http/1.1"] })
+      ? tls.connect(proxyTlsOptions)
       : net.connect(options);
     let settled = false;
     let buf = Buffer.alloc(0);
@@ -197,7 +199,9 @@ async function createProxiedTlsSocket(proxyUrl, targetHost, targetPort, timeoutM
   return new Promise((resolve, reject) => {
     let tlsSocket;
     try {
-      tlsSocket = tls.connect({ socket: plain, host: targetHost, ...(net.isIP(targetHost) ? {} : { servername: targetHost }), ALPNProtocols: ["h2"] });
+      const options = { socket: plain, host: targetHost, ALPNProtocols: ["h2"] };
+      if (!net.isIP(targetHost)) options.servername = targetHost;
+      tlsSocket = tls.connect(options);
     } catch (error) {
       plain.destroy();
       reject(error);

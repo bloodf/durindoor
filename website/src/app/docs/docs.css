@@ -163,11 +163,22 @@
 .dd-docs a {
   text-underline-offset: 4px;
 }
+/* Theme swaps must not animate. A color transition interpolates between the
+   parchment and forest palettes, so for ~160ms the #nd-subnav "DurinDoor"
+   link painted mid-blend grey (#5a605a / #5d635d) on a mid-blend surface
+   (#18231c / #131e17): 2.2-2.8:1, below WCAG AA 4.5:1 in either theme. Both
+   endpoints pass (light #242e28 on #efede6, dark #eeeae4 on #111d16), so the
+   fix is to never show the blend: color transitions run only while a control
+   is hovered or keyboard-focused, and everything else, including Fumadocs
+   `transition-colors` chrome such as #nd-subnav, switches palettes at once. */
 .dd-docs :is(a, button) {
   transition:
     color 160ms ease,
     background-color 160ms ease,
     border-color 160ms ease;
+}
+.dd-docs :is(a, button, .transition-colors):not(:hover, :focus-visible) {
+  transition: none;
 }
 .dd-docs #nd-sidebar {
   background: var(--dd-surface);

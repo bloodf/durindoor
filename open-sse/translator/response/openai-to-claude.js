@@ -441,6 +441,7 @@ export function openaiToClaudeResponse(chunk, state) {
 
   // Tool calls
   if (delta?.tool_calls?.length) {
+    state.claudeSawToolCalls = true;
     // Release text held for a possible think tag before opening a tool block.
     const pending = flushInlineThinking(state);
     emitThinking(pending.reasoning, state, results);

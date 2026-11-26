@@ -9,7 +9,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { isClaudeModel } from "../../providers/models/helpers.js";
 import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
-import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 import { flattenRootCombinators, toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
@@ -145,6 +145,29 @@ function markLastCacheableBlock(msg, cacheControl) {
     return true;
   }
   return false;
+}
+
+/**
+ * Own each message and its content blocks. A combo shares them with its other
+ * targets, and the cache-marker and thinking passes write into blocks. Nested
+ * values are not copied: those passes replace them.
+ */
+function ownContentBlocks(message) {
+  const copyBlock = (block) => isRecord(block) ? { ...block } : block;
+  if (!isRecord(message)) return message;
+  const { content } = message;
+  if (Array.isArray(content)) return { ...message, content: content.map(copyBlock) };
+  return { ...message, content: copyBlock(content) };
+}
+
+/**
+ * A lifted instruction turn leaves messages[], so its `output_config` moves to
+ * the top-level parameter. An explicit top-level value wins.
+ */
+function liftOutputConfig(body, message) {
+  if (body.output_config == null && isRecord(message.output_config)) {
+    body.output_config = message.output_config;
+  }
 }
 
 /** Wrap a client-supplied single content block without changing its data. */
@@ -758,6 +781,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           continue;
         }
         buffered.push(...blocks.filter((block) => USER_SYSTEM_FOLDABLE_BLOCKS.has(block?.type)));
+        liftOutputConfig(body, msg);
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
@@ -772,6 +796,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       messages.push(msg);
     }
     if (!foldSystemTurns) {
+      for (const message of messages) {
+        if (isInstructionRole(message.role)) liftOutputConfig(body, message);
+      }
       const hoisted = messages.
       filter((m) => isInstructionRole(m.role)).
       flatMap((m) => Array.isArray(m.content) ?
@@ -945,6 +972,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       while (lines.length && isIdentity(lines[0])) lines.shift();
       if (lines.length) body.system = lines.join("\n"); else delete body.system;
     } else if (Array.isArray(body.system)) {
+      body.system = [...body.system];
       while (body.system.length && isIdentity(body.system[0]?.text)) body.system.shift();
       if (!body.system.length) delete body.system;
     }
@@ -976,7 +1004,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 2. Messages: process in optimized passes
   if (body.messages && Array.isArray(body.messages)) {
     const clientRole = clientLastRole ?? body.messages.at(-1)?.role;
-    body.messages = removeNamelessToolHistory(body.messages);
+    body.messages = removeNamelessToolHistory(body.messages.map(ownContentBlocks));
     // Before pass 1 so a hoisted marker obeys the same message-marker policy as any other.
     if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
     // Preserved client markers keep their own order, so a 1h breakpoint is not

@@ -71,4 +71,28 @@ describe("OmniRoute #20105 - safer Codex settings writes", () => {
 
     expect((await fsp.stat(file("durindoor-models.json"))).mtime).toEqual(longAgo);
   });
+
+  it("restores the earlier files when the auth write fails", async () => {
+    await fsp.writeFile(file("config.toml"), 'model = "mine"\n');
+    await fsp.writeFile(file("auth.json"), '{"tokens":{}}');
+    await fsp.writeFile(file("durindoor-models.json"), "old catalog");
+    failPublishing("auth.json");
+
+    const response = await apply();
+
+    expect(response.status).toBe(500);
+    expect(await read("config.toml")).toBe('model = "mine"\n');
+    expect(await read("auth.json")).toBe('{"tokens":{}}');
+    expect(await read("durindoor-models.json")).toBe("old catalog");
+    expect(fs.existsSync(file(".durindoor-backup.json"))).toBe(false);
+  });
+
+  it("removes files it created when a later write fails", async () => {
+    failPublishing("auth.json");
+
+    expect((await apply()).status).toBe(500);
+    for (const name of ["config.toml", "durindoor-models.json", ".durindoor-backup.json"]) {
+      expect(fs.existsSync(file(name))).toBe(false);
+    }
+  });
 });

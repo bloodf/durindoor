@@ -11,6 +11,7 @@ import os from "os";
 import { parseTOML, stringifyTOML } from "confbox";
 import { isObject, isRecord } from "../../../../shared/utils/typeChecks.js";
 import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { createFileTransaction } from "@/lib/cliTools/fileTransaction";
 import { buildCodexModelCatalog, loadBundledCodexCatalog } from "@/lib/cliTools/codexModelCatalog";
 import { redactSecrets } from "@/shared/utils/secretRedaction";
 
@@ -89,7 +90,7 @@ const deleteNestedSection = (obj, dottedKey) => {
 // Write the DurinDoor model catalog so Codex's /model picker lists routable
 // (prefixed) ids instead of bare bundled slugs. Fail-open: returns a warning
 // instead of throwing so Apply still succeeds without the catalog.
-const writeModelCatalog = async (selectedModels) => {
+const writeModelCatalog = async (selectedModels, files) => {
   let bundled;
   try {
     bundled = await loadBundledCodexCatalog();
@@ -128,7 +129,7 @@ const writeModelCatalog = async (selectedModels) => {
     const content = JSON.stringify(catalog);
     const current = await fs.readFile(catalogPath, "utf-8").catch(() => null);
     // An equal catalog is left untouched; a new one replaces the old by rename.
-    if (current !== content) await writeConfigAtomic(catalogPath, content);
+    if (current !== content) await files.write(catalogPath, content);
   } catch (error) {
     console.log("Could not write Codex model catalog:", error.message);
     return { warning: "Could not write Codex model catalog; /model picker was not updated" };
@@ -206,6 +207,7 @@ export async function GET() {
 
 // POST - Update DurinDoor settings (merge with existing config)
 export async function POST(request) {
+  const files = createFileTransaction();
   try {
     const { baseUrl, apiKey, model, subagentModel } = await request.json();
 
@@ -266,7 +268,7 @@ export async function POST(request) {
     );
 
     // Point Codex at the DurinDoor catalog; leave any previous value alone on failure
-    const catalog = await writeModelCatalog([model, subagentModel]);
+    const catalog = await writeModelCatalog([model, subagentModel], files);
     const writtenCatalogPath = catalog.catalogPath ?? existingBackup?.written?.model_catalog_json;
 
     const written = {
@@ -307,14 +309,15 @@ export async function POST(request) {
     });
 
     // Persist backup first, then write the merged config.toml and auth.json
-    await fs.writeFile(backupPath, JSON.stringify(nextBackup, null, 2), { mode: 0o600 });
+    await files.write(backupPath, JSON.stringify(nextBackup, null, 2), (target, content) =>
+      fs.writeFile(target, content, { mode: 0o600 }));
     const configContent = stringifyTOML(parsed);
-    await writeConfigAtomic(configPath, configContent);
+    await files.write(configPath, configContent);
 
     // Force apikey mode (keep existing tokens untouched for ChatGPT login reuse)
     authData.OPENAI_API_KEY = apiKey;
     authData.auth_mode = "apikey";
-    await writeConfigAtomic(authPath, JSON.stringify(authData, null, 2));
+    await files.write(authPath, JSON.stringify(authData, null, 2));
 
     return NextResponse.json({
       success: true,
@@ -326,6 +329,7 @@ export async function POST(request) {
     });
   } catch (error) {
     console.log("Error updating codex settings:", error);
+    await files.rollback();
     const refusedToClobber = String(error?.message || "").includes("refusing to overwrite it");
     return NextResponse.json(
       { error: refusedToClobber ? error.message : "Failed to update codex settings" },

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
-import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { assertWriterOwnsTarget, readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 
@@ -60,7 +60,7 @@ export async function GET() {
     });
   } catch (error) {
     console.log("Error checking kilo settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to check kilo settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to check kilo settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }
 
@@ -83,6 +83,8 @@ export async function POST(request) {
       model,
     };
     await readJson(getVscodeSettingsPath());
+    // Refuse a foreign target before changing either settings file.
+    await Promise.all([getAuthPath(), getVscodeSettingsPath()].map(assertWriterOwnsTarget));
     await writeConfigAtomic(getAuthPath(), JSON.stringify(auth, null, 2));
 
     // Best-effort: update VS Code extension settings
@@ -96,7 +98,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true, message: "Kilo Code settings applied successfully!", authPath: getAuthPath() });
   } catch (error) {
     console.log("Error updating kilo settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to update kilo settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to update kilo settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }
 
@@ -109,6 +111,8 @@ export async function DELETE() {
     delete auth["openai-compatible"];
     delete auth["9router"];
     await readJson(getVscodeSettingsPath());
+    // Refuse a foreign target before changing either settings file.
+    await Promise.all([getAuthPath(), getVscodeSettingsPath()].map(assertWriterOwnsTarget));
     await writeConfigAtomic(getAuthPath(), JSON.stringify(auth, null, 2));
 
     try {
@@ -123,6 +127,6 @@ export async function DELETE() {
     return NextResponse.json({ success: true, message: "DurinDoor settings removed from Kilo Code" });
   } catch (error) {
     console.log("Error resetting kilo settings:", error);
-    return NextResponse.json({ error: error?.code === "CLI_CONFIG_PARSE_ERROR" ? error.message : "Failed to reset kilo settings" }, { status: error?.code === "CLI_CONFIG_PARSE_ERROR" ? 409 : 500 });
+    return NextResponse.json({ error: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? error.message : "Failed to reset kilo settings" }, { status: ["CLI_CONFIG_PARSE_ERROR", "CLI_CONFIG_FOREIGN_OWNER"].includes(error?.code) ? 409 : 500 });
   }
 }

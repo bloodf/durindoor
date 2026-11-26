@@ -685,7 +685,7 @@ export function resolveWebSocketProxyRoute(wsUrl, proxyOptions = null) {
   return { enabled: Boolean(url), url: url || "", strict: proxyOptions?.strictProxy === true };
 }
 
-function stripIpv6Brackets(hostname) {
+export function stripIpv6Brackets(hostname) {
   return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
 }
 

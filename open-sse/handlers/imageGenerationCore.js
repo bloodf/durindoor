@@ -80,7 +80,7 @@ function imageFailureMessage(body) {
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
- * @param {function} [options.onStreamComplete] - Awaited once with ({status, accounting, error}, response).
+ * @param {function} [options.onStreamComplete] - Awaited once with ({status, statusCode, accounting, error}, response); statusCode carries a classified terminal provider failure.
  * Codex completion resolves (never rejects) after this callback and upstream cleanup.
  * Status is success, failure, or abort; only success has complete accounting.
  * Callback rejection resolves failure with failed accounting and a client error event.

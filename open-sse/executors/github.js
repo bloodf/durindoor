@@ -1,4 +1,5 @@
 import { BaseExecutor, waitForRetryDelay } from "./base.js";
+import { normalizeGithubChatStream } from "./githubChatStream.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { PROVIDERS } from "../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT } from "../config/appConstants.js";
@@ -368,6 +369,9 @@ export class GithubExecutor extends BaseExecutor {
       }
     }
 
+    if (options.stream && result.response.ok && result.response.body) {
+      result.response = normalizeGithubChatStream(result.response);
+    }
     return result;
   }
 

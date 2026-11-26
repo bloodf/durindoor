@@ -9,6 +9,7 @@ import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from
 import { getOpenAICompatibleType } from "../services/provider.js";
 import { findOffendingField, findRejected422Field, findRejectedMessageField, stripAssistantMessageFields } from "../config/providerFieldStrips.js";
 import { parseRateLimitEvidence, readBoundedResponseText } from "../utils/error.js";
+import { isRetryableThrownError } from "../utils/thrownErrorRetry.js";
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
@@ -675,6 +676,13 @@ export class BaseExecutor {
           timeout.antigravityPreResponseTimeout = true;
           timeout.providerAttemptStartedAt = sender.attemptStartedAt;
           throw timeout;
+        }
+
+        // A programming error repeats on every send and URL, and says nothing
+        // about the transport, so it surfaces untagged (OmniRoute #20416).
+        if (!isConnectTimeout && !isRetryableThrownError(error)) {
+          error.providerAttemptStartedAt = sender.attemptStartedAt;
+          throw error;
         }
 
         // connect_timeout / network → retryable per resolveAttempts (default: connect_timeout=0 retries)

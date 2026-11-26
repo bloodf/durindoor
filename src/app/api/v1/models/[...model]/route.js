@@ -6,6 +6,7 @@ import { buildModelsResponse } from "../_shared.js";
 import { headOkResponse, headNotFoundResponse } from "open-sse/translator/validate.js";
 import { getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { filterModelsForRequest, getRequestModelDiscoveryOptions } from "@/sse/services/modelAccess.js";
+import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -62,6 +63,18 @@ function modelNotFoundResponse(model) {
   );
 }
 
+// A static registry check: it needs no database, so a mistyped kind stays cheap.
+function isRegistryModelId(id) {
+  return Object.values(PROVIDER_MODELS).some((models) => models.some((model) => model.id === id));
+}
+
+/** Exact id first, then the id without its provider prefix (9router #3871). */
+function findCatalogModel(models, identifier) {
+  return models.find((candidate) => candidate.id === identifier) ||
+    (identifier.includes("/") ? undefined :
+      models.find((candidate) => candidate.id.slice(candidate.id.indexOf("/") + 1) === identifier));
+}
+
 async function OPTIONSHandler() {
   return new Response(null, {
     headers: {
@@ -73,9 +86,11 @@ async function OPTIONSHandler() {
 /**
  * GET /v1/models/{kind} - OpenAI-compatible models list filtered by capability.
  * GET /v1/models/{provider}/{model} - exact configured LLM model lookup.
+ * GET /v1/models/{model} - a registry model id without its provider prefix.
  *
- * A single unknown segment deliberately retains the legacy `Unknown model kind`
- * response. Provider-prefixed misses use OpenAI's `model_not_found` contract.
+ * A single segment that is neither a kind nor a registry model id deliberately
+ * retains the legacy `Unknown model kind` response. Other misses use OpenAI's
+ * `model_not_found` contract.
  */
 async function GETHandler(request, { params }) {
   try {
@@ -92,12 +107,12 @@ async function GETHandler(request, { params }) {
 
     // Preserve the one-segment capability-route compatibility contract. A
     // decoded slash still identifies a provider-prefixed model lookup.
-    if (path.length === 1 && !identifier.includes("/")) {
+    if (path.length === 1 && !identifier.includes("/") && !isRegistryModelId(identifier)) {
       return unknownKindResponse(identifier);
     }
 
     const models = await filterModelsForRequest(request, await buildModelsList([LLM_KIND], getProviderValidationGuard(), await getRequestModelDiscoveryOptions(request)));
-    const matchedModel = models.find((candidate) => candidate.id === identifier);
+    const matchedModel = findCatalogModel(models, identifier);
     return matchedModel ? json(matchedModel) : modelNotFoundResponse(identifier);
   } catch (error) {
     console.log("Error fetching model:", error);

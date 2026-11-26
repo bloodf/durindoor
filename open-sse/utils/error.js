@@ -335,6 +335,10 @@ function absoluteResetFromText(text, now, maxDelayMs, naiveZoneSuffix = "Z") {
   return resetAtMs;
 }
 
+// OmniRoute #20457: a compact countdown ("Resets in 76h25m43s") is relative
+// prose, not an upstream clock, so the lock writer bounds it separately.
+const RELATIVE_RESET_COUNTDOWN_RE = /\b(?:will\s+reset\s+after|resets?\s+(?:after|in))\s+(?=\d)(?:\d{1,6}h)?(?:\d{1,6}m)?(?:\d{1,6}(?:\.\d{1,9})?s)?(?![a-z0-9])/i;
+
 function durationResetFromText(text, now, maxDelayMs, { allowTryAgain = false } = {}) {
   if (!isString(text) || text.length > 64 * 1024) return null;
   const unitMs = {
@@ -427,12 +431,16 @@ export function parseRateLimitEvidence({
     resetAtMs = geminiPromptReset(bodyText, safeNow, maxDelayMs);
     if (resetAtMs) source = "quota_text";
   }
+  let relativeCountdown = false;
   if (!resetAtMs) {
     const naiveZoneSuffix = NAIVE_RESET_TIMEZONES[provider] || "Z";
-    resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs, naiveZoneSuffix) ||
-    // "try again in N" is read for ordinary cooldowns only (upstream #3612):
-    // on an exhausted quota that wording stays with the Cline-scoped parser.
-    durationResetFromText(bodyText, safeNow, maxDelayMs, { allowTryAgain: !explicitQuota });
+    resetAtMs = absoluteResetFromText(bodyText, safeNow, maxDelayMs, naiveZoneSuffix);
+    if (!resetAtMs) {
+      // "try again in N" is read for ordinary cooldowns only (upstream #3612):
+      // on an exhausted quota that wording stays with the Cline-scoped parser.
+      resetAtMs = durationResetFromText(bodyText, safeNow, maxDelayMs, { allowTryAgain: !explicitQuota });
+      relativeCountdown = Boolean(resetAtMs) && RELATIVE_RESET_COUNTDOWN_RE.test(bodyText);
+    }
     if (resetAtMs) source = "quota_text";
   }
 
@@ -443,6 +451,7 @@ export function parseRateLimitEvidence({
     if (!resetAtMs || resetAtMs < parkUntil) {
       resetAtMs = parkUntil;
       source = "structured_body";
+      relativeCountdown = false;
     }
   }
 
@@ -453,6 +462,7 @@ export function parseRateLimitEvidence({
     state: explicitQuota || dailyExhausted || creditsExhausted ? "exhausted" : "cooldown",
     resetAtMs,
     source: source || "local_policy",
+    ...(relativeCountdown ? { relativeCountdown: true } : null),
     ...(creditsExhausted ? { creditsExhausted: true } : null)
   };
 }

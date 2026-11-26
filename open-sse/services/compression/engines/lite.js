@@ -18,6 +18,7 @@
 
 import { adaptBodyForCompression } from "../bodyAdapter.js";
 import { createCompressionStats } from "../stats.js";
+import { cachedPrefixEnd } from "../../../translator/concerns/openrouterAnthropicCache.js";
 import { isBoolean, isNumber, isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 const DEFAULT_MAX_TOOL_LENGTH = 2000;
@@ -134,7 +135,19 @@ function isStructuredPayload(text) {
   return t.startsWith("{") || t.startsWith("[") || /```|~~~/.test(text);
 }
 
-function truncateToolResults(messages, maxLength) {
+/**
+ * Leading messages the provider has cached (OmniRoute #20433): everything for a
+ * top-level cache_control, else through the last marked message, else all turns
+ * before the current one. Cutting a result there once it leaves the current turn
+ * would rewrite bytes the provider already cached.
+ */
+function cachedPrefixLength(body, messages, currentTurnStart) {
+  if (body.cache_control) return messages.length;
+  const marked = cachedPrefixEnd({ messages });
+  return marked >= 0 ? marked + 1 : currentTurnStart;
+}
+
+function truncateToolResults(messages, maxLength, body, cachedPrefix) {
   // Results after the last assistant turn are what the model asked for now;
   // cutting them makes it re-read the same file forever.
   let lastAssistant = -1;
@@ -145,9 +158,10 @@ function truncateToolResults(messages, maxLength) {
     }
   }
   const currentTurnStart = lastAssistant === -1 ? messages.length : lastAssistant + 1;
+  const protectedLength = cachedPrefix ? cachedPrefixLength(body, messages, currentTurnStart) : 0;
   let applied = false;
   const out = messages.map((msg, index) => {
-    if (index >= currentTurnStart) return msg;
+    if (index < protectedLength || index >= currentTurnStart) return msg;
     if (msg?.role !== "tool" || msg.is_error === true || !isString(msg.content)) return msg;
     if (msg.content.length <= maxLength || isStructuredPayload(msg.content)) return msg;
     applied = true;
@@ -159,7 +173,8 @@ function truncateToolResults(messages, maxLength) {
 
 /**
  * @param {object} body
- * @param {{preserveSystemPrompt?: boolean, truncateToolResults?: boolean, maxToolLength?: number}} [options]
+ * @param {{preserveSystemPrompt?: boolean, truncateToolResults?: boolean, maxToolLength?: number, cachedPrefix?: boolean}} [options]
+ *   cachedPrefix: the target keeps a prompt cache, so tool-result truncation skips the cached prefix.
  */
 export function applyLiteCompression(body, options = {}) {
   if (!Array.isArray(body?.messages)) return { body, compressed: false, stats: null };
@@ -172,7 +187,7 @@ export function applyLiteCompression(body, options = {}) {
   ["system-dedup", (m) => preserveSystem ? { messages: m, applied: false } : dedupSystemPrompt(m)],
   ["tool-truncate", (m) =>
   options.truncateToolResults === true ?
-  truncateToolResults(m, resolveLiteMaxToolLength(options.maxToolLength)) :
+  truncateToolResults(m, resolveLiteMaxToolLength(options.maxToolLength), body, options.cachedPrefix === true) :
   { messages: m, applied: false }],
   ["redundant-remove", (m) => removeRedundantContent(m, preserveSystem)]];
 
@@ -222,7 +237,8 @@ export const liteEngine = {
     const result = applyLiteCompression(adapter.body, {
       preserveSystemPrompt: options?.config?.preserveSystemPrompt,
       truncateToolResults: step.truncateToolResults,
-      maxToolLength: step.maxToolLength
+      maxToolLength: step.maxToolLength,
+      cachedPrefix: options?.config?.cachedPrefix === true
     });
     return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
   },

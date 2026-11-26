@@ -28,6 +28,7 @@ import { join } from "path";
 const runtimeJoin = join.bind(null);
 import { refreshKiroToken } from "./tokenRefresh.js";
 import { createCatalogCache } from "./catalogCache.js";
+import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
 import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
@@ -319,7 +320,29 @@ export function isRefreshableKiroAuthError(err) {
  * network/HTTP error.
  */
 async function fetchKiroCatalogRaw(credentials, signal, proxyOptions = null) {
-  const profileArn = credentials?.providerSpecificData?.profileArn || "";
+  const storedArn = credentials?.providerSpecificData?.profileArn || "";
+  const sharedArn = storedArn ? "" : sharedKiroLoginProfileArn(credentials);
+  if (!sharedArn) return requestKiroCatalog(credentials, storedArn, signal, proxyOptions);
+  try {
+    return await requestKiroCatalog(credentials, sharedArn, signal, proxyOptions);
+  } catch (error) {
+    // A rejected shared ARN falls back to the origin-only call. An expired token goes to refresh.
+    if (![400, 403].includes(error.status) || isRefreshableKiroAuthError(error)) throw error;
+    return requestKiroCatalog(credentials, "", signal, proxyOptions);
+  }
+}
+
+/** The shared profile for Builder ID and GitHub/Google logins, which own none; otherwise "". */
+function sharedKiroLoginProfileArn(credentials) {
+  const psd = credentials?.providerSpecificData || {};
+  // Social logins imported from a token file keep the identity provider in `provider`.
+  const login = psd.authMethod === "imported" ? String(psd.provider || "").toLowerCase() : psd.authMethod;
+  if (!["builder-id", "google", "github"].includes(login)) return "";
+  if ((resolveKiroRegion(credentials) || KIRO_DEFAULT_REGION) !== KIRO_DEFAULT_REGION) return "";
+  return resolveDefaultProfileArn(login);
+}
+
+async function requestKiroCatalog(credentials, profileArn, signal, proxyOptions) {
   const authMethod = credentials?.providerSpecificData?.authMethod;
   const region = regionFromProfileArn(profileArn) || resolveKiroRegion(credentials) || KIRO_DEFAULT_REGION;
   const params = new URLSearchParams();

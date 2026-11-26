@@ -1,4 +1,5 @@
 import { markAccountUnavailable } from "../../../services/auth.js";
+import { hasAlternateAccount } from "../../../services/auth/alternateAccount.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { KIMI_CODING_MODELS_URL } from "open-sse/providers/shared.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -19,7 +20,7 @@ import { evaluateProviderQuotaPreflight } from "@/shared/services/providerQuotaP
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
 import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
-import { terminal, RETRY, proceed, proxyOptionsFromCredentials } from "./context.js";
+import { terminal, RETRY, proceed, proxyOptionsFromCredentials, accountSelectionOptions, MAX_ACCOUNT_ATTEMPTS_PER_REQUEST } from "./context.js";
 
 /**
  * Provider-specific branches of the single-model pipeline: Antigravity/agy
@@ -81,6 +82,31 @@ export function shouldRestartCapacitySweep(provider, state) {
   return isAntigravityProvider(provider) &&
     isAntigravityCapacityError(state.lastStatus, state.lastError) &&
     state.antigravityCapacitySweeps < ANTIGRAVITY_CAPACITY_SWEEP_RETRIES;
+}
+
+/**
+ * True when another Antigravity/agy account could take this request now. The
+ * executor then hands a 503 back at once, so the account loop moves on instead of
+ * waiting on this account (OmniRoute #20093). A pinned request or the last usable
+ * account gets false and keeps the same-account wait-and-retry.
+ */
+export async function antigravityAccountFailover(ctx, state, credentials) {
+  const { provider, model } = ctx;
+  if (!isAntigravityProvider(provider) || ctx.preferredConnectionId) return false;
+  if (state.totalAttempts >= MAX_ACCOUNT_ATTEMPTS_PER_REQUEST) return false;
+  const attemptLimit = allowedAttemptsPerConnection(provider);
+  const spent = [...state.attemptCounts].filter(([, count]) => count >= attemptLimit).map(([id]) => id);
+  try {
+    return await hasAlternateAccount(
+      provider,
+      new Set([...state.excludeConnectionIds, ...spent, credentials.connectionId]),
+      model,
+      accountSelectionOptions(ctx, state)
+    );
+  } catch {
+    log.warn("CHAT", `[${provider}/${model}] alternate account check failed; keeping same-account retries`);
+    return false;
+  }
 }
 
 export function antigravityPreResponseTimeout(provider, result) {

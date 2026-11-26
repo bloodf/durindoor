@@ -503,6 +503,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     let availableConnections = eligibleBeforeRpm.filter(
       (connection) => !isOverLimit(connection.id, rpmLimit, selectionNow)
     );
+    // `probeOnly` asks whether any stored account could serve this request now. It
+    // never picks one, so no row is stamped or counted. Nothing left: stop before the warnings.
+    if (options?.probeOnly && availableConnections.length === 0) return { alternateAvailable: false };
 
     log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
     connections.forEach((c) => {
@@ -655,6 +658,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (!availableConnections.length) return { connectionRecoveryBusy: true };
       if (quotaRankedEligible) quotaRankedEligible = quotaRankedEligible.filter((candidate) => availableConnections.includes(candidate.value));
     }
+
+    // Every filter has run; a probe stops before the pick stamps or counts a row.
+    if (options?.probeOnly) return { alternateAvailable: availableConnections.length > 0 };
 
     let connection;
     // For round-robin, honor existing session affinity before quota ranking so

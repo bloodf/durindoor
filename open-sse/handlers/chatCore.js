@@ -354,7 +354,7 @@ async function cancelResponseBody(response) {
  * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountFailoverAvailable = false }) {
   const sourceFormat = sourceFormatOverride || detectFormat(body);
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
@@ -1443,7 +1443,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     if (Number.isSafeInteger(allocated) && allocated > 0) latestProviderAttemptStartedAt = allocated;
     return latestProviderAttemptStartedAt;
   };
-  const executeProvider = async () => {
+  const executeProvider = async ({ canChangeAccount = true } = {}) => {
     if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
     const initialAttempt = beginProviderAttempt();
     try {
@@ -1462,6 +1462,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         requestContext,
         attemptStartedAt: initialAttempt,
         onProviderAttempt: beginProviderAttempt,
+        accountFailoverAvailable: canChangeAccount && accountFailoverAvailable,
         // Executors that rotate a stored credential mid-request (chatgpt-web's
         // session cookie) report it here; the caller decides what to persist.
         onCredentialsRefreshed
@@ -1871,7 +1872,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // one (#2188, #2229, #2250, #2259).
   if ((provider === "antigravity" || provider === "agy") && stream && providerResponse.body) {
     const reexecute = async () => {
-      const retryResult = await executeProvider();
+      // Mid-stream recovery stays on this account, so a 503 keeps its in-place retries.
+      const retryResult = await executeProvider({ canChangeAccount: false });
       if (!retryResult.response.ok) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
         const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });

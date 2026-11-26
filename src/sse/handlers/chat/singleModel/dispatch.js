@@ -52,6 +52,7 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     comboName: comboRouting?.name || null,
     comboNoLog: comboRouting?.noLog === true,
     quotaReservation,
+    accountFailoverAvailable: attempt.accountFailoverAvailable === true,
     onProviderAttempt: () => {
       state.accountAttempts++;
       attempt.latestAttemptStartedAt = allocateProviderAttemptTimestamp();

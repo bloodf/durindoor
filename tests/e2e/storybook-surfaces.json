@@ -9766,7 +9766,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#APIPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "APIPageClient",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -9797,7 +9797,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9810,7 +9810,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9823,7 +9823,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9836,7 +9836,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9849,7 +9849,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9862,7 +9862,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9875,7 +9875,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9888,7 +9888,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9901,7 +9901,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9914,7 +9914,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9927,7 +9927,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9940,7 +9940,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -9953,7 +9953,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10035,7 +10035,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#ApiKeyRow",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "ApiKeyRow",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -10066,7 +10066,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10079,7 +10079,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10092,7 +10092,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10105,7 +10105,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10118,7 +10118,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10131,7 +10131,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10144,7 +10144,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10157,7 +10157,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10170,7 +10170,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10183,7 +10183,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10196,7 +10196,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10209,7 +10209,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10222,7 +10222,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -10304,7 +10304,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#CardSkeleton",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "CardSkeleton",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -10325,7 +10325,7 @@
             "visual-skeleton"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10452,7 +10452,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#EndpointPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "EndpointPageClient",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -10479,7 +10479,7 @@
             "default endpoints"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10501,7 +10501,7 @@
           ],
           "proposedSourceEvidence": "ExternalEndpoints retains the actual Endpoint heading and Tunnel/Tailscale labels. Real CSF play locates the two exact named native textboxes, asserts visibility, live readOnly and values. URL values are not visible-text, title, placeholder or attribute substitutes.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10523,7 +10523,7 @@
           ],
           "proposedSourceEvidence": "EndpointPageClient.jsx:973-982",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10541,7 +10541,7 @@
             "tooltip trigger"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10563,7 +10563,7 @@
             "tunnel enable interaction"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10582,7 +10582,7 @@
           ],
           "proposedSourceEvidence": "Actual EndpointPageClient waits on a deferred GET /api/settings through final play. Its real aria-hidden CardSkeleton is visible with nonzero geometry, and Require API key control is absent. Request settles only during story cleanup. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10602,7 +10602,7 @@
           ],
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -10619,7 +10619,7 @@
           ],
           "proposedSourceEvidence": "Actual own export imports/renders this production root and its source-proven stable final heading or glyph. It is not claimed as visible coverage for a deleted row, hidden modal, closed bubble or incidental metadata title.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -11013,7 +11013,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#RowLabel",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "RowLabel",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -11032,7 +11032,7 @@
             "endpoint labels"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -11161,7 +11161,7 @@
       "id": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx#StatePill",
       "sourcePath": "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx",
       "symbol": "StatePill",
-      "sourceSha256": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+      "sourceSha256": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -11180,7 +11180,7 @@
             "checking state"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -12264,7 +12264,7 @@
           ],
           "proposedSourceEvidence": "ExternalEndpoints retains the actual Endpoint heading and Tunnel/Tailscale labels. Real CSF play locates the two exact named native textboxes, asserts visibility, live readOnly and values. URL values are not visible-text, title, placeholder or attribute substitutes.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "fec7046aabb2fd169dc78078f12a8d132487831fead31a2edb182bb7d6981b1d",
+            "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.jsx": "4f7728520eaaafa696eca099176b62399cad9cc5c29a45e87dcd26f03da8ba1b",
             "src/app/(dashboard)/dashboard/endpoint/EndpointPageClient.stories.jsx": "65e06cfda1e9118da9c7356e21f7c5263cb7a1146c0c605615904e2b0113cdf0",
             "src/app/(dashboard)/dashboard/endpoint/components/EndpointRow.js": "fea56956e4d8d3500cf9f6e149f981490555a0f1acba95655e9690d3e6eadb07",
             "src/app/(dashboard)/dashboard/endpoint/components/MonitoringStrip.js": "182140a10fbe1428abf6547a8b9ef7d6439938f68042396c3a3e3dc877fd50f9"
@@ -13363,7 +13363,7 @@
       "id": "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js#HeadroomClient",
       "sourcePath": "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js",
       "symbol": "HeadroomClient",
-      "sourceSha256": "27ead21b6a3b4996587b0706748bba7005439fa83f26f2273f2122f4af24270b",
+      "sourceSha256": "130ada9cb5920e83a678a5fad9aecd2c25315c431d26f8e9ed0e47ba6cb550d7",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -13387,7 +13387,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js": "27ead21b6a3b4996587b0706748bba7005439fa83f26f2273f2122f4af24270b",
+            "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js": "130ada9cb5920e83a678a5fad9aecd2c25315c431d26f8e9ed0e47ba6cb550d7",
             "src/app/(dashboard)/dashboard/headroom/HeadroomClient.stories.jsx": "871c8f7b78db993622e90f25ecb183338849b5e5299c78778fe9be512066310d"
           },
           "proposedSourceEvidence": "HeadroomClient.stories.jsx#RunningWithEvents",
@@ -13403,7 +13403,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js": "27ead21b6a3b4996587b0706748bba7005439fa83f26f2273f2122f4af24270b",
+            "src/app/(dashboard)/dashboard/headroom/HeadroomClient.js": "130ada9cb5920e83a678a5fad9aecd2c25315c431d26f8e9ed0e47ba6cb550d7",
             "src/app/(dashboard)/dashboard/headroom/HeadroomClient.stories.jsx": "871c8f7b78db993622e90f25ecb183338849b5e5299c78778fe9be512066310d"
           },
           "proposedSourceEvidence": "HeadroomClient.stories.jsx#SetupDiagnostic",
@@ -23566,7 +23566,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+      "sourceSha256": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23590,7 +23590,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -23606,7 +23606,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
@@ -23621,7 +23621,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
@@ -23637,7 +23637,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens export prompt."
@@ -23652,7 +23652,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "75e161bfae37160b854ecd8597fb0c3719257e8e5b0f40c36a60382b1be48a54",
+            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
@@ -29860,7 +29860,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js#LanDiscoveryPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js",
       "symbol": "LanDiscoveryPanel",
-      "sourceSha256": "8f58c1f452f1dac7bc20690b695f5d977f603c196e3f2ec933fceb51cc50f4d3",
+      "sourceSha256": "4b624b62f929adffeaf64c5853194caf566b75a490e1a1f3ca3bdc4726999e2a",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -29883,7 +29883,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "8f58c1f452f1dac7bc20690b695f5d977f603c196e3f2ec933fceb51cc50f4d3",
+            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "4b624b62f929adffeaf64c5853194caf566b75a490e1a1f3ca3bdc4726999e2a",
             "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.stories.jsx": "10caa701282eb11e01e0a900425fc2b5c6a5ac566de6469d90a8ba578b2b27f9"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -29896,7 +29896,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "8f58c1f452f1dac7bc20690b695f5d977f603c196e3f2ec933fceb51cc50f4d3",
+            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "4b624b62f929adffeaf64c5853194caf566b75a490e1a1f3ca3bdc4726999e2a",
             "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.stories.jsx": "10caa701282eb11e01e0a900425fc2b5c6a5ac566de6469d90a8ba578b2b27f9"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -29909,7 +29909,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "8f58c1f452f1dac7bc20690b695f5d977f603c196e3f2ec933fceb51cc50f4d3",
+            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "4b624b62f929adffeaf64c5853194caf566b75a490e1a1f3ca3bdc4726999e2a",
             "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.stories.jsx": "10caa701282eb11e01e0a900425fc2b5c6a5ac566de6469d90a8ba578b2b27f9"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -29922,7 +29922,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "8f58c1f452f1dac7bc20690b695f5d977f603c196e3f2ec933fceb51cc50f4d3",
+            "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.js": "4b624b62f929adffeaf64c5853194caf566b75a490e1a1f3ca3bdc4726999e2a",
             "src/app/(dashboard)/dashboard/providers/components/LanDiscoveryPanel.stories.jsx": "10caa701282eb11e01e0a900425fc2b5c6a5ac566de6469d90a8ba578b2b27f9"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -31687,7 +31687,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "de3f6b92b76309633197a84e290a6f00028b896596d26e6bbe56cdfd698f7765",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "7ca063113ad8f74684ac4ca08f718151690ca4d50802f923f68f17ba5f948b1d",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e",
@@ -35728,7 +35728,7 @@
       "id": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#TokenSaverClient",
       "sourcePath": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx",
       "symbol": "TokenSaverClient",
-      "sourceSha256": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+      "sourceSha256": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -35751,7 +35751,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -35775,7 +35775,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -35801,7 +35801,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "de3f6b92b76309633197a84e290a6f00028b896596d26e6bbe56cdfd698f7765",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "7ca063113ad8f74684ac4ca08f718151690ca4d50802f923f68f17ba5f948b1d",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e",
@@ -36063,7 +36063,7 @@
       "id": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx#settingFeedback",
       "sourcePath": "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx",
       "symbol": "settingFeedback",
-      "sourceSha256": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+      "sourceSha256": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -36087,7 +36087,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -36100,7 +36100,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -36113,7 +36113,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -36126,7 +36126,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -36139,7 +36139,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -36581,7 +36581,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/token-saver/page.js": "de3f6b92b76309633197a84e290a6f00028b896596d26e6bbe56cdfd698f7765",
-            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "19d9c3f35d722c6d15797261fdab40afd069b40a1c600ac64527445aa537f405",
+            "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx": "b7ff2cfe3ae7c6502a74137cf2e51bd34b7a91fe0e581864282fb32b08d8d0b4",
             "src/app/(dashboard)/dashboard/token-saver/components/TokenSaverOverview.js": "3510e843c6cdc7d6406ee4aab923bc96917ca625237da8f506dddc9f1417016b",
             "src/app/(dashboard)/dashboard/pxpipe/PxpipeClient.js": "7ca063113ad8f74684ac4ca08f718151690ca4d50802f923f68f17ba5f948b1d",
             "src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.stories.jsx": "015ee458adce4519d8dbc9857176cd4931b58f22b323542c52855fdd13714e2e",
@@ -55108,6 +55108,26 @@
       "sourceReviewStatus": "approved-source-contract-runtime-pending",
       "proposedSourceReviewNotes": "Current source/CSF audit: ProviderInfoCard maps through colocated production stories.",
       "runtimeStatus": "pending"
+    },
+    {
+      "id": "src/shared/components/ReauthDialog.jsx#ReauthDialog",
+      "sourcePath": "src/shared/components/ReauthDialog.jsx",
+      "symbol": "ReauthDialog",
+      "sourceSha256": "fba25cb5ac9fd4273bb0eb3c5e1a3ba4eb6049e19600656098986e75831684e0",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
     },
     {
       "id": "src/shared/components/RequestLogger.js#RequestLogger",
@@ -104653,8 +104673,8 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "28532615e5fed622a619358ac09d828030f0eb00d632f6f6a4709f536ede4fd0",
-    "pendingRows": 450,
+    "sourceCensusSha256": "02cc097638d4e879f46c65fe56fea9d13085a4fac45cad9e45a2bc3dbc62f1ae",
+    "pendingRows": 451,
     "retainedApprovedRows": 197,
     "pendingReferences": 1496,
     "runtimeStatus": "pending"

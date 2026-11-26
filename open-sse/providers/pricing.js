@@ -722,7 +722,22 @@ const ZERO_COST_BREAKDOWN = Object.freeze({
  * @param {object} pricing - Per-million rates for the resolved model
  * @returns {{inputCost:number,cachedCost:number,cacheCreationCost:number,outputCost:number,reasoningCost:number,totalCost:number}}
  */
-export function calculateCostBreakdown(tokens, pricing) {
+/**
+ * Rate for 1-hour cache writes, or null to keep the single `cache_creation` rate. An
+ * explicit `cache_creation_1h` wins; otherwise only native Claude bills 2x input.
+ */
+function oneHourCacheWriteRate(pricing, route) {
+  if (Number.isFinite(pricing.cache_creation_1h) && pricing.cache_creation_1h >= 0) return pricing.cache_creation_1h;
+  const nativeClaude = ["anthropic", "claude"].includes(route?.provider) &&
+  String(route.model ?? "").split("/").pop().startsWith("claude-");
+  return nativeClaude ? pricing.input * 2 : null;
+}
+
+/**
+ * Price token usage. `route` ({ provider, model }) lets reported 1-hour cache writes
+ * (`cache_creation_1h_input_tokens`) bill at their own rate.
+ */
+export function calculateCostBreakdown(tokens, pricing, route = null) {
   if (!tokens) return ZERO_COST_BREAKDOWN;
 
   for (const field of ["cost_usd", "cost_in_usd", "cost_in_usd_ticks"]) {
@@ -754,8 +769,15 @@ export function calculateCostBreakdown(tokens, pricing) {
   const cachedCost = cachedTokens > 0 ?
   cachedTokens * ((pricing.cached || pricing.input) * inputMultiplier / 1000000) :
   0;
+  const cacheCreationRate = pricing.cache_creation || pricing.input;
+  const oneHourTokens = tokens.cache_creation_1h_input_tokens || 0;
+  // The unsplit remainder, and a 1-hour count above the total, stay on the single rate.
+  const oneHourRate = oneHourTokens > 0 && oneHourTokens <= cacheCreationTokens ?
+  oneHourCacheWriteRate(pricing, route) :
+  null;
+  const oneHourPremium = oneHourRate === null ? 0 : oneHourTokens * (oneHourRate - cacheCreationRate);
   const cacheCreationCost = cacheCreationTokens > 0 ?
-  cacheCreationTokens * ((pricing.cache_creation || pricing.input) * inputMultiplier / 1000000) :
+  (cacheCreationTokens * cacheCreationRate + oneHourPremium) * (inputMultiplier / 1000000) :
   0;
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -791,6 +813,6 @@ export function calculateCostBreakdown(tokens, pricing) {
  * @param {object} pricing
  * @returns {number} cost in dollars
  */
-export function calculateCostFromTokens(tokens, pricing) {
-  return calculateCostBreakdown(tokens, pricing).totalCost;
+export function calculateCostFromTokens(tokens, pricing, route = null) {
+  return calculateCostBreakdown(tokens, pricing, route).totalCost;
 }

@@ -131,9 +131,15 @@ function getCacheReadTokens(tokens) {
  */
 function getTokensPerSecond(row) {
   const outputTokens = getOutputTokens(row.tokens);
-  const generationMs = (row.latency?.total || 0) - (row.latency?.ttft || 0);
-  if (outputTokens <= 0 || generationMs <= 0) return null;
+  // A TTFT of 0 means "not measured" (non-streaming): there is no decode time to rate.
+  const ttft = row.latency?.ttft || 0;
+  const generationMs = (row.latency?.total || 0) - ttft;
+  if (outputTokens <= 0 || !ttft || generationMs <= 0) return null;
   return outputTokens / (generationMs / 1000);
+}
+
+function formatTtft(ttft) {
+  return ttft ? `${ttft}ms` : "-";
 }
 
 /** Percentage of input tokens served from cache, clamped to [0, 100]. Port of OmniRoute #11970. */
@@ -354,7 +360,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
       const tps = getTokensPerSecond(row);
       return (
         <div className="flex flex-col gap-0.5 text-[12px] text-dd-muted">
-          <span>TTFT: <span className="font-mono text-dd-text">{row.latency?.ttft || 0}ms</span></span>
+          <span>TTFT: <span className="font-mono text-dd-text">{formatTtft(row.latency?.ttft)}</span></span>
           <span>Total: <span className="font-mono text-dd-text">{row.latency?.total || 0}ms</span></span>
           {tps != null ? <span>Tok/s: <span className="font-mono text-dd-text">{tps.toFixed(1)}</span></span> : null}
         </div>
@@ -461,7 +467,7 @@ export default function RequestDetailsTab({ resetNonce = 0 } = {}) {
                 <div className="flex flex-col gap-1">
                   <span className="text-dd-muted">Latency</span>
                   <span className="font-mono text-dd-text">
-                    TTFT {selectedDetail.latency?.ttft || 0}ms / Total {selectedDetail.latency?.total || 0}ms
+                    TTFT {formatTtft(selectedDetail.latency?.ttft)} / Total {selectedDetail.latency?.total || 0}ms
                     {getTokensPerSecond(selectedDetail) != null ? ` / ${getTokensPerSecond(selectedDetail).toFixed(1)} tok/s` : ""}
                   </span>
                 </div>

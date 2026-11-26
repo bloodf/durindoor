@@ -45,6 +45,7 @@ Export never affects inference.
 - Spans wait in a bounded buffer of 512. When it is full, the oldest are dropped.
 - Batches of up to 64 are sent every 5 seconds, or sooner when a batch fills. Each send has a 3-second timeout.
 - A failed batch is retried. After 5 consecutive failures, it is dropped.
+- After those 5 failures, export also pauses for 30 seconds. One probe then resumes it on success, or starts another pause on failure. Waiting spans stay in the bounded buffer.
 - The flush timer never keeps the process alive. On a normal exit, pending spans get one final flush. On SIGTERM, any unsent spans are lost.
 
 Tracing is independent of the dashboard proxy timeline. With the timeline off, spans are still produced. Request data is not persisted, and the streaming frame tap only notes the first byte.

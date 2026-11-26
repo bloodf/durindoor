@@ -22,6 +22,8 @@ const MAX_BATCH = 64;
 const MAX_EVENTS_PER_SPAN = 32;
 const MAX_CONSECUTIVE_FAILURES = 5;
 const FLUSH_INTERVAL_MS = 5000;
+// After MAX_CONSECUTIVE_FAILURES, leave the collector alone this long, then probe once.
+const BREAKER_OPEN_MS = 30_000;
 const EXPORT_TIMEOUT_MS = 3000;
 // Timeline event types that become span events. Summaries are never exported.
 const EVENT_TYPES = new Set(["route", "error", "abort", "info", "retry", "fallback"]);
@@ -32,6 +34,7 @@ let active = new Map();
 let buffer = [];
 let stats = { exported: 0, dropped: 0, failures: 0 };
 let consecutiveFailures = 0;
+let breakerOpenUntil = 0;
 let timer = null;
 let flushing = null;
 
@@ -197,13 +200,18 @@ function enqueue(span) {
   buffer.push(span);
   if (buffer.length >= MAX_BATCH) {
     void flushOtel();
-  } else if (!timer) {
-    timer = setTimeout(() => {
-      timer = null;
-      void flushOtel();
-    }, FLUSH_INTERVAL_MS);
-    timer.unref?.();
+  } else {
+    scheduleFlush();
   }
+}
+
+function scheduleFlush() {
+  if (timer) return;
+  timer = setTimeout(() => {
+    timer = null;
+    void flushOtel();
+  }, FLUSH_INTERVAL_MS);
+  timer.unref?.();
 }
 
 export function buildOtlpPayload(spans, serviceName) {
@@ -220,6 +228,10 @@ export function flushOtel() {
   if (flushing) return flushing;
   const cfg = getConfig();
   if (!cfg || buffer.length === 0) return Promise.resolve();
+  if (Date.now() < breakerOpenUntil) {
+    scheduleFlush();
+    return Promise.resolve();
+  }
   const batch = buffer.splice(0, MAX_BATCH);
   flushing = (async () => {
     try {
@@ -235,6 +247,7 @@ export function flushOtel() {
     } catch {
       stats.failures++;
       consecutiveFailures++;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) breakerOpenUntil = Date.now() + BREAKER_OPEN_MS;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || buffer.length + batch.length > MAX_BUFFERED_SPANS) {
         stats.dropped += batch.length;
       } else {
@@ -243,13 +256,7 @@ export function flushOtel() {
     } finally {
       flushing = null;
     }
-    if (buffer.length > 0 && !timer) {
-      timer = setTimeout(() => {
-        timer = null;
-        void flushOtel();
-      }, FLUSH_INTERVAL_MS);
-      timer.unref?.();
-    }
+    if (buffer.length > 0) scheduleFlush();
   })();
   return flushing;
 }
@@ -279,6 +286,7 @@ export function resetOtelForTests(env) {
   buffer = [];
   stats = { exported: 0, dropped: 0, failures: 0 };
   consecutiveFailures = 0;
+  breakerOpenUntil = 0;
 }
 
 process.once?.("beforeExit", () => {

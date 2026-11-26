@@ -2,6 +2,7 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { NextResponse } from "next/server";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
+import { resolveSearchBaseUrl } from "open-sse/handlers/search/baseUrl.js";
 import { getProviderConnectionById, getProviderNodeById } from "@/lib/localDb";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, isSystemoneCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
@@ -15,6 +16,7 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { resolveConnectionParams } from "open-sse/executors/copilot-m365-connection.js";
 import { probeRegistryProvider } from "@/app/api/providers/providerProbe.js";
+import { observeValidationResponse, refineValidationResult, traceValidation } from "@/lib/providers/validationRejection.js";
 import { buildPerplexitySessionCookie } from "@/lib/providers/webCookieAuth.js";
 import { guardedProbeFetch, assertOutboundUrlAllowed, OutboundUrlGuardError } from "open-sse/utils/outboundUrlGuard.js";
 import { validateVertexSaKey, classifyVertexCredential, VERTEX_CREDENTIAL } from "open-sse/services/tokenRefresh.js";
@@ -27,6 +29,7 @@ import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
+import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -42,7 +45,7 @@ export function fetchValidationProbe(url, options = {}, transport = fetch) {
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeoutSignal])
     : timeoutSignal;
-  return transport(url, { ...options, signal });
+  return Promise.resolve(transport(url, { ...options, signal })).then(observeValidationResponse);
 }
 
 function guardBlockedResponse(err) {
@@ -100,6 +103,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   if (cfg.authType === "none") return true; // no-auth (e.g. searxng)
 
   let url = cfg.baseUrl;
+  let transport = fetch;
   const headers = { "Content-Type": "application/json" };
   let body;
 
@@ -110,6 +114,13 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
     case "x-subscription-token":headers["x-subscription-token"] = apiKey;break;
     case "key":{
         const cx = providerSpecificData?.cx || providerSpecificData?.searchEngineId || body?.cx || body?.searchEngineId;
+        // Probe the destination the search handler calls: a base URL saved on the connection wins,
+        // behind the same public-only guard.
+        const { baseUrl, source } = resolveSearchBaseUrl(cfg, { providerSpecificData });
+        if (source === "operator") {
+          url = baseUrl;
+          transport = (target, init) => guardedProbeFetch(target, init, "public-only");
+        }
         url += `?key=${encodeURIComponent(apiKey)}&q=ping&cx=${encodeURIComponent(cx || "test")}`;
         break;
       }
@@ -123,7 +134,7 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
 
   const options = { method: cfg.method, headers, body };
   if (cfg.preventRedirects) options.redirect = "error";
-  const res = await fetchValidationProbe(url, options);
+  const res = await fetchValidationProbe(url, options, transport);
   return res.ok || provider === "parallel" && res.status === 422;
 }
 
@@ -203,7 +214,6 @@ async function resolveProbeSessionToken(request, provider, connectionId, session
   return connection.sessionToken || connection.providerSpecificData?.sessionToken || sessionToken;
 }
 
-// POST /api/providers/validate - Validate API key with provider
 /** Probe auth for compatible nodes: an empty key yields no auth header at all. */
 function compatibleNodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
   const headers = {};
@@ -213,7 +223,16 @@ function compatibleNodeAuthHeaders(apiKey, { xApiKey = false } = {}) {
   return headers;
 }
 
+// POST /api/providers/validate - Validate API key with provider
 export async function POST(request) {
+  const { value: response, last } = await traceValidation(() => validateProviderKey(request));
+  if (!last || last.status < 400) return response;
+  const result = await response.clone().json();
+  const refined = refineValidationResult(result, last);
+  return refined === result ? response : NextResponse.json(refined, { status: response.status });
+}
+
+async function validateProviderKey(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
@@ -551,7 +570,13 @@ export async function POST(request) {
       }
 
       // Generic probe for webSearch/webFetch providers (config-driven)
-      const webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
+      let webResult;
+      try {
+        webResult = await probeWebProvider(provider, apiKey, providerSpecificData);
+      } catch (err) {
+        if (err instanceof OutboundUrlGuardError) return guardBlockedResponse(err);
+        throw err;
+      }
       if (webResult !== null) {
         return NextResponse.json({
           valid: webResult,
@@ -701,7 +726,9 @@ export async function POST(request) {
                 messages: [{ role: "user", content: "test" }]
               })
             });
-            isValid = res.status !== 401 && res.status !== 403;
+            isValid = provider === "byteplus" ?
+            await isByteplusKeyAccepted(res) :
+            res.status !== 401 && res.status !== 403;
             break;
           }
 

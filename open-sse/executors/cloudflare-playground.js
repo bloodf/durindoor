@@ -6,6 +6,7 @@ import { errorResponse } from "../utils/error.js";
 import { containsMediaKind } from "../utils/mediaParts.js";
 import { resolveConnectProxyForRequest } from "../utils/proxyFetch.js";
 import { resolvePlaywrightProxy } from "../services/browserPool.js";
+import { parseCfToolReply, prepareCfToolRequest } from "../translator/cloudflarePlaygroundTools.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 function makeErrorResult(status, message, body, url) {
@@ -52,6 +53,33 @@ export function hasCloudflareUnsupportedImage(messages) {
 export function parseCloudflareFrame(raw) {
   try { const frame = JSON.parse(raw); return frame?.type === "cf_agent_use_chat_response" ? frame : null; }
   catch { return null; }
+}
+
+/** Why a drained reply cannot be answered, or null. */
+function streamFailure({ error, timedOut, completed }, toolContext) {
+  if (error) return { message: error, status: cloudflareErrorStatus(error) };
+  if (timedOut) return { message: "Cloudflare Playground timed out", status: 504 };
+  // A call is only run from a reply the playground finished.
+  if (toolContext && !completed) return { message: "Cloudflare Playground reply ended before completion", status: 502 };
+  return null;
+}
+
+/** The buffered tool reply as stream deltas: one per call, each with its index. */
+function toolReplyChoices(text, toolContext) {
+  const { content, toolCalls } = parseCfToolReply(text, toolContext);
+  return [
+    ...(content ? [{ delta: { content }, finish_reason: null }] : []),
+    ...(toolCalls ?? []).map((call, index) => ({ delta: { tool_calls: [{ index, ...call }] }, finish_reason: null })),
+    { delta: {}, finish_reason: toolCalls ? "tool_calls" : "stop" },
+  ];
+}
+
+function completionChoice(text, toolContext) {
+  const { content, toolCalls } = toolContext ? parseCfToolReply(text, toolContext) : { content: text, toolCalls: null };
+  const message = toolCalls
+    ? { role: "assistant", content: content || null, tool_calls: toolCalls }
+    : { role: "assistant", content };
+  return { index: 0, message, finish_reason: toolCalls ? "tool_calls" : "stop" };
 }
 
 export class PlaywrightCloudflareTransport {
@@ -129,7 +157,9 @@ export class CloudflarePlaygroundExecutor extends BaseExecutor {
     if (!input.credentials?.authType || input.credentials.authType === "none" || !input.credentials.apiKey) {
       // Anonymous access is expected; do not synthesize an Authorization header.
     }
-    const messages = toCloudflareMessages(body.messages || []);
+    const prepared = prepareCfToolRequest(body);
+    const { toolContext } = prepared;
+    const messages = toCloudflareMessages(prepared.messages);
     const chatId = `chatcmpl-cfp-${randomUUID().slice(0, 12)}`;
     const transport = this.transportFactory(chatId);
     const sender = createExecutorSender(this, input);
@@ -160,28 +190,35 @@ export class CloudflarePlaygroundExecutor extends BaseExecutor {
     }, 120_000);
     const text = [];
     let error = null;
+    let completed = false;
     const events = (async function* () {
       for await (const raw of transport.frames()) {
         const frame = parseCloudflareFrame(raw);
         if (!frame || frame.id !== chatId) continue;
         if (frame.error) { error = safeMessage(frame.body); break; }
-        let payload;
-        try { payload = isString(frame.body) ? JSON.parse(frame.body) : frame.body; } catch { continue; }
+        let payload = null;
+        // The closing frame may carry no JSON body; it still completes the reply.
+        try { payload = isString(frame.body) ? JSON.parse(frame.body) : frame.body; } catch { if (!frame.done) continue; }
         if (payload?.type === "text-delta" && isString(payload.delta)) { text.push(payload.delta); yield payload.delta; }
-        if (frame.done) break;
+        if (frame.done) { completed = true; break; }
       }
     })();
+    const failure = () => streamFailure({ error, timedOut, completed }, toolContext);
     if (input.stream !== false) {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({ start(controller) {
+        const send = (data) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        const sendChoice = (choice) => send({ id: chatId, object: "chat.completion.chunk", model, choices: [{ index: 0, ...choice }] });
         void (async () => {
           try {
-            for await (const delta of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: chatId, object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] })}\n\n`));
-            if (error || timedOut) {
-              const message = error || "Cloudflare Playground timed out";
-              const status = error ? cloudflareErrorStatus(error) : 504;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: "upstream_error", code: `HTTP_${status}` } })}\n\n`));
+            // A tool reply is buffered until it can be parsed; open the stream first.
+            if (toolContext) sendChoice({ delta: { role: "assistant", content: "" }, finish_reason: null });
+            for await (const delta of events) {
+              if (!toolContext) sendChoice({ delta: { content: delta }, finish_reason: null });
             }
+            const failed = failure();
+            if (failed) send({ error: { message: failed.message, type: "upstream_error", code: `HTTP_${failed.status}` } });
+            else if (toolContext) toolReplyChoices(text.join(""), toolContext).forEach(sendChoice);
             controller.enqueue(encoder.encode("data: [DONE]\n\n")); controller.close();
           } catch (err) { controller.error(err); }
           finally { clearTimeout(timeout); await transport.close(); }
@@ -192,9 +229,9 @@ export class CloudflarePlaygroundExecutor extends BaseExecutor {
     try { for await (const _delta of events) { /* consume */ } }
     finally { clearTimeout(timeout); }
     await transport.close();
-    if (timedOut && !text.length) return carry(makeErrorResult(504, "Cloudflare Playground timed out", body, PLAYGROUND_URL));
-    if (error) return carry(makeErrorResult(cloudflareErrorStatus(error), error, body, PLAYGROUND_URL));
-    const content = text.join("");
-    return carry({ response: new Response(JSON.stringify({ id: chatId, object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), { headers: { "Content-Type": "application/json" } }), url: PLAYGROUND_URL, headers: {}, transformedBody: body });
+    const failed = failure();
+    // Without tools, a timed-out partial answer is still returned.
+    if (failed && (error || toolContext || !text.length)) return carry(makeErrorResult(failed.status, failed.message, body, PLAYGROUND_URL));
+    return carry({ response: new Response(JSON.stringify({ id: chatId, object: "chat.completion", model, choices: [completionChoice(text.join(""), toolContext)], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } }), { headers: { "Content-Type": "application/json" } }), url: PLAYGROUND_URL, headers: {}, transformedBody: body });
   }
 }

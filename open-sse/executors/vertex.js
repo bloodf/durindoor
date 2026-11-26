@@ -8,6 +8,8 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "../services/tokenRefresh/dedup.js";
 
+// Google serves Gemini 4 Argon only from these locations.
+const ARGON_LOCATIONS = new Set(["global", "us", "eu", "europe-west2", "asia-southeast1"]);
 // Cache project IDs resolved from raw API keys { apiKey → projectId }
 const projectIdCache = new Map();
 
@@ -98,6 +100,9 @@ export class VertexExecutor extends BaseExecutor {
     // Gemini on Vertex
     const action = stream ? "streamGenerateContent" : "generateContent";
     const defaultLocation = getModelMeta(this.provider, model)?.defaultLocation || null;
+    const storedLocation = credentials?.providerSpecificData?.location;
+    // Argon answers 404 outside these locations, so a regional setting kept for other models is skipped.
+    const configuredLocation = defaultLocation && !ARGON_LOCATIONS.has(storedLocation) ? null : storedLocation;
 
     if (usesOAuth) {
       // SA JSON / ADC / pre-set accessToken: must use project-scoped path to avoid RESOURCE_PROJECT_INVALID
@@ -109,7 +114,7 @@ export class VertexExecutor extends BaseExecutor {
       }
       // Global-only models (registry defaultLocation, e.g. Argon) must not
       // fall back to a regional location (upstream 9router 29fc880e).
-      const location = credentials?.providerSpecificData?.location || defaultLocation || "us-central1";
+      const location = configuredLocation || defaultLocation || "us-central1";
       let url = `${vertexLocationBase(projectId, location)}/publishers/google/models/${model}:${action}`;
       if (stream) url += "?alt=sse";
       return url;
@@ -122,7 +127,7 @@ export class VertexExecutor extends BaseExecutor {
     // ?alt=sse is required for proper SSE streaming (matches every other Gemini executor)
     const keyProjectId = credentials?.providerSpecificData?.projectId;
     let url = keyProjectId && defaultLocation ?
-    `${vertexLocationBase(keyProjectId, credentials?.providerSpecificData?.location || defaultLocation)}/publishers/google/models/${model}:${action}` :
+    `${vertexLocationBase(keyProjectId, configuredLocation || defaultLocation)}/publishers/google/models/${model}:${action}` :
     `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:${action}`;
     if (stream) url += "?alt=sse";
     if (rawKey) url += stream ? `&key=${encodeURIComponent(rawKey)}` : `?key=${encodeURIComponent(rawKey)}`;

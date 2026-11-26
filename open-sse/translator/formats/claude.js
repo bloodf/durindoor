@@ -9,7 +9,7 @@ import { PROVIDERS } from "../../providers/index.js";
 import { isClaudeModel } from "../../providers/models/helpers.js";
 import { getCapabilitiesForModel, isLegacyHaikuModel } from "../../providers/capabilities.js";
 import { DEFAULT_MAX_TOKENS } from "../../config/runtimeConfig.js";
-import { isObject, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
+import { isObject, isRecord, isString, runtimeTypeName } from "../../../src/shared/utils/typeChecks.js";
 import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 import { flattenRootCombinators, toClaudeInputSchema } from "../concerns/claudeInputSchema.js";
 import { GLM_ANTHROPIC_PROVIDERS, EFFORT_LEVELS, effortToBudget } from "../concerns/thinking.js";
@@ -147,6 +147,29 @@ function markLastCacheableBlock(msg, cacheControl) {
   return false;
 }
 
+/**
+ * Own each message and its content blocks. A combo shares them with its other
+ * targets, and the cache-marker and thinking passes write into blocks. Nested
+ * values are not copied: those passes replace them.
+ */
+function ownContentBlocks(message) {
+  const copyBlock = (block) => isRecord(block) ? { ...block } : block;
+  if (!isRecord(message)) return message;
+  const { content } = message;
+  if (Array.isArray(content)) return { ...message, content: content.map(copyBlock) };
+  return { ...message, content: copyBlock(content) };
+}
+
+/**
+ * A lifted instruction turn leaves messages[], so its `output_config` moves to
+ * the top-level parameter. An explicit top-level value wins.
+ */
+function liftOutputConfig(body, message) {
+  if (body.output_config == null && isRecord(message.output_config)) {
+    body.output_config = message.output_config;
+  }
+}
+
 /** Wrap a client-supplied single content block without changing its data. */
 function normalizeMessageContent(msg) {
   const content = msg?.content;
@@ -178,6 +201,46 @@ function mergeAdjacentUserTurns(messages, index) {
 // targets are verified to enforce this, so compatible Claude-wire providers
 // keep their existing bodies.
 const TOOL_RESULT_CACHE_MARKER_TARGETS = new Set(["claude", "anthropic"]);
+
+// Anthropic's own wire. Other Claude-format hosts set their own thinking-history rules.
+function enforcesTrailingThinkingRule(provider) {
+  return provider === "claude" || provider === "anthropic" || Boolean(provider?.startsWith("anthropic-compatible"));
+}
+
+function isThinkingBlock(block) {
+  return block?.type === CLAUDE_BLOCK.THINKING || block?.type === CLAUDE_BLOCK.REDACTED_THINKING;
+}
+
+/**
+ * Anthropic answers 400 "The final block in an assistant message cannot be `thinking`".
+ * A past turn like that fails every later request, so trim its trailing thinking and
+ * drop it when nothing is left. The latest assistant turn must stay byte-exact.
+ */
+function dropTrailingHistoricalThinking(messages) {
+  const latest = messages.findLastIndex((msg) => msg.role === ROLE.ASSISTANT);
+  const result = [];
+  let removedAt = -1;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    let next = msg;
+    if (i !== latest && msg.role === ROLE.ASSISTANT && Array.isArray(msg.content)) {
+      const end = msg.content.findLastIndex((block) => !isThinkingBlock(block)) + 1;
+      if (end < msg.content.length) {
+        if (end === 0) {
+          removedAt = result.length;
+          continue;
+        }
+        next = { ...msg, content: msg.content.slice(0, end) };
+      }
+    }
+    result.push(next);
+    if (removedAt === result.length - 1) {
+      mergeAdjacentUserTurns(result, removedAt - 1);
+      removedAt = -1;
+    }
+  }
+  return result;
+}
 
 export function normalizesToolResultCacheMarkers(provider) {
   return TOOL_RESULT_CACHE_MARKER_TARGETS.has(provider);
@@ -758,6 +821,7 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
           continue;
         }
         buffered.push(...blocks.filter((block) => USER_SYSTEM_FOLDABLE_BLOCKS.has(block?.type)));
+        liftOutputConfig(body, msg);
         continue;
       }
       if (foldSystemTurns && buffered.length && msg.role === ROLE.USER) {
@@ -772,6 +836,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       messages.push(msg);
     }
     if (!foldSystemTurns) {
+      for (const message of messages) {
+        if (isInstructionRole(message.role)) liftOutputConfig(body, message);
+      }
       const hoisted = messages.
       filter((m) => isInstructionRole(m.role)).
       flatMap((m) => Array.isArray(m.content) ?
@@ -898,6 +965,9 @@ export function normalizeClaudePassthrough(body, model = "", provider = "claude"
       }
       body.messages = body.messages.filter((msg) => !emptiedByServerToolFilter.has(msg));
     }
+
+    // After the filters above: removing a block can leave thinking last.
+    if (enforcesTrailingThinkingRule(provider)) body.messages = dropTrailingHistoricalThinking(body.messages);
   }
 
   reconcileClaudeThinkingBudget(body, provider, customMaxOutput);
@@ -945,6 +1015,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
       while (lines.length && isIdentity(lines[0])) lines.shift();
       if (lines.length) body.system = lines.join("\n"); else delete body.system;
     } else if (Array.isArray(body.system)) {
+      body.system = [...body.system];
       while (body.system.length && isIdentity(body.system[0]?.text)) body.system.shift();
       if (!body.system.length) delete body.system;
     }
@@ -976,7 +1047,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 2. Messages: process in optimized passes
   if (body.messages && Array.isArray(body.messages)) {
     const clientRole = clientLastRole ?? body.messages.at(-1)?.role;
-    body.messages = removeNamelessToolHistory(body.messages);
+    body.messages = removeNamelessToolHistory(body.messages.map(ownContentBlocks));
     // Before pass 1 so a hoisted marker obeys the same message-marker policy as any other.
     if (normalizesToolResultCacheMarkers(provider)) hoistToolResultCacheMarkers(body);
     // Preserved client markers keep their own order, so a 1h breakpoint is not
@@ -1008,6 +1079,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
     // Pass 1.5: Fix tool_use/tool_result ordering
     // Each tool_use must have tool_result in the NEXT message (not same message with other content)
     filtered = fixToolUseOrdering(filtered);
+    if (enforcesTrailingThinkingRule(provider)) filtered = dropTrailingHistoricalThinking(filtered);
 
     body.messages = filtered;
     body.messages = ensureTrailingUserTurn(body.messages, originalLastRole);

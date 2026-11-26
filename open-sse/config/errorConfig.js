@@ -3,6 +3,13 @@ import { isString } from "../../src/shared/utils/typeChecks.js";
 
 export const CONTEXT_LENGTH_EXCEEDED_CODE = "context_length_exceeded";
 
+/**
+ * Message prefix for a bare Cursor empty turn: how Cursor refuses a model the
+ * plan or usage allowance does not cover (OmniRoute #19972). The Cursor error
+ * rule and the empty-stream bench match on it to keep the denial model-scoped.
+ */
+export const CURSOR_MODEL_UNAVAILABLE_MESSAGE = "Cursor model is not available on this account right now";
+
 export const ERROR_TYPES = {
   400: { type: "invalid_request_error", code: "bad_request" },
   401: { type: "authentication_error", code: "invalid_api_key" },
@@ -63,6 +70,10 @@ export const DEFAULT_ERROR_MESSAGES = {
  * Keeps generated account lock deadlines representable as ISO timestamps.
  */
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Longest bench for a 429 or transient failure on a connection whose base URL is loopback
+// or private: one slow local generation must not park the key (OmniRoute #19632).
+export const LOCAL_ENDPOINT_MAX_COOLDOWN_MS = 5 * 1000;
 
 /**
  * Resolves the rate-limit backoff schedule from environment variables (#3352).

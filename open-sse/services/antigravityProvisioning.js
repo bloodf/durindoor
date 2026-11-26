@@ -24,6 +24,25 @@ export function extractAntigravityOnboardTier(data) {
   return trimmedString(data?.currentTier?.id) || "free-tier";
 }
 
+export const ANTIGRAVITY_AGE_VERIFICATION_URL = "https://myaccount.google.com/age-verification";
+
+/**
+ * For a loadCodeAssist answer with no project: an age-restricted account cannot be onboarded
+ * until Google verifies its age (OmniRoute #19621). A default tier that provisions its own
+ * project is still onboarded. Returns the error to throw, or null.
+ */
+export function antigravityAgeRestrictionError(data) {
+  const restricted = Array.isArray(data?.ineligibleTiers) &&
+  data.ineligibleTiers.some((tier) => tier?.reasonCode === "RESTRICTED_AGE");
+  if (!restricted) return null;
+  const managedTier = Array.isArray(data.allowedTiers) &&
+  data.allowedTiers.some((tier) => tier?.isDefault === true && !tier.userDefinedCloudaicompanionProject);
+  if (managedTier) return null;
+  return Object.assign(new Error(
+    `Google requires age verification for this account (RESTRICTED_AGE). Verify at ${ANTIGRAVITY_AGE_VERIFICATION_URL} with the same Google account, then try again.`
+  ), { status: 403, credentialScoped: true });
+}
+
 export function antigravityOnboardOperationError(raw) {
   if (raw == null) return null;
   if (isString(raw) && !raw.trim()) return null;

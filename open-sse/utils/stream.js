@@ -9,6 +9,7 @@ import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
+import { createResponsesOutputBackfill } from "./responsesOutputBackfill.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, isOpenAIResponsesLifecycleTerminal, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
@@ -233,6 +234,7 @@ export function createSSEStream(options = {}) {
   // Responses passthrough: the upstream speaks the Responses protocol and the
   // client wants it unchanged, so the frames are forwarded as they arrive.
   const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  const backfillResponsesOutput = responsesPassthrough ? createResponsesOutputBackfill() : null;
   // Empty provider keepalive blocks can crash strict SDK JSON parsing.
   // Filter only those blocks in Chat and Responses passthrough (OmniRoute
   // #1146). Claude passthrough keeps its
@@ -621,11 +623,19 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let responsesLifecycleTerminalForwarded = false;
   let openAIResponsesDoneSent = false;
+  // The executor asks upstream for stream_options.include_usage to bill the call. A Chat client
+  // that did not ask must not get the extra usage-only chunk (strict parsers read choices[0]).
+  const dropUnrequestedUsageChunk = body?.stream_options?.include_usage !== true &&
+    providerBody?.stream_options?.include_usage === true &&
+    (mode === STREAM_MODE.PASSTHROUGH ? targetFormat : sourceFormat) === FORMATS.OPENAI;
+  const isUsageOnlyChunk = (chunk) => Array.isArray(chunk?.choices) && chunk.choices.length === 0 && Boolean(chunk.usage);
+
   const emitPendingUsageEstimate = (controller) => {
     if (!pendingUsageEstimate) return;
     pendingUsageEstimate = false;
     if (hasValidUsage(usage)) return;
     usage = estimateStreamUsage(totalContentLength, FORMATS.OPENAI);
+    if (dropUnrequestedUsageChunk) return;
     const chunk = {
       id: usageChunkMeta.id,
       object: "chat.completion.chunk",
@@ -1150,6 +1160,7 @@ export function createSSEStream(options = {}) {
                 usage = mergeUsage(usage, extracted);
               }
               if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) continue;
+              if (dropUnrequestedUsageChunk && !publicError && !gatewayError && isUsageOnlyChunk(parsed)) continue;
               if (minimaxThinkingState) {
                 const delta = parsed.choices?.[0]?.delta;
                 const content = delta?.content;
@@ -1277,6 +1288,9 @@ export function createSSEStream(options = {}) {
               // client; a dropped opening fragment must not leave later ones id-less (#1433).
               if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
               recordCompletionData(parsed, { summary: false, trackUsage: false, content: true });
+
+              // After content accounting, so rebuilt items are not counted twice.
+              if (backfillResponsesOutput?.(parsed)) fieldsInjected = true;
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.
@@ -1627,6 +1641,7 @@ export function createSSEStream(options = {}) {
         if (!nativeGemini && translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
+            if (dropUnrequestedUsageChunk && isUsageOnlyChunk(item)) continue;
             // Filter empty chunks
             if (!hasValuableContent(item, sourceFormat)) {
               continue; // Skip this empty chunk
@@ -1841,7 +1856,9 @@ export function createSSEStream(options = {}) {
                 currentUpstreamEvent = null;
                 recordCompletionData(parsed, { content: true, tokenLimit });
                 const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
-                output = `${prefix}${JSON.stringify(parsed)}\n\n`;
+                const unrequested = dropUnrequestedUsageChunk && isUsageOnlyChunk(parsed) && !streamErrorPayload;
+                if (unrequested) usage = mergeUsage(usage, extractUsage(parsed));
+                output = unrequested ? "" : `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
             } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
               // The unterminated final frame is a replay: drop it and the label
@@ -1906,6 +1923,21 @@ export function createSSEStream(options = {}) {
             });
             reqLogger?.appendConvertedChunk?.(failedOutput);
             controller.enqueue(sharedEncoder.encode(failedOutput));
+          }
+          // Chat output followed by EOF with neither a finish reason nor [DONE] was cut
+          // off. Appending [DONE] would pass the partial answer off as complete.
+          if (targetFormat === FORMATS.OPENAI && !isGeminiFamily && !streamDoneSent && !streamErrorPayload &&
+              openAIOutputSeen && passthroughFinishedChoices.size === 0) {
+            streamErrorPayload = {
+              type: "server_error",
+              code: "incomplete_upstream_stream",
+              message: "Upstream stream ended before a finish reason"
+            };
+            upstreamTerminal.fail();
+            const errorOutput = `${dataFrameOpen ? "\n" : ""}${formatTranslatedStreamError(streamErrorPayload, FORMATS.OPENAI, errorSecrets)}`;
+            reqLogger?.appendConvertedChunk?.(errorOutput);
+            controller.enqueue(sharedEncoder.encode(errorOutput));
+            streamDoneSent = true;
           }
           if (
           !streamDoneSent &&

@@ -5,7 +5,8 @@ import {
   isModelLockActive, isPassthroughConnectionWideError, isQuotaLockoutActive,
   isRecoverableCloudCodeProject403, isRelayGatewayFailure
 } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
+import { LOCAL_ENDPOINT_MAX_COOLDOWN_MS, MAX_RATE_LIMIT_COOLDOWN_MS, RESET_COOLDOWN_CAP_MS } from "open-sse/config/errorConfig.js";
+import { isPrivateHost } from "open-sse/utils/outboundUrlGuard.js";
 import { AI_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { PROVIDER_ID_TO_ALIAS, getModelQuotaFamily } from "open-sse/config/providerModels.js";
 import { getProviderQuotaConfig } from "open-sse/config/providerQuota.js";
@@ -78,6 +79,19 @@ function isQoderQuotaExhausted(status, errorText, provider, errorBody = null) {
   const candidate = String(errorText || "").trim().replace(/^\[\d+\]:\s*/, "");
   return candidate.startsWith("{") && isQoderQuotaExhaustedBody(candidate);
 }
+/** The connection's own saved base URL names a loopback or private-network host. */
+function isPrivateEndpointConnection(connection) {
+  const baseUrl = connection?.providerSpecificData?.baseUrl;
+  if (!isString(baseUrl) || !URL.canParse(baseUrl.trim())) return false;
+  const { hostname } = new URL(baseUrl.trim());
+  return Boolean(hostname) && isPrivateHost(hostname);
+}
+
+function isRateLimitOrTransientStatus(status) {
+  const code = Number(status);
+  return code === 408 || code === 429 || code >= 500;
+}
+
 const FREEBUFF_TRANSIENT_STATUSES = new Set([408, 409, 425, 429]);
 
 const SHORT_COOLDOWN_PROVIDERS = new Set([
@@ -358,7 +372,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   });
   // A request-scoped OpenRouter error must stay off the account even
   // when the upstream response supplies a reset hint.
-  if (fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
+  // A capability gap or request-size 5xx stays off the account the same way.
+  if (fallbackResult.noAccountPenalty ||
+      fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;
@@ -381,9 +397,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // exhaustion) is capped at a provider-appropriate max so a far-future reset
   // doesn't lock the account past its next low-frequency recheck (#2664).
   const cooldownCapMs = RESET_COOLDOWN_CAP_MS[provider] ?? MAX_RATE_LIMIT_COOLDOWN_MS;
-  const normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
+  let normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
   ag429 ? now + ag429.delay : null);
+  // A private endpoint ignores long reset hints and the backoff ladder.
+  const localCapMs = isRateLimitOrTransientStatus(status) && isPrivateEndpointConnection(conn) ?
+  LOCAL_ENDPOINT_MAX_COOLDOWN_MS : null;
+  if (localCapMs !== null && normalizedReset !== null) {
+    normalizedReset = Math.min(normalizedReset, now + localCapMs);
+  }
   if (normalizedReset !== null) {
     shouldFallback = true;
     cooldownMs = Math.ceil(normalizedReset - now);
@@ -394,6 +416,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       const staticRetry = await resolveStaticRetryCooldown(provider, cooldownMs);
       cooldownMs = staticRetry.cooldownMs;
       if (staticRetry.configured) newBackoffLevel = 0;
+      // An operator-configured retry delay still wins over the local cap.
+      else if (localCapMs !== null) {
+        cooldownMs = Math.min(cooldownMs, localCapMs);
+        newBackoffLevel = 0;
+      }
     }
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
@@ -474,7 +501,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
         credentialFingerprint: context?.credentialFingerprint || null,
         webFetch: context?.webFetch === true,
         webSearch: isolatedSearch,
-        videoPoll: context?.videoPoll === true
+        videoPoll: context?.videoPoll === true,
+        // Only a deadline the upstream stated may extend a newer, shorter lock.
+        upstreamReset: Boolean(githubResetAtMs || providerReset > now || fallbackResult.retryHintSource)
       }, { signal });
       // The atomic path ran; never fall through to the compatibility writer,
       // even when applied is false (stale watermark or reauth guard).

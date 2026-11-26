@@ -8,7 +8,7 @@ import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConv
 import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
-import { INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
+import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../../translator/formats.js";
 import { initState } from "../../translator/index.js";
 import { geminiToOpenAIResponse } from "../../translator/response/gemini-to-openai.js";
@@ -21,6 +21,7 @@ import { createResponsesToolNameResolver } from "../../translator/response/opena
 import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { restoreClaudeToolNames, restoreGeminiToolNames, restoreOpenAIToolNames } from "../../translator/concerns/toolCall.js";
 import { normalizeDsmlClaudeMessage, normalizeDsmlCompletion } from "../../translator/concerns/dsml.js";
+import { toRequiredResponsesUsage } from "../../translator/concerns/usage.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { classifyMaskedGatewayError, createUpstreamTerminalTracker } from "../../utils/streamTerminal.js";
 import { applyReasoningVisibility } from "../../utils/reasoningVisibility.js";
@@ -427,9 +428,19 @@ function parseClaudeSSE(rawSSE, fallbackModel, { providerBody, toolNameMap, nati
   }
 
   const completion = aggregateParsedChunks(chunks, fallbackModel, { format: FORMATS.CLAUDE, providerBody, terminalObservations });
-  if (!completion || !nativeMessage) return { completion, stopReason };
+  // The Chat hop drops the 1-hour cache-write share, which only accounting needs.
+  const oneHourWrite = state.usage?.cache_creation_1h_input_tokens;
+  if (!completion || !nativeMessage) return { completion, stopReason, oneHourWrite };
   const message = foldClaudeEventsToMessage(terminalObservations.map(({ chunk }) => chunk));
-  return { completion, stopReason, message: decloakToolNames(message, toolNameMap) };
+  return { completion, stopReason, oneHourWrite, message: decloakToolNames(message, toolNameMap) };
+}
+
+/** Every choice ended with a plain "stop" and carried nothing the client can use. */
+function isEmptyStopCompletion(completion) {
+  return !(Number(completion.usage?.completion_tokens) > 0) && Array.isArray(completion.choices) &&
+    completion.choices.every(({ finish_reason, message }) => finish_reason === "stop" &&
+      !message?.content?.trim?.() && !message?.reasoning_content?.trim?.() &&
+      !message?.reasoning_encrypted_content && !message?.audio && !message?.tool_calls?.length);
 }
 
 /** Same test as the streaming path's onEmptyStream gate. The Chat hop's synthetic " " does not count. */
@@ -532,14 +543,15 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           saveRequestDetail(buildRequestDetail({
             comboNoLog,
             ...ctx,
-            latency: { ttft: totalLatency, total: totalLatency },
+            latency: { ttft: 0, total: totalLatency },
             tokens: { prompt_tokens: inTokensForLog, completion_tokens: usage.output_tokens || 0 },
             response: { content: jsonResponse.output?.map?.((o) => o.type === "message" ? o.content?.map?.((c) => c.type === "output_text" ? c.text : "").join("") : "").join("") || null, thinking: null, finish_reason: jsonResponse.status === "completed" ? "stop" : jsonResponse.status || "unknown" },
             status: "success"
           }, { endpoint: clientRawRequest?.endpoint || null })).catch(() => {});
 
           await markSuccess();
-          return { success: true, response: new Response(JSON.stringify(jsonResponse), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
+          const clientBody = jsonResponse.usage ? { ...jsonResponse, usage: toRequiredResponsesUsage(jsonResponse.usage) } : jsonResponse;
+          return { success: true, response: new Response(JSON.stringify(clientBody), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", ...resolvedModelHeaders(provider, model) } }) };
         }
 
         const openAICompletion = responsesApiToOpenAICompletion(jsonResponse, model, {
@@ -563,7 +575,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         saveRequestDetail(buildRequestDetail({
           comboNoLog,
           ...ctx,
-          latency: { ttft: totalLatency, total: totalLatency },
+          latency: { ttft: 0, total: totalLatency },
           tokens: { prompt_tokens: openAICompletion.usage?.prompt_tokens ?? inTokensForLog, completion_tokens: usage.output_tokens || 0 },
           response: { content: openAICompletion.choices?.[0]?.message?.content || null, thinking: openAICompletion.choices?.[0]?.message?.reasoning_content || null, finish_reason: openAICompletion.choices?.[0]?.finish_reason || "unknown" },
           status: "success"
@@ -687,17 +699,27 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         );
       }
 
+      // A plain stop with no output and no billed tokens is a failed attempt, as on
+      // the non-streaming path (upstream 9router #5864). Claude keeps its own
+      // cooldown below; Antigravity's empty stop is a real answer.
+      if (!claudeSSE && provider !== "antigravity" && provider !== "agy" && isEmptyStopCompletion(parsed)) {
+        appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY} (empty content)` });
+        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Empty response content from ${provider}/${model}`, Date.now() + EMPTY_CONTENT_COOLDOWN_MS);
+      }
+
       const emptyOutput = claudeSSE && isEmptyClaudeCompletion(parsed, claudeSSE.stopReason);
       const usage = parsed.usage || {};
       appendLog({ tokens: usage, status: "200 OK" });
-      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: usage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
+      const billedUsage = claudeSSE?.oneHourWrite === undefined ? usage :
+        { ...usage, cache_creation_1h_input_tokens: claudeSSE.oneHourWrite };
+      saveUsageStats({ usageAttribution: clientRawRequest?.usageAttribution, provider, model, tokens: billedUsage, connectionId, comboId, comboName, apiKey, apiKeyId, billingEpoch, endpoint: clientRawRequest?.endpoint, usageEventId, latency: { total: Date.now() - requestStartTime, ttft: 0 }, silent: true });
       if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency: { total: Date.now() - requestStartTime }, provider, model, sessionId }));
 
       const totalLatency = Date.now() - requestStartTime;
       saveRequestDetail(buildRequestDetail({
         comboNoLog,
         ...ctx,
-        latency: { ttft: totalLatency, total: totalLatency },
+        latency: { ttft: 0, total: totalLatency },
         tokens: usage,
         response: {
           content: parsed.choices?.[0]?.message?.content || null,

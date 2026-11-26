@@ -197,7 +197,8 @@ describe("#1188 g4f-ollama is not installed native Ollama", () => {
   it.each([401, 403])("preserves native auth rejection (%i) in validation, discovery, and chat", async (status) => {
     transport.mockImplementation(async () => json({ error: "fixture access denied" }, status));
     const validation = await validateProvider("ollama");
-    expect(await validation.json()).toEqual({ valid: false, error: "Invalid API key" });
+    // OmniRoute #19963: a 403 worded as an access refusal is not a rejected key.
+    expect(await validation.json()).toEqual({ valid: false, error: status === 401 ? "Invalid API key" : expect.stringMatching(/^Access denied by provider \(HTTP 403\)/) });
     expect(await fetchConnectionModels({ provider: "ollama", ...credentials })).toMatchObject({ status });
     const executor = new DefaultExecutor("ollama");
     const result = await executor.execute({ model, body: { model, messages: [{ role: "user", content: "hi" }], stream: false }, stream: false, credentials });

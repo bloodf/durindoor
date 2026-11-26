@@ -36,6 +36,10 @@ At the pinned CLIProxyAPI revision, `GET /v1/models` returns an OpenAI list obje
 
 The closed fixture verifies connection-specific discovery, selected-account chat, gateway key enforcement, and local token accounting for JSON and SSE. Devin CLI ACP runs a local subprocess for agent-protocol messages. Hosted Devin agent sessions use session operations for agent tasks. This proxy setup exposes chat inference. Direct hosted inference and live upstream authorization remain unverified.
 
+### JSON schema response formats
+
+On a custom OpenAI-compatible connection, DurinDoor changes `response_format: json_schema` to `json_object` and writes the schema into the system message. Many gateways accept only that form. If your upstream supports native structured output, open the connection's Edit dialog on a Chat Completions node and turn on **Native JSON schema support**. DurinDoor then sends the `json_schema` format and the messages unchanged. The setting is stored as `providerSpecificData.nativeJsonSchema` and is off by default.
+
 ## Anthropic-compatible
 
 Same Providers page, Add Anthropic Compatible. Default base URL is `https://api.anthropic.com/v1`. If you paste a URL that already ends in `/messages`, DurinDoor strips that suffix so runtime does not double it.

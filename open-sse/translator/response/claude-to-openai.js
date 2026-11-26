@@ -4,6 +4,7 @@ import { FORMATS } from "../formats.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, OPENAI_FINISH, CLAUDE_STOP } from "../schema/index.js";
 import { buildChunk } from "../concerns/chunk.js";
 import { toOpenAIUsage } from "../concerns/usage.js";
+import { oneHourCacheWrite } from "../../utils/usageTracking.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 
@@ -85,6 +86,8 @@ export function claudeToOpenAIResponse(chunk, state) {
           };
           if (cacheReadTokens > 0) state.usage.cache_read_input_tokens = cacheReadTokens;
           if (cacheCreationTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationTokens;
+          const oneHour = oneHourCacheWrite(startUsage);
+          if (oneHour !== undefined) state.usage.cache_creation_1h_input_tokens = oneHour;
         }
         results.push(createChunk(state, { role: ROLE.ASSISTANT }));
         break;
@@ -238,6 +241,8 @@ export function claudeToOpenAIResponse(chunk, state) {
 
           if (cacheReadTokens > 0) state.usage.cache_read_input_tokens = cacheReadTokens;
           if (cacheCreationTokens > 0) state.usage.cache_creation_input_tokens = cacheCreationTokens;
+          const oneHour = oneHourCacheWrite(chunk.usage) ?? prev.cache_creation_1h_input_tokens;
+          if (oneHour !== undefined) state.usage.cache_creation_1h_input_tokens = oneHour;
         }
 
         if (chunk.delta?.stop_reason) {

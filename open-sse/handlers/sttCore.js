@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { createErrorResult, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
+import { createErrorResult, errorEnvelopeMessage, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { transcribeCodex } from "./codexStt.js";
 import { deepgramToVerboseJson, parseDeepgramOptions } from "./deepgramStt.js";
@@ -77,6 +77,12 @@ function waitWithSignal(ms, signal) {
   });
 }
 
+/** Failure result for an error envelope sent with HTTP 200 (9router #5864), or null. */
+function envelopeFailure(data, token) {
+  const message = errorEnvelopeMessage(data);
+  return message ? createErrorResult(HTTP_STATUS.BAD_GATEWAY, sanitizeErrorMessageWithSecrets(message, [token])) : null;
+}
+
 // Deepgram: raw binary POST + model query param
 async function transcribeDeepgram(cfg, file, model, token, formData, log, proxyOptions, signal) {
   const options = parseDeepgramOptions(formData);
@@ -107,6 +113,9 @@ async function transcribeDeepgram(cfg, file, model, token, formData, log, proxyO
     return null;
   });
   const data = parsed !== null && isObject(parsed) && !Array.isArray(parsed) ? parsed : {};
+  // An error envelope is not a billed transcription, unlike a missing transcript.
+  const failed = envelopeFailure(data, token);
+  if (failed) return failed;
   // Invalid usage cannot be recorded as known usage or trigger another paid call.
   const usage = data.usageMetadata ?? data.usage ?? data.meta?.tokens;
   const billingData = usage !== undefined && (usage === null || !isObject(usage) || Array.isArray(usage)) ? {} : data;
@@ -195,7 +204,12 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData, proxyOpti
     method: "POST", headers: { ...auth, "Content-Type": "application/octet-stream" }, body: buf, signal
   }, proxyOptions);
   if (!up.ok) return upstreamError(up, [token]);
-  const { upload_url } = await up.json();
+  const uploaded = await up.json();
+  const { upload_url } = uploaded;
+  // Without this check a failed upload is submitted and polled for 120s.
+  if (!isString(upload_url) || !upload_url) {
+    return envelopeFailure(uploaded, token) || createErrorResult(HTTP_STATUS.BAD_GATEWAY, "AssemblyAI returned no upload URL");
+  }
   const payload = { audio_url: upload_url, speech_models: [model] };
   const lang = formData.get("language");
   if (isString(lang) && lang.trim()) payload.language_code = lang.trim();else
@@ -208,7 +222,11 @@ async function transcribeAssemblyAI(cfg, file, model, token, formData, proxyOpti
     signal
   }, proxyOptions);
   if (!sub.ok) return upstreamError(sub, [token]);
-  const { id } = await sub.json();
+  const submitted = await sub.json();
+  const { id } = submitted;
+  if (!isString(id) || !id) {
+    return envelopeFailure(submitted, token) || createErrorResult(HTTP_STATUS.BAD_GATEWAY, "AssemblyAI returned no transcript id");
+  }
 
   const start = Date.now();
   while (Date.now() - start < 120_000) {
@@ -296,7 +314,8 @@ async function transcribeGeminiGenerateContent(cfg, file, model, token, formData
   const res = await proxyAwareFetch(`${cfg.baseUrl}/${model}:generateContent?key=${token}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: promptText }, { inline_data: { mime_type: mime, data: b64 } }] }] }), signal }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  return jsonResponse({ text: data?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("") || "" }, data);
+  return envelopeFailure(data, token) ||
+    jsonResponse({ text: data?.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join("") || "" }, data);
 }
 
 // HuggingFace: POST raw binary to {baseUrl}/{model_id}
@@ -312,7 +331,7 @@ async function transcribeHuggingFace(cfg, file, model, token, proxyOptions, sign
   }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
   const data = await res.json();
-  return jsonResponse({ text: data.text || "" }, data);
+  return envelopeFailure(data, token) || jsonResponse({ text: data.text || "" }, data);
 }
 
 const TIMESTAMP_GRANULARITY_FIELDS = ["timestamp_granularities[]", "timestamp_granularities"];
@@ -349,7 +368,7 @@ async function transcribeOpenAICompatible(cfg, file, model, token, formData, pro
     await guardedProbeFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd, signal }) :
     await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers: buildAuthHeaders(cfg, token), body: fd, signal }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
-  return await transcriptionResponse(res);
+  return await transcriptionResponse(res, token);
 }
 
 // MiniMax and xAI require options before multipart file; MiniMax language is an HTTP header.
@@ -368,7 +387,7 @@ async function transcribeNativeSpeech(cfg, file, model, token, formData, proxyOp
   }
   const res = await proxyAwareFetch(cfg.baseUrl, { method: "POST", headers, body: fd, signal }, proxyOptions);
   if (!res.ok) return upstreamError(res, [token]);
-  return await transcriptionResponse(res);
+  return await transcriptionResponse(res, token);
 }
 /** Capture provider billing metadata before transcript normalization discards it.
  * Duration is seconds, never inferred from file bytes or transcript length.
@@ -388,16 +407,19 @@ function transcriptionUsage(data, duration = data?.duration ?? (data?.usage?.typ
   };
 }
 
-async function transcriptionResponse(res) {
+async function transcriptionResponse(res, token) {
   const contentType = res.headers.get("content-type") || "application/json";
   // Text/subtitle responses expose no duration; preserve their stream unchanged.
   if (!/(?:application\/json|\+json)/i.test(contentType)) {
     return { success: true, response: new Response(res.body, { status: res.status, headers: { "Content-Type": contentType, "Access-Control-Allow-Origin": "*" } }) };
   }
   const text = await res.text();
+  const data = JSON.parse(text);
+  const failed = envelopeFailure(data, token);
+  if (failed) return failed;
   return {
     success: true,
-    ...transcriptionUsage(JSON.parse(text)),
+    ...transcriptionUsage(data),
     response: new Response(text, { status: res.status, headers: { "Content-Type": contentType, "Access-Control-Allow-Origin": "*" } }),
   };
 }

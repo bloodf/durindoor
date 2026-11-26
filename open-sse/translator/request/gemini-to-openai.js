@@ -4,6 +4,7 @@ import { FORMATS } from "../formats.js";
 import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { geminiCliOutputText } from "../formats/gemini.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK } from "../schema/index.js";
 
 // Convert Gemini request to OpenAI format
@@ -28,6 +29,7 @@ export function geminiToOpenAIRequest(model, body, stream) {
     if (config.topP !== undefined) {
       result.top_p = config.topP;
     }
+    applyGeminiStopSequences(result, config);
   }
 
   // System instruction
@@ -72,9 +74,17 @@ export function geminiToOpenAIRequest(model, body, stream) {
     }
   }
 
-  // toolConfig → tool_choice (inverse of openai-to-gemini). VALIDATED has no OpenAI
-  // equivalent; it is closest to "auto" (model may answer or call, args schema-checked).
-  const fcc = body.toolConfig?.functionCallingConfig;
+  applyGeminiToolChoice(result, body.toolConfig);
+
+  return result;
+}
+
+/**
+ * toolConfig → tool_choice (inverse of openai-to-gemini). VALIDATED has no OpenAI
+ * equivalent; it is closest to "auto" (model may answer or call, args schema-checked).
+ */
+export function applyGeminiToolChoice(result, toolConfig) {
+  const fcc = toolConfig?.functionCallingConfig;
   if (result.tools?.length && fcc?.mode) {
     const names = fcc.allowedFunctionNames;
     if (fcc.mode === "NONE") result.tool_choice = "none";
@@ -89,8 +99,13 @@ export function geminiToOpenAIRequest(model, body, stream) {
         : "required";
     }
   }
+}
 
-  return result;
+/** OpenAI accepts at most four stop sequences. */
+export function applyGeminiStopSequences(result, generationConfig) {
+  const stop = Array.isArray(generationConfig?.stopSequences) ?
+    generationConfig.stopSequences.filter((sequence) => isString(sequence) && sequence).slice(0, 4) : [];
+  if (stop.length) result.stop = stop;
 }
 
 // Anthropic/OpenAI id patterns reject dots etc. Sanitize generated and client ids the same
@@ -131,7 +146,7 @@ function responseCallId({ queueByName }, response) {
  * omitted role inferred from the parts (functionCall or thought parts mean the model spoke).
  * Any other explicit role (`model`) stays assistant.
  */
-function geminiTurnRole(content) {
+export function geminiTurnRole(content) {
   const role = isString(content?.role) ? content.role.trim().toLowerCase() : "";
   if (role === GEMINI_ROLE.USER || role === "function" || role === "tool") return ROLE.USER;
   if (role) return ROLE.ASSISTANT;
@@ -204,7 +219,7 @@ function convertGeminiContent(content, ids = { serialByName: new Map(), queueByN
       const resp = part.functionResponse.response;
       const toolContent = resp && resp.result !== undefined
         ? (isString(resp.result) ? resp.result : JSON.stringify(resp.result))
-        : JSON.stringify(resp ?? {});
+        : geminiCliOutputText(resp) ?? JSON.stringify(resp ?? {});
       toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: responseCallId(ids, part.functionResponse),

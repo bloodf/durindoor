@@ -155,7 +155,9 @@ describe("#1186 native Groq is not g4f-groq (offline partial acceptance)", () =>
   it.each([401, 403, 429, 503])("does not turn native HTTP %i into credential or model proof", async (status) => {
     const error = { error: { message: "Offline upstream rejection", type: "fixture_error" } };
     fetch.mockImplementation(async () => Response.json(error, { status }));
-    expect(await (await validate("groq")).json()).toEqual({ valid: false, error: "Invalid API key" });
+    // OmniRoute #19963: throttling and outages are no longer reported as a bad key.
+    const verdict = { 429: "Provider rate limited the validation request (HTTP 429)", 503: "Provider unavailable (HTTP 503)" }[status] ?? "Invalid API key";
+    expect(await (await validate("groq")).json()).toEqual({ valid: false, error: verdict });
     const discovery = await fetchConnectionModels(connection);
     expect(discovery.status).toBe(status);
     expect(discovery.error).toBeTruthy();

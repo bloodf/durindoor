@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
-import { writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { assertWriterOwnsTarget, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
 import path from "path";
 import os from "os";
 import { isString } from "../../../../shared/utils/typeChecks.js";
@@ -171,6 +171,8 @@ export async function POST(request) {
 
     const dir = getHermesDir();
     await fs.mkdir(dir, { recursive: true });
+    // Refuse before the first write so a foreign .env cannot leave a half-applied config.
+    if (apiKey) await assertWriterOwnsTarget(getHermesEnvPath());
 
     const normalizedBaseUrl = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 

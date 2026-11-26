@@ -3,6 +3,8 @@
 import { NextResponse } from "next/server";
 import { ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { isEffortSuffixedVariantOfListedId } from "@/shared/utils/effortSuffixedId.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
@@ -139,6 +141,9 @@ export async function POST(request) {
       const separator = m.indexOf("/");
       if (separator <= 0 || Object.hasOwn(saved || {}, "variants")) continue;
       const alias = m.slice(0, separator);
+      // An effort alias (`cx/gpt-5.4-high`) takes no variants: its id fixes the effort.
+      const knownIds = new Set([...modelsArray, ...getModelsByProviderId(alias).map((row) => `${alias}/${row.id}`)]);
+      if (isEffortSuffixedVariantOfListedId(m, knownIds)) continue;
       const provider = Object.hasOwn(ALIAS_TO_ID, alias) ? ALIAS_TO_ID[alias] : alias;
       const levels = getThinkingLevels(provider, m.slice(separator + 1));
       if (levels?.length) {

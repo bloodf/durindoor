@@ -534,6 +534,8 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       model: mappedModel,
       messages,
       stream: true,
+      // The usageEvent frame is built from the usage chunk.
+      stream_options: { include_usage: true },
       // Forward requested inference settings so the selected provider can enforce them.
       ...(body.inferenceConfig?.maxTokens != null && { max_tokens: body.inferenceConfig.maxTokens }),
       ...(body.inferenceConfig?.temperature != null && { temperature: body.inferenceConfig.temperature }),

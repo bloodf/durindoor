@@ -1,4 +1,4 @@
-import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { createErrorResult, errorEnvelopeMessage, parseUpstreamError, formatProviderError } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { FETCH_TIMEOUT_MS } from "../config/mediaConfig.js";
 import { refreshMediaCredentials } from "./mediaRefresh.js";
@@ -9,6 +9,20 @@ import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/imag
 import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+
+const OPENAI_IMAGE_ENUMS = Object.freeze({ complexity: ["low", "medium", "high"], moderation: ["auto", "low"] });
+
+// OmniRoute #20976: reject values OpenAI Images does not accept. null means unset.
+function openAIImageOptionError(body) {
+  for (const [field, allowed] of Object.entries(OPENAI_IMAGE_ENUMS)) {
+    if (body[field] != null && !allowed.includes(body[field])) return `${field} must be one of: ${allowed.join(", ")}`;
+  }
+  const compression = body.output_compression;
+  if (compression != null && !(Number.isInteger(compression) && compression >= 0 && compression <= 100)) {
+    return "output_compression must be an integer from 0 to 100";
+  }
+  return null;
+}
 
 function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
@@ -38,6 +52,18 @@ function binaryImageResponse(base64, outputFormat) {
       "Access-Control-Allow-Origin": "*"
     }
   });
+}
+
+/**
+ * Why a provider body is a failure, or null: an error envelope, or `data` items
+ * of which none holds an image. An empty `data` list stays an accepted answer.
+ */
+function imageFailureMessage(body) {
+  const items = Array.isArray(body?.data) ? body.data : [];
+  if (items.some((item) => item?.b64_json || item?.url)) return null;
+  const envelope = errorEnvelopeMessage(body);
+  if (envelope) return envelope;
+  return items.some((item) => item?.b64_json === "" || item?.url === "") ? "Upstream returned no image" : null;
 }
 
 /**
@@ -115,6 +141,9 @@ export async function handleImageGenerationCore({
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "GIF output does not support output_compression");
   }
 
+  const optionError = provider === "openai" ? openAIImageOptionError(body) : null;
+  if (optionError) return createErrorResult(HTTP_STATUS.BAD_REQUEST, optionError);
+
   const adapter = getImageAdapter(provider);
   if (!adapter) {
     return createErrorResult(
@@ -140,10 +169,12 @@ export async function handleImageGenerationCore({
         Object.assign(credentials, refreshed);
         responseBody = await execute();
       }
-      if (onRequestSuccess) await onRequestSuccess();
       const accounting = mediaAccounting(responseBody, provider, "image");
       const normalized = adapter.normalize(responseBody, body.prompt);
       const finalBody = normalized.created && Array.isArray(normalized.data) ? normalized : responseBody;
+      const noImage = imageFailureMessage(finalBody);
+      if (noImage) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, noImage, undefined, undefined, null, credentials);
+      if (onRequestSuccess) await onRequestSuccess();
       returnedImageUnits(accounting, finalBody);
 
       if (binaryOutput) {
@@ -362,8 +393,6 @@ export async function handleImageGenerationCore({
     return parseError?.jobOutcomeUnknown ? withAcceptedJob(failed) : failed;
   }
 
-  if (onRequestSuccess) await onRequestSuccess();
-
   if (!hasReceipt) accounting = mediaAccounting(parsed, provider, "image");
   attachToolUsage();
   // Normalize → OpenAI-compatible shape
@@ -373,6 +402,14 @@ export async function handleImageGenerationCore({
   const providerBody = normalized.created && Array.isArray(normalized.data) ? normalized : parsed;
   // Report the container the bytes really have, whatever the upstream declared.
   const finalBody = adapter.reportOutputFormat ? normalizeImageOutput(providerBody, body.output_format, log?.warn?.bind(log)) : providerBody;
+  // HTTP 200 with an error envelope or blank images fails before the account is
+  // marked healthy (9router #5864). An accepted async job is not resubmitted.
+  const noImage = imageFailureMessage(finalBody);
+  if (noImage) {
+    const failed = createErrorResult(HTTP_STATUS.BAD_GATEWAY, noImage, undefined, undefined, null, credentials);
+    return adapter.async ? withAcceptedJob(failed) : failed;
+  }
+  if (onRequestSuccess) await onRequestSuccess();
   // Runway's adapter also accepts video models; those outputs are not images.
   if (provider !== "runwayml" || model.includes("image")) returnedImageUnits(accounting, finalBody);
 

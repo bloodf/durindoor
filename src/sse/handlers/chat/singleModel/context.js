@@ -94,6 +94,9 @@ export async function createLoopState(ctx) {
     refreshedQuotaConnectionIds: new Set(),
     lastError: null,
     lastStatus: null,
+    // The upstream error code that goes with lastError (e.g. gemini_web_signed_out),
+    // so account exhaustion does not replace it with the status default.
+    lastErrorCode: null,
     antigravityTimeoutResponse: null,
     antigravityCapacitySweeps: 0,
     totalAttempts: 0,
@@ -107,10 +110,27 @@ export async function createLoopState(ctx) {
     // attempt's normalized event; fallback retries overwrite it.
     lastTokenSaverEvent: null,
     accountAttempts: 0,
+    // Connection of the latest upstream send; a later send elsewhere is an account switch.
+    sentConnectionId: null,
     upstreamModel,
     quotaFamily,
     modelCandidates,
     quotaResourceKeys: buildQuotaResourceKeys({ provider, modelCandidates, quotaFamily })
+  };
+}
+
+/** The request scope every account selection for this request runs under. */
+export function accountSelectionOptions(ctx, state) {
+  return {
+    connectionRecovery: true,
+    signal: ctx.requestSignal,
+    modelCandidates: state.modelCandidates,
+    healthModel: state.upstreamModel || ctx.model,
+    quotaFamily: state.quotaFamily,
+    resourceKeys: state.quotaResourceKeys,
+    apiKeyId: ctx.apiKeyId,
+    allowedConnectionIds: ctx.comboRouting?.allowedConnectionIds || null,
+    restrictionApplied: ctx.comboRouting?.restrictionApplied === true
   };
 }
 

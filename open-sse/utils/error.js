@@ -182,6 +182,8 @@ function retryAfterReset(value, now, maxDelayMs) {
   if (!isString(value) || !value.trim() || value.length > 128) return null;
   const text = value.trim();
   if (/^\d{1,9}$/.test(text)) return relativeReset(text, 1000, now, maxDelayMs);
+  // Any other number is not an HTTP date, but Date.parse reads "-3000" as a year.
+  if (Number.isFinite(Number(text))) return null;
   return absoluteFromIso(text, now, maxDelayMs);
 }
 
@@ -739,6 +741,17 @@ export function getClientStatusFromError(status, errorText = null) {
   if (numericStatus === 524) return HTTP_STATUS.BAD_GATEWAY;
   return Number.isInteger(numericStatus) && numericStatus >= 400 && numericStatus <= 599 ?
     numericStatus : HTTP_STATUS.SERVICE_UNAVAILABLE;
+}
+
+/**
+ * Message of an error envelope (`error`, `errors[]`, `response.error`) that an
+ * upstream sent with HTTP 2xx, or null (upstream 9router #5864).
+ */
+export function errorEnvelopeMessage(payload) {
+  const error = payload?.error || payload?.errors?.[0] || payload?.response?.error;
+  if (!error) return null;
+  const message = isString(error) ? error : error.message || error.detail || error.code || error.type;
+  return isString(message) && message ? message : "Upstream returned an error payload";
 }
 
 /**

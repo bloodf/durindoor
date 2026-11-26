@@ -1,5 +1,5 @@
 import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
-import { createErrorResult, parseUpstreamError, formatProviderError, readBoundedResponseText } from "../utils/error.js";
+import { createErrorResult, errorEnvelopeMessage, parseUpstreamError, formatProviderError, readBoundedResponseText } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getExecutor } from "../executors/index.js";
 import { refreshMediaCredentials } from "./mediaRefresh.js";
@@ -10,6 +10,20 @@ import { mediaAccounting } from "./mediaAccounting.js";
 import { getModelMeta, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { modelParams } from "../providers/models/schema.js";
 import { resolveInputType } from "../config/embeddingParams.js";
+
+/**
+ * False when a returned `data[].embedding` is empty or not numeric. Empty `data`
+ * and non-OpenAI bodies keep passing through.
+ */
+function hasValidVectors(normalized) {
+  if (!Array.isArray(normalized?.data)) return true;
+  return normalized.data.every((item) => {
+    const embedding = item?.embedding;
+    if (embedding === undefined) return true;
+    if (isString(embedding)) return embedding.length > 0;
+    return Array.isArray(embedding) && embedding.length > 0 && embedding.every((value) => Number.isFinite(value));
+  });
+}
 
 /**
  * Core embeddings handler — orchestrator only. Provider-specific URL/headers/body/normalize
@@ -147,11 +161,19 @@ export async function handleEmbeddingsCore({
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
   }
 
+  // HTTP 200 is not success on its own: an error envelope or an unusable vector
+  // fails before the account is marked healthy (9router #5864).
+  const envelopeError = errorEnvelopeMessage(responseBody);
+  if (envelopeError) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, envelopeError, undefined, undefined, null, credentials);
+
   // Read the original provider receipt, never adapter-generated zero usage.
   const accounting = mediaAccounting(responseBody, provider, "embedding");
   let normalized;
   try { normalized = adapter.normalize(responseBody, model); } catch {
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid embeddings response from ${provider}`);
+  }
+  if (!hasValidVectors(normalized)) {
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider} returned no valid embedding vectors`);
   }
   if (onRequestSuccess) await onRequestSuccess();
   log?.debug?.("EMBEDDINGS", `Success | usage=${JSON.stringify(normalized.usage || {})}`);

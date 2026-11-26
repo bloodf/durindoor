@@ -10,7 +10,7 @@ import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
-import { EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { CURSOR_MODEL_UNAVAILABLE_MESSAGE, EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { isDurableCredentialProvider } from "open-sse/services/accountFallback.js";
 import { updateProviderCredentials } from "../../../services/tokenRefresh.js";
@@ -29,10 +29,29 @@ import { onProviderRequestSuccess } from "./providerHooks.js";
  * and rotation callbacks write back into `attempt` so later stages see the
  * connection and credentials the upstream finally accepted.
  */
+/**
+ * Failure recorded for a stream that produced nothing. A Cursor empty turn keeps
+ * its 404 so the Cursor rule locks the model only (OmniRoute #19972); anything
+ * else is the generic 502 bench.
+ */
+export function emptyStreamBench(provider, model, streamError) {
+  if (provider === "cursor" && streamError?.message?.includes(CURSOR_MODEL_UNAVAILABLE_MESSAGE)) {
+    return { status: HTTP_STATUS.NOT_FOUND, reason: streamError.message, resetsAtMs: null };
+  }
+  return {
+    status: HTTP_STATUS.BAD_GATEWAY,
+    reason: `Empty streaming response from ${provider}/${model}`,
+    resetsAtMs: Date.now() + EMPTY_CONTENT_COOLDOWN_MS,
+  };
+}
+
 function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThinking, pxpipeTransform, quotaReservation, cookieRefreshContext }) {
   const { provider, model, request, requestSignal, comboRouting } = ctx;
   const { credentials, dispatchedCredential } = attempt;
+  // The conversation moved here from an account that already received it in this request.
+  const accountSwitched = Boolean(state.sentConnectionId) && state.sentConnectionId !== credentials.connectionId;
   return {
+    accountSwitched,
     body: { ...structuredClone(ctx.body), model: `${provider}/${model}` },
     modelInfo: { provider, model },
     modelCapabilities: ctx.resolvedModelCapabilities,
@@ -52,8 +71,10 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     comboName: comboRouting?.name || null,
     comboNoLog: comboRouting?.noLog === true,
     quotaReservation,
+    accountFailoverAvailable: attempt.accountFailoverAvailable === true,
     onProviderAttempt: () => {
       state.accountAttempts++;
+      state.sentConnectionId = credentials.connectionId;
       attempt.latestAttemptStartedAt = allocateProviderAttemptTimestamp();
       return attempt.latestAttemptStartedAt;
     },
@@ -156,15 +177,16 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     },
     // Streaming headers are already committed when emptiness becomes known.
     // Bench this account so the client's retry selects another candidate.
-    onEmptyStream: async () => {
+    onEmptyStream: async (streamError) => {
       if (!Number.isSafeInteger(attempt.latestAttemptStartedAt) || attempt.latestAttemptStartedAt <= 0) return;
+      const bench = emptyStreamBench(provider, model, streamError);
       await markAccountUnavailable(
         credentials.connectionId,
-        HTTP_STATUS.BAD_GATEWAY,
-        `Empty streaming response from ${provider}/${model}`,
+        bench.status,
+        bench.reason,
         provider,
         model,
-        Date.now() + EMPTY_CONTENT_COOLDOWN_MS,
+        bench.resetsAtMs,
         { attemptStartedAt: attempt.latestAttemptStartedAt, credentialFingerprint: dispatchedCredential, signal: requestSignal }
       );
     },

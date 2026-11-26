@@ -10,6 +10,7 @@ import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {
   buildBedrockNativeConverseUrl,
   resolveBedrockRegion } from
@@ -134,6 +135,29 @@ function systemBlocksFromOpenAI(messages) {
   ).
   filter((text) => text.trim()).
   map((text) => ({ text }));
+}
+
+// Converse model ids that reject a `system` block. A region prefix (`us.`) or an ARN path
+// may precede the name. Add an entry when Bedrock rejects another family.
+const NO_SYSTEM_MODEL_PATTERNS = [
+  /(^|[./])amazon\.titan-text/i,
+  /(^|[./])cohere\.command(-light)?-text/i,
+  /(^|[./])mistral\.mistral-7b-instruct/i,
+  /(^|[./])mistral\.mixtral-8x7b-instruct/i
+];
+
+// A model that rejects `system` gets the text in its first user turn; others get the block.
+function placeSystemBlocks(payload, model, system) {
+  if (system.length === 0) return;
+  if (!NO_SYSTEM_MODEL_PATTERNS.some((pattern) => pattern.test(model))) {
+    payload.system = system;
+    return;
+  }
+  const block = { text: system.map((item) => item.text).join("\n") };
+  const [first, ...rest] = payload.messages;
+  payload.messages = first?.role === "user" ?
+  [{ ...first, content: [block, ...first.content] }, ...rest] :
+  [{ role: "user", content: [block] }, ...payload.messages];
 }
 
 function toolResultContentFromMessage(message) {
@@ -270,14 +294,21 @@ export function openAIToBedrockConverse(model, body) {
   if (isClaudeSonnetHaiku45(model) && isNumber(request.temperature) && isNumber(request.top_p)) {
     delete inferenceConfig.temperature;
   }
+  // A Claude model that cannot stop thinking rejects sampling controls and forced tool use.
+  const alwaysThinks = isAlwaysThinkingClaude(model);
+  if (alwaysThinks) {
+    delete inferenceConfig.temperature;
+    delete inferenceConfig.topP;
+  }
   if (Array.isArray(request.stop)) inferenceConfig.stopSequences = request.stop.filter(Boolean);else
   if (isString(request.stop) && request.stop) inferenceConfig.stopSequences = [request.stop];
 
   const payload = { modelId: model, messages: messagesFromOpenAI(messages) };
   const system = systemBlocksFromOpenAI(messages);
-  if (system.length > 0) payload.system = system;
+  placeSystemBlocks(payload, model, system);
   if (Object.keys(inferenceConfig).length > 0) payload.inferenceConfig = inferenceConfig;
   const toolConfig = toolConfigFromOpenAI(request.tools, request.tool_choice);
+  if (toolConfig && alwaysThinks && toolConfig.toolChoice) toolConfig.toolChoice = { auto: {} };
   if (toolConfig) payload.toolConfig = toolConfig;
   if (request.thinking && isObject(request.thinking) && !Array.isArray(request.thinking)) {
     payload.additionalModelRequestFields = { ...payload.additionalModelRequestFields, thinking: request.thinking };
@@ -297,6 +328,10 @@ function usageFromBedrock(usage) {
   const input = Number(usage?.inputTokens || 0);
   const output = Number(usage?.outputTokens || 0);
   return { prompt_tokens: input, completion_tokens: output, total_tokens: Number(usage?.totalTokens || input + output) };
+}
+
+function isAlwaysThinkingClaude(model) {
+  return /claude/i.test(String(model)) && getCapabilitiesForModel("bedrock", model).thinkingCanDisable === false;
 }
 
 function isClaudeSonnetHaiku45(model) {

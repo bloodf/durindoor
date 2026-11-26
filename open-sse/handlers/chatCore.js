@@ -54,7 +54,7 @@ import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
-import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
+import { isAnthropicThinkingSignatureError, stripAllThinkingForSignatureRecovery, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
 import { wireAdaptiveEffort } from "./chatCore/adaptiveEffortWiring.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
@@ -354,7 +354,20 @@ async function cancelResponseBody(response) {
  * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }) {
+export async function handleChatCore(options) {
+  const pendingGuard = { release: null };
+  try {
+    return await runChatCore(options, pendingGuard);
+  } catch (error) {
+    // An unexpected throw skips every explicit finalizer, which would leave the
+    // pending row, its concurrency slots and its quota lease held. No result
+    // reached the caller, so no stream can own them.
+    pendingGuard.release?.(error);
+    throw error;
+  }
+}
+
+async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false, accountFailoverAvailable = false }, pendingGuard) {
   const sourceFormat = sourceFormatOverride || detectFormat(body);
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
@@ -366,6 +379,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
 
   } :
   rawCredentials;
+  // Request-scoped caller identity for the opt-in prompt cache key; never sent upstream.
+  if (credentials && (apiKeyId || apiKey)) credentials._cachePrincipalId = apiKeyId || apiKey;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
   if (isCursorProvider(provider)) {
@@ -418,6 +433,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     }
   })();
   let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
+  if (accountSwitched) requestContext = Object.freeze({ ...requestContext, accountSwitched });
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
   // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
   const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;
@@ -1293,6 +1309,11 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     trackPendingRequest(cleanModel, provider, connectionId, false, false, { requestId: activeSessionRequestId }, apiKeyName);
     releaseConcurrencySlots();
   };
+  pendingGuard.release = (error) => {
+    finishProviderRequest();
+    finishActiveDashboardSession("error");
+    settleQuota(false, classifyQuotaTerminalReason(error));
+  };
 
   // Set once buildOnStreamComplete runs (streaming path only); lets the
   // disconnect/error callbacks below — defined before that call exists —
@@ -1443,7 +1464,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     if (Number.isSafeInteger(allocated) && allocated > 0) latestProviderAttemptStartedAt = allocated;
     return latestProviderAttemptStartedAt;
   };
-  const executeProvider = async () => {
+  const executeProvider = async ({ canChangeAccount = true } = {}) => {
     if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
     const initialAttempt = beginProviderAttempt();
     try {
@@ -1462,6 +1483,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
         requestContext,
         attemptStartedAt: initialAttempt,
         onProviderAttempt: beginProviderAttempt,
+        accountFailoverAvailable: canChangeAccount && accountFailoverAvailable,
         // Executors that rotate a stored credential mid-request (chatgpt-web's
         // session cookie) report it here; the caller decides what to persist.
         onCredentialsRefreshed
@@ -1730,16 +1752,20 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
 
   // Provider returned error
   if (!providerResponse.ok) {
-    // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
-    // exact `400 Invalid signature in thinking block`, retry ONCE with historical
-    // thinking omitted (active tool-use cycle preserved) before any cooldown/
-    // fallback accounting. Any other failure flows through unchanged.
-    if (
-    !claudeRequestScoped && !providerSignal?.aborted &&
-    isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message }))
-    {
-      const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
-      if (recoveryBody !== translatedBody) {
+    // Anthropic thinking-signature recovery, before any cooldown/fallback
+    // accounting. On the exact `400 Invalid signature in thinking block`:
+    // first retry with historical thinking omitted and the active tool-use cycle
+    // preserved (OmniRoute #7906); if that same error remains, or nothing
+    // historical could be stripped, retry once more with all thinking removed and
+    // extended thinking off (OmniRoute #20063). Any other failure flows through.
+    const recoveryBase = translatedBody;
+    for (const stripThinking of [stripHistoricalThinkingForSignatureRecovery, stripAllThinkingForSignatureRecovery]) {
+      if (
+      !providerResponse.ok && !claudeRequestScoped && !providerSignal?.aborted &&
+      isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message }))
+      {
+        const recoveryBody = stripThinking(recoveryBase);
+        if (recoveryBody === recoveryBase) continue;
         translatedBody = recoveryBody;
         if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);
         try {
@@ -1753,7 +1779,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
           captureExecutorToolNameMap(finalBody);
           reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
           if (providerResponse.ok) {
-            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
+            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after a thinking-signature retry`);
           } else {
             parsedError = await parseAndRestateError(providerResponse);
           }
@@ -1871,7 +1897,8 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
   // one (#2188, #2229, #2250, #2259).
   if ((provider === "antigravity" || provider === "agy") && stream && providerResponse.body) {
     const reexecute = async () => {
-      const retryResult = await executeProvider();
+      // Mid-stream recovery stays on this account, so a 503 keeps its in-place retries.
+      const retryResult = await executeProvider({ canChangeAccount: false });
       if (!retryResult.response.ok) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
         const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });

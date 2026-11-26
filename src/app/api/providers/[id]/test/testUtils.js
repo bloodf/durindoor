@@ -47,6 +47,7 @@ import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/provi
 // OAuth provider test endpoints
 import { isString } from "../../../../../shared/utils/typeChecks.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
+import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
 export const OAUTH_TEST_CONFIG = {
   claude: { checkExpiry: true, refreshable: true },
   // Native Microsoft 365 sign-in rows: the token expiry is the probe, and an expired one renews with its refresh token.
@@ -925,7 +926,9 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
             body: JSON.stringify({ model: getDefaultModel(connection.provider), max_tokens: 10, messages: [{ role: "user", content: "test" }] })
           }, effectiveProxy);
-          const valid = res.status !== 401 && res.status !== 403;
+          const valid = connection.provider === "byteplus" ?
+          await isByteplusKeyAccepted(res) :
+          res.status !== 401 && res.status !== 403;
           return { valid, error: valid ? null : "Invalid API key" };
         }
       case "deepseek":{

@@ -12,6 +12,7 @@ import { requestAborted } from "../shared.js";
 import {
   MAX_ACCOUNT_ATTEMPTS_PER_REQUEST,
   RETRY,
+  accountSelectionOptions,
   aggregateRateLimitBlockers,
   proceed,
   proxyOptionsFromCredentials,
@@ -20,6 +21,7 @@ import {
 import {
   ANTIGRAVITY_CAPACITY_SWEEP_RETRIES,
   allowedAttemptsPerConnection,
+  antigravityAccountFailover,
   ensureProviderProjectId,
   shouldRestartCapacitySweep,
   warmRequestModelLimits
@@ -92,7 +94,13 @@ function exhaustedResponse(ctx, state) {
   if (attemptedRateLimit) {
     return unavailableResponse(429, `[${provider}/${model}] ${state.lastError || "Rate limit exceeded"}`, attemptedRateLimit.retryAt, "");
   }
-  return errorResponse(getClientStatusFromError(state.lastStatus, state.lastError), state.lastError || "All accounts unavailable");
+  // Without the upstream code the status default applies, and a 401 would read as
+  // `invalid_api_key`: "your gateway key is invalid" (OmniRoute #21119).
+  return errorResponse(
+    getClientStatusFromError(state.lastStatus, state.lastError),
+    state.lastError || "All accounts unavailable",
+    state.lastErrorCode ? { code: state.lastErrorCode } : null
+  );
 }
 
 /**
@@ -105,17 +113,9 @@ export async function selectCredentials(ctx, state) {
   let credentials;
   try {
     credentials = await getProviderCredentialsWithQuotaPreflight(provider, state.excludeConnectionIds, model, {
-      connectionRecovery: true,
-      signal: requestSignal,
-      modelCandidates: state.modelCandidates,
-      healthModel: state.upstreamModel || model,
-      quotaFamily: state.quotaFamily,
-      resourceKeys: state.quotaResourceKeys,
+      ...accountSelectionOptions(ctx, state),
       sessionId: ctx.routingSessionId,
       preferredConnectionId: preferredConnectionId || state.requestReplayConnectionId,
-      apiKeyId: ctx.apiKeyId,
-      allowedConnectionIds: ctx.comboRouting?.allowedConnectionIds || null,
-      restrictionApplied: ctx.comboRouting?.restrictionApplied === true,
       reportScopeDenied: ctx.reportComboPolicyRejections
     });
   } catch (error) {
@@ -194,6 +194,8 @@ export async function prepareAttempt(ctx, state, credentials) {
   const projectOutcome = await ensureProviderProjectId(ctx, state, credentials, refreshedCredentials);
   if (projectOutcome.kind !== "ok") return projectOutcome;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
+  const accountFailoverAvailable = await antigravityAccountFailover(ctx, state, credentials);
+  if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
   warmRequestModelLimits(provider, refreshedCredentials);
   // Bind later outcome writes to the stored credential this attempt sends.
   const { credentialFingerprint: dispatchedCredential } = credentialDispatchSnapshot(refreshedCredentials);
@@ -203,6 +205,7 @@ export async function prepareAttempt(ctx, state, credentials) {
       activeConnection,
       refreshedCredentials,
       dispatchedCredential,
+      accountFailoverAvailable,
       chatSettings: null,
       latestAttemptStartedAt: null,
       healthAttempt: null

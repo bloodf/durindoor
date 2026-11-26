@@ -41,6 +41,8 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 "dependencies", "dependentSchemas", "dependentRequired",
 // Other unsupported keywords
 "title", "optional", "~optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
+// OpenAPI annotations and editor hints: Gemini rejects the whole tool list over one of them
+"errorMessage", "errorMessages", "doNotSuggest", "suggestSortText", "discriminator", "xml", "externalDocs",
 // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
 "cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
 "gap", "padding", "strokeColor", "strokeThickness", "textColor"];
@@ -332,6 +334,18 @@ export function sanitizeFunctionResponseResult(value, depth = 0) {
 // Try parse JSON safely (null fallback on parse error; re-export keeps legacy API)
 export function tryParseJSON(str) {
   return safeParseJSON(str, null);
+}
+
+/**
+ * Tool text for a Gemini functionResponse that uses the Gemini CLI `{ output }`
+ * wrapper (upstream #5863), or null when the response has another shape. An
+ * `output` with sibling fields is not a bare wrapper, so nothing is dropped.
+ */
+export function geminiCliOutputText(response) {
+  if (!isObject(response) || Array.isArray(response)) return null;
+  const keys = Object.keys(response);
+  if (keys.length !== 1 || keys[0] !== "output") return null;
+  return isString(response.output) ? response.output : JSON.stringify(response.output ?? null);
 }
 
 // Generate request ID

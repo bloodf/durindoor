@@ -11,7 +11,7 @@ import { register, initState } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
-import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
+import { buildUsage, toResponsesUsage, withResponsesDetailCounters } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText, REASONING_PART_SEPARATOR } from "../concerns/reasoning.js";
 import { resolveInlineThinkingFormat, trackInlineExtractorHold } from "../../utils/inlineThinking.js";
@@ -59,17 +59,7 @@ function completedUsage(raw) {
   const usage = toResponsesUsage(raw);
   if (!Number.isInteger(usage.input_tokens) || usage.input_tokens + usage.output_tokens <= 0) return null;
   usage.total_tokens = usage.input_tokens + usage.output_tokens;
-  for (const [field, count, optional] of [
-    ["input_tokens_details", "cached_tokens", ["cache_write_tokens", "cache_creation_tokens"]],
-    ["output_tokens_details", "reasoning_tokens", []]
-  ]) {
-    if (!usage[field]) continue;
-    // Keep sibling details while making known counters safe for integer clients.
-    for (const key of [count, ...optional.filter((name) => name in usage[field])]) {
-      if (!Number.isInteger(usage[field][key]) || usage[field][key] < 0) usage[field][key] = 0;
-    }
-  }
-  return usage;
+  return withResponsesDetailCounters(usage);
 }
 
 /**
@@ -109,6 +99,9 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     }
     return [];
   }
+
+  // Nothing may follow response.completed: a late delta would open items after the terminal.
+  if (state.completedSent) return [];
 
   const { events, emit } = createEventEmitter(state);
 
@@ -512,8 +505,26 @@ export function createResponsesToolNameResolver(requestBody, toolNameMap) {
   return (name) => resolveResponsesToolName(state, restoreResponsesToolName(state, name));
 }
 
+// Slots for calls that reuse an upstream index start far above any real index.
+const REUSED_INDEX_SLOT_BASE = 1_000_000;
+
+/**
+ * Local slot of a streamed call. Some upstreams reuse one index for several calls: a new id
+ * takes its own slot, and later id-less fragments follow the latest id seen on that index.
+ */
+function toolCallSlot(state, tc) {
+  const index = tc.index ?? 0;
+  const aliases = state.funcSlotAliases ||= {};
+  const current = aliases[index] ?? index;
+  if (!tc.id || !state.funcCallIds[current] || state.funcCallIds[current] === tc.id) return current;
+  const known = Object.keys(state.funcCallIds).find((slot) => state.funcCallIds[slot] === tc.id);
+  if (known !== undefined) return aliases[index] = Number(known);
+  state.funcReusedIndexCount = (state.funcReusedIndexCount || 0) + 1;
+  return aliases[index] = REUSED_INDEX_SLOT_BASE + state.funcReusedIndexCount;
+}
+
 function emitToolCall(state, emit, tc) {
-  const tcIdx = tc.index ?? 0;
+  const tcIdx = toolCallSlot(state, tc);
   let outputIndex = state.funcOutputIndexes[tcIdx];
   const newCallId = tc.id;
   const funcName = tc.function?.name;
@@ -583,7 +594,9 @@ function emitToolCall(state, emit, tc) {
   state.funcArgsBuf[tcIdx] ||= "";
 
   if (tc.function?.arguments) {
-    const delta = tc.function.arguments;
+    // Some upstreams send the arguments as a parsed object; the stream carries JSON text.
+    const raw = tc.function.arguments;
+    const delta = isString(raw) ? raw : JSON.stringify(raw);
     chargeRetained(state, delta.length);
     state.funcArgsBuf[tcIdx] += delta;
 
@@ -1064,6 +1077,7 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
 
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
+    const reasoningSnapshots = recoverReasoningSnapshots(eventType, data.response, state);
     const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
     const toolSnapshots = [];
     if (!state.finishReasonSent && eventType !== "response.incomplete" &&
@@ -1118,7 +1132,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return textSnapshots.length || toolSnapshots.length || pending.length ? [...textSnapshots, ...toolSnapshots, ...pending, finalChunk] : finalChunk;
+      const recovered = [...reasoningSnapshots, ...textSnapshots, ...toolSnapshots, ...pending];
+      return recovered.length ? [...recovered, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;
@@ -1170,6 +1185,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
     if (!isString(summary) || !summary || isInternalReasoningPlaceholder(summary)) return null;
     if (data.item_id) reasoningEvents.ids.add(data.item_id);
     if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+    // A delta with no identity cannot be paired with a later snapshot.
+    if (!data.item_id && !Number.isInteger(data.output_index)) reasoningEvents.anonymous = true;
   } else if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.REASONING) {
     if (reasoningEvents.ids.has(data.item.id) || reasoningEvents.indexes.has(data.output_index)) return null;
     summary = Array.isArray(data.item.summary) ? data.item.summary
@@ -1192,6 +1209,20 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
 
   // Ignore other events
   return null;
+}
+
+// OmniRoute #21234: a summary may arrive only in the completed snapshot. Replaying it
+// as output_item.done reuses the duplicate checks for streamed and finished items.
+function recoverReasoningSnapshots(eventType, response, state) {
+  if (state.finishReasonSent || eventType === "response.incomplete" ||
+      (response?.status != null && response.status !== "completed") || !Array.isArray(response?.output) ||
+      state.responsesReasoningEvents?.anonymous) return [];
+  return response.output.flatMap((item, output_index) => {
+    if (item?.type !== RESPONSES_ITEM.REASONING) return [];
+    // Each recovered item is a separate thought.
+    if (state.respReasoningEmitted) state.respReasoningNeedsBreak = true;
+    return openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state) || [];
+  });
 }
 
 // Register both directions

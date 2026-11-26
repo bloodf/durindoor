@@ -1,4 +1,5 @@
 // Adapted from OmniRoute open-sse/executors/adapta-web.ts at fbd3396 (PR #51).
+import { randomUUID } from "node:crypto";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -11,6 +12,36 @@ import { createExecutorSender } from "./sendRequest.js";
 const APP = "https://agent.adapta.one";
 const CLERK = "https://clerk.agent.adapta.one";
 const URL = `${APP}/api/chat/stream/v1`;
+const DEFAULT_MODEL_KEY = "ONE";
+// DurinDoor model id -> Adapta catalog key, sent upstream as `modelAi`.
+export const MODEL_KEY_MAP = Object.freeze({
+  "adapta-one": "ONE",
+  "adapta-gpt-6-luna": "GPT_6_LUNA",
+  "adapta-claude-5-5-haiku": "CLAUDE_5_5_HAIKU",
+  "adapta-claude-5-5-sonnet": "CLAUDE_5_5_SONNET",
+  "adapta-claude-5-sonnet": "CLAUDE_5_SONNET",
+  "adapta-gemini-3-8-flash": "GEMINI_3_8_FLASH",
+  "adapta-gemini-3-7-flash": "GEMINI_3_7_FLASH",
+  "adapta-gemini-3-1-pro-preview": "GEMINI_3_1_PRO_PREVIEW",
+  "adapta-deepseek-v4-1-flash-1017": "DEEPSEEK_V4_1_FLASH_1017",
+  "adapta-deepseek-v4-flash-updated": "DEEPSEEK_V4_FLASH_UPDATED",
+  "adapta-deepseek-v4-pro-0813": "DEEPSEEK_V4_PRO_0813",
+  "adapta-kimi-k2-7-code": "KIMI_K2_7_CODE",
+  "adapta-kimi-k2-6": "KIMI_K2_6",
+  "adapta-minimax-m3": "MINIMAX_M3",
+  "adapta-minimax-m3-1-flash": "MINIMAX_M3_1_FLASH",
+  "adapta-minimax-m2-7-highspeed": "MINIMAX_M2_7_HIGHSPEED",
+  "adapta-minimax-m2-7": "MINIMAX_M2_7",
+  "adapta-qwen-3-8-27b": "QWEN_3_8_27B",
+  "adapta-qwen-3-8-flash": "QWEN_3_8_FLASH",
+  "adapta-qwen-3-7-plus": "QWEN_3_7_PLUS",
+  "adapta-glm-5-3-flash": "GLM_5_3_FLASH",
+  "adapta-glm-5-2": "GLM_5_2",
+  "adapta-grok-43": "GROK_43",
+  "adapta-muse-spark-1-3": "MUSE_SPARK_1_3",
+  "adapta-sonar-pro": "SONAR_PRO",
+  "adapta-nvidia-nemotron-super": "NVIDIA_NEMOTRON_SUPER",
+});
 const cache = new Map();
 // Clerk and chat can have different NO_PROXY results. Cache only deterministic
 // routes, since a non-strict proxy can fall back to direct at any hop.
@@ -64,7 +95,7 @@ async function session(cookie, key, signal, send) {
   }
   return jwt;
 }
-function messagesFor(messages) {
+function messagesFor(messages, modelKey, chatId) {
   let system = "";
   const output = [];
   const text = (c) => isString(c) ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => String(p.text ?? "")).join("") : String(c ?? "");
@@ -77,7 +108,11 @@ function messagesFor(messages) {
     let value = text(m.content);
     if (!value.trim()) continue;
     if (m.role === "user" && system) { value = `${system}\n\n${value}`; system = ""; }
-    output.push({ role: m.role, parts: [{ type: "text", text: value }] });
+    const id = randomUUID();
+    const turn = { id, role: m.role, parts: [{ type: "text", text: value }] };
+    output.push(m.role === "assistant"
+      ? { ...turn, metadata: { model: modelKey, chatId, messageId: id, isPaused: false }, state: "done" }
+      : turn);
   }
   return output;
 }
@@ -93,6 +128,7 @@ function estimatedUsage(messages, content) {
   const completionTokens = Math.ceil(String(content ?? "").length / 4);
   return { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
 }
+const endsReply = (event) => ["done", "end", "finish"].includes(event.type);
 async function* events(stream) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -121,7 +157,13 @@ export class AdaptaWebExecutor extends BaseExecutor {
     const cookie = cookieValue(credentials.apiKey);
     if (!cookie || /[\r\n;]/.test(cookie)) return result(error(401, "Missing or invalid Adapta credentials"), body);
     const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(body, Array.isArray(body.messages) ? body.messages : []);
-    const payload = { messages: messagesFor(effectiveMessages), aiModelId: 14 };
+    const modelKey = Object.hasOwn(MODEL_KEY_MAP, model) ? MODEL_KEY_MAP[model] : DEFAULT_MODEL_KEY;
+    const chatId = randomUUID();
+    const payload = {
+      chatId, id: chatId, isTemporaryChat: false, mandatoryTools: [], skipImagePromptOptimization: true,
+      modelAi: modelKey, trigger: "submit-message",
+      messages: messagesFor(effectiveMessages, modelKey, chatId),
+    };
     if (!payload.messages.length) return result(error(400, "No messages provided"), payload);
     const cacheKey = sessionCacheKey(cookie, proxyOptions);
     const canceled = () => result(error(499, "Adapta request canceled"), payload);
@@ -164,7 +206,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
         try { for await (const event of events(upstream.body)) {
           if (event.type === "text-delta" && event.id !== "quick-response" && isString(event.delta)) emit({ content: event.delta });
           if (event.type === "error") { emit({ content: "\n\n[Erro: Adapta upstream error]" }); break; }
-          if (event.type === "done" || event.type === "end") break;
+          if (endsReply(event)) break;
         } } catch { emit({ content: "\n\n[Erro: Adapta upstream error]" }); }
         emit({}, "stop"); controller.enqueue(encoder.encode("data: [DONE]\n\n")); controller.close();
       } });
@@ -174,7 +216,7 @@ export class AdaptaWebExecutor extends BaseExecutor {
     try { for await (const event of events(upstream.body)) {
       if (event.type === "error") return chatResult(error(502, "Adapta upstream error"));
       if (event.type === "text-delta" && event.id !== "quick-response" && isString(event.delta)) content += event.delta;
-      if (event.type === "done" || event.type === "end") break;
+      if (endsReply(event)) break;
     } } catch { return chatResult(error(502, "Adapta upstream error")); }
     const parsed = hasTools ? buildToolAwareResult(content, requestedTools, "adp") : { content, finishReason: "stop" };
     const message = parsed.toolCalls ? { role: "assistant", content: null, tool_calls: parsed.toolCalls } : { role: "assistant", content: parsed.content };

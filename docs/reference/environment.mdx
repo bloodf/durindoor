@@ -116,14 +116,14 @@ The default guard mode is local-first: LAN and localhost provider URLs are allow
 
 ## Timeouts and stream bounds
 
-Most timeout variables parse an integer greater than zero. Invalid or nonpositive values use the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off.
+Most timeout variables parse an integer greater than zero. Invalid or nonpositive values use the default. `SSE_KEEPALIVE_MS` and `STREAM_EARLY_EOF_PEEK_MS` also accept `0` to turn the feature off. In the table below, a millisecond value above `2147483647` (the Node timer limit) is capped at it.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GITHUB_CREDIT_USAGE_CACHE_TTL_MS` | `30000` | Reuse a GitHub Copilot credit reading for this duration before checking the local credit cutoff again. |
 | `SSE_KEEPALIVE_MS` | `10000` | Claude SSE ping interval during upstream silence. `0` disables. |
 | `DURINDOOR_NONSTREAM_KEEPALIVE_MS` | `0` (off) | Non-streaming `/v1/messages` responses slower than this start sending JSON whitespace. `OMNIROUTE_NONSTREAM_KEEPALIVE_MS` is read when it is unset. See the trade-off below. |
-| `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. |
+| `STREAM_STALL_TIMEOUT_MS` | `360000` | Inter-chunk stall timeout once tokens flow. After upstream ends, the same budget limits how long the client may go without reading before the request is released. |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `200000` | Time-to-first-token timeout. |
 | `STREAM_MAX_RETAINED_BYTES` | `67108864` | Per-stream cap on tool arguments, reasoning text and thinking signatures held by stream translators. Past it the stream fails. `0` disables it. |
 | `STREAM_EARLY_EOF_PEEK_MS` | `10000` | How long a direct stream is held for its first content frame. A stream that ends or errors empty inside it retries once on a sibling connection. `0` disables. |
@@ -131,7 +131,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. |
 | `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. |
 | `PROVIDER_BODY_TIMEOUT_MS` | `120000` | Bound for a successful non-streaming provider body. |
-| `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-json conversion. |
+| `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-JSON conversion, and for a late non-stream reply read behind the early keepalive. |
 | `MAX_PROVIDER_BODY_BYTES` | `8388608` | Max provider body bytes. |
 | `MAX_RESPONSES_OUTPUT_ITEMS` | `1024` | Cap on Responses output items. |
 | `CODEX_SSE_PEEK_TIMEOUT_MS` | `30000` (capped at 5 min) | Bound for the Codex SSE peek. |

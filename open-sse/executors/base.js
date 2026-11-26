@@ -13,6 +13,7 @@ import { settleProviderAttemptDispatch } from "../services/providerAttemptContex
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
 import { FORMATS } from "../translator/formats.js";
+import { stringifyWellFormed } from "../utils/wellFormedJson.js";
 import { openaiToOpenAIResponsesRequest } from "../translator/request/openai-responses.js";
 
 
@@ -281,7 +282,7 @@ export class BaseExecutor {
     return { status: response.status, message: bodyText || `HTTP ${response.status}` };
   }
 
-  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null }) {
+  async execute({ model, body, stream, credentials, signal, log, proxyOptions = null, requestContext = null, attemptStartedAt = null, onProviderAttempt = null, requestPolicy = null, directFetch = null, accountFailoverAvailable = false }) {
     if (signal?.aborted) throw requestAbortError(signal.reason);
     // Callers (direct execute() calls, tests) may omit requestContext entirely.
     // Allocate a fresh per-call object so executor request-scoped metadata
@@ -360,6 +361,8 @@ export class BaseExecutor {
     // Schedule retry via resolveAttempts. Returns true when caller should `urlIndex--; continue`
     // response (optional) lets a subclass hook compute a dynamic delay (e.g. antigravity Retry-After).
     const tryRetry = async (urlIndex, statusKey, reason, response = null, errorKind = null, text = null) => {
+      // The caller has another account ready, so a 503 goes back to it unretried.
+      if (accountFailoverAvailable && response?.status === HTTP_STATUS.SERVICE_UNAVAILABLE) return false;
       const { attempts, delayMs } = resolveAttempts({ statusKey, errorKind, text });
       if (attempts <= 0 || retryAttemptsByUrl[urlIndex] >= attempts || !transportBudgetLeft(urlIndex)) return false;
       const matchedRule = skipRules ?
@@ -460,7 +463,9 @@ export class BaseExecutor {
         if (strippedMessageFields.size && Array.isArray(requestBody?.messages)) {
           requestBody = stripAssistantMessageFields(requestBody, strippedMessageFields);
         }
-        let bodyStr = JSON.stringify(requestBody);
+        const claudeWire = wireFormat === FORMATS.CLAUDE || /\/messages\/?$/.test(new URL(url).pathname);
+        const serialize = claudeWire ? stringifyWellFormed : JSON.stringify;
+        let bodyStr = serialize(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
         const send = (serializedBody) => {
@@ -481,7 +486,7 @@ export class BaseExecutor {
           const replay = async () => {
             await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });
             cancelDiscardedResponse(response);
-            response = await send(JSON.stringify(requestBody));
+            response = await send(serialize(requestBody));
           };
           const errorPayload = async () => {
             try { return JSON.parse(await readOptionalProbeText(response, { signal })); }
@@ -527,14 +532,14 @@ export class BaseExecutor {
             requestBody = { ...requestBody };
             delete requestBody[field];
             strippedFields.add(field);
-            bodyStr = JSON.stringify(requestBody);
+            bodyStr = serialize(requestBody);
             log?.debug?.("RETRY", `Provider rejected field ${field}; stripping and retrying`);
           } else {
             const messageField = findRejectedMessageField(response.status, errorText, requestBody);
             if (!messageField) break;
             requestBody = stripAssistantMessageFields(requestBody, [messageField]);
             strippedMessageFields.add(messageField);
-            bodyStr = JSON.stringify(requestBody);
+            bodyStr = serialize(requestBody);
             log?.debug?.("RETRY", `Provider rejected message field ${messageField}; stripping and retrying`);
           }
           await settleProviderAttemptDispatch(response, { success: false, reason: "fallback" });

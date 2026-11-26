@@ -131,7 +131,7 @@ function responseCallId({ queueByName }, response) {
  * omitted role inferred from the parts (functionCall or thought parts mean the model spoke).
  * Any other explicit role (`model`) stays assistant.
  */
-function geminiTurnRole(content) {
+export function geminiTurnRole(content) {
   const role = isString(content?.role) ? content.role.trim().toLowerCase() : "";
   if (role === GEMINI_ROLE.USER || role === "function" || role === "tool") return ROLE.USER;
   if (role) return ROLE.ASSISTANT;

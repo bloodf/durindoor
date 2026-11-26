@@ -110,6 +110,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   }
 
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && (disabledByAlias[alias] ?? []).includes(modelId);
+  // Check disabled entries across output prefix, static alias, provider id, and
+  // dashboard storage alias so models stay hidden regardless of which key wrote them (#4073).
+  const isModelDisabled = (modelId, ...keys) => keys.some((key) => key && isDisabled(key, modelId));
 
   // Unlike the other optional lookups above, a failed read here cannot fail
   // soft: an empty map means "no provider is restricted", so silently
@@ -257,7 +260,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       if (!kindFilter.includes(modelKind(model))) continue;
       if (model.requiresApiKey === true && !hasCredentials) continue;
       if (hasAllowlist && !enabledModels.includes(model.id)) continue;
-      if (isDisabled(alias, model.id)) continue;
+      if (isModelDisabled(model.id, alias, providerId, getProviderAlias(providerId))) continue;
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
       const caps = getCapabilitiesForModel(providerId, model.id);
       const thinkingLevels = modelKind(model) === LLM_KIND ? getThinkingLevelsFromCapabilities(caps, providerId, model.id) : null;
@@ -327,7 +330,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       }
       for (const liveModel of live.models) {
         const modelId = liveModel.id;
-        if (!isString(modelId) || !modelId.trim() || isDisabled(alias, modelId)) continue;
+        if (!isString(modelId) || !modelId.trim() || isModelDisabled(modelId, alias, providerId, getProviderAlias(providerId))) continue;
         if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
@@ -763,7 +766,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           // imageToText custom models stay in the LLM list (vision-capable chat models)
           const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
           if (!kindFilter.includes(kind) && !allowAsLlm) continue;
-          if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+          if (isModelDisabled(modelId, outputAlias, staticAlias, providerId, getProviderAlias(providerId))) continue;
           // #6495 / F-4: drop paid provider models when the toggle is on.
           // Classify by output alias so provider-specific overrides (gh/…,
           // api-airforce (Free) markers, …) are honored identically to the

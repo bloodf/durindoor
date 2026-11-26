@@ -614,11 +614,19 @@ export function createSSEStream(options = {}) {
   let openAIResponsesTerminalSeen = false;
   let responsesLifecycleTerminalForwarded = false;
   let openAIResponsesDoneSent = false;
+  // The executor asks upstream for stream_options.include_usage to bill the call. A Chat client
+  // that did not ask must not get the extra usage-only chunk (strict parsers read choices[0]).
+  const dropUnrequestedUsageChunk = body?.stream_options?.include_usage !== true &&
+    providerBody?.stream_options?.include_usage === true &&
+    (mode === STREAM_MODE.PASSTHROUGH ? targetFormat : sourceFormat) === FORMATS.OPENAI;
+  const isUsageOnlyChunk = (chunk) => Array.isArray(chunk?.choices) && chunk.choices.length === 0 && Boolean(chunk.usage);
+
   const emitPendingUsageEstimate = (controller) => {
     if (!pendingUsageEstimate) return;
     pendingUsageEstimate = false;
     if (hasValidUsage(usage)) return;
     usage = estimateUsage(body, totalContentLength, FORMATS.OPENAI);
+    if (dropUnrequestedUsageChunk) return;
     const chunk = {
       id: usageChunkMeta.id,
       object: "chat.completion.chunk",
@@ -1143,6 +1151,7 @@ export function createSSEStream(options = {}) {
                 usage = mergeUsage(usage, extracted);
               }
               if (!hasValuableContent(parsed, targetFormat || FORMATS.OPENAI) && !extracted) continue;
+              if (dropUnrequestedUsageChunk && !publicError && !gatewayError && isUsageOnlyChunk(parsed)) continue;
               if (minimaxThinkingState) {
                 const delta = parsed.choices?.[0]?.delta;
                 const content = delta?.content;
@@ -1620,6 +1629,7 @@ export function createSSEStream(options = {}) {
         if (!nativeGemini && translated?.length > 0) {
           for (const item of translated) {
             if (item === null || item === undefined) continue;
+            if (dropUnrequestedUsageChunk && isUsageOnlyChunk(item)) continue;
             // Filter empty chunks
             if (!hasValuableContent(item, sourceFormat)) {
               continue; // Skip this empty chunk
@@ -1834,7 +1844,9 @@ export function createSSEStream(options = {}) {
                 currentUpstreamEvent = null;
                 recordCompletionData(parsed, { content: true, tokenLimit });
                 const prefix = sseLineData(trimmedBuffer) !== null ? "data: " : "";
-                output = `${prefix}${JSON.stringify(parsed)}\n\n`;
+                const unrequested = dropUnrequestedUsageChunk && isUsageOnlyChunk(parsed) && !streamErrorPayload;
+                if (unrequested) usage = mergeUsage(usage, extractUsage(parsed));
+                output = unrequested ? "" : `${prefix}${JSON.stringify(parsed)}\n\n`;
               }
             } else if (responsesPassthrough && parsed && responsesReplay.isReplay(parsed)) {
               // The unterminated final frame is a replay: drop it and the label

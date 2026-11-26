@@ -26,6 +26,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   try { global._dbAdapter?.instance?.close?.(); } catch { /* already closed */ }
   delete global._dbAdapter;
   delete global._recentRing;
@@ -36,6 +37,8 @@ afterEach(async () => {
 
 describe("usage storage does not retain raw API keys", () => {
   it("writes only the stable key id and keeps caps, window totals and summaries", async () => {
+    // Report after the fixture day so the summary reads the stored rollup.
+    vi.setSystemTime(new Date("2026-11-25T12:00:00.000Z"));
     const dayStart = new Date("2026-11-23T12:00:00.000Z");
     dayStart.setHours(0, 0, 0, 0);
     await database.saveRequestUsage({

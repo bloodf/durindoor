@@ -5,6 +5,7 @@
   "pages": [
     "index",
     "startup",
+    "tunnel-relay",
     "upgrading",
     "data-management",
     "postgres",

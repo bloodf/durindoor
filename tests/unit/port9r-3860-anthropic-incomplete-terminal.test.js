@@ -23,6 +23,7 @@ const upstream = (frames) => new Response(new ReadableStream({
 
 const chat = (delta, finishReason = null) =>
   `data: ${JSON.stringify({ id: "chatcmpl-fixture123", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
+const claude = (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 
 async function relay(frames, targetFormat, provider) {
   const onRequestSuccess = vi.fn(async () => {});
@@ -80,5 +81,19 @@ describe("9router #3860: a cut stream never reaches a Claude client as a finishe
     expect(events.at(-1)).toBe("message_stop");
     expect(events).not.toContain("error");
     expect(row.status).toBe("success");
+  });
+
+  it("sends a native Claude stream cut before message_stop an in-band error", async () => {
+    const { events, text, onRequestSuccess } = await relay([
+      claude({ type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "fixture", content: [], usage: { input_tokens: 1, output_tokens: 0 } } }),
+      claude({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+      claude({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "partial" } }),
+    ], FORMATS.CLAUDE, "claude");
+
+    expect(events).not.toContain("message_stop");
+    expect(events.at(-1)).toBe("error");
+    expect(text).toContain("overloaded_error");
+    expect(text).not.toContain("[DONE]");
+    expect(onRequestSuccess).not.toHaveBeenCalled();
   });
 });

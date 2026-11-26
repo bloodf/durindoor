@@ -31,7 +31,7 @@ Remote image URLs are fetched through the guarded image loader and rewritten as 
 
 ## Streaming
 
-The client-facing stream stays Claude SSE: `event:` plus `data:` frames. Claude passthrough does not append an OpenAI `data: [DONE]` sentinel. A stream that ends before `message_stop` throws `Claude passthrough stream ended before message_stop` instead of being stored as a successful truncated answer.
+The client-facing stream stays Claude SSE: `event:` plus `data:` frames. Claude passthrough does not append an OpenAI `data: [DONE]` sentinel. A stream that ends before `message_stop` throws `Claude passthrough stream ended before message_stop` inside the pipeline instead of being stored as a successful truncated answer. The client receives an in-band `event: error` with type `overloaded_error`.
 
 ## Local host URL
 

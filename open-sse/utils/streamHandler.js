@@ -275,7 +275,10 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // Responses passthrough uses its existing abort terminal; all other known
         // client formats synthesize their EOF recovery through terminalTracker.
         try {
-          if (!wasConnected || isNetworkClose || onAbortTerminal || (code === "invalid_sse_payload" && terminalTracker)) {
+          // A stream the transform refused as invalid or cut short ends in-band
+          // when the client format has a recovery frame (upstream #3860).
+          const refusedStream = code === "invalid_sse_payload" || code === "incomplete_upstream_stream";
+          if (!wasConnected || isNetworkClose || onAbortTerminal || (refusedStream && terminalTracker)) {
             if (terminalTracker) emitClientRecovery(controller, true);
             else emitTerminal(controller);
             abort();

@@ -1915,7 +1915,7 @@ export function createSSEStream(options = {}) {
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
           const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
           if (isClaudeStream && !claudeTerminalSeen && !streamErrorPayload) {
-            throw new Error("Claude passthrough stream ended before message_stop");
+            throw Object.assign(new Error("Claude passthrough stream ended before message_stop"), { code: "incomplete_upstream_stream" });
           }
           if (isResponsesStream && upstreamTerminal.outcome !== "success") {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();

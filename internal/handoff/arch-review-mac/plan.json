@@ -1,0 +1,284 @@
+{
+ "goal": "Architecture review part 1: bounded slices of #2255 #2259 #2261 #2266 #2287 #2289 #2300 #2302 #2309 #2313 #2314.",
+ "base": "main",
+ "decisions": [
+  "Lane: durindoor-mac owns #2255 #2259 #2261 #2266 #2287 #2289 #2291 #2292 #2300 #2302 #2305 #2309 #2311 #2313 #2314 (claimed). Do not touch #2227 #2303 #2317 #2609-#2620 #2624.",
+  "Refactors are behavior-preserving; public API routes, settings keys, file formats and error messages stay the same unless an item names a defect.",
+  "Each unit checks its items against current main first; already-fixed items are reported, not redone.",
+  "PRs say Refs for issues with items left; an issue closes only when every item is done or explicitly declined in a comment."
+ ],
+ "units": [
+  {
+   "id": "a2255",
+   "title": "Move inline-thinking resolver out of the handler layer and inject chatCore persistence",
+   "job": "implement",
+   "paths": [
+    "open-sse/handlers/chatCore/inlineThinking.js",
+    "open-sse/translator/concerns/**",
+    "open-sse/utils/stream.js",
+    "open-sse/translator/response/openai-responses.js",
+    "open-sse/handlers/chatCore.js",
+    "open-sse/handlers/chatCore/**",
+    "src/sse/handlers/chat.js",
+    "tests/unit/arch-a2255.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2255.test.js",
+   "order": ".orq/orders/a2255.md",
+   "setup": true
+  },
+  {
+   "id": "a2289",
+   "title": "Give the headroom stack engine the body format and own token-saver migration schema in the DB layer",
+   "job": "implement",
+   "paths": [
+    "open-sse/services/compression/engines/headroomAdapter.js",
+    "open-sse/services/compression/**",
+    "src/lib/db/migrations/**",
+    "tests/unit/arch-a2289.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2289.test.js",
+   "order": ".orq/orders/a2289.md",
+   "setup": true
+  },
+  {
+   "id": "a2266",
+   "title": "Prune combo affinity only over the cap and unify combo runtime state",
+   "job": "implement",
+   "paths": [
+    "open-sse/services/combo.js",
+    "open-sse/services/combo/**",
+    "tests/unit/arch-a2266.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2266.test.js",
+   "order": ".orq/orders/a2266.md",
+   "setup": true
+  },
+  {
+   "id": "a2302",
+   "title": "Keep request-log counters in memory and make the console buffer a ring",
+   "job": "implement",
+   "paths": [
+    "open-sse/utils/requestLogger.js",
+    "src/lib/consoleLogBuffer.js",
+    "tests/unit/arch-a2302.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2302.test.js",
+   "order": ".orq/orders/a2302.md",
+   "setup": true
+  },
+  {
+   "id": "a2313",
+   "title": "One provider-capability table for refresh throttling, including agy",
+   "job": "implement",
+   "paths": [
+    "src/sse/services/backgroundTokenRefresh.js",
+    "open-sse/services/tokenRefresh/**",
+    "open-sse/config/providerCapabilities.js",
+    "src/lib/oauth/providers.js",
+    "tests/unit/arch-a2313.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2313.test.js",
+   "order": ".orq/orders/a2313.md",
+   "setup": true
+  },
+  {
+   "id": "a2314c",
+   "title": "Shared TTL catalog cache for provider model catalogs",
+   "job": "implement-complex",
+   "paths": [
+    "open-sse/services/antigravityCatalog.js",
+    "open-sse/services/clineModels.js",
+    "open-sse/services/clinepassModels.js",
+    "open-sse/services/cloudflareModels.js",
+    "open-sse/services/commandcodeModels.js",
+    "open-sse/services/copilotModels.js",
+    "open-sse/services/cursorModels.js",
+    "open-sse/services/kimchiModels.js",
+    "open-sse/services/kiroModels.js",
+    "open-sse/services/ollamaCatalog.js",
+    "open-sse/services/openrouterCatalog.js",
+    "open-sse/services/qoderModels.js",
+    "open-sse/services/catalogCache.js",
+    "tests/unit/arch-a2314c.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2314c.test.js",
+   "order": ".orq/orders/a2314c.md",
+   "setup": true
+  },
+  {
+   "id": "a2314v",
+   "title": "One shared provider-node schema enforced in the repo",
+   "job": "implement",
+   "paths": [
+    "src/app/api/provider-nodes/**",
+    "src/lib/db/repos/nodesRepo.js",
+    "src/shared/validation/providerNode.js",
+    "tests/unit/arch-a2314v.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2314v.test.js",
+   "order": ".orq/orders/a2314v.md",
+   "setup": true
+  },
+  {
+   "id": "a2261",
+   "title": "Serialize async Postgres transactions and stop swallowing usage-stats errors",
+   "job": "implement",
+   "paths": [
+    "src/lib/db/adapters/pgAdapter.js",
+    "src/lib/db/repos/usageRepo.js",
+    "src/lib/db/repos/proxyTimelineRepo.js",
+    "tests/unit/arch-a2261.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2261.test.js",
+   "order": ".orq/orders/a2261.md",
+   "setup": true
+  },
+  {
+   "id": "a2300",
+   "title": "Remove dead baseline data and dedupe the Playwright launcher in gemini-web",
+   "job": "implement",
+   "paths": [
+    "tests/__baseline__/current.json",
+    "tests/__baseline__/baseline-results.json",
+    "tests/__baseline__/providers-baseline.json",
+    "tests/__baseline__/verify-alias.mjs",
+    "tests/__baseline__/verify-providers.mjs",
+    "tests/__baseline__/snapshot-providers.mjs",
+    "tests/__baseline__/verify-oauth-urls.mjs",
+    "open-sse/executors/gemini-web.js",
+    "open-sse/executors/gemini-web/**",
+    "tests/unit/arch-a2300.test.js",
+    "CLAUDE.md",
+    "AGENTS.md"
+   ],
+   "forbidden": [
+    "tests/__baseline__/known-fails.txt",
+    ".github/**",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2300.test.js",
+   "order": ".orq/orders/a2300.md",
+   "setup": true
+  },
+  {
+   "id": "a2309",
+   "title": "Mark docs for unregistered providers as unreleased",
+   "job": "docs",
+   "paths": [
+    "docs/providers/**",
+    "tests/unit/arch-a2309.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2309.test.js",
+   "order": ".orq/orders/a2309.md",
+   "setup": true
+  },
+  {
+   "id": "a2259d",
+   "title": "Fix the protocol conformance doc anchors and add the pivot exceptions table",
+   "job": "docs",
+   "paths": [
+    "internal/docs/v5-protocol-conformance.md",
+    "tests/unit/arch-a2259d.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2259d.test.js",
+   "order": ".orq/orders/a2259d.md",
+   "setup": true
+  },
+  {
+   "id": "a2287t",
+   "title": "Declarative descriptor and one handler for the simple CLI settings routes",
+   "job": "implement-complex",
+   "paths": [
+    "src/app/api/cli-tools/crush-settings/**",
+    "src/app/api/cli-tools/forge-settings/**",
+    "src/app/api/cli-tools/smelt-settings/**",
+    "src/app/api/cli-tools/codewhale-settings/**",
+    "src/app/api/cli-tools/pi-settings/**",
+    "src/lib/cliTools/settingsRoute.js",
+    "src/lib/cliTools/jsonc.js",
+    "tests/unit/arch-a2287t.test.js"
+   ],
+   "forbidden": [
+    "AGENTS.md",
+    ".github/**",
+    "tests/__baseline__/known-fails.txt",
+    "tests/__baseline__/run-ci.mjs",
+    "tests/vitest.config.js"
+   ],
+   "evidence": "cd tests && node node_modules/vitest/vitest.mjs run unit/arch-a2287t.test.js",
+   "order": ".orq/orders/a2287t.md",
+   "setup": true
+  }
+ ]
+}

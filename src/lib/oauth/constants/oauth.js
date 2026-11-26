@@ -10,7 +10,7 @@ import { PROVIDER_OAUTH } from "../../../../open-sse/providers/index.js";
  * Get the platform enum value based on the current OS.
  * Matches Antigravity binary's ClientMetadata.Platform enum.
  */
-export { AWS_REGION_PATTERN, assertValidAwsRegion } from "../../../shared/utils/awsRegion.js";
+export { AWS_REGION_PATTERN, assertValidAwsRegion } from "../../../../open-sse/config/awsRegion.js";
 function getOAuthPlatformEnum() {
   const os = platform();
   const architecture = arch();

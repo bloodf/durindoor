@@ -20,7 +20,7 @@ function hasValidVectors(normalized) {
   return normalized.data.every((item) => {
     const embedding = item?.embedding;
     if (embedding === undefined) return true;
-    if (typeof embedding === "string") return embedding.length > 0;
+    if (isString(embedding)) return embedding.length > 0;
     return Array.isArray(embedding) && embedding.length > 0 && embedding.every((value) => Number.isFinite(value));
   });
 }

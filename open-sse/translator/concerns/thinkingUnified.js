@@ -2,7 +2,7 @@
 // Config-driven: thinking format/limits come from capabilities.js + registry transport,
 // never hardcoded per-model here. See .docs/thinking/plan.md MATRIX VI-A.
 
-import { getCapabilitiesForModel } from "../../providers/capabilities.js";
+import { getCapabilitiesForModel, isGemini4Model } from "../../providers/capabilities.js";
 import { getThinkingLevels, getThinkingLevelsFromCapabilities, getOpencodeGoEffortTiers, isNativeDeepSeekV4 } from "../../providers/thinkingLevels.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { FORMATS } from "../formats.js";
@@ -557,7 +557,9 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
           ["xhigh", "max"].includes(requested) && agLevels.includes(requested) ? requested :
           requested === "max" && agLevels.includes("xhigh") ? "xhigh" : toGeminiThinkingLevel(eff);
         // Antigravity tiers: none/minimal asked for no visible thoughts even though the level is floored to low.
-        const hideThoughts = caps.thinkingFloorHidesThoughts === true && level === "minimal";
+        // Gemini 4 floors "none" to low as well, so the opt-out must hide thoughts (OmniRoute #21280).
+        const hideThoughts = none && isGemini4Model(model) ||
+          caps.thinkingFloorHidesThoughts === true && level === "minimal";
         const allowed = caps.thinkingEfforts;
         const nativeTopTier = ["xhigh", "max"].includes(level) && agLevels.includes(level);
         if (!nativeTopTier && Array.isArray(allowed) && allowed.length && !allowed.includes(level)) {

@@ -9,7 +9,7 @@
 import net from "net";
 import tls from "tls";
 import http2 from "http2";
-import { resolveProxyForRequest } from "./proxyFetch.js";
+import { resolveProxyForRequest, stripIpv6Brackets } from "./proxyFetch.js";
 import { isSocksDispatcherUrl } from "./socksDispatcher.js";
 import { assertSocksProxyUrl } from "./socksCredential.js";
 
@@ -56,6 +56,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_CONNECT_HEADER_BYTES = 64 * 1024;
 export function buildHttpConnectRequest(targetHost, targetPort, proxyUrl) {
   const proxy = new URL(proxyUrl);
+  const authorityHost = net.isIPv6(targetHost) ? `[${targetHost}]` : targetHost;
   let auth = "";
   if (proxy.username || proxy.password) {
     const user = decodeURIComponent(proxy.username || "");
@@ -63,8 +64,8 @@ export function buildHttpConnectRequest(targetHost, targetPort, proxyUrl) {
     auth = `Proxy-Authorization: Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}\r\n`;
   }
   return (
-    `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n` +
-    `Host: ${targetHost}:${targetPort}\r\n` +
+    `CONNECT ${authorityHost}:${targetPort} HTTP/1.1\r\n` +
+    `Host: ${authorityHost}:${targetPort}\r\n` +
     auth +
     `\r\n`
   );
@@ -78,9 +79,12 @@ async function connectViaHttpProxy(proxyUrl, targetHost, targetPort, timeoutMs, 
   const proxyPort = Number(proxy.port) || (proxy.protocol === "https:" ? 443 : 80);
 
   return new Promise((resolve, reject) => {
-    const options = { host: proxy.hostname, port: proxyPort };
+    const proxyHost = stripIpv6Brackets(proxy.hostname);
+    const options = { host: proxyHost, port: proxyPort };
+    // IP literals have no SNI; keep host set so TLS verifies the certificate
+    // against the IP. DNS names retain SNI and normal certificate verification.
     const socket = proxy.protocol === "https:"
-      ? tls.connect({ ...options, servername: proxy.hostname, ALPNProtocols: ["http/1.1"] })
+      ? tls.connect({ ...options, ...(net.isIP(proxyHost) ? {} : { servername: proxyHost }), ALPNProtocols: ["http/1.1"] })
       : net.connect(options);
     let settled = false;
     let buf = Buffer.alloc(0);
@@ -193,7 +197,7 @@ async function createProxiedTlsSocket(proxyUrl, targetHost, targetPort, timeoutM
   return new Promise((resolve, reject) => {
     let tlsSocket;
     try {
-      tlsSocket = tls.connect({ socket: plain, servername: targetHost, ALPNProtocols: ["h2"] });
+      tlsSocket = tls.connect({ socket: plain, host: targetHost, ...(net.isIP(targetHost) ? {} : { servername: targetHost }), ALPNProtocols: ["h2"] });
     } catch (error) {
       plain.destroy();
       reject(error);
@@ -242,9 +246,9 @@ async function createProxiedTlsSocket(proxyUrl, targetHost, targetPort, timeoutM
  */
 export async function connectHttp2(url, { proxyUrl, timeoutMs = DEFAULT_TIMEOUT_MS, http2Module = http2, signal } = {}) {
   const urlObj = new URL(url);
-  const host = urlObj.hostname;
+  const host = stripIpv6Brackets(urlObj.hostname);
   const port = Number(urlObj.port) || 443;
-  const authority = `https://${host}${urlObj.port ? `:${urlObj.port}` : ""}`;
+  const authority = `https://${urlObj.host}`;
 
   if (!proxyUrl) {
     const client = http2Module.connect(authority);

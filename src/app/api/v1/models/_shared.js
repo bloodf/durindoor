@@ -1,6 +1,7 @@
 import { isBoolean, isString } from "../../../../shared/utils/typeChecks.js";
 import { projectClaudeCodeModel } from "./_claudeCompat.js";
 import { projectDiscoveryMetadata } from "open-sse/services/modelMetadata.js";
+import { isEffortSuffixedVariantOfListedId } from "../../../../shared/utils/effortSuffixedId.js";
 
 function isCodexUserAgent(request) {
   const originator = request.headers.get("originator") ?? "";
@@ -86,6 +87,19 @@ function buildAnthropicModelsResponse(data, headers) {
 }
 
 /**
+ * Add `supported_reasoning_levels`, the field generic OpenAI-list discovery
+ * clients read, from the row's resolved `thinking_levels` (OmniRoute #19981).
+ * `projectDiscoveryMetadata` keeps neither, so the source row is read. Strings
+ * only, and only in this envelope. Effort-suffixed aliases get none.
+ */
+function toOpenAIModel(m, listedIds) {
+  const metadata = projectDiscoveryMetadata(m);
+  if (!m.thinking_levels?.length || !isString(m.id) ||
+      isEffortSuffixedVariantOfListedId(m.id, listedIds)) return metadata;
+  return { ...metadata, supported_reasoning_levels: [...m.thinking_levels] };
+}
+
+/**
  * Build the /v1/models response, shaping it for Anthropic (when the
  * `anthropic-version` header is present) or Codex CLI when detected.
  * Anthropic takes precedence: the header is an explicit envelope request.
@@ -102,5 +116,9 @@ export function buildModelsResponse(request, data) {
   if (isCodexUserAgent(request)) {
     return Response.json({ models: data.map(toCodexModel) }, { headers });
   }
-  return Response.json({ object: "list", data: data.map(projectDiscoveryMetadata) }, { headers });
+  const listedIds = new Set(data.map((m) => m.id));
+  return Response.json({
+    object: "list",
+    data: data.map((m) => toOpenAIModel(m, listedIds)),
+  }, { headers });
 }

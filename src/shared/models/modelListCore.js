@@ -25,6 +25,7 @@ import { isRecord, KIMI_LIVE_MODEL_PROVIDERS, LIVE_MODEL_UNION_PROVIDERS, LIVE_M
 import { LLM_KIND, modelKind, inferKindFromUnknownModelId, customModelKind, getCompatiblePublicIds, providerMatchesKinds } from "./modelListKinds.js";
 import { comboMatchesKinds, comboToEntry, visibleComboMembers, buildComboOnlyModels } from "./modelListCombos.js";
 import { withCatalogDeadline } from "./catalogDeadline.js";
+import { isEffortSuffixedVariantOfListedId } from "../utils/effortSuffixedId.js";
 
 const modelsInFlight = new Map();
 
@@ -898,6 +899,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const dedupedModels = [];
   const seenModelIds = new Set();
+  const listedIds = new Set(models.map((model) => model?.id));
   for (const model of models) {
     if (!model?.id || seenModelIds.has(model.id)) continue;
     const prefix = model.id.split("/")[0];
@@ -922,8 +924,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       enforceCursorCapabilities(aliasToProviderId[provider] ?? provider, model.capabilities);
     }
     // Codex clients consume effort objects; advertise only the levels already
-    // resolved for this model rather than a provider-wide guessed list.
-    if ((aliasToProviderId[prefix] ?? prefix) === "codex" && model.thinking_levels?.length) {
+    // resolved for this model rather than a provider-wide guessed list. An
+    // effort alias gets none: its id already fixes the effort.
+    if ((aliasToProviderId[prefix] ?? prefix) === "codex" && model.thinking_levels?.length &&
+        !isEffortSuffixedVariantOfListedId(model.id, listedIds)) {
       model.supported_reasoning_levels = model.thinking_levels.map((effort) => ({
         effort,
         description: effort === "none" ? "Disable Thinking" : effort === "xhigh" ? "Extra High" : effort.charAt(0).toUpperCase() + effort.slice(1),

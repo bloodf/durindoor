@@ -9,11 +9,11 @@ const RESPONSES_URL = "https://api.cheaperinference.com/v1/responses";
 const CHAT_URL = "https://api.cheaperinference.com/v1/chat/completions";
 
 describe("cheaperinference registry", () => {
-  it("registers an API-key OpenAI provider with chat and responses transports", () => {
+  it("registers an API-key OpenAI provider with chat, responses and messages transports", () => {
     const p = PROVIDERS.cheaperinference;
     expect(p.baseUrl).toBe(CHAT_URL);
     expect(p.validateUrl).toBe("https://api.cheaperinference.com/v1/models");
-    expect(p.transports.map((t) => [t.format, t.baseUrl])).toEqual([["openai", CHAT_URL], ["openai-responses", RESPONSES_URL]]);
+    expect(p.transports.map((t) => [t.format, t.baseUrl])).toEqual([["openai", CHAT_URL], ["openai-responses", RESPONSES_URL], ["claude", "https://api.cheaperinference.com/v1/messages"]]);
     expect(PROVIDER_ID_TO_ALIAS.cheaperinference).toBe("cinf");
   });
 

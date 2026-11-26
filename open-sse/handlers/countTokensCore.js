@@ -67,6 +67,7 @@ export function deriveCountTokensUrl(cfg) {
   // would send it as a Bearer token and the prompt to an endpoint the session was never
   // issued for, so cookie providers count locally.
   if (rec?.authType === "cookie") return null;
+  if (rec?.nativeTokenCount === false) return null;
   if (base && (fmt === "claude" || /\/messages$/.test(base))) {
     return /\/messages$/.test(base) ? `${base}/count_tokens` : `${base}/messages/count_tokens`;
   }

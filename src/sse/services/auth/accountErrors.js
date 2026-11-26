@@ -358,7 +358,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   });
   // A request-scoped OpenRouter error must stay off the account even
   // when the upstream response supplies a reset hint.
-  if (fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
+  // A capability gap or request-size 5xx stays off the account the same way.
+  if (fallbackResult.noAccountPenalty ||
+      fallbackResult.requestScoped && (Number(status) === 404 || provider === "openrouter" && Number(status) === 400)) {
     return { shouldFallback: false, cooldownMs: 0 };
   }
   const effectiveEvidence = callerEvidence || fallbackResult.rateLimitEvidence || null;

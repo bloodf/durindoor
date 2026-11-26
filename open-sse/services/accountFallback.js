@@ -174,6 +174,9 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
   return classifyFallbackError(options);
 }
 
+const CAPABILITY_GAP_RE = /\bcode\s{0,3}=\s{0,3}Unimplemented\b/i;
+const REQUEST_SIZE_ERROR_RE = /exceeds the available context size|received message larger than max|grpc message limit exceeded/i;
+
 function classifyFallbackError({
   status, errorText, backoffLevel = 0, provider = null, headers = null, structuredError = null, model = null,
   checkAccountLockScope = true,
@@ -249,6 +252,14 @@ function classifyFallbackError({
   if (lowerError.includes("provider_port_pending") ||
     Number(status) === 501 && /runtime execution is not (?:ported yet|available)/.test(lowerError)) {
     return { shouldFallback: false, cooldownMs: 0, scope: null };
+  }
+
+  // A capability gap (501, or gRPC Unimplemented behind a 5xx) says this target cannot serve
+  // this kind of request. A request-size error behind a 5xx repeats on every account. Neither
+  // is account health: no rotation or lock, and a combo moves to its next member.
+  const serverStatus = Number(status) >= HTTP_STATUS.SERVER_ERROR;
+  if (Number(status) === 501 || serverStatus && (CAPABILITY_GAP_RE.test(normalizedText) || REQUEST_SIZE_ERROR_RE.test(normalizedText))) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true, noAccountPenalty: true };
   }
 
   // Anthropic 400 invalid_request_error is a client-side request schema failure;

@@ -495,7 +495,7 @@ function normalizeCodexTools(body, { dropFreePlanImageGeneration = false } = {})
   }
 }
 
-// Resolve prompt-cache session id: client session → assistant-text-hash → workspaceId → connection
+// Resolve prompt-cache session id: client session → conversation anchor → assistant-text-hash → workspaceId → connection
 function resolveCacheSessionId(body, credentials, requestContext = null) {
   return resolveSessionId({
     headers: requestContext?.clientHeaders || credentials?.rawHeaders,
@@ -1070,7 +1070,7 @@ export class CodexExecutor extends BaseExecutor {
       /^gpt-5\.6-luna(?:-max|\(max\))$/.test(model);
     if (responsesLite && !delegationModel) body.parallel_tool_calls = false;
     else if (!responsesLite && !isCompact) delete body.parallel_tool_calls;
-    // Resolve conversation-stable session_id (priority: body → assistant-text → workspace → machine)
+    // Resolve conversation-stable session_id (priority: body → anchor → assistant-text → workspace → machine)
     const sessionId = requestContext?.sessionId || resolveCacheSessionId(body, credentials, requestContext);
     // Convert string input to array format (Codex API requires input as array)
     const normalized = normalizeResponsesInput(body.input);

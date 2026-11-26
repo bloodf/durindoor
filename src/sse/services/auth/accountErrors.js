@@ -48,6 +48,15 @@ function isCodexPermanentOAuthError(provider, status, errorText) {
   return CODEX_PERMANENT_OAUTH_ERRORS.some((sig) => text.includes(sig));
 }
 
+// One request above the whole rate limit (Groq: "Limit 8000, Requested 36955")
+// cannot succeed on a sibling account either (OmniRoute #21051). Requested at or
+// below the limit is a used-up window, which another account can still serve.
+function isRequestLargerThanRateLimit(status, errorText) {
+  if (Number(status) !== 413) return false;
+  const match = /\blimit:?\s*(\d+),\s*requested:?\s*(\d+)/i.exec(String(errorText || ""));
+  return Boolean(match) && Number(match[2]) > Number(match[1]);
+}
+
 function githubMonthlyResetMs(status, errorText, provider) {
   if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
   if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
@@ -176,6 +185,8 @@ function dispatchStamp(context) {
 
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, context = {}) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  // A reset hint must not turn this into account rotation or a lock.
+  if (isRequestLargerThanRateLimit(status, errorText)) return { shouldFallback: false, cooldownMs: 0 };
   const signal = context?.signal || null;
   throwIfAborted(signal);
   const observedAt = dispatchStamp(context);

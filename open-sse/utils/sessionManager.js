@@ -216,6 +216,39 @@ function assistantTextSessionId(scope, body) {
   return sessionId;
 }
 
+// Text parts reduce to their text, so a string and its single text part match and
+// cache markers do not move the key. Other parts (images, files) keep their payload.
+function anchorContent(content) {
+  const parts = Array.isArray(content) ? content : [content];
+  return parts.flatMap((part) => {
+    const text = isString(part) ? part : part?.text;
+    if (isString(text)) return text.trim() ? [text.trim()] : [];
+    if (!part || !isObject(part)) return [];
+    const { cache_control: _cacheControl, ...payload } = part;
+    return [payload];
+  });
+}
+
+/**
+ * Stable key from the parts of a conversation that later turns replay unchanged:
+ * system prompt and first user message (OmniRoute #21084). Returns null without
+ * a user turn, since a system prompt alone is shared between conversations.
+ */
+function conversationAnchorSessionId(scope, body) {
+  const input = isString(body?.input) ? [{ role: "user", content: body.input }] : body?.input;
+  const items = Array.isArray(input) ? input : Array.isArray(body?.messages) ? body.messages : [];
+  const userIndex = items.findIndex((item) => item?.role === "user");
+  if (userIndex < 0) return null;
+  const firstUser = anchorContent(items[userIndex].content);
+  if (!firstUser.length) return null;
+  const preamble = items.slice(0, userIndex).
+  filter((item) => item?.role === "system" || item?.role === "developer").
+  map((item) => anchorContent(item.content));
+  const seed = JSON.stringify([scope, body.model ?? "", body.instructions ?? "", anchorContent(body.system ?? []), preamble, firstUser]);
+  const hex = crypto.createHash("sha256").update(seed).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /**
  * Resolve a conversation-stable session id and a provenance hint that tells
  * continuation resolution whether to cache globally (explicit/assistant/
@@ -226,6 +259,12 @@ function assistantTextSessionId(scope, body) {
 function resolveSessionIdWithProvenance({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
   const client = extractClientSessionId(headers, body, scope);
   if (client) return { sessionId: client, requestScoped: false };
+  // Codex keys its prompt cache on this id. Assistant text only exists from the
+  // second turn, so first turns would otherwise share one account-wide key.
+  if (scope === "codex") {
+    const anchored = conversationAnchorSessionId(`${scope}:${connectionId || ""}`, body);
+    if (anchored) return { sessionId: anchored, requestScoped: false };
+  }
   const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
   if (fromAssistant) return { sessionId: fromAssistant, requestScoped: false };
   const ws = normalizeSessionId(workspaceId);
@@ -235,7 +274,8 @@ function resolveSessionIdWithProvenance({ headers, body, connectionId, workspace
 
 /**
  * Resolve a conversation-stable session id (generalizes Codex resolveCacheSessionId).
- * Priority: client session → accumulated-assistant-text hash → workspaceId → per-connection.
+ * Priority: client session → (codex only) system + first-user anchor →
+ * accumulated-assistant-text hash → workspaceId → per-connection.
  *
  * @param {object} opts
  * @param {object} [opts.headers] - Raw client request headers (lowercase keys)

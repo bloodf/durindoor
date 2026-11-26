@@ -22,6 +22,12 @@ function hasText(content) {
   );
 }
 
+function isEmptyTurn({ content }) {
+  if (hasText(content)) return false;
+  return !Array.isArray(content) || !content.some((block) =>
+    block?.type === CLAUDE_BLOCK.REDACTED_THINKING || (block?.type === CLAUDE_BLOCK.TOOL_USE && block.id));
+}
+
 /**
  * Make Claude-format conversations end on a user turn unless a client explicitly
  * requests native assistant-prefill semantics through the compatibility header.
@@ -33,7 +39,13 @@ export function applyAssistantPrefillPolicy(body, rawHeaders = null) {
   if (!Array.isArray(body?.messages)) return body;
   if (String(getHeader(rawHeaders, PRESERVE_HEADER) || "").toLowerCase() === "preserve") return body;
 
-  const trailingAssistant = body.messages.at(-1);
+  // Dropping an empty turn can expose another assistant turn underneath, so
+  // the tail is checked again after every drop (9router #3936).
+  let trailingAssistant = body.messages.at(-1);
+  while (trailingAssistant?.role === ROLE.ASSISTANT && isEmptyTurn(trailingAssistant)) {
+    body.messages.pop();
+    trailingAssistant = body.messages.at(-1);
+  }
   if (trailingAssistant?.role !== ROLE.ASSISTANT) return body;
 
   const toolUses = Array.isArray(trailingAssistant.content)
@@ -49,13 +61,6 @@ export function applyAssistantPrefillPolicy(body, rawHeaders = null) {
         content: INCOMPLETE_TOOL_RESULT,
       })),
     });
-    return body;
-  }
-
-  const hasOpaqueThinking = Array.isArray(trailingAssistant.content) &&
-    trailingAssistant.content.some((block) => block?.type === CLAUDE_BLOCK.REDACTED_THINKING);
-  if (!hasText(trailingAssistant.content) && !hasOpaqueThinking) {
-    body.messages.pop();
     return body;
   }
 

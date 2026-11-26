@@ -7,6 +7,7 @@ import { adjustMaxTokens } from "../formats/maxTokens.js";
 import { safeParseJSON } from "../concerns/json.js";
 import { parseDataUri } from "../concerns/image.js";
 import { extractTextContent } from "../formats/gemini.js";
+import { applyAssistantPrefillPolicy } from "../concerns/assistantPrefillPolicy.js";
 import { ROLE, OPENAI_BLOCK, CLAUDE_BLOCK, CLAUDE_NATIVE_BLOCKS, CLAUDE_NATIVE_TOOLS, CLAUDE_NATIVE_REQUEST_FIELDS } from "../schema/index.js";
 import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 import { effortToBudget } from "../concerns/thinking.js";
@@ -577,17 +578,12 @@ function openaiToClaudeRequestForAntigravity(model, body, stream) {
 
       return { ...msg, content: updatedContent };
     });
-
-    // Vertex AI (used by Antigravity) rejects conversations ending with an assistant
-    // message ("This model does not support assistant message prefill"). Strip any
-    // trailing assistant turn so the conversation always ends with a user message.
-    while (
-    result.messages.length > 0 &&
-    result.messages[result.messages.length - 1].role === ROLE.ASSISTANT)
-    {
-      result.messages.pop();
-    }
   }
+
+  // Vertex AI (used by Antigravity) rejects conversations ending with an assistant
+  // message ("This model does not support assistant message prefill"). Repair the
+  // tail like other Claude targets so partial text and tool calls survive (9router #3936).
+  applyAssistantPrefillPolicy(result);
 
   return result;
 }

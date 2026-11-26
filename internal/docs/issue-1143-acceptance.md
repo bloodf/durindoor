@@ -101,7 +101,7 @@ All 9 related unit suites covering driver fallback, migration checks, sidecar pa
    - `resolveHeapFlags` evaluates `NINEROUTER_MAX_OLD_SPACE_SIZE`:
      - Positive integer sets `--max-old-space-size=<MB>` (taking precedence over `NODE_OPTIONS`).
      - `0` disables launcher heap flags completely, delegating sizing to Node or `NODE_OPTIONS`.
-     - Unset uses default `6144` MB unless `--max-old-space-size` is already present in `NODE_OPTIONS`.
+     - Unset uses 75% of system memory, from `512` to `6144` MB, unless `--max-old-space-size` is already present in `NODE_OPTIONS`.
    - This contract is verified in real Node child processes by [`tests/unit/1143-runtime-compat.test.js`](../../tests/unit/1143-runtime-compat.test.js).
 
 ### Criterion 2: Component Verification Across SQLite Native, sql.js, PostgreSQL, Workers, Web Sessions, CLI Tray, and Standalone Artifacts on Target OS/Architectures

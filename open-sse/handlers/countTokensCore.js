@@ -74,6 +74,31 @@ export function deriveCountTokensUrl(cfg) {
   return null;
 }
 
+const RESPONSES_TEXT_PARTS = new Set(["input_text", "output_text", "text", "summary_text", "reasoning_text"]);
+
+// Text parts only: image/file bytes would inflate the count and reject a valid request.
+function countResponsesTextChars(value) {
+  if (isString(value)) return value.length;
+  if (!Array.isArray(value)) return 0;
+  return value.reduce((total, part) =>
+    isRecord(part) && RESPONSES_TEXT_PARTS.has(part.type) && isString(part.text) ? total + part.text.length : total, 0);
+}
+
+// One Responses `input` item. Sealed reasoning (`encrypted_content`) is not readable text.
+function countResponsesItemChars(item) {
+  if (!isRecord(item)) return 0;
+  const callName = isString(item.name) ? item.name.length : 0;
+  return callName + [item.content, item.summary, item.arguments, item.input, item.output].
+  reduce((total, value) => total + countResponsesTextChars(value), 0);
+}
+
+// A Responses body carries its history in `instructions` and `input`, not `messages` (OmniRoute #20431).
+function countResponsesBodyChars(body) {
+  const instructions = isString(body.instructions) ? body.instructions.length : 0;
+  if (!Array.isArray(body.input)) return instructions + countResponsesTextChars(body.input);
+  return body.input.reduce((total, item) => total + countResponsesItemChars(item), instructions);
+}
+
 // Heuristic estimate (~4 chars/token) — the fallback when no native endpoint.
 // Counts structured Anthropic blocks (text, tool_use, tool_result, thinking) plus
 // system + tools so count_tokens no longer underreports when Claude Code sends
@@ -91,6 +116,7 @@ export function estimateTokens(body) {
     }
   }
   if (Array.isArray(b.tools)) totalChars += JSON.stringify(b.tools).length;
+  totalChars += countResponsesBodyChars(b);
   for (const msg of messages) {
     if (!isRecord(msg)) continue;
     if (isString(msg.content)) {

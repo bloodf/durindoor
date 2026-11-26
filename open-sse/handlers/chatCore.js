@@ -76,6 +76,7 @@ import { resolveOllamaLocalHost } from "../config/providers.js";
 import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
+import { shouldProtectCachedPrefix } from "../config/promptCacheProviders.js";
 import { isOpenRouterAnthropicModel } from "../translator/concerns/openrouterAnthropicCache.js";
 import { gateStep } from "../services/compression/fidelityGate.js";
 import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
@@ -1026,16 +1027,23 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
     const adaptiveBudget = normalizeContextBudgetConfig(compressionAdaptive);
     const preStackSnapshot = structuredClone(translatedBody);
     try {
+      const estimatedTokens = estimateTokens(translatedBody);
       const { body: compressedBody, headerValue } = await runCompressionSeam(translatedBody, undefined, {
         enabled: true,
         engines: compressionEngines ?? {},
         // The resolved outgoing format disambiguates minimal Claude and OpenAI bodies.
-        applyOpts: { ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: Boolean(headroomStats), format: finalFormat },
+        applyOpts: {
+          ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: Boolean(headroomStats), format: finalFormat,
+          cachedPrefix: shouldProtectCachedPrefix({
+            provider, format: finalFormat, estimatedTokens,
+            contextWindow: effectiveModelCapabilities.contextWindow
+          })
+        },
         fidelityGate: { textInvariants: compressionFidelityGate === true },
         protectCachedPrefix: isOpenRouterAnthropicModel(provider, cleanModel),
         adaptive: {
           ...adaptiveBudget,
-          estimatedTokens: estimateTokens(translatedBody),
+          estimatedTokens,
           // Unknown (null) limit -> resolver skips adaptive; it never claims fit.
           modelContextLimit: effectiveModelCapabilities.contextWindow,
           // Output reserve of the RESOLVED model: the request's own cap clamped to

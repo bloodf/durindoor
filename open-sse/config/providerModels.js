@@ -80,11 +80,16 @@ const MINIMAX_OPENAI_TOOL_MODELS = new Set(["MiniMax-M3", "MiniMax-M3.1-Flash", 
 // from the model family. The provider id and its alias both resolve.
 const DOTHOOSH_PROVIDERS = new Set(["dothoosh", "dh"]);
 
+// OpenCode Go serves these only on /responses; they are passthrough ids here (9router #3975).
+const OPENCODE_GO_ALIASES = new Set(["opencode-go", "ocg"]);
+const OPENCODE_GO_UNLISTED_RESPONSES_MODELS = new Set(["gpt-5.6-luna", "grok-4.6"]);
+
 export function getModelTargetFormat(aliasOrId, modelId) {
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.targetFormat || null;
   const models = PROVIDER_MODELS[aliasOrId];
   const configuredTargetFormat = models ? modelTargetFormat(findModel(models, modelId, aliasOrId)) : null;
   if (configuredTargetFormat) return configuredTargetFormat;
+  if (OPENCODE_GO_ALIASES.has(aliasOrId) && OPENCODE_GO_UNLISTED_RESPONSES_MODELS.has(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai-responses";
   if (OPENAI_FORMAT_MINIMAX_PROVIDERS.has(aliasOrId) && MINIMAX_OPENAI_TOOL_MODELS.has(parseSuffix(modelId, aliasOrId).cleanModel)) return "openai";
   // OpenCode Zen allows passthrough model IDs, but API-family prefixes still need
   // their native translators instead of the provider default Chat Completions route.

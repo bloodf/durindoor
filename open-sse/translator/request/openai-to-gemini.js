@@ -560,6 +560,14 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
                 data: block.source.data
               }
             });
+          } else if (block.type === CLAUDE_BLOCK.DOCUMENT && block.source?.type === "base64" && block.source.data) {
+            // PDF bytes travel like images; without this the block was dropped (9router #3968).
+            parts.push({
+              inlineData: {
+                mimeType: block.source.media_type || "application/pdf",
+                data: block.source.data
+              }
+            });
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
             const decoded = decodeToolCallId(block.id);
             const rawId = decoded.id;

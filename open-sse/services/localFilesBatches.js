@@ -172,12 +172,34 @@ export async function deleteFile(id, { filesRoot, ownerId = null, allowAllOwners
 
 const OPENAI_ALLOWED_URLS = new Set(["/v1/chat/completions", "/v1/messages", "/v1/embeddings"]);
 
+const DEFAULT_MAX_BATCH_ITEMS = 100_000;
+
+function resolveMaxBatchItems() {
+  const raw = (process.env.MAX_BATCH_ITEMS ?? "").trim();
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_BATCH_ITEMS;
+}
+
+/** Count non-blank lines in place, so an oversized file is refused before any line is materialised. */
+function countItemLines(text) {
+  const nonBlankLine = /^.*\S.*$/gm;
+  let count = 0;
+  while (nonBlankLine.exec(text) !== null) count++;
+  return count;
+}
+
 /** OpenAI input JSONL → normalized rows {custom_id,method,url,body}. */
 export function validateOpenAIJsonl(text) {
   const rows = [];
   const errors = [];
   const ids = new Set();
-  const lines = String(text || "").split(/\r?\n/);
+  const source = String(text || "");
+  const maxItems = resolveMaxBatchItems();
+  const itemCount = countItemLines(source);
+  if (itemCount > maxItems) {
+    return { rows, errors: [{ error: `batch has ${itemCount} items; MAX_BATCH_ITEMS limits a batch to ${maxItems}` }] };
+  }
+  const lines = source.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     if (!raw.trim()) continue;

@@ -18,6 +18,7 @@ import { modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import { isFunction, isObject, isString } from "@/shared/utils/typeChecks.js";
 import { notifyWebhookEvent } from "@/lib/webhooks/index.js";
 import { clearProviderRateLimitEvidence, recordProviderRateLimitEvidence } from "@/shared/services/providerRateLimitEvidence";
+import { SETTINGS_SCHEMA } from "@/lib/settings/settingsSchema.js";
 import * as log from "../../utils/logger.js";
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
@@ -125,6 +126,24 @@ async function resolveStaticRetryCooldown(provider, defaultCooldownMs) {
     cooldownMs = Math.min(cooldownMs, FREE_TIER_STATIC_COOLDOWN_CAP_MS);
   }
   return { cooldownMs, configured };
+}
+
+/**
+ * OmniRoute #20457: ceiling for a reset read from a relative prose countdown
+ * ("Resets in 76h25m43s"). Providers often reset such windows early, so the
+ * account is re-probed instead of benched for the whole stated wait. Header and
+ * structured-body resets never pass through here.
+ */
+async function quotaProseDeadlineMs(now) {
+  const rule = SETTINGS_SCHEMA.quotaProseMaxCooldownMs;
+  let configured = rule.default;
+  try {
+    const stored = Number((await getSettings())?.quotaProseMaxCooldownMs);
+    if (Number.isSafeInteger(stored) && stored >= rule.minimum && stored <= rule.maximum) configured = stored;
+  } catch {
+    // A settings read failure keeps the default ceiling.
+  }
+  return now + configured;
 }
 
 function throwIfAborted(signal) {
@@ -344,7 +363,11 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // from a late response. Model locks and quota evidence are left intact.
   const quota = detectQuotaExhaustion(context?.errorBody ?? errorText);
   if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
-    const reset = quota.resetAtMs || (Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null);
+    let hinted = Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null;
+    if (hinted && context?.rateLimitEvidence?.relativeCountdown) {
+      hinted = Math.min(hinted, await quotaProseDeadlineMs(Date.now()));
+    }
+    const reset = quota.resetAtMs || hinted;
     const fingerprint = context?.credentialFingerprint || null;
     await updateProviderConnection(connectionId, {
       quotaLockout: { status: "quota_exhausted", source: "auto", message: "Provider quota exhausted", detectedAt: new Date(observedAt).toISOString(), reactivateAt: reset ? new Date(reset).toISOString() : null }
@@ -400,6 +423,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   let normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
   ag429 ? now + ag429.delay : null);
+  if (normalizedReset !== null && effectiveEvidence?.relativeCountdown && !githubResetAtMs) {
+    normalizedReset = Math.min(normalizedReset, await quotaProseDeadlineMs(now));
+  }
   // A private endpoint ignores long reset hints and the backoff ladder.
   const localCapMs = isRateLimitOrTransientStatus(status) && isPrivateEndpointConnection(conn) ?
   LOCAL_ENDPOINT_MAX_COOLDOWN_MS : null;

@@ -69,7 +69,7 @@ npm start
 pnpm run lint
 ```
 
-That command is `eslint src && pnpm run lint:anti-slop`. `lint:anti-slop` rebuilds the plugin and runs oxlint:
+That command is `eslint src && pnpm run lint:anti-slop`. The isolated gate runner uses `node scripts/run-eslint.mjs src` for the ESLint step; it resolves a dangling top-level pnpm link from the virtual store without relinking dependencies. `lint:anti-slop` rebuilds the plugin and runs oxlint:
 
 ```bash
 node scripts/build-anti-slop-plugin.mjs && node scripts/check-anti-slop.mjs

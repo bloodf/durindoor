@@ -34,7 +34,8 @@ describe("9router #3863 (d6c08f76276e): CLI default heap from system memory", ()
     expect(heapArgs({ NODE_OPTIONS: "--max-old-space-size=4096" }, 2048)).toEqual([]);
   });
 
-  it("passes this host's memory from the launcher", () => {
-    expect(cliSource).toContain("nodeFlags.buildNodeArgs(entry, env, os.totalmem())");
+  it("passes host and process memory from the launcher", () => {
+    expect(cliSource).toContain("process.constrainedMemory?.()");
+    expect(cliSource).toContain("nodeFlags.buildNodeArgs(entry, env, os.totalmem(), constrainedMemory)");
   });
 });

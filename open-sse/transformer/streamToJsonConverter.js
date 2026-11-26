@@ -58,8 +58,8 @@ function itemFromDraft({ item, type, text, summary, arguments: args, input }) {
 }
 
 /**
- * Rebuild output only when the stream carried content in deltas and no finished
- * item at all, neither as `output_item.done` nor in the terminal snapshot.
+ * Rebuild drafts when the stream carried content in deltas. Finished items
+ * from `output_item.done` or the terminal snapshot remain authoritative.
  */
 function itemsFromDrafts(drafts) {
   if (![...drafts.values()].some((draft) => draft.type)) return new Map();
@@ -192,7 +192,14 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
 
   if (state.terminal.outcome !== "success") state.status = "failed";
 
-  if (state.status !== "failed" && state.items.size === 0) state.items = itemsFromDrafts(state.drafts);
+  if (state.status !== "failed") {
+    const hadFinishedItems = state.items.size > 0;
+    for (const [index, item] of itemsFromDrafts(state.drafts)) {
+      if (!state.items.has(index) && (!hadFinishedItems || state.drafts.get(index).type)) {
+        state.items.set(index, item);
+      }
+    }
+  }
 
   // Build only a bounded dense sequence. Sparse or duplicate provider indexes
   // are malformed and must never drive attacker-sized array allocation.

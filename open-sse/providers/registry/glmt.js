@@ -46,7 +46,7 @@ export default {
     { id: "glm-4.7", name: "GLM 4.7", contextLength: 200000, maxOutputTokens: 131072, toolCalling: true, supportsReasoning: true },
     { id: "glm-4.6v", name: "GLM 4.6V (Vision)", contextLength: 128000, maxOutputTokens: 32768, toolCalling: true, supportsReasoning: true, supportsVision: true },
     { id: "glm-4.6", name: "GLM 4.6", contextLength: 200000, maxOutputTokens: 32768, toolCalling: true, supportsReasoning: true },
-    { id: "glm-4.5v", name: "GLM 4.5V (Vision)", contextLength: 16000, maxOutputTokens: 32768, toolCalling: true, supportsReasoning: true, supportsVision: true },
+    { id: "glm-4.5v", name: "GLM 4.5V (Vision)", contextLength: 64000, maxOutputTokens: 16384, toolCalling: true, supportsReasoning: true, supportsVision: true },
     { id: "glm-4.5", name: "GLM 4.5", contextLength: 128000, maxOutputTokens: 32768, toolCalling: true, supportsReasoning: true },
     { id: "glm-4.5-air", name: "GLM 4.5 Air", contextLength: 128000, maxOutputTokens: 32768, toolCalling: true, supportsReasoning: true },
   ],

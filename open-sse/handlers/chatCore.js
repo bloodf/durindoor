@@ -92,6 +92,10 @@ import { startTrace, record, finishTrace } from "./chatCore/proxyTimeline.js";
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { normalizeContextBudgetConfig } from "../services/compression/adaptiveCompression/types.js";
 
+// A rejected redispatch with one of these says something about the dispatched key.
+const CREDENTIAL_REJECTION_STATUSES = new Set([
+  HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.PAYMENT_REQUIRED, HTTP_STATUS.FORBIDDEN, HTTP_STATUS.RATE_LIMITED
+]);
 const TOP_LEVEL_STREAM_FORMATS = new Set([
 FORMATS.OPENAI,
 FORMATS.OPENAI_RESPONSES,
@@ -199,8 +203,9 @@ export function resolveRequestTransport({ provider, alias, model, sourceFormat, 
     FORMATS.OPENAI_RESPONSES : null;
   // A pivot through OpenAI drops signed thinking blocks, so a provider with a
   // native Messages route keeps Claude-source requests Claude-shaped.
-  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE &&
-    PROVIDERS[provider]?.quirks?.claudeSourceNativeModels?.test(model) ? FORMATS.CLAUDE : null;
+  const claudeNativeMatch = PROVIDERS[provider]?.quirks?.claudeSourceNativeModels;
+  const nativeClaudeFormat = sourceFormat === FORMATS.CLAUDE && claudeNativeMatch &&
+    String(model ?? "").toLowerCase().includes(claudeNativeMatch) ? FORMATS.CLAUDE : null;
   const modelTargetFormat = forceOpenCodeMuseResponses ? FORMATS.OPENAI_RESPONSES :
     nativeToolFormat || getModelTargetFormat(alias, model) || nativeClaudeFormat;
   const directFormat = supportedFormats?.includes(sourceFormat) ? sourceFormat : null;
@@ -1871,7 +1876,7 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
       if (!retryResult.response.ok) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
         const { statusCode, message } = await parseUpstreamError(retryResult.response, executor, { signal: providerSignal });
-        throw new Error(`[${statusCode}] ${message}`);
+        throw Object.assign(new Error(`[${statusCode}] ${message}`), { upstreamStatus: statusCode });
       }
       if (!retryResult.response.body) {
         await settleProviderAttemptDispatch(retryResult.response, { success: false, reason: "upstream_error" });
@@ -1894,14 +1899,19 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
           reason: aborted ? "abort" : final ? "upstream_error" : "fallback"
         }),
 
-        onExhausted: (reason, { upstreamError } = {}) => {
+        onExhausted: (reason, { upstreamError, status } = {}) => {
           if (!onUpstreamEmptyExhausted) return;
+          // A retry rejected for the credential's own sake keeps its status
+          // (OmniRoute #20993); anything else stays an empty-response 502.
+          const rejected = CREDENTIAL_REJECTION_STATUSES.has(status);
+          const outcomeStatus = rejected ? status : HTTP_STATUS.BAD_GATEWAY;
           // Quota-style exhaustion carries the reset time only inside the error
           // message ("Your quota will reset after 2h7m23s") — bench precisely.
-          const resetMs = executor.parseRetryFromErrorMessage?.(upstreamError?.message || reason);
+          const resetMs = executor.parseRetryFromErrorMessage?.((!rejected && upstreamError?.message) || reason);
           return onUpstreamEmptyExhausted(
-            formatProviderError(new Error(reason), provider, cleanModel, HTTP_STATUS.BAD_GATEWAY),
-            resetMs ? Date.now() + resetMs : undefined
+            formatProviderError(new Error(reason), provider, cleanModel, outcomeStatus),
+            resetMs ? Date.now() + resetMs : undefined,
+            outcomeStatus
           );
         }
       }),

@@ -113,6 +113,8 @@ export default {
     { id: "gpt-4o-mini-transcribe", name: "GPT-4o Mini Transcribe", params: ["language", "response_format", "temperature", "prompt"], kind: "stt", deprecated: true },
     { id: "gpt-4o-transcribe-diarize", name: "GPT-4o Transcribe Diarize", kind: "stt" },
 
+    { id: "gpt-image-2.6-sunburst", name: "GPT Image 2.6 Sunburst", kind: "image" },
+    { id: "gpt-image-2.6-flare", name: "GPT Image 2.6 Flare", kind: "image" },
     { id: "gpt-image-2.5-sunburst", name: "GPT Image 2.5 Sunburst", kind: "image" },
     { id: "gpt-image-2.5-sunburst-2026-09-08", name: "GPT Image 2.5 Sunburst (2026-09-08)", kind: "image" },
     { id: "gpt-image-2.5-flare", name: "GPT Image 2.5 Flare", kind: "image" },

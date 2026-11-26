@@ -215,6 +215,15 @@ function classifyFallbackError({
     return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
   }
 
+  // OmniRoute #20683: a missing model says nothing about its siblings. A catalog
+  // id keeps its model-scoped lock; an unknown id would collapse to the
+  // account-wide scope, so it writes no lock at all.
+  if (Number(status) === 404 && (provider === "codex" || provider === "cx") && model &&
+    resolveFallbackModelScope(provider, model) === null &&
+    /\bmodel_not_found\b/.test(`${lowerError} ${String(structuredError?.error?.code ?? structuredError?.code ?? "").toLowerCase()}`)) {
+    return { shouldFallback: false, cooldownMs: 0, scope: null, requestScoped: true };
+  }
+
   /** #3386: terminal client errors win before message-based transient rules. */
   const terminalRule = ERROR_RULES.find((rule) => rule.status === status && rule.fallback === false);
   if (terminalRule) {

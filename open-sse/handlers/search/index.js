@@ -232,7 +232,7 @@ async function tryDedicatedProvider({
       accounting.nativeUnits.credits = credits;
       accounting.meta.nativeUnitsSource = "usage.credits";
     }
-    const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType);
+    const normalized = normalizeSearchResponse(provider.id, data, params.query, params.searchType, params.domainFilter);
     const results = normalized.results.slice(0, params.maxResults);
     const duration = Date.now() - startTime;
 

@@ -31,3 +31,18 @@ export function codexCredentialBindingMismatch(accessToken, saved = {}, idToken 
   if (saved?.workspaceStructure === "personal" && account && workspace && account !== workspace) return "personal_account_mismatch";
   return null;
 }
+
+/** True when a token set carries JWT claims that can be compared. */
+export function hasCodexIdentityClaims(tokens) {
+  return Boolean(payload(tokens?.accessToken) || payload(tokens?.idToken));
+}
+
+/**
+ * Mismatch code for a rotated token set against the stored Codex connection it
+ * would replace, or null (also for every other provider). OmniRoute #20525.
+ */
+export function codexRotationMismatch(stored, rotated) {
+  if (stored?.provider !== "codex") return null;
+  const check = (token) => codexCredentialBindingMismatch(token, stored.providerSpecificData, stored.idToken);
+  return check(rotated?.accessToken) || check(rotated?.idToken);
+}

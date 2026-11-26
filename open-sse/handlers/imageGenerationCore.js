@@ -8,7 +8,7 @@ import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
-import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 function serializeRequestBody(requestBody) {
   if (!isUndefined(FormData) && requestBody instanceof FormData) return requestBody;
@@ -101,6 +101,12 @@ export async function handleImageGenerationCore({
       HTTP_STATUS.BAD_REQUEST,
       "Binary image output (response_format=binary) supports at most n=1"
     );
+  }
+
+  // OpenAI names the JPEG container "jpeg" only (OmniRoute #21078).
+  if (provider === "openai" && isString(body.output_format) &&
+      body.output_format.trim().toLowerCase() === "jpg") {
+    body = { ...body, output_format: "jpeg" };
   }
 
   // OpenAI GIF output cannot be combined with output compression.
@@ -290,6 +296,11 @@ export async function handleImageGenerationCore({
   if (streamToClient && provider === "codex") accounting.state = "pending";
   let parsed;
   let hasReceipt = false;
+  // Accounting is rebuilt per receipt, so this is attached once it is final.
+  let toolUsage = null;
+  const attachToolUsage = () => {
+    if (toolUsage) accounting.meta.imageToolUsage = toolUsage;
+  };
   try {
     if (adapter.parseResponse) {
       parsed = await adapter.parseResponse(providerResponse, {
@@ -299,6 +310,7 @@ export async function handleImageGenerationCore({
         signal,
         streamToClient,
         onReceipt: (value, prefix) => {
+          if (provider === "codex") toolUsage = imageToolUsage(value) ?? toolUsage;
           const receipt = mediaAccounting(value, provider, "image");
           if (!receipt.meta.providerUsage) return;
           hasReceipt = true;
@@ -311,6 +323,7 @@ export async function handleImageGenerationCore({
         },
         onStreamComplete: async (outcome, response) => {
           accounting.state = outcome.status === "success" ? "complete" : outcome.status;
+          attachToolUsage();
           if (outcome.status === "success") returnedImageUnits(accounting, outcome.value);
           outcome.accounting = accounting;
           try {
@@ -352,6 +365,7 @@ export async function handleImageGenerationCore({
   if (onRequestSuccess) await onRequestSuccess();
 
   if (!hasReceipt) accounting = mediaAccounting(parsed, provider, "image");
+  attachToolUsage();
   // Normalize → OpenAI-compatible shape
   const normalized = adapter.normalize(parsed, body.prompt);
 

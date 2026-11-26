@@ -368,6 +368,13 @@ export const MODEL_PRICING = {
   // === Misc ===
   "oswe-vscode-prime": { input: 1.00, output: 4.00, cached: 0.50, reasoning: 6.00, cache_creation: 1.00 },
   "gpt-oss-120b-medium": { input: 0.50, output: 2.00, cached: 0.25, reasoning: 3.00, cache_creation: 0.50 },
+  // Gemini 4 Neon flat paid tier (OmniRoute #20666); the gemini-4-* glob is cheaper.
+  // https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon
+  "gemini-4-neon": { input: 3.00, output: 15.00, cached: 0.15, reasoning: 15.00, cache_creation: 3.00 },
+  "gemini-4-neon-low": { input: 3.00, output: 15.00, cached: 0.15, reasoning: 15.00, cache_creation: 3.00 },
+  "gemini-4-neon-medium": { input: 3.00, output: 15.00, cached: 0.15, reasoning: 15.00, cache_creation: 3.00 },
+  "gemini-4-neon-high": { input: 3.00, output: 15.00, cached: 0.15, reasoning: 15.00, cache_creation: 3.00 },
+  "gemini-4-neon-xhigh": { input: 3.00, output: 15.00, cached: 0.15, reasoning: 15.00, cache_creation: 3.00 },
   "vision-model": { input: 1.50, output: 6.00, cached: 0.75, reasoning: 9.00, cache_creation: 1.50 },
   "coder-model": { input: 1.50, output: 6.00, cached: 0.75, reasoning: 9.00, cache_creation: 1.50 }
 };

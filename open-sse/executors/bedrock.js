@@ -137,6 +137,29 @@ function systemBlocksFromOpenAI(messages) {
   map((text) => ({ text }));
 }
 
+// Converse model ids that reject a `system` block. A region prefix (`us.`) or an ARN path
+// may precede the name. Add an entry when Bedrock rejects another family.
+const NO_SYSTEM_MODEL_PATTERNS = [
+  /(^|[./])amazon\.titan-text/i,
+  /(^|[./])cohere\.command(-light)?-text/i,
+  /(^|[./])mistral\.mistral-7b-instruct/i,
+  /(^|[./])mistral\.mixtral-8x7b-instruct/i
+];
+
+// A model that rejects `system` gets the text in its first user turn; others get the block.
+function placeSystemBlocks(payload, model, system) {
+  if (system.length === 0) return;
+  if (!NO_SYSTEM_MODEL_PATTERNS.some((pattern) => pattern.test(model))) {
+    payload.system = system;
+    return;
+  }
+  const block = { text: system.map((item) => item.text).join("\n") };
+  const [first, ...rest] = payload.messages;
+  payload.messages = first?.role === "user" ?
+  [{ ...first, content: [block, ...first.content] }, ...rest] :
+  [{ role: "user", content: [block] }, ...payload.messages];
+}
+
 function toolResultContentFromMessage(message) {
   if (isString(message.content)) return [{ text: message.content || " " }];
   if (!Array.isArray(message.content)) return [{ text: toText(message.content) || " " }];
@@ -282,7 +305,7 @@ export function openAIToBedrockConverse(model, body) {
 
   const payload = { modelId: model, messages: messagesFromOpenAI(messages) };
   const system = systemBlocksFromOpenAI(messages);
-  if (system.length > 0) payload.system = system;
+  placeSystemBlocks(payload, model, system);
   if (Object.keys(inferenceConfig).length > 0) payload.inferenceConfig = inferenceConfig;
   const toolConfig = toolConfigFromOpenAI(request.tools, request.tool_choice);
   if (toolConfig && alwaysThinks && toolConfig.toolChoice) toolConfig.toolChoice = { auto: {} };

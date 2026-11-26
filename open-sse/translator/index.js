@@ -45,6 +45,29 @@ function stripContentTypes(body, stripList = []) {
   }
 }
 
+// Clients sometimes send `null` entries in a content array (decolua/9router#629).
+// Every translator dereferences `part.type`, so drop them once on the request-local
+// message copies (ownMessages) before any pass runs; the caller's arrays are untouched.
+const isPresent = (part) => part != null;
+
+function dropNullContentParts(body) {
+  // Without messages ownMessages returned the caller's body itself: leave it alone.
+  if (!isRecord(body) || !Array.isArray(body.messages)) return;
+  if (Array.isArray(body.system) && !body.system.every(isPresent)) body.system = body.system.filter(isPresent);
+  for (const msg of body.messages) {
+    if (!isRecord(msg) || !Array.isArray(msg.content)) continue;
+    const parts = msg.content.filter(isPresent).map(dropNullNestedParts);
+    if (parts.length !== msg.content.length || parts.some((part, i) => part !== msg.content[i])) msg.content = parts;
+  }
+}
+
+// Claude tool_result blocks nest their own content array. Blocks are shared with
+// the caller, so copy the block instead of editing it.
+function dropNullNestedParts(part) {
+  if (!Array.isArray(part?.content) || part.content.every(isPresent)) return part;
+  return { ...part, content: part.content.filter(isPresent) };
+}
+
 // OpenAI's `developer` role is a system turn. The OpenAI target normalizes it in
 // filterToOpenAIFormat and the Responses/Codex targets speak it natively; every
 // other target only knows system/user/assistant, so left alone the per-target
@@ -153,6 +176,7 @@ export function translateRequest(sourceFormat, targetFormat, model, body, stream
   ensureInitialized();
   // Own the message list so the rewrites below never mutate the caller's messages.
   let result = ownMessages(body);
+  dropNullContentParts(result);
   if (!DEVELOPER_ROLE_TARGETS.has(targetFormat)) result = normalizeDeveloperRole(result);
   // Role the client actually ended on, before any translator drops an emptied turn.
   const clientLastRole = detectClientLastRole(body);

@@ -43,6 +43,9 @@ export default {
   models: [
     { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" },
+    { id: "deepseek/deepseek-v4.1-flash-fast", name: "DeepSeek V4.1 Flash Fast" },
+    { id: "deepseek/deepseek-v4.1-flash-ultrafast", name: "DeepSeek V4.1 Flash Ultrafast" },
     { id: "deepseek/deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp" },
     { id: "deepseek-v4-flash-vision-exp", name: "DeepSeek V4 Flash Vision Exp", upstreamModelId: "deepseek/deepseek-v4-flash-vision-exp" },
     { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor" },

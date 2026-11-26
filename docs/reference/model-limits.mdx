@@ -83,6 +83,8 @@ The listed OpenAI models also declare a `922000`-token input ceiling. Codex capa
 
 Input modalities, native output modalities, and server-tool capabilities are separate facts. A text model using an image-generation tool remains a text-output model. Structured-output support does not guarantee prompt-cache behavior. A custom media model sharing a chat model's ID does not inherit chat capabilities or token limits.
 
+An `openai/` GPT-5.6+ or GPT-6+ chat ID that the catalog does not list routes through Responses with reasoning on and its effort list unknown. Requested efforts pass through, including `max`; `ultra` becomes `max`; `none` omits `reasoning`, so OpenAI applies its default effort. Declaring thinking efforts on a custom model replaces this fallback: unlisted efforts move to the nearest declared tier, and `none` is sent only when declared, otherwise it becomes the lowest declared tier.
+
 Canonical aliases use the target model's provider-scoped capabilities and limits. Retired models leave selectable catalogs. Inventory-only IDs with `routingAvailable: false` are not callable routes. Restricted, media, and unpublished ceilings remain unknown.
 
 Context values are exact integers. `1050000`, `1048576`, and `1000000` describe different windows. Account entitlement can impose a smaller usable window, such as a plan-specific Kimi Coding limit. Catalog availability alone does not prove inference access.

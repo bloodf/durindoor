@@ -17,11 +17,24 @@ function messageText(content) {
   return content.map((part) => (isString(part) ? part : part?.text ?? "")).filter(Boolean).join("\n");
 }
 
-/** Earlier turns become a transcript; the last turn is the message itself. */
+// Quote transcript control lines in replayed content so they cannot become turns.
+function replayText(text) {
+  return text.replace(/^([\t ]*)(?=(?:user|system|assistant|tool|tool call|tool result):|Conversation history:|Reply to the last message\.)/gim, "$1> ");
+}
+
+/** Earlier turns become a transcript; tool calls and results remain labelled history. */
 export function renderMessageText(messages) {
-  if (messages.length < 2) return messageText(messages[0]?.content);
-  const history = messages.slice(0, -1).map((m) => `${m?.role ?? "user"}: ${messageText(m?.content)}`).join("\n");
-  return `Conversation history:\n${history}\n\nReply to the last message.\n${messageText(messages.at(-1)?.content)}`;
+  if (!messages.length) return "";
+  const lastIsUser = messages.at(-1)?.role === "user";
+  if (messages.length < 2 && lastIsUser) return messageText(messages[0]?.content);
+  const history = (lastIsUser ? messages.slice(0, -1) : messages).flatMap((m) => {
+    const content = replayText(messageText(m?.content));
+    const rows = [];
+    if (content || !m?.tool_calls?.length) rows.push(`${m?.role === "tool" ? "tool result" : m?.role ?? "user"}: ${content}`);
+    for (const call of m?.tool_calls ?? []) rows.push(`tool call: ${replayText(JSON.stringify(call))}`);
+    return rows;
+  }).join("\n");
+  return `Conversation history:\n${history}\n\nReply to the last message.\n${lastIsUser ? messageText(messages.at(-1)?.content) : ""}`;
 }
 
 /** Why the unified route cannot carry these messages, or null when it can. */

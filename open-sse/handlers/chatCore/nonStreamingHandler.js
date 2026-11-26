@@ -30,7 +30,7 @@ import { SSE_HEADERS_CORS } from "../../utils/sseConstants.js";
 import { resolvedModelHeaders } from "../../utils/routeResponseHeaders.js";
 import { normalizeInlineThinkingResponse } from "./inlineThinking.js";
 import { normalizeOpenAIFinish } from "../../translator/concerns/finishReason.js";
-import { toOpenAIUsage } from "../../translator/concerns/usage.js";
+import { toOpenAIUsage, toRequiredResponsesUsage } from "../../translator/concerns/usage.js";
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
@@ -882,6 +882,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         enrichUsageCost(addBufferToUsage(translatedResponse.usage, provider), provider, model),
         sourceFormat
       );
+    }
+
+    if ((sourceFormat === FORMATS.OPENAI_RESPONSES || sourceFormat === FORMATS.OPENAI_RESPONSE) && translatedResponse?.usage) {
+      translatedResponse.usage = toRequiredResponsesUsage(translatedResponse.usage);
     }
 
     // OpenAI reasoning is preserved unless the client or deployment explicitly opts out.

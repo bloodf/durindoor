@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createSseFrameReader } from "../utils/sseFrames.js";
+import { createSseFrameReader, replaceSseFrameData } from "../utils/sseFrames.js";
 
 /** Repair Copilot chat chunks (#864), preserving upstream errors and terminals. */
 export function normalizeGithubChatStream(response) {
@@ -23,8 +23,7 @@ export function normalizeGithubChatStream(response) {
         for (const choice of parsed.choices) {
           if (choice?.delta?.content === null) delete choice.delta.content;
         }
-        const metadata = frame.raw.split(/\r\n|\r|\n/).filter((line) => line !== "data" && !line.startsWith("data:"));
-        controller.enqueue(encoder.encode([...metadata, `data: ${JSON.stringify(parsed)}`, "", ""].join("\n")));
+        controller.enqueue(encoder.encode(replaceSseFrameData(frame, JSON.stringify(parsed))));
       } else {
         controller.enqueue(encoder.encode(frame.wire ?? `${frame.raw}\n\n`));
       }

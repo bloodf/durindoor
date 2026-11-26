@@ -28,6 +28,7 @@ export function geminiToOpenAIRequest(model, body, stream) {
     if (config.topP !== undefined) {
       result.top_p = config.topP;
     }
+    applyGeminiStopSequences(result, config);
   }
 
   // System instruction
@@ -72,9 +73,17 @@ export function geminiToOpenAIRequest(model, body, stream) {
     }
   }
 
-  // toolConfig → tool_choice (inverse of openai-to-gemini). VALIDATED has no OpenAI
-  // equivalent; it is closest to "auto" (model may answer or call, args schema-checked).
-  const fcc = body.toolConfig?.functionCallingConfig;
+  applyGeminiToolChoice(result, body.toolConfig);
+
+  return result;
+}
+
+/**
+ * toolConfig → tool_choice (inverse of openai-to-gemini). VALIDATED has no OpenAI
+ * equivalent; it is closest to "auto" (model may answer or call, args schema-checked).
+ */
+export function applyGeminiToolChoice(result, toolConfig) {
+  const fcc = toolConfig?.functionCallingConfig;
   if (result.tools?.length && fcc?.mode) {
     const names = fcc.allowedFunctionNames;
     if (fcc.mode === "NONE") result.tool_choice = "none";
@@ -89,8 +98,13 @@ export function geminiToOpenAIRequest(model, body, stream) {
         : "required";
     }
   }
+}
 
-  return result;
+/** OpenAI accepts at most four stop sequences. */
+export function applyGeminiStopSequences(result, generationConfig) {
+  const stop = Array.isArray(generationConfig?.stopSequences) ?
+    generationConfig.stopSequences.filter((sequence) => isString(sequence) && sequence).slice(0, 4) : [];
+  if (stop.length) result.stop = stop;
 }
 
 // Anthropic/OpenAI id patterns reject dots etc. Sanitize generated and client ids the same

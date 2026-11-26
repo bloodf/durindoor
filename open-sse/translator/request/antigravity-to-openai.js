@@ -5,7 +5,7 @@ import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { budgetToEffort } from "../concerns/thinking.js";
 import { collapseTextParts } from "../concerns/message.js";
-import { geminiTurnRole } from "./gemini-to-openai.js";
+import { applyGeminiStopSequences, applyGeminiToolChoice, geminiTurnRole } from "./gemini-to-openai.js";
 
 // Convert Antigravity request to OpenAI format
 // Antigravity body: { project, model, userAgent, requestType, requestId, request: { contents, systemInstruction, tools, toolConfig, generationConfig, sessionId } }
@@ -40,6 +40,7 @@ export function antigravityToOpenAIRequest(model, body, stream) {
       const effort = budgetToEffort(config.thinkingConfig.thinkingBudget || 0);
       if (effort) result.reasoning_effort = effort;
     }
+    applyGeminiStopSequences(result, config);
   }
 
   // System instruction
@@ -82,6 +83,8 @@ export function antigravityToOpenAIRequest(model, body, stream) {
       }
     }
   }
+
+  applyGeminiToolChoice(result, req.toolConfig);
 
   return result;
 }
@@ -182,6 +185,11 @@ function convertContent(content) {
           url: encodeDataUri(part.inlineData.mimeType, part.inlineData.data)
         }
       });
+    }
+
+    // File reference, carried like the Gemini translator does
+    if (isString(part.fileData?.fileUri) && part.fileData.fileUri) {
+      textParts.push({ type: OPENAI_BLOCK.IMAGE_URL, image_url: { url: part.fileData.fileUri } });
     }
 
     // Function call

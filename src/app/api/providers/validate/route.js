@@ -29,6 +29,7 @@ import { LAYA_HEALTH_PATH, resolveLayaHost } from "open-sse/config/laya.js";
 import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
+import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -725,7 +726,9 @@ async function validateProviderKey(request) {
                 messages: [{ role: "user", content: "test" }]
               })
             });
-            isValid = res.status !== 401 && res.status !== 403;
+            isValid = provider === "byteplus" ?
+            await isByteplusKeyAccepted(res) :
+            res.status !== 401 && res.status !== 403;
             break;
           }
 

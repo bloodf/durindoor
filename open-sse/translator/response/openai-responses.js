@@ -1077,6 +1077,7 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
 
   // Response completed or coherently ended incomplete.
   if (eventType === "response.completed" || eventType === "response.done" || eventType === "response.incomplete") {
+    const reasoningSnapshots = recoverReasoningSnapshots(eventType, data.response, state);
     const textSnapshots = finalizeResponsesTextSnapshots(state, data.response?.output);
     const toolSnapshots = [];
     if (!state.finishReasonSent && eventType !== "response.incomplete" &&
@@ -1131,7 +1132,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
       }
 
       const pending = flushWrappedCustomToolInputs(state);
-      return textSnapshots.length || toolSnapshots.length || pending.length ? [...textSnapshots, ...toolSnapshots, ...pending, finalChunk] : finalChunk;
+      const recovered = [...reasoningSnapshots, ...textSnapshots, ...toolSnapshots, ...pending];
+      return recovered.length ? [...recovered, finalChunk] : finalChunk;
     }
     const pending = flushWrappedCustomToolInputs(state);
     return pending.length ? pending : null;
@@ -1183,6 +1185,8 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
     if (!isString(summary) || !summary || isInternalReasoningPlaceholder(summary)) return null;
     if (data.item_id) reasoningEvents.ids.add(data.item_id);
     if (Number.isInteger(data.output_index)) reasoningEvents.indexes.add(data.output_index);
+    // A delta with no identity cannot be paired with a later snapshot.
+    if (!data.item_id && !Number.isInteger(data.output_index)) reasoningEvents.anonymous = true;
   } else if (eventType === "response.output_item.done" && data.item?.type === RESPONSES_ITEM.REASONING) {
     if (reasoningEvents.ids.has(data.item.id) || reasoningEvents.indexes.has(data.output_index)) return null;
     summary = Array.isArray(data.item.summary) ? data.item.summary
@@ -1205,6 +1209,20 @@ function translateResponsesChunk(chunk, state, terminalSnapshot = false) {
 
   // Ignore other events
   return null;
+}
+
+// OmniRoute #21234: a summary may arrive only in the completed snapshot. Replaying it
+// as output_item.done reuses the duplicate checks for streamed and finished items.
+function recoverReasoningSnapshots(eventType, response, state) {
+  if (state.finishReasonSent || eventType === "response.incomplete" ||
+      (response?.status != null && response.status !== "completed") || !Array.isArray(response?.output) ||
+      state.responsesReasoningEvents?.anonymous) return [];
+  return response.output.flatMap((item, output_index) => {
+    if (item?.type !== RESPONSES_ITEM.REASONING) return [];
+    // Each recovered item is a separate thought.
+    if (state.respReasoningEmitted) state.respReasoningNeedsBreak = true;
+    return openaiResponsesToOpenAIResponse({ type: "response.output_item.done", output_index, item }, state) || [];
+  });
 }
 
 // Register both directions

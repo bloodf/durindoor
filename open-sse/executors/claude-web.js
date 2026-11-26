@@ -20,6 +20,24 @@ export function normalizeClaudeWebCookie(raw) {
   return /(?:^|;\s*)sessionKey=([^;\s]+)/.test(cookie) ? cookie : "";
 }
 
+function cookieValue(cookie, name) {
+  const pair = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+  return pair ? pair.slice(name.length + 1) : "";
+}
+
+// `/organizations` can list an API-only (Console) organization first, and posting a
+// conversation there answers 403 for every model. Prefer the organization claude.ai
+// itself last used, then one that can chat, then the first usable record.
+function pickChatOrganizationId(organizations, cookie) {
+  if (!Array.isArray(organizations)) return null;
+  const usable = organizations.filter(isRecord)
+    .map((org) => ({ id: org.uuid || org.id, canChat: Array.isArray(org.capabilities) && org.capabilities.includes("chat") }))
+    .filter((org) => isString(org.id) && org.id);
+  const lastActive = cookieValue(cookie, "lastActiveOrg");
+  const chosen = usable.find((org) => org.id === lastActive) || usable.find((org) => org.canChat) || usable[0];
+  return chosen?.id || null;
+}
+
 function responseError(status, message) {
   return new Response(JSON.stringify(buildErrorBody(status, message, undefined, { type: "upstream_error", code: `HTTP_${status}` })), { status, headers: { "content-type": "application/json" } });
 }
@@ -123,8 +141,7 @@ export class ClaudeWebExecutor extends BaseExecutor {
       if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       if (!organizations.ok) return { response: responseError(organizations.status, "Claude Web organization lookup failed"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       const orgs = await organizations.json();
-      const org = Array.isArray(orgs) ? orgs[0] : null;
-      const orgId = org?.uuid || org?.id;
+      const orgId = pickChatOrganizationId(orgs, cookie);
       if (!orgId) return { response: responseError(502, "No Claude Web organization found"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       if (input.body?.stream === false) {
         // Claude Web's API still emits SSE; OpenAI JSON is assembled below.

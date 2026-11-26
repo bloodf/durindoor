@@ -5,6 +5,7 @@ import { encodeDataUri } from "../concerns/image.js";
 import { ROLE, OPENAI_BLOCK } from "../schema/index.js";
 import { budgetToEffort } from "../concerns/thinking.js";
 import { collapseTextParts } from "../concerns/message.js";
+import { geminiCliOutputText } from "../formats/gemini.js";
 import { applyGeminiStopSequences, applyGeminiToolChoice, geminiTurnRole } from "./gemini-to-openai.js";
 
 // Convert Antigravity request to OpenAI format
@@ -132,6 +133,12 @@ function normalizeSchemaTypes(schema) {
   return result;
 }
 
+// Presence is checked so a falsy result (0, false, "", null) is not replaced by its wrapper.
+function toAntigravityToolContent(response) {
+  if (response?.result !== undefined) return JSON.stringify(response.result);
+  return geminiCliOutputText(response) ?? JSON.stringify(response || {});
+}
+
 // Convert Antigravity content to OpenAI message
 // Handles: text, thought, thoughtSignature, functionCall, functionResponse, inlineData
 function convertContent(content) {
@@ -210,7 +217,7 @@ function convertContent(content) {
       toolResults.push({
         role: ROLE.TOOL,
         tool_call_id: part.functionResponse.id || deriveId(part.functionResponse.name, responseCounts),
-        content: JSON.stringify(part.functionResponse.response?.result || part.functionResponse.response || {})
+        content: toAntigravityToolContent(part.functionResponse.response)
       });
     }
   }

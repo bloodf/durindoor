@@ -4,6 +4,7 @@
 // whatever the Accept header asks for.
 import { randomUUID } from "node:crypto";
 import { sanitizeErrorMessage } from "../utils/error.js";
+import { createSseFrameReader } from "../utils/sseFrames.js";
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 export const MAX_MESSAGE_CHARS = 15_000;
@@ -55,10 +56,9 @@ function toOpenAiUsage(raw) {
   };
 }
 
-function parseEvent(line) {
-  if (!line.startsWith("data:")) return null;
+function parseEvent(data) {
   try {
-    return JSON.parse(line.slice(5).trim());
+    return JSON.parse(data);
   } catch {
     return null; // `[DONE]` and any non-JSON payload carry no event
   }
@@ -69,7 +69,7 @@ function parseEvent(line) {
  * deltas; `result` holds the outcome once a `finish` or `error` event arrives.
  */
 export function createUnifiedReplyParser() {
-  let buffer = "";
+  const frames = createSseFrameReader();
   const result = { content: "", reasoning: "", finishReason: null, usage: null, error: null };
   const fail = (message) => { result.error = sanitizeErrorMessage(message || "ChatPlayground stream error"); };
   const apply = (event, deltas) => {
@@ -92,12 +92,12 @@ export function createUnifiedReplyParser() {
   return {
     result,
     push(text, final = false) {
-      const lines = (buffer + text).split("\n");
-      buffer = final ? "" : lines.pop();
+      const ready = frames.push(text);
+      if (final) ready.push(...frames.flush());
       const deltas = [];
-      for (const line of lines) {
+      for (const data of ready.flatMap((frame) => frame.dataLines)) {
         if (result.finishReason || result.error) break;
-        apply(parseEvent(line.trim()), deltas);
+        apply(parseEvent(data), deltas);
       }
       return deltas;
     },

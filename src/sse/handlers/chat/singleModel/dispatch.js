@@ -32,7 +32,10 @@ import { onProviderRequestSuccess } from "./providerHooks.js";
 function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThinking, pxpipeTransform, quotaReservation, cookieRefreshContext }) {
   const { provider, model, request, requestSignal, comboRouting } = ctx;
   const { credentials, dispatchedCredential } = attempt;
+  // The conversation moved here from an account that already received it in this request.
+  const accountSwitched = Boolean(state.sentConnectionId) && state.sentConnectionId !== credentials.connectionId;
   return {
+    accountSwitched,
     body: { ...structuredClone(ctx.body), model: `${provider}/${model}` },
     modelInfo: { provider, model },
     modelCapabilities: ctx.resolvedModelCapabilities,
@@ -54,6 +57,7 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     quotaReservation,
     onProviderAttempt: () => {
       state.accountAttempts++;
+      state.sentConnectionId = credentials.connectionId;
       attempt.latestAttemptStartedAt = allocateProviderAttemptTimestamp();
       return attempt.latestAttemptStartedAt;
     },

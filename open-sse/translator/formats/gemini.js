@@ -41,6 +41,8 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 "dependencies", "dependentSchemas", "dependentRequired",
 // Other unsupported keywords
 "title", "optional", "~optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
+// OpenAPI annotations and editor hints: Gemini rejects the whole tool list over one of them
+"errorMessage", "errorMessages", "doNotSuggest", "suggestSortText", "discriminator", "xml", "externalDocs",
 // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
 "cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
 "gap", "padding", "strokeColor", "strokeThickness", "textColor"];

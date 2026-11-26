@@ -87,7 +87,7 @@ describe("Token Harbor chat route", () => {
     const completion = { id: "fixture", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }], usage };
     const sse = `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: "hi" }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model, choices: [], usage })}\n\ndata: [DONE]\n\n`;
     network.fetch.mockResolvedValue(new Response(stream ? sse : JSON.stringify(completion), { headers: { "content-type": stream ? "text/event-stream" : "application/json" } }));
-    const body = { model, messages: [{ role: "user", content: "hi" }], stream };
+    const body = { model, messages: [{ role: "user", content: "hi" }], stream, ...(stream ? { stream_options: { include_usage: true } } : null) };
     const result = await handleChatCore({ body, modelInfo: { provider: "tokenharbor", model }, credentials: connection,
       clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} }, connectionId: connection.id,
       log: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }, rtkEnabled: false, headroomEnabled: false, compressionEnabled: false });

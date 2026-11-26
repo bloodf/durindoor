@@ -18,12 +18,12 @@ import { isBoolean, isObject, isString } from "../../src/shared/utils/typeChecks
  *  - non-clinepass providers or non-envelope bodies → `{ body, error: null }`
  *    (pass-through, so other providers are unaffected);
  *  - `{success:true, data}` → `{ body: data, error: null }`;
- *  - `{success:false, error}` → `{ body, error: { message } }` so callers can
- *    fail fast without translating the wrapper.
+ *  - `{success:false, error}` → `{ body, error: { message, status? } }` so callers
+ *    can fail fast without translating the wrapper.
  *
  * @param {unknown} body - parsed JSON body
  * @param {string} [provider] - provider id; envelopes are only honored for "clinepass"
- * @returns {{ body: unknown, error: null | { message: string } }}
+ * @returns {{ body: unknown, error: null | { message: string, status?: number } }}
  */
 export function unwrapClinepassEnvelope(body, provider) {
   if (provider !== "clinepass") return { body, error: null };
@@ -41,5 +41,7 @@ export function unwrapClinepassEnvelope(body, provider) {
   if (isString(err)) message = err;else
   if (err && isObject(err)) message = err.message || err.code || "";
   if (!message && isString(body.message)) message = body.message;
-  return { body, error: { message: message || "ClinePass request failed" } };
+  // An envelope inside an HTTP 200 can name the real failure status (rate limit, auth).
+  const status = Number.isInteger(body.statusCode) && body.statusCode >= 400 && body.statusCode <= 599 ? body.statusCode : null;
+  return { body, error: { message: message || "ClinePass request failed", ...(status ? { status } : null) } };
 }

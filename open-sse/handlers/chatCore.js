@@ -367,7 +367,7 @@ export async function handleChatCore(options) {
   }
 }
 
-async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null }, pendingGuard) {
+async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false }, pendingGuard) {
   const sourceFormat = sourceFormatOverride || detectFormat(body);
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
@@ -433,6 +433,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
     }
   })();
   let requestContext = captureRequestContext(body, clientRawRequest, modelCapabilities, sessionSeed);
+  if (accountSwitched) requestContext = Object.freeze({ ...requestContext, accountSwitched });
   ({ body, clientRawRequest } = stripLegacyCompactMarker(body, clientRawRequest));
   // Proposed id remains stable even if fail-open dashboard tracking cannot allocate a row.
   const requestedUsageEventId = globalThis.crypto?.randomUUID?.() || `${requestStartTime}-${Math.random().toString(36).slice(2)}`;

@@ -149,7 +149,7 @@ describe("DemonRoute chat route", () => {
   it("preserves upstream usage on the streaming path", async () => {
     const sse = `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: "hi" }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model, choices: [], usage })}\n\ndata: [DONE]\n\n`;
     network.fetch.mockResolvedValue(new Response(sse, { headers: { "content-type": "text/event-stream" } }));
-    const result = await chatCore({ body: { stream: true } });
+    const result = await chatCore({ body: { stream: true, stream_options: { include_usage: true } } });
     expect(result.success).toBe(true);
     const output = await result.response.text();
     expect(output).toContain('"prompt_tokens":8');

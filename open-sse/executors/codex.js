@@ -844,6 +844,9 @@ export class CodexExecutor extends BaseExecutor {
     const { attempts, delayMs } = resolveRetryEntry(retryConfig[HTTP_STATUS.SERVICE_UNAVAILABLE]);
     let attempt = 0;
     let encryptedRecoveryAttempted = false;
+    // Reasoning ciphertext is bound to the account that made it. After a rotation the new
+    // account would answer 400 invalid_encrypted_content, so drop it before the first send.
+    if (requestContext.accountSwitched) removeInvalidEncryptedReasoning(requestBody);
     let tierLogged = false;
     while (true) {
       throwIfAborted(args.signal);

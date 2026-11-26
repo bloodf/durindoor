@@ -254,9 +254,11 @@ export function createSSEStream(options = {}) {
   // The request body is fixed for the stream, so it is serialized at most once
   // however many events need an estimate (OmniRoute #20466).
   let inputEstimate = null;
+  // Unbuffered: this is the value that gets recorded. Each client copy adds the
+  // context margin itself, once (9router #3913).
   const estimateStreamUsage = (outputLength, format) => {
     inputEstimate ??= estimateInputTokens(body);
-    return formatUsage(inputEstimate, estimateOutputTokens(outputLength), format);
+    return formatUsage(inputEstimate, estimateOutputTokens(outputLength), format, { buffer: false });
   };
   // Delay estimates for clients requesting an OpenAI usage trailer.
   let pendingUsageEstimate = false;
@@ -642,7 +644,7 @@ export function createSSEStream(options = {}) {
       created: usageChunkMeta.created ?? Math.floor(Date.now() / 1000),
       model: usageChunkMeta.model || model,
       choices: [],
-      usage: filterUsageForFormat(usage, FORMATS.OPENAI),
+      usage: filterUsageForFormat(addBufferToUsage(usage), FORMATS.OPENAI),
     };
     const output = `data: ${JSON.stringify(chunk)}\n\n`;
     reqLogger?.appendConvertedChunk?.(output);
@@ -1302,7 +1304,7 @@ export function createSSEStream(options = {}) {
               if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage) && (!targetFormat || targetFormat === FORMATS.OPENAI) && (providerBody?.stream_options?.include_usage === true || body?.stream_options?.include_usage === true)) {
                 pendingUsageEstimate = true;
               } else if (provider !== "replicate" && isFinishChunk && !hasValidUsage(usage)) {
-                const estimated = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.OPENAI));
+                const estimated = mergeUsage(usage, addBufferToUsage(estimateStreamUsage(totalContentLength, FORMATS.OPENAI)));
                 parsed.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), FORMATS.OPENAI);
                 output = formatLine(parsed);
                 injectedUsage = true;
@@ -1653,7 +1655,7 @@ export function createSSEStream(options = {}) {
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
-              const estimated = mergeUsage(state.usage ?? item.usage, estimateStreamUsage(totalContentLength, sourceFormat));
+              const estimated = mergeUsage(state.usage ?? item.usage, addBufferToUsage(estimateStreamUsage(totalContentLength, sourceFormat)));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
@@ -1913,7 +1915,7 @@ export function createSSEStream(options = {}) {
           const isClaudeStream = targetFormat === FORMATS.CLAUDE;
           const isResponsesStream = targetFormat === FORMATS.OPENAI_RESPONSES;
           if (isClaudeStream && !claudeTerminalSeen && !streamErrorPayload) {
-            throw new Error("Claude passthrough stream ended before message_stop");
+            throw Object.assign(new Error("Claude passthrough stream ended before message_stop"), { code: "incomplete_upstream_stream" });
           }
           if (isResponsesStream && upstreamTerminal.outcome !== "success") {
             const failedOutput = formatIncompleteOpenAIResponsesStreamFailure();
@@ -2047,16 +2049,24 @@ export function createSSEStream(options = {}) {
         // block was cut off. The null flush below would invent a successful end and
         // release buffered tool calls, so end it with an error (upstream #4486).
         // A translated Responses stream with no terminal event is cut off the same way
-        // (upstream #4490).
+        // (upstream #4490). A Claude client on a Chat Completions upstream gets the
+        // same treatment when neither a finish reason nor [DONE] arrived: the null
+        // flush would close it with end_turn + message_stop (upstream #3860).
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
         const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
           !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
-        if (cutGemini || cutResponses) {
+        const cutChatForClaude = sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.OPENAI &&
+          state.messageStartSent && !state.claudeFinishHandled && !streamDoneSent &&
+          !parseSSELine(buffer.trim(), targetFormat)?.done;
+        if (cutGemini || cutResponses || cutChatForClaude) {
+          // Claude clients retry overloaded_error; a dropped Chat stream is transient.
+          const claudeErrorType = cutChatForClaude ? "overloaded_error" : "api_error";
           streamErrorPayload = {
-            type: sourceFormat === FORMATS.CLAUDE ? "api_error" : "server_error",
+            type: sourceFormat === FORMATS.CLAUDE ? claudeErrorType : "server_error",
             code: "incomplete_upstream_stream",
-            message: cutGemini ? "Gemini stream ended before a finish reason" : "Responses stream ended before a terminal event"
+            message: cutGemini ? "Gemini stream ended before a finish reason" :
+              cutResponses ? "Responses stream ended before a terminal event" : "Upstream stream ended before a finish reason"
           };
           const output = formatTranslatedStreamError(streamErrorPayload, sourceFormat, errorSecrets);
           reqLogger?.appendConvertedChunk?.(output);

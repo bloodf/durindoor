@@ -81,8 +81,8 @@ function translatedSession(sessionId, clientTool) {
   return `ses_${digest}`;
 }
 
-// Responses-only per the provider registry (currently muse-spark; any future
-// entry with targetFormat "openai-responses" is picked up automatically).
+// Responses-only per getModelTargetFormat: registry rows with targetFormat
+// "openai-responses", plus the unlisted ids it names.
 // getModelTargetFormat already strips thinking suffixes via parseSuffix, so
 // "muse-spark-1.3-contributor(xhigh)" still resolves to its base entry.
 function isResponsesModel(model) {

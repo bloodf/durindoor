@@ -68,6 +68,26 @@ function buildContent(prompt, refs, detail = CODEX_REF_DETAIL) {
   return content;
 }
 
+const STREAM_ERROR_STATUS = Object.freeze({
+  invalid_api_key: 401, model_not_found: 404, rate_limit_exceeded: 429, usage_limit_reached: 429
+});
+
+// An HTTP 200 stream can still carry a failed response. Name its status so the
+// account layer treats a rate limit or a rejected key as one (9router #3870).
+function streamFailure(eventName, data) {
+  const detail = data.response?.error || data.error;
+  const message = detail?.message || data.message || `Codex ${eventName}`;
+  const error = new Error(message);
+  const explicit = Number(detail?.status_code || data.status_code);
+  if (explicit >= 400 && explicit <= 599) error.status = explicit;
+  else if (/requires a newer version of Codex/i.test(message)) error.status = 400;
+  else {
+    const code = [detail?.code, detail?.type, data.code].find((value) => Object.hasOwn(STREAM_ERROR_STATUS, value));
+    if (code) error.status = STREAM_ERROR_STATUS[code];
+  }
+  return error;
+}
+
 // One parser serves buffered and streaming responses. Only response.completed
 // with an image is success; an image item followed by EOF is not completion.
 async function* parseStream(reader, log, onReceipt) {
@@ -103,7 +123,7 @@ async function* parseStream(reader, log, onReceipt) {
     onReceipt?.(data, "");
     onReceipt?.(data.response, "response.");
     if (eventName === "error" || eventName === "response.failed" || eventName === "response.incomplete") {
-      throw new Error(data.response?.error?.message || data.error?.message || data.message || `Codex ${eventName}`);
+      throw streamFailure(eventName, data);
     }
     if (eventName === "response.output_text.delta" && data.delta?.trim?.()) hasText = true;
     if (eventName === "response.output_item.done" && data.item?.type === "image_generation_call") {

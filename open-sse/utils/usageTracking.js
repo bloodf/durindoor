@@ -783,24 +783,21 @@ export function estimateOutputTokens(contentLength) {
  * @param {number} inputTokens - Input/prompt tokens
  * @param {number} outputTokens - Output/completion tokens
  * @param {string} targetFormat - Target format from FORMATS
+ * @param {{buffer?: boolean}} [options] - `buffer: false` for a value that is
+ *   recorded: the client context margin must not enter accounting (9router #3913).
  */
-export function formatUsage(inputTokens, outputTokens, targetFormat) {
+export function formatUsage(inputTokens, outputTokens, targetFormat, { buffer = true } = {}) {
   // Claude format uses input_tokens/output_tokens
-  if (targetFormat === FORMATS.CLAUDE) {
-    return addBufferToUsage({
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      estimated: true
-    });
-  }
-
+  const usage = targetFormat === FORMATS.CLAUDE ?
+  { input_tokens: inputTokens, output_tokens: outputTokens, estimated: true } :
   // Default: OpenAI format (works for openai, gemini, responses, etc.)
-  return addBufferToUsage({
+  {
     prompt_tokens: inputTokens,
     completion_tokens: outputTokens,
     total_tokens: inputTokens + outputTokens,
     estimated: true
-  });
+  };
+  return buffer ? addBufferToUsage(usage) : usage;
 }
 
 /**
@@ -809,11 +806,12 @@ export function formatUsage(inputTokens, outputTokens, targetFormat) {
  * @param {number} contentLength - Content length for output token estimation
  * @param {string} targetFormat - Target format from FORMATS constant
  */
-export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI) {
+export function estimateUsage(body, contentLength, targetFormat = FORMATS.OPENAI, options = {}) {
   return formatUsage(
     estimateInputTokens(body),
     estimateOutputTokens(contentLength),
-    targetFormat
+    targetFormat,
+    options
   );
 }
 
@@ -919,7 +917,7 @@ export function measureResponseOutputLength(response) {
  * @returns {object} Estimated OpenAI-shaped usage.
  */
 export function estimateNonStreamingUsage(requestBody, response) {
-  return estimateUsage(requestBody, measureResponseOutputLength(response), FORMATS.OPENAI);
+  return estimateUsage(requestBody, measureResponseOutputLength(response), FORMATS.OPENAI, { buffer: false });
 }
 
 /**

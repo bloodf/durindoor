@@ -7,6 +7,7 @@ import { getCodexPlanLabel } from "@/shared/utils/codexPlanLabel";
 import PropTypes from "prop-types";
 import { Badge, Button, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import { getEarliestActiveModelLock, hasModelLock } from "@/shared/utils/modelLockCountdown.js";
 import { buildTimelineHref } from "../../timeline/href.js";
 import { classifyProviderDiagnostic } from "./providerDiagnostics.js";
 
@@ -108,32 +109,19 @@ export default function ConnectionRow({ connection, providerId = null, plan = nu
       ? connection.displayName.trim()
       : null;
 
-  // Use useState + useEffect for impure Date.now() to avoid calling during render
-  const [isCooldown, setIsCooldown] = useState(false);
-
-  // Get earliest model lock timestamp (useEffect handles the Date.now() comparison)
-  const modelLockUntil = Object.entries(connection)
-    .filter(([k]) => k.startsWith("modelLock_"))
-    .map(([, v]) => v)
-    .filter(v => !!v)
-    .sort()[0] || null;
+  // Date.now() is impure, so the live lock is read in an effect, not during render.
+  const [modelLockUntil, setModelLockUntil] = useState(null);
+  const isCooldown = modelLockUntil !== null;
 
   useEffect(() => {
-    const checkCooldown = () => {
-      const until = Object.entries(connection)
-        .filter(([k]) => k.startsWith("modelLock_"))
-        .map(([, v]) => v)
-        .filter(v => v && new Date(v).getTime() > Date.now())
-        .sort()[0] || null;
-      setIsCooldown(!!until);
-    };
+    const checkCooldown = () => setModelLockUntil(getEarliestActiveModelLock(connection));
 
     checkCooldown();
-    const interval = modelLockUntil ? setInterval(checkCooldown, 1000) : null;
+    const interval = hasModelLock(connection) ? setInterval(checkCooldown, 1000) : null;
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [modelLockUntil]);
+  }, [connection]);
 
   // Account-level 429 bench (distinct from the per-model lock above): a
   // persisted lesson from an upstream rate limit, not upstream truth. Once

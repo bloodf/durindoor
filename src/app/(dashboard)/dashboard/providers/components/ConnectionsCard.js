@@ -11,6 +11,7 @@ import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 import { isSystemoneCompatibleProvider } from "@/shared/constants/providers";
 import HostAwareAddApiKeyModal from "../[id]/AddApiKeyModal";
+import { getEarliestActiveModelLock, hasModelLock } from "@/shared/utils/modelLockCountdown.js";
 
 
 // ── CooldownTimer ──────────────────────────────────────────────
@@ -41,7 +42,8 @@ CooldownTimer.propTypes = { until: PropTypes.string.isRequired };
 function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
-  const [isCooldown, setIsCooldown] = useState(false);
+  const [modelLockUntil, setModelLockUntil] = useState(null);
+  const isCooldown = modelLockUntil !== null;
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((p) => [p.id, p]));
@@ -67,21 +69,12 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const noProxyText = boundProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
   const proxyBadgeVariant = boundProxyPool?.isActive === true ? "success" : boundProxyPoolId || hasLegacyProxy ? "error" : "default";
 
-  const modelLockUntil = Object.entries(connection).
-  filter(([k]) => k.startsWith("modelLock_")).
-  map(([, v]) => v).filter(Boolean).sort()[0] || null;
-
   useEffect(() => {
-    const check = () => {
-      const until = Object.entries(connection).
-      filter(([k]) => k.startsWith("modelLock_")).
-      map(([, v]) => v).filter((v) => v && new Date(v).getTime() > Date.now()).sort()[0] || null;
-      setIsCooldown(!!until);
-    };
+    const check = () => setModelLockUntil(getEarliestActiveModelLock(connection));
     check();
-    const t = modelLockUntil ? setInterval(check, 1000) : null;
+    const t = hasModelLock(connection) ? setInterval(check, 1000) : null;
     return () => {if (t) clearInterval(t);};
-  }, [connection, modelLockUntil]);
+  }, [connection]);
 
   useEffect(() => {
     if (!showProxyDropdown) return;

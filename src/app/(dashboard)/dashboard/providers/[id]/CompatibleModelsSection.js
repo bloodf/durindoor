@@ -104,7 +104,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importFilter, setImportFilter] = useState("all");
-  const [testingModelId, setTestingModelId] = useState(null);
+  const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [modelTestResults, setModelTestResults] = useState({});
   const [confirmState, setConfirmState] = useState(null);
   const [bulkTesting, setBulkTesting] = useState(false);
@@ -119,8 +119,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   }, []);
 
   const handleTestModel = async (modelId) => {
-    if (testingModelId) return;
-    setTestingModelId(modelId);
+    if (testingModelIds.has(modelId)) return;
+    setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await fetch("/api/models/test", {
@@ -137,7 +137,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
-      setTestingModelId(null);
+      setTestingModelIds((prev) => { const next = new Set(prev); next.delete(modelId); return next; });
     }
   };
 
@@ -481,7 +481,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
                 onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
                 testStatus={modelTestResults[id]}
                 deleteStatus={deleteStatus[id]}
-                isTesting={testingModelId === id}
+                isTesting={testingModelIds.has(id)}
                 checkbox={
                   <label className="inline-flex min-h-11 min-w-11 items-center justify-center rounded">
                     <input

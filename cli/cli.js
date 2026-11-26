@@ -974,7 +974,9 @@ Options:
   }
 
   ({ ensureSqliteRuntime, buildEnvWithRuntime } = require("./hooks/sqliteRuntime"));
-  ({ buildNodeArgs } = require("./hooks/nodeFlags"));
+  const nodeFlags = require("./hooks/nodeFlags");
+  // The default heap cap follows this host's memory (9router #3863).
+  buildNodeArgs = (entry, env) => nodeFlags.buildNodeArgs(entry, env, os.totalmem());
   ({ killByPidFile } = require("./hooks/killByPidFile"));
 
   // Verify SQLite runtime deps. Missing sql.js may be repaired because it is the

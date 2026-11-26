@@ -1,0 +1,7 @@
+---
+title: Self-hosted tunnel relay
+---
+
+The tunnel relay is an optional component you deploy in your own Cloudflare account. DurinDoor ships no project-operated or shared default relay. The current app in this checkout still uses the upstream relay domain and does not send an ownership secret; configuring this worker alone does not integrate it with the app. The app integration is separate work.
+
+See [the relay deployment guide](https://github.com/bloodf/durindoor/tree/main/relay) for Worker routes, DNS, KV and Durable Object setup, and the registration API. Each short ID is claimed with a persistent secret of at least 32 characters; keep it private. The relay terminates TLS and sees plaintext traffic, including credentials and request bodies. Use only infrastructure you trust and protect the gateway itself.

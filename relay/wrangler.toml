@@ -1,0 +1,19 @@
+name = "durindoor-relay"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# Replace with your zone's relay hostname and KV namespace ID.
+[vars]
+RELAY_HOST = "relay.example.com"
+
+[[kv_namespaces]]
+binding = "RELAY_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[durable_objects.bindings]]
+name = "RELAY_REGISTRATION"
+class_name = "RelayRegistration"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayRegistration"]

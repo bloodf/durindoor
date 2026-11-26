@@ -55,45 +55,34 @@ function orphanOutputMessage(item) {
 }
 
 /**
- * Pair calls and outputs in occurrence order, including repeated call IDs.
- * Missing results are inserted at the end of their call/output run; orphaned
- * outputs become user text and extra outputs for an already answered ID drop.
+ * Make every replayed function call pair with exactly one output: repeated calls
+ * are dropped, the last repeated output wins, a call with no output gets one
+ * saying it did not run, and an orphan output becomes user text.
  */
 export function normalizeGrokCliHistory(input) {
   if (!Array.isArray(input)) return input;
   const items = input.map(normalizeItem);
-  const pending = new Map();
-  const matchedCalls = new Set();
-  const matchedOutputs = new Set();
-  const seenCalls = new Set();
-  const orphanOutputs = new Set();
+  const callAt = new Map();
+  const outputAt = new Map();
   items.forEach((item, index) => {
-    if (isCall(item)) {
-      seenCalls.add(item.call_id);
-      const queue = pending.get(item.call_id) || [];
-      queue.push(index);
-      pending.set(item.call_id, queue);
-    } else if (isOutput(item)) {
-      const queue = pending.get(item.call_id);
-      if (queue?.length) {
-        matchedCalls.add(queue.shift());
-        matchedOutputs.add(index);
-      } else if (!seenCalls.has(item.call_id)) orphanOutputs.add(index);
-    }
+    if (isCall(item) && !callAt.has(item.call_id)) callAt.set(item.call_id, index);
+    else if (isOutput(item) && callAt.has(item.call_id)) outputAt.set(item.call_id, index);
   });
 
   const repaired = [];
   let unanswered = [];
   items.forEach((item, index) => {
     if (isCall(item)) {
+      if (callAt.get(item.call_id) !== index) return;
       repaired.push(item);
-      if (!matchedCalls.has(index)) unanswered.push(item);
+      if (!outputAt.has(item.call_id)) unanswered.push(item);
     } else if (isOutput(item)) {
-      if (orphanOutputs.has(index)) repaired.push(orphanOutputMessage(item));
-      else if (matchedOutputs.has(index)) repaired.push(item);
+      if (!callAt.has(item.call_id) || callAt.get(item.call_id) > index) repaired.push(orphanOutputMessage(item));
+      else if (outputAt.get(item.call_id) === index) repaired.push(item);
     } else {
       repaired.push(item);
     }
+    // Answer cancelled calls at the end of their call/output run.
     if (unanswered.length && !isCallOrOutput(items[index + 1])) {
       repaired.push(...unanswered.map((call) => ({
         type: RESPONSES_ITEM.FUNCTION_CALL_OUTPUT,

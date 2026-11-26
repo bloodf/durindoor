@@ -36,8 +36,10 @@ afterEach(async () => {
 
 describe("usage storage does not retain raw API keys", () => {
   it("writes only the stable key id and keeps caps, window totals and summaries", async () => {
+    const dayStart = new Date("2026-11-23T12:00:00.000Z");
+    dayStart.setHours(0, 0, 0, 0);
     await database.saveRequestUsage({
-      timestamp: "2026-11-23T00:00:00.000Z", provider: "fixture", model: "model", apiKey: secret,
+      timestamp: dayStart.toISOString(), provider: "fixture", model: "model", apiKey: secret,
       tokens: { prompt_tokens: 4, completion_tokens: 3 }, cost: 0.25, status: "ok", usageEventId: "stop-raw-event",
     });
 
@@ -45,7 +47,7 @@ describe("usage storage does not retain raw API keys", () => {
       .toEqual({ apiKey: null, apiKeyId: "stop-raw-id" });
     expect(JSON.stringify(db.all("SELECT * FROM usageDailyRollups"))).not.toContain(secret);
     expect(JSON.stringify(db.all("SELECT * FROM usageLastSeen"))).not.toContain(secret);
-    const totals = await (await import("@/lib/db/repos/usageRepo.js")).getApiKeyWindowUsageTotals(secret, "2026-11-23T00:00:00.000Z", "2026-11-01T00:00:00.000Z", "stop-raw-id");
+    const totals = await (await import("@/lib/db/repos/usageRepo.js")).getApiKeyWindowUsageTotals(secret, dayStart.toISOString(), "2026-11-01T00:00:00.000Z", "stop-raw-id");
     expect(totals.day).toMatchObject({ inputTokens: 4, requests: 1, cost: 0.25 });
     expect(totals.month).toMatchObject({ inputTokens: 4, requests: 1, cost: 0.25 });
     db.run("UPDATE apiKeys SET dailyLimitTokens = 7 WHERE id = ?", ["stop-raw-id"]);

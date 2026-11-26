@@ -515,8 +515,26 @@ export function createResponsesToolNameResolver(requestBody, toolNameMap) {
   return (name) => resolveResponsesToolName(state, restoreResponsesToolName(state, name));
 }
 
+// Slots for calls that reuse an upstream index start far above any real index.
+const REUSED_INDEX_SLOT_BASE = 1_000_000;
+
+/**
+ * Local slot of a streamed call. Some upstreams reuse one index for several calls: a new id
+ * takes its own slot, and later id-less fragments follow the latest id seen on that index.
+ */
+function toolCallSlot(state, tc) {
+  const index = tc.index ?? 0;
+  const aliases = state.funcSlotAliases ||= {};
+  const current = aliases[index] ?? index;
+  if (!tc.id || !state.funcCallIds[current] || state.funcCallIds[current] === tc.id) return current;
+  const known = Object.keys(state.funcCallIds).find((slot) => state.funcCallIds[slot] === tc.id);
+  if (known !== undefined) return aliases[index] = Number(known);
+  state.funcReusedIndexCount = (state.funcReusedIndexCount || 0) + 1;
+  return aliases[index] = REUSED_INDEX_SLOT_BASE + state.funcReusedIndexCount;
+}
+
 function emitToolCall(state, emit, tc) {
-  const tcIdx = tc.index ?? 0;
+  const tcIdx = toolCallSlot(state, tc);
   let outputIndex = state.funcOutputIndexes[tcIdx];
   const newCallId = tc.id;
   const funcName = tc.function?.name;

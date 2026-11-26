@@ -34,6 +34,11 @@ const SETTINGS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store"
 };
 
+const lockedResponse = ({ retryAfter }) => NextResponse.json(
+  { error: `Too many failed attempts. Try again in ${retryAfter}s.`, retryAfter },
+  { status: 429, headers: { ...SETTINGS_RESPONSE_HEADERS, "Retry-After": String(retryAfter) } }
+);
+
 // Mirrors validateProxyUrl in src/lib/network/outboundProxy.js (the schemes and
 // control-character rules applyOutboundProxyEnv enforces when applying the env).
 const ALLOWED_PROXY_SCHEMES = ["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"];
@@ -112,15 +117,11 @@ async function requireSettingsReauth(request, body, { currentPassword, mfaCode }
     { status: 401, headers: SETTINGS_RESPONSE_HEADERS }
   );
   if (!currentPassword) return refuse("Enter your current dashboard password to change these security settings.");
-  const locked = ({ retryAfter }) => NextResponse.json(
-    { error: `Too many failed attempts. Try again in ${retryAfter}s.`, retryAfter },
-    { status: 429, headers: { ...SETTINGS_RESPONSE_HEADERS, "Retry-After": String(retryAfter) } }
-  );
 
   // Reserve before any credential work, as the login route does (#2242).
   const ip = getClientIp(request);
   const reserved = reserveAttempt(ip);
-  if (reserved.locked) return locked(reserved);
+  if (reserved.locked) return lockedResponse(reserved);
   let settled = false;
   try {
     let failure = null;
@@ -134,11 +135,11 @@ async function requireSettingsReauth(request, body, { currentPassword, mfaCode }
       recordFail(ip);
       settled = true;
       const lock = checkLock(ip);
-      return lock.locked ? locked(lock) : refuse(failure);
+      return lock.locked ? lockedResponse(lock) : refuse(failure);
     }
     // Concurrent failures may have locked the bucket while the checks ran.
     const lock = checkLock(ip);
-    if (lock.locked) return locked(lock);
+    if (lock.locked) return lockedResponse(lock);
     recordSuccess(ip);
     settled = true;
     return null;
@@ -224,14 +225,30 @@ export async function PATCH(request) {
       if (!body.currentPassword) {
         return NextResponse.json({ error: "Current password required" }, { status: 400, headers: SETTINGS_RESPONSE_HEADERS });
       }
-      if (!(await verifyDashboardPassword(body.currentPassword))) {
-        return NextResponse.json({ error: "Invalid current password" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
-      }
-      if (isMfaEnabled(settings)) {
-        const secondFactor = await verifySecondFactor(body.mfaCode);
-        if (!secondFactor.ok) {
-          return NextResponse.json({ error: "Invalid MFA code" }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
+      // Password changes share login's atomic attempt budget, including MFA.
+      const ip = getClientIp(request);
+      const reserved = reserveAttempt(ip);
+      if (reserved.locked) return lockedResponse(reserved);
+      let settled = false;
+      try {
+        let failure = null;
+        if (!(await verifyDashboardPassword(body.currentPassword))) {
+          failure = "Invalid current password";
+        } else if (isMfaEnabled(settings) && !(await verifySecondFactor(body.mfaCode)).ok) {
+          failure = "Invalid MFA code";
         }
+        if (failure) {
+          recordFail(ip);
+          settled = true;
+          const lock = checkLock(ip);
+          return lock.locked ? lockedResponse(lock) : NextResponse.json({ error: failure }, { status: 401, headers: SETTINGS_RESPONSE_HEADERS });
+        }
+        const lock = checkLock(ip);
+        if (lock.locked) return lockedResponse(lock);
+        recordSuccess(ip);
+        settled = true;
+      } finally {
+        if (!settled) releaseReservation(ip);
       }
       // Without a stored hash only the initial password was checked.
       reauthenticated = Boolean(settings.password);

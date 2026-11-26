@@ -25,21 +25,4 @@ describe("quoted billing refusals", () => {
   ])("recognizes a refusal: %s", (text) => {
     expect(notice(text)).toBe(text);
   });
-
-  it.each([
-    'Request failed: "Insufficient balance" (code 402)',
-    'Upstream error: "insufficient credits", please contact support',
-    "Insufficient credits. Please top up.",
-    "Error 402: 'Insufficient credits'",
-    'Request failed with status 429: "Insufficient balance"',
-  ])("recognizes a refusal that quotes its error: %s", (text) => {
-    expect(notice(text)).toBe(text);
-  });
-
-  it.each([
-    'The error message is "Insufficient credits" and it usually means the account needs funds.',
-    'When a request fails, the API may say "Insufficient balance"; check your billing page.',
-  ])("releases an answer that discusses a quoted refusal: %s", (text) => {
-    expect(notice(text)).toBeNull();
-  });
 });

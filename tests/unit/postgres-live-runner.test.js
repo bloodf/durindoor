@@ -99,7 +99,7 @@ describe("PostgreSQL fencing runner", () => {
 
   it("exits non-zero without a URL before starting Vitest", () => {
     const child = spawnSync(process.execPath, [runner], {
-      env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 30_000,
+      env: { PATH: process.env.PATH, TMPDIR: workDir() }, encoding: "utf8", timeout: 30_000,
     });
     expect(child.status).toBe(1);
     expect(child.stderr).toMatch(/DURINDOOR_TEST_PG_URL is required/);
@@ -121,7 +121,7 @@ describe("PostgreSQL fencing runner", () => {
 
   it("fails rather than skips when the supplied cluster is unreachable", () => {
     const child = spawnSync(process.execPath, [runner], {
-      env: { PATH: process.env.PATH, DURINDOOR_TEST_PG_URL: syntheticUrl }, encoding: "utf8", timeout: 120_000,
+      env: { PATH: process.env.PATH, TMPDIR: workDir(), DURINDOOR_TEST_PG_URL: syntheticUrl }, encoding: "utf8", timeout: 120_000,
     });
     expect(child.status).toBe(1);
     expect(child.stderr).toMatch(/PostgreSQL fencing failed: PostgreSQL fencing tests not passed/);

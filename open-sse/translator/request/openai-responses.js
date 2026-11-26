@@ -881,6 +881,9 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
   delete result.client_metadata;
   delete result.background;
   delete result.truncation;
+  // Codex compaction config and stored prompt templates have no Chat equivalent.
+  delete result.context_management;
+  delete result.prompt;
 
   // Relocate late function_call_output items next to their owning tool-call
   // turn by call id, and synthesize only for ids with no real output anywhere

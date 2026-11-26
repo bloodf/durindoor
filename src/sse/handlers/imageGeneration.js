@@ -17,7 +17,7 @@ import { leasedAntigravityRefresher } from "./media/antigravityRefresh.js";
 import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
-import { recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordApiKeyUsage, recordApiKeyUsageForResponse, recordCancelledUsage } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -166,6 +166,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       signal: request.signal,
     });
     if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch, apiKeyId);
+    if (result.cancelledUsage) {
+      await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId ?? null, billingEpoch, apiKeyId);
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
@@ -219,6 +223,8 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         onStreamComplete: async (outcome, response) => {
           if (outcome.status === "success") {
             await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+          } else if (outcome.cancelledUsage) {
+            await recordCancelledImage(apiKey, outcome.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
           } else if (outcome.status === "failure" && !request.signal?.aborted &&
             (outcome.statusCode === 401 || outcome.statusCode === 403 || outcome.statusCode === 404 || outcome.statusCode === 429 || outcome.statusCode >= 500 && outcome.statusCode <= 599)) {
             // Headers are committed, so update health without retrying or changing
@@ -247,6 +253,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
 
       // Client abort: no account cooldown and no fallthrough to other accounts.
       if (request.signal?.aborted) {
+        if (result.cancelledUsage) {
+          await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+        }
         if (!result.acceptedJob) return { response: result.response };
         await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
         return { response: markAcceptedJob(result.response) };
@@ -375,6 +384,18 @@ async function recordAcceptedImageJob(apiKey, accounting, request, provider, mod
   } catch (error) {
     log.error("IMAGE_GENERATION", `[${provider}/${model}] accepted job not recorded: ${error.message}`);
   }
+}
+
+/** The provider answered 2xx before the client cancelled, so it may bill; unknown stays unknown. */
+function recordCancelledImage(apiKey, accounting, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {
+  const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = accounting;
+  return recordCancelledUsage(apiKey, {
+    billingEpoch,
+    usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
+    endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
+  });
 }
 
 export const handleImageGeneration = withRequestCorrelation(handleImageGenerationHandler);

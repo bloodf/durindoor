@@ -34,7 +34,9 @@ const CRITICAL_KINDS = new Set([
 ]);
 
 // Anti-ReDoS: every quantifier is bounded (same expressions as OmniRoute).
-const NUMERIC_RE = /\d[\d.,]{0,40}/g;
+// One whole number literal. The lookarounds stop "12" matching inside "123" or
+// "5" inside "1.5", and trailing punctuation stays outside the literal.
+const NUMERIC_RE = /(?<!\d|\d[.,])\d{1,40}(?:[.,]\d{1,40}){0,10}(?![.,]?\d)/g;
 const JSON_KEY_RE = /"([A-Za-z_$][\w$-]{0,80})"\s*:/g;
 const HUNK_RE = /@@ -\d{1,9}(?:,\d{1,9})? \+\d{1,9}(?:,\d{1,9})? @@/g;
 // Negation markers across the shipped language packs (en, pt, es, de, fr, id)
@@ -244,9 +246,9 @@ export function checkFidelity(inputText, outputText, cfg = {}) {
     }
 
     if (cfg.checkNumericIntegrity !== false) {
-      // Trailing "." / "," is sentence punctuation, not part of the number.
-      for (const num of uniq((inputText.match(NUMERIC_RE) ?? []).map((n) => n.replace(/[.,]+$/, "")))) {
-        if (!outputText.includes(num)) {
+      const outputNumbers = new Set(outputText.match(NUMERIC_RE) ?? []);
+      for (const num of uniq(inputText.match(NUMERIC_RE) ?? [])) {
+        if (!outputNumbers.has(num)) {
           return { passed: false, failedInvariant: "numeric", detail: `number "${num}" missing` };
         }
       }

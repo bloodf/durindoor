@@ -11,7 +11,7 @@ import { register, initState } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { bindResponsesTextItem, recordResponsesTextDelta, reconcileResponsesTextDone, synthesizeTextItemSnapshot, finalizeResponsesTextSnapshots, flushResponsesTextSnapshots, closeResponsesTextSnapshots } from "./responsesTextSnapshots.js";
 import { buildChunk } from "../concerns/chunk.js";
-import { buildUsage, toResponsesUsage } from "../concerns/usage.js";
+import { buildUsage, toResponsesUsage, withResponsesDetailCounters } from "../concerns/usage.js";
 import { fallbackToolCallId } from "../concerns/toolCall.js";
 import { reasoningDelta, extractReasoningText, REASONING_PART_SEPARATOR } from "../concerns/reasoning.js";
 import { resolveInlineThinkingFormat, trackInlineExtractorHold } from "../../utils/inlineThinking.js";
@@ -59,17 +59,7 @@ function completedUsage(raw) {
   const usage = toResponsesUsage(raw);
   if (!Number.isInteger(usage.input_tokens) || usage.input_tokens + usage.output_tokens <= 0) return null;
   usage.total_tokens = usage.input_tokens + usage.output_tokens;
-  for (const [field, count, optional] of [
-    ["input_tokens_details", "cached_tokens", ["cache_write_tokens", "cache_creation_tokens"]],
-    ["output_tokens_details", "reasoning_tokens", []]
-  ]) {
-    if (!usage[field]) continue;
-    // Keep sibling details while making known counters safe for integer clients.
-    for (const key of [count, ...optional.filter((name) => name in usage[field])]) {
-      if (!Number.isInteger(usage[field][key]) || usage[field][key] < 0) usage[field][key] = 0;
-    }
-  }
-  return usage;
+  return withResponsesDetailCounters(usage);
 }
 
 /**

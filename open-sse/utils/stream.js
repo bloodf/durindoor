@@ -9,6 +9,7 @@ import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
 import { CLAUDE_BLOCK } from "../translator/schema/index.js";
+import { createResponsesOutputBackfill } from "./responsesOutputBackfill.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, isOpenAIResponsesLifecycleTerminal, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { createResponsesSequenceReplayTracker } from "./responsesSequenceReplay.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
@@ -233,6 +234,7 @@ export function createSSEStream(options = {}) {
   // Responses passthrough: the upstream speaks the Responses protocol and the
   // client wants it unchanged, so the frames are forwarded as they arrive.
   const responsesPassthrough = mode === STREAM_MODE.PASSTHROUGH && targetFormat === FORMATS.OPENAI_RESPONSES;
+  const backfillResponsesOutput = responsesPassthrough ? createResponsesOutputBackfill() : null;
   // Empty provider keepalive blocks can crash strict SDK JSON parsing.
   // Filter only those blocks in Chat and Responses passthrough (OmniRoute
   // #1146). Claude passthrough keeps its
@@ -1286,6 +1288,9 @@ export function createSSEStream(options = {}) {
               // client; a dropped opening fragment must not leave later ones id-less (#1433).
               if (ensureStreamToolCallIds(parsed, openedToolCalls)) fieldsInjected = true;
               recordCompletionData(parsed, { summary: false, trackUsage: false, content: true });
+
+              // After content accounting, so rebuilt items are not counted twice.
+              if (backfillResponsesOutput?.(parsed)) fieldsInjected = true;
 
               // Detect terminal chunk in both OpenAI (choices[0].finish_reason) and
               // Gemini-family (response.candidates[0].finishReason) passthrough shapes.

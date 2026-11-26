@@ -354,7 +354,20 @@ async function cancelResponseBody(response) {
  * @param {object} [options.executorOverride] - Server-bound executor for a scoped dispatch.
  * @param {string} options.sourceFormatOverride - Override detected source format (e.g. "openai-responses")
  */
-export async function handleChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false }) {
+export async function handleChatCore(options) {
+  const pendingGuard = { release: null };
+  try {
+    return await runChatCore(options, pendingGuard);
+  } catch (error) {
+    // An unexpected throw skips every explicit finalizer, which would leave the
+    // pending row, its concurrency slots and its quota lease held. No result
+    // reached the caller, so no stream can own them.
+    pendingGuard.release?.(error);
+    throw error;
+  }
+}
+
+async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false }, pendingGuard) {
   const sourceFormat = sourceFormatOverride || detectFormat(body);
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
@@ -1293,6 +1306,11 @@ export async function handleChatCore({ routingPolicy, body, modelInfo, credentia
     providerRequestFinished = true;
     trackPendingRequest(cleanModel, provider, connectionId, false, false, { requestId: activeSessionRequestId }, apiKeyName);
     releaseConcurrencySlots();
+  };
+  pendingGuard.release = (error) => {
+    finishProviderRequest();
+    finishActiveDashboardSession("error");
+    settleQuota(false, classifyQuotaTerminalReason(error));
   };
 
   // Set once buildOnStreamComplete runs (streaming path only); lets the

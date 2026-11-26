@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { validateOpenAIJsonl, uploadFile, createOpenAIBatch } from "../../open-sse/services/localFilesBatches.js";
 
@@ -50,7 +51,7 @@ describe("OmniRoute #20472 (5e682c65cdf9) - reject oversized batch files before 
   });
 
   it("checks stored bytes after authorization, regardless of metadata", async () => {
-    const root = fs.mkdtempSync(path.join(process.env.TMPDIR, "batch-test-"));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "batch-test-"));
     try {
       const meta = await uploadFile({ filename: "input.jsonl", bytes: row("a"), purpose: "batch" }, { filesRoot: root, ownerId: "owner" });
       vi.stubEnv("MAX_BATCH_BYTES", "8");

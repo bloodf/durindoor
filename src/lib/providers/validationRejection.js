@@ -17,6 +17,7 @@ const BODY_READ_TIMEOUT_MS = 2000;
 
 const REGION_REFUSAL =
   /unsupported[_\s-]*country|unsupported[_\s-]*region|country[,\s\w]*not supported|region[\s\w]*(is\s+)?not supported|location[\s\w]*(is\s+)?not supported|not available in your (country|region|location)|not (yet )?available in (your|this) (country|region)|geo[\s-]*(block|restrict)|sanction|embargo|restricted (country|region|territor)/i;
+const MODEL_REFERENCE = /\bmodels?\b|\b(?:gpt|claude|gemini|llama|mistral|deepseek)[-_][\w.-]+/i;
 const CREDENTIAL_REFUSAL =
   /(invalid|incorrect|bad|wrong|unknown)[\s_-]*(api[\s_-]*)?key|api[\s_-]*key[\s\w]*(invalid|not valid|expired|revoked|disabled)|invalid[\s_-]*(access[\s_-]*)?token|token[\s\w]*(invalid|expired|revoked)|unauthori[sz]ed|unauthenticated|authentication|invalid[\s_-]*credential|API_KEY_INVALID|invalid_api_key/i;
 const NETWORK_REFUSAL =
@@ -29,12 +30,15 @@ const GENERIC_FAILURE = /^(provider )?validation failed\b/i;
 /**
  * @returns {{ kind: "auth"|"access_denied"|"rate_limited"|"unavailable"|"other", explicit?: boolean }}
  *   `explicit` marks a refusal that overrides even an accepted verdict: HTTP 451
- *   or wording that names a region restriction.
+ *   or wording that names an account-wide region restriction.
  */
 export function classifyValidationRejection(status, body = "") {
   if (status === 401) return { kind: "auth" };
-  if (status === 451 || status >= 400 && status < 500 && REGION_REFUSAL.test(body)) {
-    return { kind: "access_denied", explicit: true };
+  if (status === 451) return { kind: "access_denied", explicit: true };
+  if (status >= 400 && status < 500 && REGION_REFUSAL.test(body)) {
+    return MODEL_REFERENCE.test(body)
+      ? { kind: "access_denied" }
+      : { kind: "access_denied", explicit: true };
   }
   if (status === 403) {
     if (CREDENTIAL_REFUSAL.test(body)) return { kind: "auth" };

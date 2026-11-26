@@ -222,4 +222,4 @@ The same provider-qualified model works on `POST /v1/chat/completions` with one 
 
 See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).
 
-Mistral Chat requests map `seed` to `random_seed` and `max_completion_tokens` to `max_tokens`, remove unsupported OpenAI-only fields, and cap temperature at 1.5. Explicit Mistral field values take precedence. Unsupported `service_tier` values are normalized or omitted; Responses requests retain their own schema.
+Mistral Chat requests map `seed` to `random_seed` and `max_completion_tokens` to `max_tokens`, remove unsupported OpenAI-only fields, and cap temperature at 1.5. Explicit Mistral field values take precedence. Unsupported `service_tier` values are normalized or omitted; Responses requests retain their own schema. When an HTTP 400 names `top_k`, as some Mistral models do, DurinDoor retries without it.

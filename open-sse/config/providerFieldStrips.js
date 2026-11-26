@@ -9,7 +9,9 @@ export const KNOWN_OFFENDING_FIELDS = [
 "context_management",
 "client_metadata",
 "thinking",
-"reasoning"];
+"reasoning",
+// Sampling hint some models disable (Mistral 400 "top_k sampling is not enabled for this model").
+"top_k"];
 
 
 function isNestedPathError(errorText, field) {

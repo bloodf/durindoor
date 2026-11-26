@@ -33,7 +33,10 @@ Each new test file was run before its fix and failed, except the ChatPlayground 
 - Codex rotation: the new file and the files that use the fallback classifier (50 files, 550 tests).
 - Claude identity: the files that mention the cloaking, Claude preparation or identity fields (60 files, 909 tests).
 - ChatPlayground: the new file and the provider, redirect, quota send, registration, cookie import and secret files (11 files, 387 tests).
+- Source-tree guards: the test files that scan the tree and refer to `src` or `open-sse` (54 files, 1036 tests).
 
-The anti-slop lint gate reported no diagnostics. ESLint and the full suite were not run. No live provider was called.
+During a wider registry run, an unmatched shell glob left the file list empty and Vitest started the whole suite. The work order excluded that run. The 285-second limit stopped it without a summary, so it is not a suite result. Before the stop it reported one failure: the new ChatPlayground parser split SSE lines by hand. The parser now uses [the shared frame reader](../../../open-sse/utils/sseFrames.js); the guard's allow-list is unchanged. The guard and the ChatPlayground files then passed (8 files, 532 tests).
+
+The anti-slop lint gate reported no diagnostics. ESLint was not run, and the full suite was not completed. No live provider was called.
 
 Totals: 6 ported in this change, 0 already present, 0 not applicable. None remaining.

@@ -54,7 +54,7 @@ import { resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
-import { isAnthropicThinkingSignatureError, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
+import { isAnthropicThinkingSignatureError, stripAllThinkingForSignatureRecovery, stripHistoricalThinkingForSignatureRecovery } from "./chatCore/thinkingSignatureRecovery.js";
 import { getKimiTemporaryRateLimitResetAt } from "./chatCore/kimiQuotaRecovery.js";
 import { wireAdaptiveEffort } from "./chatCore/adaptiveEffortWiring.js";
 import { detectClientTool, isNativePassthrough, isCodexOriginatedHeaders } from "../utils/clientDetector.js";
@@ -1748,16 +1748,20 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   // Provider returned error
   if (!providerResponse.ok) {
-    // One-shot Anthropic thinking-signature recovery (OmniRoute #7906): on the
-    // exact `400 Invalid signature in thinking block`, retry ONCE with historical
-    // thinking omitted (active tool-use cycle preserved) before any cooldown/
-    // fallback accounting. Any other failure flows through unchanged.
-    if (
-    !claudeRequestScoped && !providerSignal?.aborted &&
-    isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message }))
-    {
-      const recoveryBody = stripHistoricalThinkingForSignatureRecovery(translatedBody);
-      if (recoveryBody !== translatedBody) {
+    // Anthropic thinking-signature recovery, before any cooldown/fallback
+    // accounting. On the exact `400 Invalid signature in thinking block`:
+    // first retry with historical thinking omitted and the active tool-use cycle
+    // preserved (OmniRoute #7906); if that same error remains, or nothing
+    // historical could be stripped, retry once more with all thinking removed and
+    // extended thinking off (OmniRoute #20063). Any other failure flows through.
+    const recoveryBase = translatedBody;
+    for (const stripThinking of [stripHistoricalThinkingForSignatureRecovery, stripAllThinkingForSignatureRecovery]) {
+      if (
+      !providerResponse.ok && !claudeRequestScoped && !providerSignal?.aborted &&
+      isAnthropicThinkingSignatureError({ provider, status: parsedError.statusCode, message: parsedError.message }))
+      {
+        const recoveryBody = stripThinking(recoveryBase);
+        if (recoveryBody === recoveryBase) continue;
         translatedBody = recoveryBody;
         if (passthrough && clientTool === "claude") anchorClaudeCache(translatedBody, provider);
         try {
@@ -1771,7 +1775,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
           captureExecutorToolNameMap(finalBody);
           reqLogger.logTargetRequest(providerUrl, providerHeaders, finalBody);
           if (providerResponse.ok) {
-            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after one historical-thinking retry`);
+            log?.info?.("THINKING_SIGNATURE", `Recovered ${provider}/${cleanModel} after a thinking-signature retry`);
           } else {
             parsedError = await parseAndRestateError(providerResponse);
           }

@@ -73,11 +73,14 @@ function contractHeader(nonce, mustCall) {
 /** The contract in playground-sized chunks. Tools past the last chunk are left out. */
 function contractChunks(tools, nonce, mustCall) {
   const chunks = [contractHeader(nonce, mustCall)];
-  for (const tool of tools) {
+  for (const [index, tool] of tools.entries()) {
     const line = signature(tool).slice(0, CF_MAX_MESSAGE_CHARS - CONTINUED.length - 1);
     if (chunks.at(-1).length + line.length + 1 <= CF_MAX_MESSAGE_CHARS) chunks[chunks.length - 1] += `\n${line}`;
     else if (chunks.length < MAX_CONTRACT_CHUNKS) chunks.push(`${CONTINUED}\n${line}`);
-    else break;
+    else {
+      console.warn(`[Cloudflare Playground] Omitted ${tools.length - index} tools from the tool contract`);
+      break;
+    }
   }
   return chunks;
 }
@@ -178,20 +181,22 @@ function embeddedDocuments(text) {
 
 const claimsToBeCall = (envelope) => envelope?._nonce !== undefined || envelope?.type === "tool_call";
 
-function taggedCalls(tags, attempts, context) {
+function taggedCalls(text, tags, attempts, context) {
   const ranges = tags.map((tag) => ({ start: tag.index, end: tag.index + tag[0].length }));
   const stray = attempts.some((attempt) => !ranges.some((range) => attempt.start >= range.start && attempt.end <= range.end));
-  const calls = !stray && toCalls(tags.map((tag) => parseJson(unfence(tag[1]))), context);
+  const values = tags.map((tag) => parseJson(unfence(tag[1])));
+  const bound = !text.replace(TAG_BLOCK, "").trim() || values.every((value) => envelopes(value).every((envelope) => envelope?._nonce === context.nonce));
+  const calls = !stray && bound && toCalls(values, context);
   return calls ? { calls, ranges } : null;
 }
 
-/** Calls written beside prose must be tagged, or carry this request's nonce. */
+/** Calls written beside prose must carry this request's nonce, including tagged calls. */
 function proseCalls(text, context) {
   const documents = embeddedDocuments(text);
   if (!documents || TAG_OPENER.test(text.replace(TAG_BLOCK, ""))) return null;
   const attempts = documents.filter((document) => envelopes(document.value).some(claimsToBeCall));
   const tags = [...text.matchAll(TAG_BLOCK)];
-  if (tags.length) return taggedCalls(tags, attempts, context);
+  if (tags.length) return taggedCalls(text, tags, attempts, context);
   const bound = attempts.every((document) => envelopes(document.value).every((envelope) => envelope?._nonce === context.nonce));
   const calls = bound && toCalls(attempts.map((document) => document.value), context);
   return calls ? { calls, ranges: attempts } : null;

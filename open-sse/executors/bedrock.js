@@ -10,6 +10,7 @@ import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
+import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {
   buildBedrockNativeConverseUrl,
   resolveBedrockRegion } from
@@ -270,6 +271,12 @@ export function openAIToBedrockConverse(model, body) {
   if (isClaudeSonnetHaiku45(model) && isNumber(request.temperature) && isNumber(request.top_p)) {
     delete inferenceConfig.temperature;
   }
+  // A Claude model that cannot stop thinking rejects sampling controls and forced tool use.
+  const alwaysThinks = isAlwaysThinkingClaude(model);
+  if (alwaysThinks) {
+    delete inferenceConfig.temperature;
+    delete inferenceConfig.topP;
+  }
   if (Array.isArray(request.stop)) inferenceConfig.stopSequences = request.stop.filter(Boolean);else
   if (isString(request.stop) && request.stop) inferenceConfig.stopSequences = [request.stop];
 
@@ -278,6 +285,7 @@ export function openAIToBedrockConverse(model, body) {
   if (system.length > 0) payload.system = system;
   if (Object.keys(inferenceConfig).length > 0) payload.inferenceConfig = inferenceConfig;
   const toolConfig = toolConfigFromOpenAI(request.tools, request.tool_choice);
+  if (toolConfig && alwaysThinks && toolConfig.toolChoice) toolConfig.toolChoice = { auto: {} };
   if (toolConfig) payload.toolConfig = toolConfig;
   if (request.thinking && isObject(request.thinking) && !Array.isArray(request.thinking)) {
     payload.additionalModelRequestFields = { ...payload.additionalModelRequestFields, thinking: request.thinking };
@@ -297,6 +305,10 @@ function usageFromBedrock(usage) {
   const input = Number(usage?.inputTokens || 0);
   const output = Number(usage?.outputTokens || 0);
   return { prompt_tokens: input, completion_tokens: output, total_tokens: Number(usage?.totalTokens || input + output) };
+}
+
+function isAlwaysThinkingClaude(model) {
+  return /claude/i.test(String(model)) && getCapabilitiesForModel("bedrock", model).thinkingCanDisable === false;
 }
 
 function isClaudeSonnetHaiku45(model) {

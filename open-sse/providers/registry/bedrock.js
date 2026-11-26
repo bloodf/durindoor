@@ -89,6 +89,13 @@ export default {
       toolCalling: true,
       supportsVision: true,
     },
+    {
+      id: "anthropic.claude-fable-5-2",
+      name: "Claude Fable 5.2 (Bedrock)",
+      toolCalling: true,
+      supportsVision: true,
+      contextLength: 1000000,
+    },
     { id: "openai.gpt-oss-120b-1:0", name: "GPT-OSS 120B (Bedrock)" },
   ],
   passthroughModels: true,

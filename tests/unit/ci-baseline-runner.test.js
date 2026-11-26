@@ -60,7 +60,7 @@ describe("fail-closed CI runner", () => {
   });
 
   it("fails closed while uploading the hidden JSON and JUnit reports", () => {
-    for (const file of ["test.yml", "nightly.yml", "release.yml"]) {
+    for (const file of ["test.yml", "nightly.yml", "release-gate.yml"]) {
       const workflow = fs.readFileSync(
         new URL(`../../.github/workflows/${file}`, import.meta.url),
         "utf8",

@@ -6,17 +6,12 @@ name: Build and Push Docker Image
 # Docker images only build on v* tags (controlled production), never nightly-*.
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       release_tag:
-        description: "Existing vX.Y.Z tag to publish"
         required: true
         type: string
       promote_latest:
-        description: "Promote this republish to latest"
         required: false
         default: false
         type: boolean
@@ -151,15 +146,6 @@ jobs:
           path: source
           fetch-depth: 1
 
-      - name: Check out publishing Dockerfile
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: workflow
-          sparse-checkout: |
-            Dockerfile
-          fetch-depth: 1
-
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
@@ -174,7 +160,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: source
-          file: workflow/Dockerfile
+          file: source/Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |

@@ -1,40 +1,41 @@
-# Responses agent message inputs — OmniRoute #21417
+# Responses agent message inputs: OmniRoute #21417
 
-Implemented the verified gap in `2026-11-27-full-parity-refresh.md` on 2026-11-27.
+## Source and scope
 
-## Source and duplicate-work check
+- Requested source: https://github.com/cheaper-inference/OmniRoute/pull/21417
+- Exact source commit: `6e31eb343273b8a2913424089d0c1469c42d937e`.
+- Source file: `open-sse/utils/responsesInputNormalization.ts`, inspected from the local Git object.
+- Recorded refreshed OmniRoute main: `332e93b95be914b8258ff96f3514ee60b7788c4e`.
+- DurinDoor origin/main at this correction: `f14f877ec13d6a9c58ed5a7d8f665526f748e76e`.
+- Correction starting HEAD: `4c1abb24182c9151da598914aec412a27df341aa`.
 
-- Requested patch: https://github.com/cheaper-inference/OmniRoute/pull/21417
-- Exact source commit: `6e31eb343273b8a2913424089d0c1469c42d937e`
-- Source file: `open-sse/utils/responsesInputNormalization.ts`.
-- Refreshed OmniRoute main: `332e93b95be914b8258ff96f3514ee60b7788c4e`.
-- Refreshed DurinDoor origin/main: `f14f877ec13d6a9c58ed5a7d8f665526f748e76e`.
-- Candidate starting HEAD: `83d0694c238042c61cff5671d1a57c1fbbc5c10a`.
-- Read all 16 open local PRs through the PR list tool before edits; none covers this lane. The two local normalization/dispatch files have no diff against refreshed origin/main.
-- Important source divergence: the requested commit is not an ancestor of refreshed OmniRoute main. That main still normalizes agent text as assistant history without provenance. This port follows the explicitly requested commit, rather than claiming the fix is merged upstream.
-- CodeGraph query was attempted but the worktree has no initialized index. Bounded searches located the shared normalizer and existing Responses-to-OpenAI dispatch call.
+The requested source commit is not an ancestor of the recorded refreshed OmniRoute main. This report follows that requested source, without claiming it is merged upstream.
 
-## Behavior and ownership
+## Accepted review finding and correction
 
-`normalizeResponsesInput` recognizes `type: agent_message` or `role: agent_message`. Plaintext task/reply content becomes a user message, with an optional `[Agent message from AUTHOR to RECIPIENT]` header. Missing/non-string endpoints use `unknown` only when the other endpoint supplies a header. Text precedence, newline joining, and whitespace preservation match the source helper.
+Independent Gemini review 3 identified a HIGH finding: agent rewriting was placed in the shared `normalizeResponsesInput`, which native executors also call. The original translator identity assertion proved only that matching formats skip translation. It did not prove executor passthrough. That assertion is now named accordingly, and separate tests call the real executors.
 
-Blank, malformed, mixed unsupported, and encrypted content becomes empty reasoning metadata, which the existing dispatch ignores. No partial plaintext or opaque content is leaked. Ordinary assistant history and non-agent metadata retain their original objects; input items are not mutated. Native Responses-to-Responses translation keeps native agent items unchanged.
+The source confines agent rewriting to `normalizeResponsesInputForChat`; native `normalizeCodexResponsesInput` keeps its native contract. DurinDoor now follows that boundary. Shared `normalizeResponsesInput` still handles string and empty-array placeholders and preserves nonempty native arrays. `normalizeResponsesInputForChat` applies agent lowering only in the Responses-to-Chat translator and the worker Chat converter `convertResponsesApiFormat`.
 
-The schema supplies the agent discriminator. Existing dispatch already invokes the shared normalizer, so `request/openai-responses.js` and translator registration need no edits. Tests import `../translator/registerAll.js` before invoking translation.
+Plaintext tasks and replies become user context with optional `[Agent message from AUTHOR to RECIPIENT]` provenance. Missing endpoints use `unknown` when the other endpoint supplies a header. Text precedence, joining, whitespace preservation, and unsupported-content handling remain unchanged. Unsupported, empty, or encrypted Chat input becomes an ignored reasoning marker with no partial text leakage. OpenAI and Claude translation assertions remain intact.
 
-## Evidence
+Native agent items retain their discriminator, provenance and payload. Codex's existing role-based message normalization still adds `type: message` and wraps string content as `input_text`; the regression explicitly expects that native representation. It never accepts conversion to a user message or reasoning marker. Native provider-specific history policies remain in force.
 
-Dependency installation completed for root, CLI and tests with frozen lockfiles and prefer-offline; no dependency manifests changed.
+## Ownership trace and scoped evidence
 
-- Required command from `tests/`: `timeout 300 node node_modules/vitest/vitest.mjs run unit/parity-agent-message-input.test.js --maxWorkers=2` — 19 passed.
-- Regression proof: temporarily restored the former array pass-through, ran the same file, and restored the implementation in a `finally` block — 17 failed, 2 passed, exit 1.
-- Scoped evidence from `tests/`: `timeout 300 node node_modules/vitest/vitest.mjs run unit/parity-agent-message-input.test.js unit/port-14673-responses-empty-input-continuity.test.js unit/omni-nov21-responses-request-copy.test.js --maxWorkers=2` — 3 files, 37 tests passed.
-- `timeout 300 pnpm exec eslint open-sse/translator/formats/responsesApi.js open-sse/translator/schema/blocks.js tests/unit/parity-agent-message-input.test.js` — exit 0.
-- `git diff --check` — exit 0.
-- Post-commit `timeout 300 pnpm exec commitlint --from HEAD^ --to HEAD` could not run: `Command "commitlint" not found` despite frozen dependency installation. The subject uses the required `port(omniroute):` convention.
+CodeGraph ownership query `sh scripts/codegraph.sh query normalizeResponsesInput --limit 5 --json` failed because this worktree has no initialized index. Bounded `rg` under `open-sse/` found all five consumers before editing: Codex, OpenCode Go, Grok CLI, the Responses-to-Chat translator, and the worker Chat converter. Only the two Chat consumers use the new helper. No executor was changed.
 
-Coverage includes agent replies/tasks, both discriminator forms, partial/non-string author and recipient metadata, content precedence, all supported text block kinds, empty text, unsupported/encrypted content, ordinary history, OpenAI and Claude dispatch, input immutability, and native Responses pass-through.
+Installed root, CLI and tests dependencies with frozen lockfiles and `--prefer-offline` before testing.
 
-## Remaining gates and scope
+Before the fix, direct `transformRequest` regressions produced 8 failures and 4 passes across the three executors. Plaintext became user context and encrypted content became reasoning metadata. Coverage includes type-only, role-only, message-plus-agent-role, and agent-type-plus-assistant-role discriminators, alongside ordinary user and assistant history.
 
-No failure baseline changes. No GitHub writes, other agents, whole-suite runs, builds, service changes, or generated-file edits. Full local CI and independent model-family review remain required before merge; these are outside this scoped work order. This report establishes parity for the requested agent-message patch, not repository-wide upstream parity.
+After the fix:
+
+- `cd tests && timeout 300 node node_modules/vitest/vitest.mjs run unit/parity-agent-message-input.test.js unit/parity-agent-native-executors.test.js --maxWorkers=2`: 2 files, 33 tests passed.
+- `timeout 300 pnpm exec eslint open-sse/translator/formats/responsesApi.js open-sse/translator/request/openai-responses.js tests/unit/parity-agent-message-input.test.js tests/unit/parity-agent-native-executors.test.js`: exit 0.
+- `git diff --check`: exit 0.
+- `timeout 300 pnpm exec commitlint --from HEAD^ --to HEAD`: unavailable, `Command "commitlint" not found` despite dependency installation. The commit subject follows the required Conventional Commits format.
+
+## Remaining gates
+
+No baseline changes, GitHub writes, other agents, full-suite runs, builds, service changes, generated-file edits, or executor edits. Full local CI and independent model-family review remain merge gates outside this scoped correction. The evidence establishes the requested translation boundary and actual executor behavior, not repository-wide upstream parity.

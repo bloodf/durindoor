@@ -1,6 +1,6 @@
 import "../translator/registerAll.js";
 import { describe, expect, it } from "vitest";
-import { normalizeResponsesInput } from "../../open-sse/translator/formats/responsesApi.js";
+import { convertResponsesApiFormat, normalizeResponsesInput, normalizeResponsesInputForChat } from "../../open-sse/translator/formats/responsesApi.js";
 import { translateRequest } from "../../open-sse/translator/index.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { ROLE, RESPONSES_ITEM, OPENAI_BLOCK, CLAUDE_BLOCK } from "../../open-sse/translator/schema/index.js";
@@ -20,7 +20,7 @@ describe("OmniRoute #21417 inbound agent messages", () => {
     [{ type: agent, content: [], text: "fallback" }, "fallback"],
   ])("normalizes plaintext with provenance: %j", (item, expected) => {
     const original = structuredClone(item);
-    expect(normalizeResponsesInput([item])).toEqual([userItem(expected)]);
+    expect(normalizeResponsesInputForChat([item])).toEqual([userItem(expected)]);
     expect(item).toEqual(original);
   });
 
@@ -32,7 +32,7 @@ describe("OmniRoute #21417 inbound agent messages", () => {
     { type: agent, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "secret prefix" }, { type: "encrypted_content", encrypted_content: "opaque" }] },
     { type: agent, content: [{ type: RESPONSES_ITEM.INPUT_IMAGE, image_url: "image" }] },
   ])("ignores empty or unsupported content without partial leakage: %j", (item) => {
-    expect(normalizeResponsesInput([item])).toEqual([{ type: RESPONSES_ITEM.REASONING }]);
+    expect(normalizeResponsesInputForChat([item])).toEqual([{ type: RESPONSES_ITEM.REASONING }]);
     const result = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI, "test", { input: [history, item] }, false);
     expect(result.messages).toEqual([{ role: ROLE.ASSISTANT, content: "Earlier answer" }]);
   });
@@ -44,10 +44,20 @@ describe("OmniRoute #21417 inbound agent messages", () => {
     expect(result.messages[1].content).toEqual(target === FORMATS.OPENAI ? "[Agent message from worker to parent]\nContinue" : [{ type: CLAUDE_BLOCK.TEXT, text: "[Agent message from worker to parent]\nContinue" }]);
   });
 
-  it("keeps native Responses agent items on the native path", () => {
+  it("skips rewriting in translator identity only; executors are covered separately", () => {
     const item = { type: agent, content: "Native task", author: "parent", recipient: "worker" };
     const result = translateRequest(FORMATS.OPENAI_RESPONSES, FORMATS.OPENAI_RESPONSES, "test", { input: [item] }, false);
     expect(result.input).toEqual([item]);
+  });
+
+  it("lowers agent context in the worker Chat converter too", () => {
+    expect(convertResponsesApiFormat({ input: [{ type: agent, content: "Task", author: "parent" }] }).messages)
+      .toEqual([{ role: ROLE.USER, content: [{ type: OPENAI_BLOCK.TEXT, text: "[Agent message from parent to unknown]\nTask" }] }]);
+  });
+
+  it("preserves native agent input in shared normalization", () => {
+    const input = [{ type: agent, content: "Native task" }, { role: agent, content: [{ type: "encrypted_content", encrypted_content: "opaque" }] }];
+    expect(normalizeResponsesInput(input)).toBe(input);
   });
 
   it("preserves normal history and metadata by reference", () => {

@@ -8,7 +8,7 @@ import { encodeDataUri } from "../concerns/image.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
 import { stripAnsiCodes } from "../../utils/streamHelpers.js";
 import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js";
-import { storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { storeAccountThoughtSignature, storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
 import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { chargeRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
@@ -57,8 +57,11 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   // Persist the provider-issued signature keyed by the raw call id (session-
   // namespaced) so the request translator can replay it even when the client
   // did not round-trip the transport id (upstream c08efdbe).
+  // A buffered Antigravity collector instead scopes it to the selected account and
+  // model family, and writes nothing for an unknown account (OmniRoute PR 21439).
   if (thoughtSignature) {
-    storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model);
+    if (state.accountSignatures) storeAccountThoughtSignature(rawId, thoughtSignature, state.accountSignatures.accountId, state.accountSignatures.model);
+    else storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model);
   }
   const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
   rememberId(state, state.seenToolCallIds, id);

@@ -18,7 +18,26 @@ import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
 import { isObject, isString, isNumber } from "../../src/shared/utils/typeChecks.js";
-import { getGeminiThoughtSignature, getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
+import { getAccountThoughtSignature, getAccountThoughtSignatureSync, getGeminiThoughtSignature, getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
+import { isGeminiTrailingModelTurnRejectingModel } from "../translator/concerns/geminiTrailingModelTurn.js";
+
+// The selected account whose responses a persisted signature may come from (OmniRoute PR 21439).
+function signatureAccountId(credentials) {
+  const id = credentials?._signatureNamespace || credentials?.connectionId;
+  return isString(id) && id.trim() ? id.trim() : null;
+}
+
+/**
+ * Gemini 3/4 chat rejects a trailing model turn. The translated path already ends on a
+ * user turn; native passthrough drops trailing model turns instead of fabricating one,
+ * matching the Vertex executor. Image models and the last remaining turn are kept.
+ */
+function stripTrailingModelTurns(contents, model) {
+  if (!Array.isArray(contents) || !isGeminiTrailingModelTurnRejectingModel(model)) return contents;
+  let end = contents.length;
+  while (end > 1 && contents[end - 1]?.role === GEMINI_ROLE.MODEL) end--;
+  return end === contents.length ? contents : contents.slice(0, end);
+}
 
 // Native provider declarations bypass the shared OpenAI tool-schema normalization.
 // Visit only surviving schema nodes, never the property-name maps themselves.
@@ -324,6 +343,7 @@ export class AntigravityExecutor extends BaseExecutor {
     if (Array.isArray(contents) && !isImageModel(options.model)) {
       const sessionId = options.credentials?._clientSessionId || options.body.request.sessionId;
       const model = options.body.model || options.model;
+      const accountId = signatureAccountId(options.credentials);
       const lookups = new Map();
       const restored = await Promise.all(contents.map(async (content) => {
         if (!content || !Array.isArray(content.parts)) return content;
@@ -333,7 +353,8 @@ export class AntigravityExecutor extends BaseExecutor {
             const id = part?.functionCall?.id;
             const signature = part?.thoughtSignature;
             if (!id || (signature && signature !== DEFAULT_THINKING_AG_SIGNATURE && signature !== DEFAULT_THINKING_GEMINI_CLI_SIGNATURE)) return part;
-            if (!lookups.has(id)) lookups.set(id, getGeminiThoughtSignature(id, sessionId, model));
+            // The selected account's own signature first; then the session-scoped store.
+            if (!lookups.has(id)) lookups.set(id, getAccountThoughtSignature(id, accountId, model).then((own) => own || getGeminiThoughtSignature(id, sessionId, model)));
             const saved = await lookups.get(id);
             return saved ? { ...part, thoughtSignature: saved } : part;
           }))
@@ -473,7 +494,7 @@ export class AntigravityExecutor extends BaseExecutor {
      */
     // Split parallel replies are regrouped in call order before names and
     // signatures are rewritten (CLIProxyAPI 13e0642; its Antigravity translator groups the same way).
-    const contents = normalizeFilteredContents(groupGeminiFunctionResponses(body.request?.contents)?.map((c) => {
+    const contents = stripTrailingModelTurns(normalizeFilteredContents(groupGeminiFunctionResponses(body.request?.contents)?.map((c) => {
       // Read both wire spellings before thought filtering so signed calls survive.
       c = { ...c, parts: c.parts?.map((part) => {
         const { function_call, function_response, thought_signature, ...rest } = part;
@@ -511,7 +532,7 @@ export class AntigravityExecutor extends BaseExecutor {
         }
         if (!p.functionCall) return p;
         const callId = p.functionCall.id;
-        const cachedSig = callId ? getGeminiThoughtSignatureSync(callId, sessionId, targetModel) : null;
+        const cachedSig = callId ? getAccountThoughtSignatureSync(callId, signatureAccountId(credentials), targetModel) || getGeminiThoughtSignatureSync(callId, sessionId, targetModel) : null;
         const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? defaultSignature : undefined);
         firstFunctionCallSeen = true;
         if (callSig) {
@@ -533,7 +554,7 @@ export class AntigravityExecutor extends BaseExecutor {
         };
       }
       return c;
-    }));
+    })), body.model || model);
 
     // Native requests bypass the translator's response schema normalization;
     // enforce structuredOutput validation so invalid/recursive schemas fail locally.

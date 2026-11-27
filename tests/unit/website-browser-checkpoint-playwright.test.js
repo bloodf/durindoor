@@ -12,7 +12,7 @@ const cli = path.join(root, "website/node_modules/@playwright/test/cli.js");
 const configURL = new URL("../../website/playwright.config.mjs", import.meta.url).href;
 
 describe("browser checkpoint follow-ups", () => {
-  it("fails closed when readable procfs cannot be enumerated, and keeps the no-procfs path unchanged", async () => {
+  it("fails closed when readable procfs cannot be enumerated or is absent", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "proc-failure-"));
     try {
       // A regular file passes exists checks but cannot be enumerated as procfs.
@@ -30,11 +30,13 @@ describe("browser checkpoint follow-ups", () => {
       expect(result).toMatchObject({ ok: false, verification: "procfs" });
       expect(result.reason).toMatch(/enumeration denied/);
       expect(kill).not.toHaveBeenCalled();
-      // Hosts without procfs (macOS) keep the existing port-only behavior;
-      // #2661 leaves that cleanup path open until it is validated natively.
+      // Hosts without procfs (macOS) cannot prove ownership: cleanup signals
+      // nothing and fails even with a free port. Native macOS support stays
+      // unresolved under #2661.
       const absent = await cleanupShardServer({ owner: "a".repeat(32), port: 4000,
         procRoot: path.join(dir, "missing"), kill, probe: async () => false });
-      expect(absent).toMatchObject({ ok: true, verification: "port-only" });
+      expect(absent).toMatchObject({ ok: false, verification: "port-only", signalled: [] });
+      expect(absent.reason).toMatch(/cannot be verified/);
       expect(kill).not.toHaveBeenCalled();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

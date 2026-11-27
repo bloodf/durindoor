@@ -46,11 +46,9 @@ through require.cache, rather than ineffective ESM-only mocks. Existing test
 files are unchanged. Focused regression runs also include the server-bound
 flow suite and CLI tests, with at most two workers.
 
-The work order asked for a prior candidate from
-`/home/stormtrooper/Developer/github.com/bloodf/durindoor-auth/.orq/units/<unit>/gate-*.json`.
-No matching unit/gate record was present in that repository, including its
-archives, and no matching candidate ref was found. This implementation starts
-from the supplied clean base and preserves all existing checkout tests; no
+This is a first-attempt unit, as clarified by the owner: there is no prior
+candidate or gate JSON to carry forward. The implementation starts from the
+prepared branch at d62248bead65 and preserves all existing checkout tests; no
 previous test scenario was removed or weakened. Dependency installs and tests
 use a private /var/tmp HOME, DATA_DIR, TMPDIR and caches under an empty child
 environment; install lifecycle scripts are disabled to avoid unrelated runtime

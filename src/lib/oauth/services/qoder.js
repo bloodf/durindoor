@@ -141,19 +141,16 @@ export class QoderService {
     const text = await response.text();
 
     if (!response.ok) {
-      let message = `Qoder device token poll failed: HTTP ${response.status}`;
-      try {
-        const body = JSON.parse(text);
-        if (body.message) message = `Qoder device token poll failed: ${body.message}`;
-      } catch {}
-      throw new Error(message);
+      // Upstream errors can echo the verifier or other credentials. Expose only
+      // the status; the response body is not safe to return to the browser.
+      throw new Error(`Qoder device token poll failed: HTTP ${response.status}`);
     }
 
     let body;
     try {
       body = JSON.parse(text);
-    } catch (err) {
-      throw new Error(`Qoder device token poll: invalid JSON response (${err.message})`);
+    } catch {
+      throw new Error("Qoder device token poll: invalid JSON response");
     }
 
     // Defensive: 200 + empty token means the upstream changed shape.
@@ -162,6 +159,11 @@ export class QoderService {
     }
 
     const expireMs = QoderService.parseExpiry(body.expires_at, body.expires_in);
+    // Never persist an already-expired token, even if the shared provider
+    // mapper applies a minimum lifetime to otherwise valid credentials.
+    if (expireMs <= Date.now()) {
+      throw new Error("Qoder device token is expired; restart sign-in");
+    }
 
     return {
       status: "ok",

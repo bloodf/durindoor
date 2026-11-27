@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "module": "./modes.js",
+  "exports": ["assertQoderWebAction"],
+  "integration": "In src/app/api/oauth/[provider]/[action]/route.js POST, call assertQoderWebAction(provider, action) after reading params and before dispatch or network. Existing qoder and qoder-cn device registrations in src/lib/oauth/providers.js, flow ownership, PKCE and persistence stay in the existing OAuth routes."
+}

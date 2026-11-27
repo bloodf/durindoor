@@ -1,3 +1,4 @@
+import { applyStreamQuirks } from "./streamQuirks.js";
 import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
@@ -1107,74 +1108,7 @@ export function createSSEStream(options = {}) {
               }
               if (restoreOpenAIToolNames(parsed, toolNameMap)) toolNameDecloaked = true;
 
-              // Some Anthropic-compatible providers (MiniMax) omit `signature`
-              // from the thinking block start. Strict Messages clients deserialize
-              // that field before the later signature_delta arrives, so inject an
-              // empty placeholder when the provider quirk requests it (#2706).
-              let fieldsInjected = gatewayError !== null;
-              if (
-              PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
-              parsed.type === "content_block_start" &&
-              parsed.content_block?.type === CLAUDE_BLOCK.THINKING &&
-              parsed.content_block.signature === undefined)
-              {
-                parsed.content_block.signature = "";
-                fieldsInjected = true;
-              }
-              if (parsed.choices !== undefined) {
-                if (!parsed.object) {parsed.object = "chat.completion.chunk";fieldsInjected = true;}
-                if (!parsed.created) {parsed.created = Math.floor(Date.now() / 1000);fieldsInjected = true;}
-              }
-
-              if (omitBuyerCost(parsed)) fieldsInjected = true;
-
-              // Strip Azure-specific non-standard fields from streaming chunks
-              if (parsed.prompt_filter_results !== undefined) {
-                delete parsed.prompt_filter_results;
-                fieldsInjected = true;
-              }
-              if (parsed?.choices) {
-                for (const choice of parsed.choices) {
-                  if (choice.content_filter_results !== undefined) {
-                    delete choice.content_filter_results;
-                    fieldsInjected = true;
-                  }
-                  // Claude stop_reason literals (end_turn, tool_use, ...) are not OpenAI values.
-                  const finishReason = normalizeOpenAIFinish(choice.finish_reason);
-                  if (finishReason !== choice.finish_reason) {
-                    choice.finish_reason = finishReason;
-                    fieldsInjected = true;
-                  }
-                }
-              }
-
-              // Strip empty tool_calls arrays that break AI SDK reasoning tracking.
-              // Some providers (e.g. CodeBuddy CN) include `"tool_calls": []` in
-              // every streaming delta. @ai-sdk/openai-compatible checks
-              // `delta.tool_calls != null` — an empty array passes this check,
-              // causing premature `reasoning-end` on every chunk.
-              if (parsed?.choices) {
-                for (const choice of parsed.choices) {
-                  if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length === 0) {
-                    delete choice.delta.tool_calls;
-                    fieldsInjected = true;
-                  }
-                }
-              }
-
-              // Peel leaked MiniMax thinking markers out of delta.content into
-              // reasoning_content before the inline-thinking extractor and content
-              // accounting see them (upstream PR #2525).
-              if (sanitizeMinimaxThinking && parsed?.choices?.[0]?.delta) {
-                if (sanitizeMinimaxDelta(parsed.choices[0].delta, minimaxThinkingState)) {
-                  fieldsInjected = true;
-                }
-              }
-
-              // Provider-specific stream normalization (e.g. SenseNova maps
-              // delta.reasoning -> delta.reasoning_content) runs before the
-              // hasValuableContent gate so reasoning-only chunks survive.
-              fieldsInjected = PROVIDERS[provider]?.normalizeStreamChunk?.(parsed) || fieldsInjected;
+              let fieldsInjected = applyStreamQuirks(parsed, { provider, format: targetFormat, omitBuyerCost, sanitizeMinimaxThinking, minimaxThinkingState }) || gatewayError !== null;
 
               // Same-format OpenAI passthrough uses reasoning_content on the
               // client wire and terminates each choice once. Provider-specific

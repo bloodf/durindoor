@@ -9,7 +9,8 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 
-const GROK_CHAT_API = PROVIDERS["grok-web"].baseUrl;
+// Read after module initialization: registry entries can import executor helpers.
+const GROK_CHAT_API = () => PROVIDERS["grok-web"].baseUrl;
 const GROK_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 
 const MODEL_MAP = {
@@ -310,13 +311,13 @@ export class GrokWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: "Missing or empty messages array", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
+      return { response: errResp, url: GROK_CHAT_API(), headers: {}, transformedBody: body };
     }
     if (messages.some((message) => message == null)) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Messages must not contain null entries", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
+      return { response: errResp, url: GROK_CHAT_API(), headers: {}, transformedBody: body };
     }
 
     const modelInfo = MODEL_MAP[model];
@@ -328,7 +329,7 @@ export class GrokWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: "Empty query after processing", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: body };
+      return { response: errResp, url: GROK_CHAT_API(), headers: {}, transformedBody: body };
     }
 
     const grokPayload = {
@@ -376,7 +377,7 @@ export class GrokWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: "Grok auth failed — no sso cookie found. An empty sso= value is rejected. Paste the sso cookie value from grok.com, or a Cookie header that contains sso=.", type: "upstream_error", code: "HTTP_401" }
       }), { status: 401, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: GROK_CHAT_API, headers: {}, transformedBody: grokPayload };
+      return { response: errResp, url: GROK_CHAT_API(), headers: {}, transformedBody: grokPayload };
     }
     headers["Cookie"] = cookie;
 
@@ -385,10 +386,10 @@ export class GrokWebExecutor extends BaseExecutor {
     let response;
     const result = (reply) => {
       transferProviderAttemptDispatch(response, reply);
-      return { response: reply, url: GROK_CHAT_API, headers, transformedBody: grokPayload, attemptStartedAt: sender.attemptStartedAt };
+      return { response: reply, url: GROK_CHAT_API(), headers, transformedBody: grokPayload, attemptStartedAt: sender.attemptStartedAt };
     };
     try {
-      response = await sender.sendRequest(GROK_CHAT_API, {
+      response = await sender.sendRequest(GROK_CHAT_API(), {
         method: "POST", headers, body: JSON.stringify(grokPayload), signal
       }, proxyOptions);
     } catch (err) {

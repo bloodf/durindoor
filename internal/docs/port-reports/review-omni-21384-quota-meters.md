@@ -21,8 +21,8 @@ Compared against `origin/main` (`29490b783e`) and the frozen train HEAD (`d27f28
 
 **Local remaining-quota bars still announcing `progressbar`:**
 
-- [`QuotaProgressBar.js:49`](../../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js) — `role="progressbar"`, `aria-label="${label} quota remaining"`, `aria-valuenow={remaining}`. Rendered by `ProviderLimitCard.js:33`.
-- [`QuotaTable.js:99`](../../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/QuotaTable.js) — `role="progressbar"`, `aria-label="${quota.name} remaining"`, `aria-valuenow={quota.remaining}`. Used by `ProviderLimits/index.js:1620` and `:1669`.
+- [`QuotaProgressBar.js:49`](https://github.com/bloodf/durindoor/blob/dc624113dc5728c04a01c1dd49e37f9a1dd80c4b/src/app/%28dashboard%29/dashboard/usage/components/ProviderLimits/QuotaProgressBar.js) — `role="progressbar"`, `aria-label="${label} quota remaining"`, `aria-valuenow={remaining}`. Rendered by `ProviderLimitCard.js:33`.
+- [`QuotaTable.js:99`](https://github.com/bloodf/durindoor/blob/dc624113dc5728c04a01c1dd49e37f9a1dd80c4b/src/app/%28dashboard%29/dashboard/usage/components/ProviderLimits/QuotaTable.js) — `role="progressbar"`, `aria-label="${quota.name} remaining"`, `aria-valuenow={quota.remaining}`. Used by `ProviderLimits/index.js:1620` and `:1669`.
 - [`QuotaPage.jsx:35`](../../../src/shared/ui/pages/quota/QuotaPage.jsx) — local `ProgressBar`, `role="progressbar"`, `aria-label="${label} quota remaining"`.
 
 **Internal inconsistency that makes this more than a pure port question:** [`UsagePage.jsx:568`](../../../src/shared/ui/pages/usage/UsagePage.jsx) already announces a percentage share as `role="meter"` with `aria-valuemin/max` and a name. The same codebase therefore uses both roles for the same class of value.

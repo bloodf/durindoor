@@ -429,7 +429,7 @@ describe("RenderHour through the public routes", () => {
     await expectNoSecrets(response);
   });
 
-  it("OAuth sign-in: refuses to start without an operator client id, then exchanges with PKCE and keeps two accounts apart", async () => {
+  it("OAuth sign-in: refuses to start with a blank client id override, then exchanges with PKCE and keeps two accounts apart", async () => {
     vi.stubEnv("RENDERHOUR_OAUTH_CLIENT_ID", "");
     await expect(generateAuthData("renderhour", "http://localhost:20128/callback")).rejects.toThrow(/RENDERHOUR_OAUTH_CLIENT_ID|client id/i);
     vi.stubEnv("RENDERHOUR_OAUTH_CLIENT_ID", RH_CLIENT);

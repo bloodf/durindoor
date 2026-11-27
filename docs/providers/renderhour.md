@@ -4,7 +4,7 @@ description: Available. RenderHour image, text-to-video and text-to-speech jobs 
 status: available
 ---
 
-> **Available, mock-tested only.** You can add a RenderHour connection with an `rh_` API key, or sign in to a RenderHour plan when the server sets `RENDERHOUR_OAUTH_CLIENT_ID`. Every flow below is covered by closed mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
+> **Available, mock-tested only.** You can add a RenderHour connection with an `rh_` API key, or sign in to a RenderHour plan with no extra server setup. Every flow below is covered by closed mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
 
 RenderHour (`renderhour`) generates images, videos and speech through one asynchronous job API at [renderhour.com](https://renderhour.com).
 
@@ -19,7 +19,7 @@ RenderHour (`renderhour`) generates images, videos and speech through one asynch
 | Speech from text | `POST /v1/audio/speech` | Available. Raw audio in RenderHour's container, or `response_format=json` |
 | Voice selection, a named audio container | — | Not supported. Refused before submit |
 | `rh_` API key | All three | Available |
-| Plan sign-in (authorization code with PKCE, rotating refresh) | All three | Available when the operator sets `RENDERHOUR_OAUTH_CLIENT_ID`. Otherwise sign-in refuses to start |
+| Plan sign-in (authorization code with PKCE, rotating refresh) | All three | Available by default. `RENDERHOUR_OAUTH_CLIENT_ID` optionally overrides the client |
 | Model discovery | Provider models | The pinned lists, after a local check of the selected connection's credential |
 | Chat | — | Not part of this provider. No chat transport or fallback |
 
@@ -31,10 +31,19 @@ An OAuth connection holds the plan access token from the sign-in below. The conn
 
 ## Subscription sign-in
 
+To sign in, open the RenderHour provider in the dashboard and add an OAuth connection. No environment variable is needed.
+
+RenderHour accepts only loopback redirects, so the redirect is always `http://localhost:<port>/callback` (or `http://127.0.0.1:<port>/callback` when you open the dashboard on that address). The path never includes a dashboard base path.
+
+- **Dashboard opened on `localhost` or `127.0.0.1`.** The redirect uses the dashboard's port and returns to it. With a dashboard base path, the redirected page does not load: copy its address and paste it into the sign-in window.
+- **Remote or hosted dashboard.** After you approve, the browser goes to `localhost` on your own computer (the dashboard's port, or `20128` when its address names none), and that page usually does not load. Copy the full address from the address bar and paste it into **Paste callback URL manually**.
+
 The pinned source also signs in to a RenderHour plan, whose access token pays in plan credits on the same `/v1` API. The protocol lives in `services/renderhour/oauth.js`, the handler in `src/lib/oauth/services/renderhour.js`. It is registered as `renderhour` in the OAuth provider map (`src/lib/oauth/providers.js`) and in the refresh table (`open-sse/services/tokenRefresh.js`). The image, video and speech routes refresh an expiring plan token before they submit a job.
 
 What the source shows, and what the registered code does:
 
+- **Client.** The public client id `rhc_omniroute`. It has no secret and is published in the source (`open-sse/utils/publicCreds.ts`, `renderhour_id`).
+- **Redirect.** Loopback on any port (RFC 8252 section 7.3). The source's dashboard (`OAuthModal.tsx`, `LOOPBACK_REDIRECT_PROVIDERS`) uses it on remote installs too.
 - **Authorize.** `GET https://renderhour.com/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri`, `state`, an S256 `code_challenge` and no `scope`. The client is public, so there is no client secret.
 - **Exchange.** `POST https://renderhour.com/api/oauth/token`, form-encoded, `grant_type=authorization_code` with `client_id`, `code`, `redirect_uri` and `code_verifier`. Then `GET https://renderhour.com/api/oauth/userinfo` with the access token reads `sub`, `email` and `name`. If that call fails, the sign-in is kept without them.
 - **Refresh.** `POST` to the same token URL with `grant_type=refresh_token`, `refresh_token` and `client_id`. The source says access tokens (`rhat_`) last an hour and refresh tokens (`rhrt_`) rotate on every refresh, last 30 days and stop working once used. The registered code depends on none of those lifetimes. It refreshes five minutes before the stored expiry, or when no expiry is stored.
@@ -44,12 +53,26 @@ What the source shows, and what the registered code does:
 
 Fork differences from the source:
 
-- **No embedded client id.** The pinned source ships a client id named for OmniRoute. DurinDoor does not present itself as another application's client. Set `RENDERHOUR_OAUTH_CLIENT_ID` to a RenderHour client id (`rhc_...`) issued for your install. Without it, sign-in refuses to start and refresh sends nothing. Whether RenderHour issues client ids to third parties, and which redirect URIs it accepts for them, is unknown.
+- **Optional client override.** The source has none. See [Client override](#client-override).
 - **Redirects refused.** Token and userinfo calls use fixed `https://renderhour.com` addresses with redirects disabled, and a `3xx` answer is treated as a failure. No code, verifier or token follows a redirect.
 - **Closed error text.** Only standard OAuth error codes are named. RenderHour's error descriptions, transport errors and callback `error_description` are never repeated.
 - **Bound session.** The standalone session compares `state` in constant time, requires the callback to land on the exact redirect origin and path, expires after 10 minutes and completes only once. A forged state does not use up the real session.
 
-Not proven: the mocks follow the source's own test fixtures. They do not show that RenderHour accepts a DurinDoor client, the redirect URI or these requests, or that the stated token lifetimes hold.
+Not proven: the mocks follow the source's code and test fixtures. They do not show that RenderHour accepts this client from DurinDoor, the redirect URI or these requests, or that the stated token lifetimes hold.
+
+### Client override
+
+Authorize, code exchange and refresh all take the client id from the same setting:
+
+| `RENDERHOUR_OAUTH_CLIENT_ID` | Result |
+| --- | --- |
+| Not set | The public client `rhc_omniroute` |
+| A RenderHour client id: `rhc_` followed by 1 to 64 letters, digits, `_` or `-` (surrounding spaces are ignored) | That client |
+| Set but blank, or anything else | Configuration error. The public client is not used instead |
+
+With a configuration error, sign-in fails with a message that names the variable and never repeats its value. No code exchange or refresh request is sent, and stored tokens are kept without marking the connection `reauth_required`. A stored plan access token still works for media jobs until it expires. `rh_` API-key connections and other providers are not affected. To use the default, remove the variable. Setting it to an empty value is an error.
+
+A refresh uses the client that is selected at that time. A refresh token issued to one client is not expected to work with another, so sign in again after you add, change or remove the override. An override client must accept the loopback redirect above. Whether RenderHour issues client ids to third parties is unknown.
 
 ## What is sent, and where
 
@@ -163,13 +186,16 @@ When a refused submit is `429` with a `Retry-After` header, either in seconds or
 
 Registered for #2034 (1127): the registry entry (`open-sse/providers/registry/renderhour.js`), `IMAGE_ADAPTERS`, `TTS_ADAPTERS`, the synchronous video adapter map (`open-sse/handlers/videoProviders/index.js`), the OAuth provider map, the refresh table, connection create and validate, and model discovery. The speech and video routes record an accepted job with unknown cost when a job may bill and its outcome cannot be seen, and do not resubmit it to another account. RenderHour has no `videoConfig` or `ttsConfig`, so the `/v1/videos` job proxy never reaches it.
 
-`tests/unit/provider-media-registration-1127.test.js` drives the public routes with closed mocks: connection create and validate, discovery, image, video and speech submit/poll/result, plan-token refresh and rotation persistence, sign-in start without and with a client id, PKCE exchange and account separation, `429` with `Retry-After`, redirected submits, an uncertain submit not repeated on a second account, deadline and client-disconnect accepted jobs, `response_format` refusals and two concurrent accounts. The other `renderhour-*` test files cover the adapters and cores in detail.
+`tests/unit/provider-media-registration-1127.test.js` drives the public routes with closed mocks: connection create and validate, discovery, image, video and speech submit/poll/result, plan-token refresh and rotation persistence, sign-in start with a blank and a valid client override, PKCE exchange and account separation, `429` with `Retry-After`, redirected submits, an uncertain submit not repeated on a second account, deadline and client-disconnect accepted jobs, `response_format` refusals and two concurrent accounts. `tests/unit/renderhour-public-client.test.js` drives the OAuth route and the shared refresh with the default client, a valid override and invalid overrides, and checks the loopback redirect and API-key independence. The other `renderhour-*` test files cover the adapters and cores in detail.
 
-Not proven: a live check with a real account has not happened for any task or for the sign-in. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests or a DurinDoor client id. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
+Not proven: a live check with a real account has not happened for any task or for the sign-in. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests or this client from DurinDoor. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
 
 ## Source
 
-Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/OmniRoute) at `9671192011beb2d7f83979f40be488c5da8772b9` (MIT, Copyright (c) 2026 Cheaper Inference - Created by Diego Souza):
+Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/OmniRoute) at `9671192011beb2d7f83979f40be488c5da8772b9` (MIT, Copyright (c) 2026 Cheaper Inference - Created by Diego Souza). The public client id and the redirect rule were checked at `release/v3.8.55`, `d3f06ea668109f8ac1feadfcae25f6ff9b873b5f`, where the OAuth constants, public credentials, endpoint constants, OAuth provider, token refresh and OAuth test files are byte-identical to the pin:
+
+- [`open-sse/utils/publicCreds.ts`](https://github.com/cheaper-inference/OmniRoute/blob/d3f06ea668109f8ac1feadfcae25f6ff9b873b5f/open-sse/utils/publicCreds.ts#L175) (`renderhour_id`)
+- [`src/shared/components/OAuthModal.tsx`](https://github.com/cheaper-inference/OmniRoute/blob/d3f06ea668109f8ac1feadfcae25f6ff9b873b5f/src/shared/components/OAuthModal.tsx) (`LOOPBACK_REDIRECT_PROVIDERS`)
 
 - [`registry/renderhour/mediaModels.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/renderhour/mediaModels.ts)
 - [`handlers/mediaGeneration/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/mediaGeneration/renderhour.ts)
@@ -182,4 +208,4 @@ Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/
 - [`tests/unit/renderhour-oauth-provider.test.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/tests/unit/renderhour-oauth-provider.test.ts)
 - [`handlers/videoGeneration/pollRetry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/pollRetry.ts)
 
-Differences from the source: the sign-in has no embedded client id; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.
+Differences from the source: the sign-in has an optional client override; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.

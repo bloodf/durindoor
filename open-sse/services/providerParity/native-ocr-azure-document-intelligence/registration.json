@@ -1,0 +1,93 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "kind": "ocr-provider-adapter",
+  "provider": "azure-document-intelligence",
+  "module": "open-sse/services/providerParity/native-ocr-azure-document-intelligence/index.js",
+  "foundation": "the staged OCR dispatch foundation unit (#2034): its defineOcrAdapter takes the spec, its createOcrDispatcher runs it; this module imports neither",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "license": "MIT",
+    "files": [
+      "open-sse/config/ocrRegistry.ts",
+      "open-sse/handlers/ocr.ts"
+    ],
+    "registryEntry": {
+      "id": "azure-document-intelligence",
+      "baseUrl": "",
+      "authType": "apikey",
+      "authHeader": "Ocp-Apim-Subscription-Key",
+      "models": [{ "id": "prebuilt-read", "name": "Azure Document Intelligence (Read)" }]
+    },
+    "transformation": "AZURE_DI_TRANSFORMATION",
+    "endpointResolution": "src/app/api/v1/ocr/route.ts resolveOcrCredentials: top-level baseUrl, else providerSpecificData.baseUrl",
+    "ported": [
+      "POST {endpoint}/documentintelligence/documentModels/{model}:analyze?api-version=2024-11-30&outputContentFormat=markdown",
+      "Ocp-Apim-Subscription-Key carries the connection key on the submit and every poll",
+      "body { urlSource } for a document URL, { base64Source } for a data URL (azureDiSource)",
+      "pollUrl from the Operation-Location header, polled on the submit origin only",
+      "poll status succeeded returns the answer, failed is a failure (pollOcrOperation)",
+      "analyzeResult.content mirrored into one aggregated page at index 0; usage_info.pages_processed from analyzeResult.pages",
+      "the single listed model prebuilt-read; provider/model prefix and bare id"
+    ],
+    "notPorted": [
+      "the source prefix passthrough of any model id after azure-document-intelligence/: only prebuilt-read is supported",
+      "the source model field hardcoded to prebuilt-read in parseResponse: the requested model is reported",
+      "accessToken as the subscription key (source token = accessToken || apiKey): only apiKey is a subscription key",
+      "pages_processed defaulting to 1 when analyzeResult.pages is missing: accounting falls back to the returned page count, which is the same 1",
+      "per-page splitting of content (the source returns one aggregated page)",
+      "Mistral, Vertex DeepSeek OCR and every other OCR_PROVIDERS entry (separate units)"
+    ]
+  },
+  "intentionalContractChanges": [
+    "the endpoint must be a bare https origin on an Azure AI services host (*.cognitiveservices.azure.com, .azure.us, .azure.cn or *.api.cognitive.microsoft.com) with no path, query, fragment, userinfo or port; the source sends the key to any configured base URL",
+    "the key is sent only when the selected connection's own endpoint equals the endpoint the adapter was built for; otherwise 401 before anything is sent",
+    "a missing or non-202 submit answer without a same-origin Operation-Location of the form /documentintelligence/documentModels/{model}/analyzeResults/{id} is a lost result (accepted), never read as a synchronous answer",
+    "analyze states notStarted and running keep polling; failed and canceled fail; any other state is a lost result",
+    "inline documents are limited to PDF, PNG, JPEG and TIFF; WebP and GIF are refused before anything is sent",
+    "a succeeded answer without string analyzeResult.content is a lost result, not an empty page"
+  ],
+  "exports": {
+    "azureDocumentIntelligenceOcrSpec": "({ endpoint }) -> plain adapter spec for defineOcrAdapter; throws TypeError on a disallowed endpoint",
+    "azureDocumentIntelligenceEndpoint": "(credentials) -> the selected connection's endpoint origin (baseUrl, else providerSpecificData.baseUrl) or null",
+    "azureDocumentIntelligenceOrigin": "(value) -> bare https origin of an allowed Azure endpoint or null",
+    "azureDocumentIntelligenceAnalyzeUrl": "(origin, model) -> analyze URL with api-version and outputContentFormat",
+    "azureDocumentIntelligenceSource": "(normalized document) -> { urlSource } | { base64Source }",
+    "azureDocumentIntelligencePollState": "(json) -> running | succeeded | failed; throws on an undocumented state",
+    "parseAzureDocumentIntelligenceResult": "(raw, { model }) -> { model, pages: [{ index: 0, markdown }], usage_info? }; throws on a non-result",
+    "AZURE_DI_PROVIDER_ID": "\"azure-document-intelligence\"",
+    "AZURE_DI_LABEL": "\"Azure Document Intelligence\"",
+    "AZURE_DI_API_VERSION": "\"2024-11-30\"",
+    "AZURE_DI_OUTPUT_CONTENT_FORMAT": "\"markdown\"",
+    "AZURE_DI_AUTH_HEADER": "\"Ocp-Apim-Subscription-Key\"",
+    "AZURE_DI_MODELS": "[{ id: \"prebuilt-read\", name: \"Azure Document Intelligence (Read)\" }]",
+    "AZURE_DI_INLINE_MEDIA_TYPES": "application/pdf, image/png, image/jpeg, image/tiff",
+    "AZURE_DI_ENDPOINT_HOST_SUFFIXES": ".cognitiveservices.azure.com, .cognitiveservices.azure.us, .cognitiveservices.azure.cn, .api.cognitive.microsoft.com",
+    "AZURE_DI_RUNNING_STATES": "[\"notStarted\", \"running\"]",
+    "AZURE_DI_FAILED_STATES": "[\"failed\", \"canceled\"]",
+    "AZURE_DI_SUCCEEDED_STATE": "\"succeeded\""
+  },
+  "supportedSubset": {
+    "models": ["prebuilt-read"],
+    "documents": ["document_url (public https URL)", "image_url (public https URL or { url })", "base64 data URL of PDF, PNG, JPEG or TIFF"],
+    "requestFields": ["model", "document"],
+    "auth": "credentials.apiKey as Ocp-Apim-Subscription-Key",
+    "endpoint": "credentials.baseUrl or credentials.providerSpecificData.baseUrl",
+    "polling": "foundation default: 30 status checks, 1000 ms apart, one deadline for submit and polls, no replay"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ocrCore.js (new, foundation registration)",
+      "change": "for an azure-document-intelligence connection, resolve azureDocumentIntelligenceEndpoint(credentials); refuse locally when null; otherwise defineOcrAdapter(azureDocumentIntelligenceOcrSpec({ endpoint })) and dispatch with the same credentials"
+    },
+    {
+      "file": "open-sse/providers/registry (separate step)",
+      "change": "register the azure-document-intelligence provider with an endpoint field stored as providerSpecificData.baseUrl"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list azure-document-intelligence/prebuilt-read under /v1/ocr after registration"
+    }
+  ]
+}

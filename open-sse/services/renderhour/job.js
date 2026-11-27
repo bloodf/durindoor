@@ -62,7 +62,13 @@ async function readJob(response, { signal, timeoutMs }) {
   return job;
 }
 
-function imageUrl(output) {
+// The connection's key must never come back inside a result URL, raw or encoded.
+function carriesSecret(href, secret) {
+  if (!secret) return false;
+  return href.includes(secret) || href.includes(encodeURIComponent(secret));
+}
+
+function imageUrl(output, secret) {
   if (!isRecord(output) || !isString(output.url) || output.url.length > MAX_URL_LENGTH) return null;
   if (!IMAGE_TYPES.has(output.content_type)) return null;
   let url;
@@ -71,11 +77,12 @@ function imageUrl(output) {
   } catch {
     return null;
   }
-  return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  if (url.protocol !== "https:" || url.username || url.password) return null;
+  return carriesSecret(url.href, secret) || carriesSecret(output.url, secret) ? null : url.href;
 }
 
 // null while the job is pending; the image URLs once it succeeded. Throws otherwise.
-function settle(job, expectedCount) {
+function settle(job, expectedCount, secret) {
   if (PENDING_STATUSES.has(job.status)) return null;
   if (job.status === "failed") {
     const known = FAILURE_STATUS.has(job.failure_reason);
@@ -86,7 +93,7 @@ function settle(job, expectedCount) {
   }
   if (job.status !== "succeeded") throw unknownOutcome("returned an unknown job status");
   const outputs = Array.isArray(job.outputs) ? job.outputs : [];
-  const urls = outputs.map(imageUrl);
+  const urls = outputs.map((output) => imageUrl(output, secret));
   if (urls.length === 0 || urls.length > expectedCount || urls.includes(null)) {
     throw unknownOutcome("job succeeded without a usable image result");
   }
@@ -123,7 +130,8 @@ export async function awaitRenderHourImages(submitted, {
   let delay = pollIntervalMs;
   let retries = 0;
   let rejected = 0;
-  let urls = settle(job, count);
+  const secret = isString(credentials?.apiKey) ? credentials.apiKey : null;
+  let urls = settle(job, count, secret);
 
   while (!urls) {
     if (now() + delay > deadline) {
@@ -171,7 +179,7 @@ export async function awaitRenderHourImages(submitted, {
     delay = pollIntervalMs;
     retries = 0;
     rejected = 0;
-    urls = settle(job, count);
+    urls = settle(job, count, secret);
   }
   return urls;
 }

@@ -49,7 +49,7 @@ function scheduleFlush() {
 }
 
 function formatLine(line) {
-  return Array.isArray(line) ? line.map(formatArg).join(" ") : line;
+  return Array.isArray(line) ? line.map((arg) => arg != null && Object(arg) === arg ? arg.snapshot : formatArg(arg)).join(" ") : line;
 }
 
 // Strip ANSI escape codes so terminal colors don't bleed into UI
@@ -86,7 +86,8 @@ function formatArg(arg) {
 }
 
 function appendLine(args) {
-  const line = args.map(formatArg);
+  // Mutable values need a capture-time snapshot; primitives can be formatted on read.
+  const line = args.map((arg) => arg != null && Object(arg) === arg ? { snapshot: formatArg(arg) } : arg);
   if (state.logs.length < CONSOLE_LOG_CONFIG.maxLines) {
     state.logs.push(line);
   } else {

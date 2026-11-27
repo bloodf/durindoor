@@ -139,7 +139,7 @@ describe.skipIf(!linux)("shard timeout leaves no server behind", () => {
 
     const result = await cleanupShardServer({ owner, port, stateFile: path.join(tempDir(), "absent.json"), selfExitMs: 200, pollMs: 25, baseline });
     expect(result).toMatchObject({ ok: true, verification: "procfs", unattributedListener: false, survivors: [], uncertain: [] });
-    expect(result.signalled).toEqual([{ pid, group: true, signal: "SIGTERM" }]);
+    expect(result.signalled).toEqual([{ pid, signal: "SIGTERM" }]);
     expect(alive(pid)).toBe(false);
     expect(await isPortListening(HOST, port)).toBe(false);
   }, 30_000);
@@ -235,7 +235,7 @@ describe("ownership checks before any signal", () => {
     const kill = vi.fn();
     const signalled = signalOwnedProcesses(seen, "SIGTERM", { owner, procRoot: proc.root, euid, kill });
     expect(kill.mock.calls).toEqual([[202, "SIGTERM"]]);
-    expect(signalled).toEqual([{ pid: 202, group: false, signal: "SIGTERM" }]);
+    expect(signalled).toEqual([{ pid: 202, signal: "SIGTERM" }]);
 
     // Same token, different start time: still a different process.
     proc.remove(202);
@@ -245,12 +245,12 @@ describe("ownership checks before any signal", () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
-  it("signals a verified group leader's group and nothing else", () => {
+  it("signals a verified group leader by PID, never its group", () => {
     const proc = fakeProc({ processes: { 301: { owner, pgid: 301 } } });
     const kill = vi.fn();
     const seen = findOwnedProcesses(owner, { procRoot: proc.root, euid, selfPid: 0 });
     signalOwnedProcesses(seen, "SIGTERM", { owner, procRoot: proc.root, euid, kill });
-    expect(kill.mock.calls).toEqual([[-301, "SIGTERM"]]);
+    expect(kill.mock.calls).toEqual([[301, "SIGTERM"]]);
   });
 
   it("accepts only a private regular state file naming the same owner and port", () => {
@@ -291,7 +291,7 @@ describe("cleanup failure fails closed", () => {
     expect(result.ok).toBe(false);
     expect(result.survivors).toEqual([401]);
     expect(result.reason).toMatch(/survived cleanup: 401/);
-    expect(kill.mock.calls).toEqual([[-401, "SIGTERM"], [-401, "SIGKILL"]]);
+    expect(kill.mock.calls).toEqual([[401, "SIGTERM"], [401, "SIGKILL"]]);
   });
 
   it("fails when the kernel refuses the signal", async () => {

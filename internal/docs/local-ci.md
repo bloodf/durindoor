@@ -212,6 +212,19 @@ before anything is signalled.
   waits for them like owned ones, so a process that is briefly unreadable while
   it exits does not fail the step; one that stays makes cleanup fail.
 
+Signals go to one verified PID at a time, never to a process group. A
+`kill(-pgid)` reaches every member of the group, and a group led by an owned
+process can still hold an uncertain member, a member that dropped the token,
+or an unrelated process that joined it with `setpgid`. Proving the whole group
+would mean classifying every member, and membership can change between that
+check and the signal, so the guard makes no group-wide claim. Every shard
+process inherits the token and is found and signalled on its own; a member
+that cannot be proven owned is never signalled and fails cleanup while it
+lives. Residual race: Node has no PID-reuse-safe signal (`pidfd_send_signal`),
+so a verified process can exit, be reaped and have its PID reused between the
+re-read and `kill()`. The re-read happens immediately before each signal to
+keep that window a few system calls wide; it is narrowed, not closed.
+
 Same-uid processes with protected environments are common on developer hosts
 (`ssh-agent`, `gpg-agent`, browser sandboxes mark themselves non-dumpable).
 Local CI snapshots the uncertain PIDs and their start times just before each

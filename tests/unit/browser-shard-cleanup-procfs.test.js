@@ -70,6 +70,36 @@ function fakeProc(processes = {}) {
   };
 }
 
+// A kill() mock with real kill(2) addressing: a positive target reaches that
+// PID, zero or a negative target reaches every live member of the process
+// group (read from the fake stat), including uncertain and foreign ones.
+// Each recipient "dies" (its /proc entry is removed) and is recorded, so a
+// test can assert exactly who would have been hit.
+function kernelKill(proc) {
+  const recipients = [];
+  const pgidOf = (pid) => {
+    try {
+      const text = fs.readFileSync(path.join(proc.root, String(pid), "stat"), "utf8");
+      return Number(text.slice(text.lastIndexOf(")") + 2).split(" ")[2]);
+    } catch {
+      return null;
+    }
+  };
+  const live = () => fs.readdirSync(proc.root).filter((entry) => /^\d+$/.test(entry)).map(Number);
+  const kill = vi.fn((target, signal) => {
+    if (!Number.isInteger(target) || target === 0 || target === -1) throw codeError("EINVAL");
+    const hit = target > 0
+      ? live().filter((pid) => pid === target)
+      : live().filter((pid) => pgidOf(pid) === -target);
+    if (!hit.length) throw codeError("ESRCH");
+    for (const pid of hit) {
+      recipients.push({ pid, signal });
+      proc.remove(pid);
+    }
+  });
+  return { kill, recipients };
+}
+
 const classify = (proc, pid, token = owner) =>
   classifyProcess(readProcessIdentity(pid, proc.root, { readFile: proc.readFile }), token, euid);
 
@@ -271,13 +301,55 @@ describe("cleanup fails closed on uncertainty", () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
-  it("signals the owned process, then fails on an uncertain one that outlives it", async () => {
+  it("signals the owned process by PID, then fails on an uncertain group peer that outlives it", async () => {
     const proc = fakeProc({ 270: { token: owner, pgid: 270 }, 271: { token: owner, pgid: 270 } });
     proc.fault(271, { environ: "EACCES" });
-    const kill = vi.fn((target) => { if (target === -270) proc.remove(270); });
+    const { kill, recipients } = kernelKill(proc);
     const result = await cleanup(proc, { kill });
-    expect(kill.mock.calls).toEqual([[-270, "SIGTERM"]]);
+    expect(kill.mock.calls).toEqual([[270, "SIGTERM"]]);
+    expect(recipients).toEqual([{ pid: 270, signal: "SIGTERM" }]);
+    expect(fs.existsSync(path.join(proc.root, "271"))).toBe(true);
     expect(result).toMatchObject({ ok: false, survivors: [], uncertain: [{ pid: 271 }] });
+  });
+
+  it("never harms uncertain or foreign members of an owned leader's process group", async () => {
+    // 280 leads group 280 and is provably owned. Its group also holds an owned
+    // child (281), a same-uid peer whose environ is unreadable (282), another
+    // user's process (283), and a same-uid process without the token (284)
+    // that joined with setpgid. A kill(-280) would reach all five.
+    const proc = fakeProc({
+      280: { token: owner, pgid: 280 },
+      281: { token: owner, pgid: 280 },
+      282: { token: owner, pgid: 280 },
+      283: { uid: 1001, pgid: 280 },
+      284: { pgid: 280 },
+    });
+    proc.fault(282, { environ: "EACCES" });
+    proc.fault(283, { environ: "EACCES" });
+    const { kill, recipients } = kernelKill(proc);
+    const result = await cleanup(proc, { kill });
+
+    expect(kill.mock.calls.every(([target]) => target > 1)).toBe(true);
+    expect(recipients).toEqual([{ pid: 280, signal: "SIGTERM" }, { pid: 281, signal: "SIGTERM" }]);
+    for (const pid of [282, 283, 284]) expect(fs.existsSync(path.join(proc.root, String(pid)))).toBe(true);
+    expect(result).toMatchObject({
+      ok: false,
+      signalled: [{ pid: 280, signal: "SIGTERM" }, { pid: 281, signal: "SIGTERM" }],
+      survivors: [],
+      uncertain: [{ pid: 282, reason: "environ EACCES" }],
+    });
+  });
+
+  it("does not signal a leader whose PID was recycled into a foreign group member", () => {
+    const proc = fakeProc({ 290: { token: owner, pgid: 290, startTime: "100" } });
+    const seen = scanShardProcesses(owner, { procRoot: proc.root, euid, selfPid: 0, readFile: proc.readFile }).owned;
+    proc.remove(290);
+    proc.write(290, { uid: 1001, pgid: 290, startTime: "101" });
+    proc.write(291, { uid: 1001, pgid: 290 });
+    const { kill, recipients } = kernelKill(proc);
+    expect(signalOwnedProcesses(seen, "SIGKILL", { owner, procRoot: proc.root, euid, kill, readFile: proc.readFile })).toEqual([]);
+    expect(kill).not.toHaveBeenCalled();
+    expect(recipients).toEqual([]);
   });
 });
 

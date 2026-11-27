@@ -1,3 +1,4 @@
+import { mirrorCompressionPatch } from "@/shared/utils/compressionConfig.js";
 import { NextResponse } from "next/server";
 import { FREE_NO_AUTH_PROVIDER_IDS } from "@/shared/constants/freeNoAuthProviders";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -102,7 +103,7 @@ function sanitizeSettingsForResponse(settings, { privileged }) {
 async function requireSettingsReauth(request, body, { currentPassword, mfaCode }) {
   // Only these keys can need a password; the stored row decides which changed.
   const current = await getSettings();
-  const keys = reauthRequiredKeys(body, current);
+  const keys = reauthRequiredKeys(mirrorCompressionPatch(current, body), current);
   if (!keys.length || await hasValidCliToken(request)) return null;
   if (!current.password) {
     // Not REAUTH_REQUIRED: there is no password the dashboard could prompt for.
@@ -195,6 +196,10 @@ export async function PATCH(request) {
     stripSettingKeys(body, SECRET_SETTING_KEYS);
     const mayModifySecurityCritical = await canModifySecurityCriticalSettings(request);
     if (!mayModifySecurityCritical) {
+      // A nested alias cannot restore a security-critical flat switch after stripping.
+      if (isBoolean(body.compressionEngines?.headroom?.enabled)) {
+        return NextResponse.json({ error: "Headroom settings require operator authorization" }, { status: 403, headers: SETTINGS_RESPONSE_HEADERS });
+      }
       stripSettingKeys(body, AUTH_CRITICAL_SETTING_KEYS);
     }
 

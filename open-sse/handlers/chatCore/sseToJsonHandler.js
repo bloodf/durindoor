@@ -5,7 +5,7 @@ import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
-import { claudeResponsesError, createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
+import { claudeResponsesError, createErrorResult as createFormattedErrorResult, credentialErrorSecrets } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
@@ -528,9 +528,20 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           throwOnTimeout: true
         });
         if (sourceFormat === FORMATS.CLAUDE && jsonResponse?.status === "failed" && jsonResponse.error) {
-          const { status, error } = claudeResponsesError(jsonResponse.error);
+          const { status, error } = claudeResponsesError(jsonResponse.error, credentialErrorSecrets(credentials));
           appendLog({ status: `FAILED ${status}` });
-          return { ...createErrorResult(status, error.message), quotaTerminalReason: "stream_error" };
+          // Forward the merged error body and credentials so createErrorResult
+          // preserves the mapped Claude error.type and redacts credential secrets.
+          const errorBody = {
+            error: {
+              ...(isObject(jsonResponse.error) ? jsonResponse.error : null),
+              ...error,
+            },
+          };
+          return {
+            ...createErrorResult(status, error.message, undefined, errorBody, null, credentials, status),
+            quotaTerminalReason: "stream_error",
+          };
         }
         if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
           return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");

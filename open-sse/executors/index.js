@@ -308,6 +308,7 @@ const CHAT_UNSUPPORTED_SEARCH_PROVIDERS = new Set(
 );
 
 export function getExecutor(provider) {
+  if (provider === "adobe-firefly-web") throw new Error("Adobe Firefly browser supports dedicated image/video adapters only");
   if (Object.hasOwn(executors, provider)) return executors[provider];
   provider = resolveProviderAlias(provider);
   if (Object.hasOwn(executors, provider)) return executors[provider];

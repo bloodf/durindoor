@@ -1,5 +1,5 @@
-// RenderHour text-to-video: submit, bounded poll, file URLs. STAGED: videoCore.js
-// does not import this, so no route reaches it. See docs/providers/renderhour.md.
+// RenderHour text-to-video: submit, bounded poll, file URLs. Registered in
+// videoProviders/index.js for /v1/video/generations. See docs/providers/renderhour.md.
 //
 // Ported from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper
@@ -8,11 +8,12 @@
 // of open-sse/handlers/mediaGeneration/renderhour.ts. The job client is
 // ../../services/renderhour/media.js.
 //
-// Fork deviations: an `rh_` API key only; start frames, end frames and
+// Fork deviations: an `rh_` API key or a stored plan sign-in; start frames, end frames and
 // reference images are refused instead of uploaded; an explicit aspect ratio or
 // duration that RenderHour cannot take is refused instead of passed on or
-// dropped; result URLs are returned without being downloaded, even for
-// `response_format: "b64_json"`; and the poll bounds are fixed.
+// dropped; result URLs are returned without being downloaded (the public route
+// refuses any response_format but "url" before submit); and the poll bounds
+// are fixed.
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { assertRenderHourTask, runRenderHourMediaJob } from "../../services/renderhour/media.js";

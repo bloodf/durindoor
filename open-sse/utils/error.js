@@ -22,21 +22,36 @@ export function getResponsesEventError(event, data) {
   if (event !== "error" && event !== "response.failed") return null;
   if (!data || !isObject(data)) return { message: "Upstream Responses request failed" };
   return data.error || data.response?.error || {
+    ...(data.type && data.type !== "error" ? { type: data.type } : null),
     code: data.code,
     message: data.message || "Upstream Responses request failed",
   };
 }
 
-/** Map a Responses failure payload to a Claude-valid error type and HTTP status (#5899). */
-export function claudeResponsesError(error) {
+/**
+ * Map a Responses failure payload to a Claude-valid error type and matching
+ * HTTP status (#5899), redacting any supplied credential secrets.
+ * @param {string|object|null|undefined} error
+ * @param {string[]} [secrets]
+ */
+export function claudeResponsesError(error, secrets = []) {
   const rawMessage = (isString(error) ? error : error?.message) || "Upstream Responses request failed";
-  const message = sanitizeErrorMessage(rawMessage);
-  const code = error?.code || error?.type;
-  if (RESPONSES_INVALID_REQUEST_CODES.has(code) || code === "invalid_request_error") {
+  const message = sanitizeErrorMessageWithSecrets(rawMessage, secrets);
+  const code = error?.code;
+  const errorType = error?.type;
+  if (
+    RESPONSES_INVALID_REQUEST_CODES.has(code) ||
+    RESPONSES_INVALID_REQUEST_CODES.has(errorType) ||
+    code === "invalid_request_error" ||
+    errorType === "invalid_request_error"
+  ) {
     return { status: HTTP_STATUS.BAD_REQUEST, error: { type: "invalid_request_error", message } };
   }
-  const type = /overload|at.capacity|service_unavailable/i.test(`${code || ""} ${rawMessage}`) ? "overloaded_error" : "api_error";
-  return { status: HTTP_STATUS.BAD_GATEWAY, error: { type, message } };
+  const type = /overload|at.capacity|service_unavailable/i.test(`${code || ""} ${errorType || ""} ${rawMessage}`)
+    ? "overloaded_error"
+    : "api_error";
+  const status = type === "overloaded_error" ? HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_GATEWAY;
+  return { status, error: { type, message } };
 }
 
 /**

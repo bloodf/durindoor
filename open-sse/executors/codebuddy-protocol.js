@@ -80,6 +80,11 @@ export function normalizeCodeBuddyRequest(body) {
  * Normalizes empty finish reasons to null, drops empty function_call shells,
  * suppresses duplicate [DONE] sentinels, and emits one terminal finish chunk
  * before [DONE] when a clean turn ends with open choices and no upstream error.
+ *
+ * A usage-only frame (choices: []) is held until the terminal chunk exists,
+ * then folded into it. Forwarding it earlier duplicated usage and made the
+ * upstream terminal tracker read the usage frame as an incoherent turn
+ * (9router #5902 review finding).
  */
 export function normalizeCodeBuddyResponse(result) {
   const response = result.response;
@@ -91,13 +96,26 @@ export function normalizeCodeBuddyResponse(result) {
   const finishedChoices = new Set();
   let lastChunk = null;
   let usage = undefined;
+  // Held usage-only frame, emitted after the terminal chunk or at EOF.
+  let pendingUsageWire = null;
   let errorSeen = false;
   let doneSeen = false;
+
+  /** Emit the held usage-only frame in its original wire form. */
+  const flushPendingUsage = (controller) => {
+    if (!pendingUsageWire) return;
+    controller.enqueue(encoder.encode(pendingUsageWire));
+    pendingUsageWire = null;
+  };
 
   const emitFrame = (frame, controller) => {
     if (doneSeen) return;
     const wire = frame.wire ?? `${frame.raw}\n\n`;
-    if (frame.eventName?.trim() === "error") errorSeen = true;
+    if (frame.eventName?.trim() === "error") {
+      errorSeen = true;
+      // A failed turn keeps the upstream order: usage before the error.
+      flushPendingUsage(controller);
+    }
     if (!frame.hasData) {
       controller.enqueue(encoder.encode(wire));
       return;
@@ -121,14 +139,30 @@ export function normalizeCodeBuddyResponse(result) {
           ...(usage !== undefined ? { usage } : null),
         };
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(terminal)}\n\n`));
+        // The terminal chunk carries the held usage: usage reaches the client
+        // exactly once, after one coherent finish.
+        pendingUsageWire = null;
+      } else if (pendingUsageWire) {
+        // No terminal chunk to fold the usage into: keep the upstream frame.
+        flushPendingUsage(controller);
       }
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       return;
     }
     try {
       const chunk = JSON.parse(payload);
-      if (chunk?.error || chunk?.type === "error") errorSeen = true;
+      if (chunk?.error || chunk?.type === "error") {
+        errorSeen = true;
+        // A failed turn keeps the upstream order: usage before the error.
+        flushPendingUsage(controller);
+      }
       if (chunk?.usage) usage = chunk.usage;
+      // A usage-only frame carries no choice. Hold it back so it cannot be
+      // read as a turn end before the finish chunk exists.
+      if (chunk?.usage && !(Array.isArray(chunk?.choices) && chunk.choices.length > 0)) {
+        pendingUsageWire = wire;
+        return;
+      }
       if (Array.isArray(chunk?.choices)) {
         let changed = false;
         chunk.choices.forEach((choice, position) => {
@@ -173,6 +207,8 @@ export function normalizeCodeBuddyResponse(result) {
         for (const frame of reader.push(tail)) emitFrame(frame, controller);
       }
       for (const frame of reader.flush()) emitFrame(frame, controller);
+      // A stream that ended without [DONE] still owes the client its usage.
+      flushPendingUsage(controller);
     },
   });
   const headers = new Headers(response.headers);

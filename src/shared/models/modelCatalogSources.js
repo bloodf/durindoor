@@ -19,6 +19,7 @@ import { extractApiCapabilities, extractLiveModelLimits } from "open-sse/service
 import { getCodexModels } from "open-sse/services/usage/codex.js";
 import { guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
+import { listHordeImageModelRows } from "open-sse/services/aihordeImageCatalog.js";
 import { isBoolean, isObject, isString } from "../utils/typeChecks.js";
 
 export function isRecord(value) {
@@ -46,6 +47,26 @@ export const LIVE_MODEL_UNION_PROVIDERS = new Set([
 "glm-cn",
 "openrouter"]
 );
+// Native media catalogs a provider publishes beside its chat discovery. Each
+// lists the kinds it owns and returns rows `{ id, name, kind }` or `[]`; it
+// never takes a credential, and it is added to (never replaces) chat rows.
+export const PROVIDER_MEDIA_CATALOGS = Object.freeze({
+  // AI Horde: public worker catalog, served models only (count > 0, fresh).
+  aihorde: Object.freeze({ kinds: Object.freeze(["image"]), list: () => listHordeImageModelRows() }),
+});
+
+/** Rows of `providerId`'s native media catalog for the requested kinds, else `[]`. */
+export async function resolveProviderMediaCatalog(providerId, kindFilter) {
+  const catalog = PROVIDER_MEDIA_CATALOGS[providerId];
+  if (!catalog || !kindFilter.some((kind) => catalog.kinds.includes(kind))) return [];
+  try {
+    const rows = await catalog.list();
+    return rows.filter((row) => isString(row?.id) && row.id.trim() && kindFilter.includes(row.kind));
+  } catch {
+    return [];
+  }
+}
+
 async function liveResolverOptions(conn) {
   const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
   return {
@@ -147,13 +168,17 @@ function withRuntimeContext(row, contextLength) {
   return { ...row, capabilities };
 }
 
-// Honor declared vision input_modalities from compatible upstream /models rows (#5900).
+/**
+ * Honor declared vision input_modalities from compatible upstream /models rows (#5900).
+ * Empty modality arrays are treated as unknown rather than "no vision" so static
+ * and explicit local catalog flags remain intact when upstream lists are empty.
+ */
 function withCompatibleVision(row) {
   const inputs = [
     row?.architecture?.input_modalities,
     row?.input_modalities,
     row?.modalities?.input,
-  ].find(Array.isArray);
+  ].find((list) => Array.isArray(list) && list.length > 0);
   if (!inputs) return row;
   const capabilities = isRecord(row.capabilities) ? { ...row.capabilities } : {};
   capabilities.vision = inputs.some((value) => isString(value) && value.trim().toLowerCase() === "image");

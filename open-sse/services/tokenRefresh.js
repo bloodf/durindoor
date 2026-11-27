@@ -30,6 +30,7 @@ import { refreshWorkbuddyToken } from "./workbuddyAuth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
+import { antigravityClientBindingBlocks } from "./antigravityClientBinding.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -257,6 +258,11 @@ async function refreshAntigravityProvider(provider, credentials, log, proxyOptio
   if (!connectionId) {
     // A refresh token without a connection ID cannot be fenced across processes.
     return null;
+  }
+  // Same blocked shape as a lease refusal; no lease, request, or write happens.
+  const providerSpecificData = credentials?.providerSpecificData ?? credentials?._connection?.providerSpecificData;
+  if (antigravityClientBindingBlocks(provider, providerSpecificData, client?.clientId)) {
+    return { blocked: true, category: "reauth_required" };
   }
   const { exchangeAntigravityRefresh } = await import("../../src/lib/antigravity/refreshProtocol.js");
   const { refreshGoogleTokenDetailed } = await import("./tokenRefresh/providers.js");

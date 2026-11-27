@@ -30,6 +30,7 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | `PORT` | `20128` | Listen port for the gateway and dashboard. |
 | `HOSTNAME` | `127.0.0.1` from `custom-server.js` when unset | Bind address. CLI default bind is `0.0.0.0`. Docker Compose sets `0.0.0.0` inside the container. |
 | `HOST` | `127.0.0.1` | Host used when deriving the provider-plugin manifest URL. |
+| `CODEX_OAUTH_CALLBACK_BIND_ALL` | unset (`127.0.0.1`) | Set to `true` to bind the temporary Codex OAuth callback listener on port `1455` to `0.0.0.0` inside a Docker bridge container (pair with `-p 127.0.0.1:1455:1455` on the host). Non-loopback `Origin` headers are still rejected. |
 | `DASHBOARD_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. |
 | `API_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. |
 | `NODE_ENV` | unset (treated as not `production` / not `development` unless set) | `production` for production starts. Gates shutdown, intercept-path overrides, and similar. |

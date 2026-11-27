@@ -25,13 +25,15 @@ Coverage is bounded to the four protocol families, their Chat pivot edges, and t
 
 Pairs are ordered in the direction of translation. The registered routes below bypass the OpenAI Chat pivot; the last row is a conditional response path rather than a registry entry.
 
-| Direction | Pair or condition | Justification |
-| --- | --- | --- |
-| Request | `claude:kiro` | Preserve Claude blocks, tool IDs, image sources and error results that the pivot can lose. |
-| Request | `claude:gemini` | Preserve Claude content and Gemini thought signatures through direct conversion. |
-| Response | `kiro:claude` | Kiro emits OpenAI-shaped chunks; direct conversion retains reasoning and tool information. |
-| Response | `gemini:claude` | Preserve Gemini thought signatures when producing Claude chunks. |
-| Response | `OPENAI_RESPONSES` → `CLAUDE` with `searchEnabled` | Direct `responsesToClaudeResponse` conversion handles search events. |
+Registration sites are the static imports in `open-sse/translator/index.js`, where each file calls `register()`. The special case is a branch in `translateResponse`.
+
+| Direction | Pair or condition | File | Reason |
+| --- | --- | --- | --- |
+| Request | `claude:kiro` | [`claude-to-kiro.js`](../../open-sse/translator/request/claude-to-kiro.js) | [`translators.mdx`](translators.mdx): the OpenAI hop drops thinking blocks, tool ids, non-base64 images and `tool_result.is_error`. The file header adds the 400-guards it reproduces from `openai-to-kiro.js`. |
+| Request | `claude:gemini` | [`claude-to-gemini.js`](../../open-sse/translator/request/claude-to-gemini.js) | Carries Gemini thought signatures (`resolveGeminiThoughtSignature`). This doc's Q3 row says direct Claude→Gemini must not be treated as the lossy Chat pivot. |
+| Response | `kiro:claude` | [`kiro-to-claude.js`](../../open-sse/translator/response/kiro-to-claude.js) | [`translators.mdx`](translators.mdx): `KiroExecutor` already emits OpenAI-shaped chunks, so the direct route converts them straight to Claude SSE. The file header calls it lossless for reasoning, tool calls and usage. |
+| Response | `gemini:claude` | [`gemini-to-claude.js`](../../open-sse/translator/response/gemini-to-claude.js) | No recorded reason. `translators.mdx` lists the route, and the file stores Gemini thought signatures, but no doc or comment says the hub path loses them. |
+| Response | `OPENAI_RESPONSES` → `CLAUDE` with `searchEnabled` | [`responses-to-claude.js`](../../open-sse/translator/response/responses-to-claude.js) | The file header says the route collects hosted-search actions and citations for Claude Code. [Port report 1072](port-reports/1072-9r-codex-claude-search-5496.md) calls it deliberately narrow: it runs only when `state.searchEnabled` is set (`open-sse/utils/stream.js`, codex with a `web_search_20250305` tool), so other Responses traffic keeps the hub path. |
 
 [`registerAll.js`](../../tests/translator/registerAll.js) imports the real adapters. Its old comment about `require()` does not describe the current static imports; imports themselves remain usable. Both new files import it and use production entry points, with no mocked registry. Non-stream replies require [`translateNonStreamingResponse`](../../open-sse/handlers/chatCore/nonStreamingHandler.js), not feeding JSON into the chunk API.
 

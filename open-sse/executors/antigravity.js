@@ -502,10 +502,12 @@ export class AntigravityExecutor extends BaseExecutor {
       return c;
     }));
 
-    // Native requests bypass the translator's response schema normalization.
-    if (body.request?.generationConfig?.responseSchema) {
+    // Native requests bypass the translator's response schema normalization;
+    // enforce structuredOutput validation so invalid/recursive schemas fail locally.
+    if (body.request?.generationConfig?.responseSchema !== undefined) {
       body.request.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
-        structuredClone(body.request.generationConfig.responseSchema), { preserveNullable: true }
+        structuredClone(body.request.generationConfig.responseSchema),
+        { preserveNullable: true, structuredOutput: true }
       );
     }
 

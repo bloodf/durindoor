@@ -22,7 +22,8 @@ function usageFromResponses(responseUsage) {
     claude: {
       input_tokens: freshInput,
       output_tokens: outputTokens,
-      ...(cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : null),
+      // Keep an explicitly reported zero cache-read distinct from omission (OmniRoute #20949).
+      ...(reportedCacheRead || cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : null),
       ...(cacheCreate > 0 ? { cache_creation_input_tokens: cacheCreate } : null)
     },
     openai: {

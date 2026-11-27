@@ -55,6 +55,13 @@ export function parseSseFrame(frame) {
   };
 }
 
+/** Replace a frame's data fields while retaining comments and other metadata. */
+export function replaceSseFrameData(frame, data) {
+  const metadata = frame.raw.split(/\r\n|\r|\n/)
+    .filter((line) => line !== "data" && !line.startsWith("data:"));
+  return [...metadata, `data: ${data}`, "", ""].join("\n");
+}
+
 /** Parse joined JSON first, then use the first data line as legacy Responses parsers did. */
 export function parseResponsesSseData({ data, dataLines }) {
   if (data.trim() === "[DONE]") return { rawDone: true };

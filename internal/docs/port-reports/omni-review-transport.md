@@ -87,7 +87,7 @@ with the three chat models the live `GET /openai/v1/models` returns. The endpoin
 model-list half is catalog scope.
 
 Two local fixtures pin the current values and must move with the change:
-[tests/__baseline__/providers-baseline.json](../../../tests/__baseline__/providers-baseline.json) lines 1227-1228 and
+`tests/__baseline__/providers-baseline.json` lines 1227-1228 (later deleted as unreferenced by #2659) and
 [tests/unit/omniroute-simple-c-providers.test.js](../../../tests/unit/omniroute-simple-c-providers.test.js) lines
 125-127. The free-tier catalog row in
 [open-sse/config/freeModelCatalog.data.js](../../../open-sse/config/freeModelCatalog.data.js) line 266 names the same

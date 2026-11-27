@@ -1,0 +1,78 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/providers/registry/haiper/index.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/abort.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/providers/haiper.ts"
+    ]
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/haiper.js: apikey, raw HAIPER_KEY header, serviceKinds [], hiddenKinds [image, video], models []",
+    "imageAdapter": "none (getImageAdapter('haiper') is null)",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('haiper') is null)"
+  },
+  "module": "open-sse/services/providerParity/native-haiper-video-image/index.js",
+  "exports": {
+    "haiperImageAdapter": "default image adapter instance (guarded generate adapter, responseFormats [url])",
+    "haiperVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createHaiperImageAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now } for tests",
+    "createHaiperVideoAdapter": "factory; same options as the image factory",
+    "buildHaiperImageRequest": "(model, body) -> { prompt, aspect_ratio }; throws status 400",
+    "buildHaiperVideoRequest": "(model, body) -> { prompt, duration: 4, aspect_ratio: '16:9' }; throws status 400",
+    "runHaiperJob": "submit + bounded poll; { success, url, jobId, accounting } or error result with acceptedJob",
+    "haiperAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "haiperPublicUrl": "public https URL check used for results",
+    "HAIPER_IMAGE_MODELS": "image catalog metadata",
+    "HAIPER_VIDEO_MODELS": "video catalog metadata",
+    "HAIPER_IMAGE_ASPECT_RATIOS": "registry supportedSizes, sent as aspect_ratio"
+  },
+  "provider": {
+    "canonicalId": "haiper",
+    "aliases": ["hp"],
+    "existingRegistryEntry": "open-sse/providers/registry/haiper.js",
+    "existingServiceKinds": [],
+    "addServiceKinds": ["image", "video"],
+    "removeHiddenKinds": ["image", "video"],
+    "authModes": ["apikey"],
+    "auth": { "header": "HAIPER_KEY", "scheme": "raw", "credentialFields": ["apiKey"] },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "image": [{ "id": "gen2", "name": "Gen 2 Image" }],
+    "video": [{ "id": "gen2", "name": "Gen 2" }],
+    "notAdded": { "gen2-image": "listed only on the OmniRoute chat-format provider entry; the media registries use gen2 for both kinds" },
+    "dynamicDiscovery": "none in the source; static lists only"
+  },
+  "endpoints": {
+    "imageSubmit": { "method": "POST", "url": "https://api.haiper.ai/v1/jobs/gen2/text2image" },
+    "videoSubmit": { "method": "POST", "url": "https://api.haiper.ai/v1/jobs/gen2/text2video" },
+    "status": { "method": "GET", "url": "https://api.haiper.ai/v1/jobs/{job_id}" }
+  },
+  "responseFormats": { "image": ["url"], "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { haiperImageAdapter } and add `haiper: haiperImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { haiperVideoAdapter } and add `haiper: haiperVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/haiper.js",
+      "change": "serviceKinds [\"image\", \"video\"]; drop hiddenKinds; add gen2 image and gen2 video model rows (kind) from HAIPER_IMAGE_MODELS / HAIPER_VIDEO_MODELS; keep alias hp, authType apikey and the raw HAIPER_KEY transport; no videoConfig (no async /v1/videos ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Haiper image and video kinds after registration"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import { createProvider } from "@/lib/providerRouteHandlers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { isIsolatedLoginRequest, ownerBinding } from "@/lib/webLoginSession";
 import { isString, isRecord } from "@/shared/utils/typeChecks";
+import { normalizeAccountEmail } from "@/shared/utils/cookieImportContract";
 import { getCookieImportContract, describeCookieImportContract, buildImportedCookieHeader, validateImportedLocalStorage } from "./contract";
 import { issuePairing, consumePairing, isWellFormedPairingToken, PAIRING_TTL_MS } from "./pairing";
 
@@ -117,7 +118,17 @@ export async function handleCookieImportPairing(request) {
     return json({ error: "action must be create or update" }, 400);
   }
 
-  const pairing = issuePairing({ provider, owner: ownerBinding(request), target });
+  // An optional account email (Inner.ai Web) is validated here and bound to the pairing on the
+  // server only. It is not echoed in the response, and the import request cannot supply it.
+  let accountEmail = "";
+  if (body.accountEmail !== undefined) {
+    if (contract.accountEmail !== "optional") return json({ error: "This provider takes no account email" }, 400);
+    const normalized = normalizeAccountEmail(body.accountEmail);
+    if (!normalized.ok) return json({ error: normalized.error }, 400);
+    accountEmail = normalized.email;
+  }
+
+  const pairing = issuePairing({ provider, owner: ownerBinding(request), target, accountEmail });
   if (!pairing) return json({ error: "Too many pending pairings" }, 429);
   return json({
     pairing: {
@@ -152,12 +163,21 @@ export async function handleCookieImport(request) {
     (target.action === "update" ? body.connectionId === target.connectionId : body.connectionId === undefined) &&
     (target.action === "create" && body.name !== undefined ? body.name === target.name : true);
   if (!matches) return json({ error: "Pairing does not match this request" }, 409);
+  // The account email belongs to the pairing. A request that tries to send one is refused rather
+  // than ignored, so an extension or a tampered body can never override or add it.
+  if (Object.hasOwn(body, "accountEmail")) return json({ error: "Account email is bound by the pairing" }, 400);
 
   const contract = getCookieImportContract(pairing.provider);
   if (!contract) return json({ error: "Provider does not support cookie import" }, 400);
   if (body.origin !== contract.origin) return json({ error: "Origin is not approved for this provider" }, 400);
   const built = buildImportedCookieHeader(contract, body.cookies);
   if (!built.ok) return json({ error: built.error }, 400);
+  // A paired account email is appended in the executor's `<cookie> <email>` form. A pairing without
+  // one stores the token alone, so a replacement never carries an earlier email forward.
+  if (pairing.accountEmail) {
+    if (contract.accountEmail !== "optional") return json({ error: "This provider takes no account email" }, 400);
+    built.header = `${built.header} ${pairing.accountEmail}`;
+  }
   // Named localStorage values (TinyCMS `app-config-uuid`) travel beside the cookies and are
   // stored in providerSpecificData under their own key, never in the cookie header.
   const stored = validateImportedLocalStorage(contract, body.localStorage);

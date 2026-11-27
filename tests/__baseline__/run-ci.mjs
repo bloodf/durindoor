@@ -71,32 +71,86 @@ function ensureDiagnosticArtifacts(error) {
   if (!fs.existsSync(junitPath)) writeDiagnosticJunit(error, junitPath);
 }
 
-function killGroup(pid) {
-  try { process.kill(-pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+// ps works on Linux and Darwin. Zombies cannot execute and may remain until
+// their parent (or the host reaper) collects them; they are not live workers.
+export function processGroupMembers(pid, timeoutMs = 2000) {
+  const result = spawnSync("ps", ["-axo", "pid=,pgid=,stat="], {
+    encoding: "utf8", timeout: Math.max(1, Math.min(2000, timeoutMs)), maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) throw new Error(`cannot inspect command process group: ${result.error?.message || result.stderr}`);
+  return result.stdout.trim().split("\n").filter(Boolean).map((line) => {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)$/);
+    if (!match) throw new Error("invalid ps process group inventory");
+    return { pid: Number(match[1]), group: Number(match[2]), state: match[3] };
+  }).filter((row) => row.group === pid && !row.state.startsWith("Z")).map((row) => row.pid);
 }
 
-// Runs one command in its own process group; on timeout the whole group
-// (Vitest and its forks) is killed and the result is marked timedOut.
-export function runSupervised(command, args, { cwd, env = process.env, timeoutMs = COMMAND_TIMEOUT_MS } = {}) {
+export async function killGroup(pid, { kill = process.kill, members = processGroupMembers,
+  deadline = Date.now() + 5000 } = {}) {
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) throw new Error("invalid command process group");
+  const failures = [];
+  try { kill(-pid, "SIGKILL"); }
+  catch (error) { if (error.code !== "ESRCH") failures.push(error); }
+  // A failed ps is unknown, not an empty group. Reserve time for one last
+  // inventory after the final signal, and retry transient listing failures.
+  const finalReserve = Math.min(500, Math.max(0, Math.floor((deadline - Date.now()) / 2)));
+  let lastError = null;
+  const inspect = (reserve = 0) => {
+    try { const live = members(pid, Math.max(1, deadline - reserve - Date.now())); lastError = null; return live; }
+    catch (error) { lastError = error; return null; }
+  };
+  while (Date.now() < deadline - finalReserve) {
+    const live = inspect(finalReserve);
+    if (live && live.length === 0) return;
+    if (live) for (const member of live) {
+      if (!Number.isInteger(member) || member <= 1 || member === process.pid) throw new Error("unsafe command group member");
+      try { kill(member, "SIGKILL"); }
+      catch (error) { if (error.code !== "ESRCH") failures.push(error); }
+    }
+    const delay = Math.min(10, Math.max(0, deadline - finalReserve - Date.now()));
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  const final = inspect();
+  if (final && final.length === 0) return;
+  if (!final) throw new AggregateError([...failures, lastError].filter(Boolean), "command cleanup could not be verified");
+  const codes = [...new Set(failures.map((error) => error.code || error.message))].join(", ");
+  throw new AggregateError(failures, `command cleanup deadline exceeded; live workers may remain${codes ? ` (${codes})` : ""}`);
+}
+
+// Reserve cleanup time inside the command ceiling. Close alone is not proof
+// that workers exited; cleanup failures must reach the caller and fail the gate.
+export function runSupervised(command, args, { cwd, env = process.env, timeoutMs = COMMAND_TIMEOUT_MS,
+  operations = {} } = {}) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    const deadline = startedAt + timeoutMs;
+    const grace = Math.min(5000, timeoutMs / 4);
     let child;
     try {
-      child = spawn(command, args, { cwd, env, stdio: "inherit", detached: true });
+      child = (operations.spawn || spawn)(command, args, { cwd, env, stdio: "inherit", detached: true });
     } catch (error) {
       resolve({ code: null, signal: null, timedOut: false, error, startedAt, durationMs: 0 });
       return;
     }
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; killGroup(child.pid); }, timeoutMs);
-    const finish = (result) => {
+    let finishing = false;
+    const finish = async (result) => {
+      if (finishing) return;
+      finishing = true;
       clearTimeout(timer);
-      // Reap fork workers a crashed or killed runner may leave behind.
-      if (child.pid) killGroup(child.pid);
+      try {
+        if (child.pid) await killGroup(child.pid, { ...operations, deadline: Math.min(deadline, Date.now() + grace) });
+      } catch (error) {
+        result.error = result.error ? new AggregateError([result.error, error], "command and cleanup failed") : error;
+      }
       resolve({ timedOut, startedAt, durationMs: Date.now() - startedAt, ...result });
     };
-    child.on("error", (error) => finish({ code: null, signal: null, error }));
-    child.on("close", (code, signal) => finish({ code, signal }));
+    const timer = setTimeout(() => {
+      timedOut = true;
+      void finish({ code: null, signal: null });
+    }, Math.max(0, timeoutMs - grace));
+    child.on("error", (error) => { void finish({ code: null, signal: null, error }); });
+    child.on("close", (code, signal) => { void finish({ code, signal }); });
   });
 }
 

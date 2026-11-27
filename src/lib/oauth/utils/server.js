@@ -33,7 +33,8 @@ export function startLocalServer(onCallback, fixedPort = null) {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, `http://localhost`);
 
-      if (url.pathname === "/callback" || url.pathname === "/auth/callback") {
+      // Antigravity desktop uses /oauth-callback (CLIProxyAPI 47f18e4 auth.go).
+      if (url.pathname === "/oauth-callback" || url.pathname === "/callback" || url.pathname === "/auth/callback") {
         if (!isLoopbackOrigin(req.headers.origin)) {
           res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
           res.end("Cross-origin callback rejected");
@@ -353,7 +354,9 @@ export function startCodexProxy(appPort) {
       await stopCodexProxy(server);
     });
 
-    server.listen(CODEX_PORT, "127.0.0.1", () => {
+    // Allow container bridge port-forwarding when explicitly opted in (#5897).
+    const host = process.env.CODEX_OAUTH_CALLBACK_BIND_ALL === "true" ? "0.0.0.0" : "127.0.0.1";
+    server.listen(CODEX_PORT, host, () => {
       codexProxyServer = server;
       armCodexProxyTimeout(server, generation);
       resolve({ success: true });

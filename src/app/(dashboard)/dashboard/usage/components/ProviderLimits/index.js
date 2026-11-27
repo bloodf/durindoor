@@ -30,7 +30,8 @@ import {
 "./grouping";
 import {
   parseQuotaData,
-  isQuotaCollectionDepleted,
+  getEarliestQuotaResetTime,
+  getQuotaAvailability,
   filterQuotasByVisibility,
   getHiddenQuotaRows,
   getQuotaVisibilityKey,
@@ -1450,11 +1451,6 @@ export default function ProviderLimits() {
     [sortedConnections]
   );
 
-  // A connection remains available while a reported pool has capacity.
-  const isConnectionDepleted = (conn) => {
-    return isQuotaCollectionDepleted(quotaData[conn.id]?.quotas, DEPLETED_QUOTA_THRESHOLD);
-  };
-
   const bulkSetActive = useCallback(
     async (targetIds, isActive) => {
       if (!targetIds.length || bulkToggling) return;
@@ -1479,19 +1475,14 @@ export default function ProviderLimits() {
     [bulkToggling, fetchConnections, page]
   );
 
-  const handleDisableDepleted = () => {
-    const ids = sortedConnections.
-    filter((c) => (c.isActive ?? true) && isConnectionDepleted(c)).
-    map((c) => c.id);
-    bulkSetActive(ids, false);
-  };
-
-  const handleEnableAvailable = () => {
-    const ids = sortedConnections.
-    filter((c) => !(c.isActive ?? true) && !isConnectionDepleted(c)).
-    map((c) => c.id);
-    bulkSetActive(ids, true);
-  };
+  // Exclude accounts without measured quota from bulk enable/disable actions (#5898).
+  const depletedIds = sortedConnections
+    .filter((conn) => (conn.isActive ?? true) && getQuotaAvailability(quotaData[conn.id]?.quotas, DEPLETED_QUOTA_THRESHOLD) === "depleted")
+    .map((conn) => conn.id);
+  const availableIds = sortedConnections
+    .filter((conn) => !(conn.isActive ?? true) && getQuotaAvailability(quotaData[conn.id]?.quotas, DEPLETED_QUOTA_THRESHOLD) === "available")
+    .map((conn) => conn.id);
+  const hasQuotaReset = sortedConnections.some((conn) => Number.isFinite(getEarliestQuotaResetTime(quotaData[conn.id]?.quotas)));
 
   const hasEligibleConnections = totals.eligibleConnections > 0;
   const hasVisibleConnections = sortedConnections.length > 0;
@@ -1539,13 +1530,13 @@ export default function ProviderLimits() {
               options={QUOTA_SORT_OPTIONS}
             />
           ) : null}
-          <Button variant="secondary" size="sm" icon="hourglass_top" onClick={() => updateExpiringFirst(!expiringFirst)} className={expiringFirst ? "ring-1 ring-dd-warning" : ""}>
+          <Button variant="secondary" size="sm" icon="hourglass_top" onClick={() => updateExpiringFirst(!expiringFirst)} disabled={!expiringFirst && !hasQuotaReset} aria-pressed={expiringFirst} className={expiringFirst ? "ring-1 ring-dd-warning" : ""}>
             <span>Expiring</span>
           </Button>
-          <Button variant="danger" size="sm" icon="block" onClick={handleDisableDepleted} disabled={bulkToggling}>
+          <Button variant="danger" size="sm" icon="block" onClick={() => bulkSetActive(depletedIds, false)} disabled={bulkToggling || !depletedIds.length}>
             <span>Disable empty</span>
           </Button>
-          <Button variant="primary" size="sm" icon="check_circle" onClick={handleEnableAvailable} disabled={bulkToggling}>
+          <Button variant="primary" size="sm" icon="check_circle" onClick={() => bulkSetActive(availableIds, true)} disabled={bulkToggling || !availableIds.length}>
             <span>Enable available</span>
           </Button>
           <Button variant="secondary" size="sm" icon={autoRefresh ? "toggle_on" : "toggle_off"} onClick={() => setAutoRefresh((prev) => !prev)}>

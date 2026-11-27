@@ -1,0 +1,21 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": { "repository": "OmniRoute", "license": "MIT", "commit": "3a17f7e908308a217887a7617c2c793b95ea83c0", "files": ["open-sse/config/audioRegistry.ts", "open-sse/handlers/audioTranscription.ts", "open-sse/utils/audioMultipart.ts"], "vendorDocs": "https://elevenlabs.io/docs/api-reference/speech-to-text/convert" },
+  "gap": "Existing elevenlabs registry entry has TTS only and no sttConfig. Static inspection only; no live 400 or provider verification.",
+  "module": "open-sse/services/providerParity/native-elevenlabs-stt/index.js",
+  "exports": ["ELEVENLABS_PROVIDER_ID", "ELEVENLABS_TRANSCRIPTION_URL", "ELEVENLABS_STT_MODELS", "ELEVENLABS_STT_CONFIG", "ELEVENLABS_STT_TIMEOUT_MS", "ELEVENLABS_MAX_STT_FILE_BYTES", "ELEVENLABS_MAX_TRANSCRIPT_BYTES", "ELEVENLABS_RESPONSE_FORMATS", "createElevenLabsSttAdapter", "elevenLabsSttAdapter", "buildElevenLabsTranscriptionRequest", "elevenLabsSttAcceptedJob", "elevenLabsSttRefusal"],
+  "provider": { "canonicalId": "elevenlabs", "alias": "el", "existingKinds": ["tts"], "addedKind": "stt", "authModes": ["apikey"], "credentialFields": ["apiKey", "accessToken"], "header": "xi-api-key", "fixedOrigin": true },
+  "models": [{"id":"scribe_v1","kind":"stt"},{"id":"scribe_v2","kind":"stt"}],
+  "wire": { "method": "POST", "url": "https://api.elevenlabs.io/v1/speech-to-text", "multipart": ["model_id", "language_code?", "file"], "clientFormats": ["json", "text", "verbose_json"], "sourceFields": ["file", "language"], "staticModels": true, "liveVerified": false },
+  "limits": { "fileBytes": 26214400, "responseBytes": 8388608, "timeoutMs": 300000, "redirects": false, "retries": 0 },
+  "aliasContract": "At registration preserve yieldToBareIds=true and resolve exact bare model IDs before provider prefixes: elevenlabs/speech-to-text belongs to KIE; el/scribe_v1 and el/scribe_v2 resolve native ElevenLabs. Do not modify KIE. Final integration batch must prove both paths through the real public handler; staged tests do not prove this.",
+  "integrationPoints": [
+    {"file":"open-sse/providers/registry/elevenlabs.js","change":"Add stt kind, staged config and model rows without changing TTS; preserve yieldToBareIds."},
+    {"file":"open-sse/handlers/sttCore.js","change":"Dispatch elevenlabs-stt to elevenLabsSttAdapter before generic multipart."},
+    {"file":"src/sse/handlers/stt.js","change":"Confirm acceptedJob accounting stops fallback and exact bare IDs precede provider alias parsing; add guard if needed."},
+    {"file":"src/app/api/v1/audio/transcriptions/route.js","change":"Public transcription target; integration tests must exercise real handler for both KIE bare ID and el/source model."}
+  ],
+  "stagingGuard": "No public imports or registration in this stage. Auth register-native15 owns activation; it must change the isolated staging guards that assert no production imports and no native sttConfig, and replace them with public-handler routing tests.",
+  "tests": "Network mocked at adapter boundary; no live accounts, model discovery, capabilities or prices verified."
+}

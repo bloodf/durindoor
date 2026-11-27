@@ -1,0 +1,61 @@
+{
+  "registered": false,
+  "canonicalId": "kimi-search",
+  "aliases": ["moonshot"],
+  "sourceAliases": ["kimi", "moonshot"],
+  "aliasConflicts": {
+    "kimi": "local canonical LLM provider id (open-sse/providers/registry/kimi.js) whose searchViaChat already serves chat-wrapped web search; do not remap it to kimi-search"
+  },
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/handlers/search/kimiSearch.ts",
+      "src/shared/constants/providers/search.ts",
+      "tests/unit/search-kimi-provider.test.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["KIMI_SEARCH_ID", "KIMI_SEARCH_SOURCE_ALIASES", "KIMI_SEARCH_ALIASES", "KIMI_SEARCH_ORIGIN", "KIMI_SEARCH_URL", "KIMI_SEARCH_PRICING_URL", "searchConfig", "kimiSearchProviderDefinition", "kimiSearchMetadata"],
+    "adapter.js": ["kimiSearchAdapter", "buildKimiSearchBody", "normalizeKimiSearchResponse", "kimiSearchHeaders", "sanitizeKimiQuery", "safeResultUrl", "resolveKimiSearchProviderId", "invalid"],
+    "service.js": ["handleKimiSearchNative"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "searchTypes": ["web"],
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "connectionModes": ["apikey"],
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay, chat fallback or failover"
+  },
+  "endpoints": {
+    "search": "POST https://api.moonshot.ai/v1/tools/search",
+    "discovery": null
+  },
+  "envelope": {
+    "request": "{ text_query: NFKC/trimmed/collapsed query, limit: min(max_results ?? 5, 20), include_content: true }",
+    "response": "{ provider: 'kimi-search', query, results: SearchResult[] (local normalizers.js makeResult shape), answer: null, usage: { queries_used: 1, search_cost_usd }, metrics, errors: [] } rebuilt from validated search_results[]"
+  },
+  "integration": {
+    "provider": "new open-sse/providers/registry/kimi-search.js from kimiSearchProviderDefinition (category apikey, serviceKinds ['webSearch'], searchConfig), plus alias 'moonshot'; the existing kimi.js transport/auth/searchViaChat stay unchanged",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleKimiSearchNative for provider 'kimi-search' before tryDedicatedProvider; or add a 'kimi-search' builder to handlers/search/callers.js and normalizer to handlers/search/normalizers.js (the generic path would then lose input refusal, result URL filtering and acceptedJob)",
+    "route": "src/app/api/v1/search route + provider resolution must map 'moonshot' to 'kimi-search' and enforce blockedProviders on the resolved id (OmniRoute #20276)",
+    "accounting": "result.accounting stays costStatus unknown; data.usage.search_cost_usd is the registry list price for non-empty calls; acceptedJob marks possibly-billed failures",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "search_type 'web' only; country, language, time_range, offset, domain_filter, content_options, provider_options and unknown fields are refused before submission (the source silently ignores them)",
+    "max_results positive integer, clamped to 20; query at most 2000 characters after normalization, no control characters",
+    "results without a public http(s) URL (private/loopback/metadata hosts, userinfo, other schemes) are dropped; results capped to limit",
+    "non-object envelope or missing/non-array search_results is a malformed 502 (the source returns zero results)",
+    "10s default / 15s maximum total deadline, 8MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed",
+    "no answer synthesis, no streaming, no model discovery (the source exposes none for this provider)"
+  ]
+}

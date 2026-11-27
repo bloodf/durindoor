@@ -5,7 +5,7 @@ import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
-import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
+import { claudeResponsesError, createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
@@ -527,6 +527,11 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
           throwOnTimeout: true
         });
+        if (sourceFormat === FORMATS.CLAUDE && jsonResponse?.status === "failed" && jsonResponse.error) {
+          const { status, error } = claudeResponsesError(jsonResponse.error);
+          appendLog({ status: `FAILED ${status}` });
+          return { ...createErrorResult(status, error.message), quotaTerminalReason: "stream_error" };
+        }
         if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
           return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
         }

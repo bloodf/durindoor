@@ -6,7 +6,7 @@
 import { createSseFrameReader, parseResponsesSseData } from "../utils/sseFrames.js";
 import { FORMATS } from "../translator/formats.js";
 import { MAX_RESPONSES_OUTPUT_ITEMS } from "../config/runtimeConfig.js";
-import { readBoundedResponseText } from "../utils/error.js";
+import { getResponsesEventError, readBoundedResponseText } from "../utils/error.js";
 import { toResponsesUsage } from "../translator/concerns/usage.js";
 import { responsesIncompleteDetailsOrOmit } from "../translator/concerns/finishReason.js";
 import { createUpstreamTerminalTracker } from "../utils/streamTerminal.js";
@@ -106,6 +106,12 @@ function processSSEMessage(msg, state) {
   if (!eventType) {state.terminal.fail();return;}
 
   state.terminal.observe({ chunk: parsed, eventName: eventType });
+  const eventError = getResponsesEventError(eventType, parsed);
+  if (eventError) {
+    state.status = "failed";
+    state.error ??= eventError;
+    return;
+  }
   observeDraft(eventType, parsed, state);
 
   if (eventType === "response.created") {
@@ -215,6 +221,7 @@ export async function convertResponsesStreamToJson(stream, options = {}) {
     object: "response",
     created_at: state.created ?? state.fallbackCreated,
     status: state.status,
+    ...(state.error ? { error: state.error } : null),
     ...(state.status === "incomplete" && state.incompleteDetails ? { incomplete_details: state.incompleteDetails } : null),
     output,
     usage: state.usage

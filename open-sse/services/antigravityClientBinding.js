@@ -10,11 +10,12 @@ import { ANTIGRAVITY_OAUTH_CLIENT } from "../providers/shared.js";
 export const CLIENT_BINDING_KEY = "oauthClientBinding";
 const VERSION = "v1";
 
-const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const isPlainObject = (value) => Object(value) === value && !Array.isArray(value);
 
 /** `v1:<sha256 hex of the trimmed client ID>`, or null when no client ID is configured. */
 export function clientBindingFor(clientId) {
-  const trimmed = typeof clientId === "string" ? clientId.trim() : "";
+  // The client ID comes from an environment string; absent values hash to nothing.
+  const trimmed = clientId === undefined || clientId === null ? "" : String(clientId).trim();
   if (!trimmed) return null;
   return `${VERSION}:${createHash("sha256").update(trimmed, "utf8").digest("hex")}`;
 }
@@ -33,7 +34,7 @@ export function withClientBinding(providerSpecificData, clientId) {
  * current client ID never matches a marked row.
  */
 export function clientBindingStatus(providerSpecificData, currentClientId) {
-  const stored = providerSpecificData && typeof providerSpecificData === "object" ? providerSpecificData[CLIENT_BINDING_KEY] : undefined;
+  const stored = providerSpecificData?.[CLIENT_BINDING_KEY];
   if (stored === undefined || stored === null || stored === "") return "unmarked";
   const current = clientBindingFor(currentClientId);
   return current && stored === current ? "match" : "mismatch";

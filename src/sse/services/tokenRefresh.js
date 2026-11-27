@@ -142,15 +142,15 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
 /**
  * Persist updated credentials for a connection to localDb.
  * Only fields that are present in `newCredentials` are written. Malformed
- * tokens are rejected before any fields are persisted.
+ * tokens and times are skipped so the valid fields beside them still persist.
  *
  * @param {string} connectionId
  * @param {object} newCredentials
  * @param {object} [options]
  * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
  * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
- *   The write also requires the access token captured before refresh.
- * @param {string} [options.presentedAccessToken] Access token at refresh start.
+ *   The write is refused when the stored token is neither this one nor its replacement.
+ * @param {string} [options.presentedAccessToken] Access token at refresh start, when available.
  * @returns {Promise<boolean>}
  */
 export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
@@ -167,16 +167,6 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       return result?.applied === true;
     }
 
-    for (const field of ["accessToken", "refreshToken", "idToken"]) {
-      const value = newCredentials[field];
-      if (value !== null && value !== undefined && value !== "" && !isStorableSecret(value)) return false;
-    }
-    for (const data of [newCredentials, newCredentials.providerSpecificData]) {
-      if (!data) continue;
-      if (Object.hasOwn(data, "copilotToken") && !isStorableSecret(data.copilotToken)) return false;
-      if (Object.hasOwn(data, "copilotTokenExpiresAt") &&
-          (!Number.isFinite(data.copilotTokenExpiresAt) || data.copilotTokenExpiresAt <= 0)) return false;
-    }
     const updates = {};
 
     for (const field of ["accessToken", "refreshToken", "idToken"]) {
@@ -213,12 +203,12 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };
     } else if (presentedRefreshToken) {
-      // A refresh token may remain unchanged across rotations. Require the
-      // access token captured before the network request as well.
-      if (!isStorableSecret(presentedAccessToken)) return false;
+      // An unchanged refresh token must not let a stale access token overwrite a winner.
       guard = {
-        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken &&
-          stored.accessToken === presentedAccessToken
+        shouldCommitConnection: (stored) => (stored.refreshToken === presentedRefreshToken ||
+        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken) &&
+        (!isStorableSecret(presentedAccessToken) || !isStorableSecret(stored.accessToken) ||
+          stored.accessToken === presentedAccessToken)
       };
     }
     // The repo compares rotated identity claims with the stored row under its write lock.
@@ -325,7 +315,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
         guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken: credentials.accessToken });
       // Never dispatch a Codex token whose identity the store did not accept.
-      if (!applied) return creds;
+      if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
 
       creds = {
         ...creds,
@@ -368,15 +358,14 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
           copilotTokenExpiresAt: copilotTokenResult.expiresAt
         };
 
-        const applied = await updateProviderCredentials(creds.connectionId, {
+        await updateProviderCredentials(creds.connectionId, {
           providerSpecificData: {
             ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
             copilotToken: copilotTokenResult.token,
             copilotTokenExpiresAt: copilotTokenResult.expiresAt
           }
-        }, { expectedRefreshContext: providerRefreshContext(creds) });
+        });
 
-        if (!applied) return creds;
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotTokenResult.token;
       }

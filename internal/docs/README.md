@@ -199,6 +199,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [deploy-gates.md](./deploy-gates.md)
 - [deployment-mode.md](./deployment-mode.md)
 - [image-cache-20828-investigation.md](./image-cache-20828-investigation.md)
+- [image-refresh-dispatch-health.md](./image-refresh-dispatch-health.md)
 - [integration-cdfb0c5-follow-up.md](./integration-cdfb0c5-follow-up.md)
 - [documentation-plan.md](./documentation-plan.md)
 - [local-ci.md](./local-ci.md)

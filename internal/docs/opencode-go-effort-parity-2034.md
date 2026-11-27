@@ -105,6 +105,10 @@ disagreed.
   declared tier), and a disable request on a model that declares no `none`
   tier is floored onto the lowest declared tier instead of switching thinking
   off.
+  A reasoning request is never folded onto `none`, so an unrecognized tier
+  becomes the lowest reasoning tier (`low`), not `none`. A declared set with
+  no reasoning tier (`["none"]`) rejects reasoning requests with HTTP 400
+  (#2648); no OpenCode Go row declares such a set.
 - The `deepseek` wire branch forwards the resolved tier for those rows, so the
   OpenAI chat lane, the Claude Messages lane
   (`output_config.effort`) and the Responses lane (`reasoning.effort`) all

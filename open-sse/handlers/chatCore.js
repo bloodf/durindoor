@@ -812,7 +812,14 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    try {
+      applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    } catch (error) {
+      // An effort the model's declared tiers cannot carry is the client's 400, as in translateRequest below.
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**

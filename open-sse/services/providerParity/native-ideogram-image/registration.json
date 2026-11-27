@@ -1,0 +1,89 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/providers/ideogram.ts",
+      "open-sse/handlers/imageGeneration/fanOut.ts",
+      "open-sse/config/providers/registry/ideogram/index.ts"
+    ]
+  },
+  "localEquivalentCheck": {
+    "result": "missing",
+    "evidence": "open-sse/handlers/imageProviders/index.js IMAGE_ADAPTERS has no `ideogram` or `ideo` key; open-sse/providers/registry/ideogram.js declares serviceKinds [], hiddenKinds [\"image\"] and imageConfig { baseUrl: \"https://api.ideogram.ai\", authHeader: \"Api-Key\" } with the comment 'Hidden until an image adapter is registered'. The fal-ai (fal-ai/ideogram/v2), huggingface (ideogram-ai/ideogram-4-fp8), together (ideogram/ideogram-3.0) and kie (ideogram/v3-*) rows are other vendors' hosted Ideogram models on their own endpoints and auth, not api.ideogram.ai/generate with Api-Key."
+  },
+  "module": "open-sse/services/providerParity/native-ideogram-image/index.js",
+  "exports": {
+    "ideogramImageAdapter": "default image adapter instance (guarded generate adapter)",
+    "createIdeogramImageAdapter": "factory; options { callTimeoutMs, totalTimeoutMs, imageFetcher, now } for tests",
+    "buildIdeogramImageRequest": "(model, body) -> { request: { prompt, aspect_ratio, model }, count }; throws status 400",
+    "ideogramAcceptedJob": "(modality, jobState, meta) accepted-job accounting with unknown cost",
+    "ideogramPublicUrl": "public https URL check used for results",
+    "IDEOGRAM_PROVIDER_ID": "\"ideogram\"",
+    "IDEOGRAM_ALIASES": "[\"ideo\"]",
+    "IDEOGRAM_ORIGIN": "the only origin the key is sent to",
+    "IDEOGRAM_IMAGE_URL": "image endpoint",
+    "IDEOGRAM_IMAGE_FORMAT": "\"ideogram-image\" (source registry format)",
+    "IDEOGRAM_AUTH_HEADER": "\"Api-Key\"",
+    "IDEOGRAM_IMAGE_MODELS": "image catalog metadata (kind \"image\")",
+    "IDEOGRAM_DEFAULT_MODEL": "\"V_3\" (source default when no model is given)",
+    "IDEOGRAM_REGISTRY_SIZES": "source registry supportedSizes, verbatim",
+    "IDEOGRAM_IMAGE_SIZES": "sizes this subset accepts ([\"1792x1024\"])",
+    "IDEOGRAM_ASPECT_RATIO": "\"ASPECT_16_9\" (fixed wire value in the source)",
+    "IDEOGRAM_RESPONSE_FORMATS": "[\"b64_json\"]",
+    "IDEOGRAM_CALL_TIMEOUT_MS": "per-call deadline (submit, answer and download)",
+    "IDEOGRAM_TOTAL_TIMEOUT_MS": "whole-request deadline across fanned-out calls",
+    "IDEOGRAM_IMAGE_MAX_N": "n ceiling",
+    "ideogramImageModel": "(id) -> catalog row or null"
+  },
+  "provider": {
+    "canonicalId": "ideogram",
+    "aliases": ["ideo"],
+    "existingRegistryEntry": "open-sse/providers/registry/ideogram.js",
+    "existingServiceKinds": [],
+    "existingHiddenKinds": ["image"],
+    "addServiceKinds": ["image"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Api-Key", "scheme": "raw key", "credentialFields": ["apiKey"] },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "image": [
+      { "id": "V_3", "name": "Ideogram V3", "inputModalities": ["text"] },
+      { "id": "V_2A", "name": "Ideogram V2A", "inputModalities": ["text"] }
+    ],
+    "publicIds": "ideogram/V_3, ideogram/V_2A (and ideo/<id> through the registry alias)",
+    "dynamicDiscovery": "none in the source; static two-model list only"
+  },
+  "endpoints": {
+    "image": { "method": "POST", "url": "https://api.ideogram.ai/generate", "redirect": "manual (refused)" },
+    "resultDownload": "data[0].url, public https only, via open-sse/translator/concerns/image.js fetchImageAsBase64 (pinned public IP, manual redirect, 10 MB cap, magic-byte check)"
+  },
+  "responseFormats": { "image": ["b64_json"], "url": false, "binary": false, "stream": false },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { ideogramImageAdapter } and add `ideogram: ideogramImageAdapter` (and `ideo: ideogramImageAdapter`, like `agy`/`horde`) to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check, which refuses url and binary before any send"
+    },
+    {
+      "file": "open-sse/providers/registry/ideogram.js",
+      "change": "serviceKinds [\"image\"], drop hiddenKinds [\"image\"] and the 'Hidden until' comment; imageConfig { baseUrl: IDEOGRAM_IMAGE_URL, authType: \"apikey\", authHeader: \"Api-Key\", supportedSizes: IDEOGRAM_IMAGE_SIZES }; keep category/authType apikey"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Ideogram image kind after registration"
+    },
+    {
+      "file": "open-sse/AGENT-INDEX.md",
+      "change": "regenerate after the registry edit"
+    },
+    {
+      "file": "tests/unit/native-ideogram-image.test.js",
+      "change": "replace the `staging state (isolated)` block with positive identity checks (getImageAdapter(\"ideogram\") === ideogramImageAdapter, registry serviceKinds includes image)"
+    }
+  ]
+}

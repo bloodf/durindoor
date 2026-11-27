@@ -142,17 +142,18 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
 /**
  * Persist updated credentials for a connection to localDb.
  * Only fields that are present in `newCredentials` are written. Malformed
- * tokens and times are skipped so the valid fields beside them still persist.
+ * tokens are rejected before any fields are persisted.
  *
  * @param {string} connectionId
  * @param {object} newCredentials
  * @param {object} [options]
  * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
  * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
- *   The write is refused when the stored token is neither this one nor its replacement.
+ *   The write also requires the access token captured before refresh.
+ * @param {string} [options.presentedAccessToken] Access token at refresh start.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -166,6 +167,16 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       return result?.applied === true;
     }
 
+    for (const field of ["accessToken", "refreshToken", "idToken"]) {
+      const value = newCredentials[field];
+      if (value !== null && value !== undefined && value !== "" && !isStorableSecret(value)) return false;
+    }
+    for (const data of [newCredentials, newCredentials.providerSpecificData]) {
+      if (!data) continue;
+      if (Object.hasOwn(data, "copilotToken") && !isStorableSecret(data.copilotToken)) return false;
+      if (Object.hasOwn(data, "copilotTokenExpiresAt") &&
+          (!Number.isFinite(data.copilotTokenExpiresAt) || data.copilotTokenExpiresAt <= 0)) return false;
+    }
     const updates = {};
 
     for (const field of ["accessToken", "refreshToken", "idToken"]) {
@@ -202,10 +213,12 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };
     } else if (presentedRefreshToken) {
-      // Compare only the token: request credentials do not mirror the stored row.
+      // A refresh token may remain unchanged across rotations. Require the
+      // access token captured before the network request as well.
+      if (!isStorableSecret(presentedAccessToken)) return false;
       guard = {
-        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken ||
-        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
+        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken &&
+          stored.accessToken === presentedAccessToken
       };
     }
     // The repo compares rotated identity claims with the stored row under its write lock.
@@ -310,9 +323,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
-        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken: credentials.accessToken });
       // Never dispatch a Codex token whose identity the store did not accept.
-      if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
+      if (!applied) return creds;
 
       creds = {
         ...creds,
@@ -355,14 +368,15 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
           copilotTokenExpiresAt: copilotTokenResult.expiresAt
         };
 
-        await updateProviderCredentials(creds.connectionId, {
+        const applied = await updateProviderCredentials(creds.connectionId, {
           providerSpecificData: {
             ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
             copilotToken: copilotTokenResult.token,
             copilotTokenExpiresAt: copilotTokenResult.expiresAt
           }
-        });
+        }, { expectedRefreshContext: providerRefreshContext(creds) });
 
+        if (!applied) return creds;
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotTokenResult.token;
       }

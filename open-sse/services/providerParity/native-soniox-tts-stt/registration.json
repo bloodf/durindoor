@@ -1,0 +1,124 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "src/shared/constants/providers/audio.ts",
+      "src/lib/providers/validation/audioMiscProviders.ts"
+    ],
+    "registryFields": {
+      "stt": { "id": "soniox", "baseUrl": "https://api.soniox.com/v1/transcriptions", "authType": "apikey", "authHeader": "bearer", "async": true, "format": "soniox" },
+      "tts": { "id": "soniox", "baseUrl": "https://tts-rt.soniox.com/tts", "authType": "apikey", "authHeader": "bearer", "format": "soniox-tts" }
+    },
+    "inventoryNote": "the #2034 inventory also lists an STT row with apikey / bearer / soniox-tts and endpoint https://tts-rt.soniox.com/tts; in the pinned source that tuple is the speech entry only: handleAudioTranscription dispatches format \"soniox\" to handleSonioxTranscription, which only calls https://api.soniox.com/v1/files and /v1/transcriptions, and no transcription code reaches tts-rt.soniox.com, so that row is a duplicate of the TTS row and nothing is staged for it"
+  },
+  "localEquivalence": {
+    "checked": [
+      "git grep -i soniox over HEAD and origin/main: only internal/docs/port-reports inventory rows; no provider, alias (soniox or sx), model row, ttsConfig, sttConfig or format handler",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS and genericFormats.js FORMAT_HANDLERS: no soniox entry and no soniox-tts format",
+      "open-sse/handlers/sttCore.js handleSttCore: no soniox format; the async job formats there (assemblyai and similar) use other endpoints and envelopes"
+    ],
+    "result": "no Soniox path exists today, so this module (provider definition, TTS adapter, STT adapter) is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-soniox-tts-stt/index.js",
+  "exports": {
+    "sonioxTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "sonioxSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createSonioxTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "createSonioxSttAdapter": "factory; options { fetchImpl, totalTimeoutMs, callTimeoutMs, pollIntervalMs, maxTranscriptBytes, wait, now } for tests",
+    "buildSonioxSpeechRequest": "(model, text, options) -> source speech body { text, model, language, voice, audio_format }; throws status 400",
+    "buildSonioxTranscriptionRequest": "async (model, formData, { kind }) -> { upload: FormData, job, responseFormat, verbose, wantWords } or a 400 error result with local: true",
+    "sonioxJobBody": "(job, fileId) -> source job body in source key order",
+    "sonioxTranscriptBody": "(transcript, { verbose, wantWords }) -> { body, audioSeconds } or null",
+    "groupSonioxTokensBySpeaker": "source speaker-run grouping",
+    "readSonioxDiarization": "source readDiarizationFlag",
+    "resolveSonioxContainer": "(requested, gatewayFormat) -> container; throws status 400",
+    "resolveSonioxVoice": "source resolveSonioxVoice (OpenAI stock voice or empty -> Adrian)",
+    "matchesSonioxContainer": "(container, bytes) leading-byte check for mp3, wav, opus (Ogg)",
+    "sonioxUploadFileName": "source upload file name rule",
+    "sonioxAcceptedJob": "(modality, jobState, jobId) accepted-job accounting with unknown cost",
+    "SONIOX_PROVIDER_DEFINITION": "staged registry entry (id, alias, aliases, display, apikey auth, transport.validateUrl, serviceKinds, ttsConfig, sttConfig)",
+    "SONIOX_TTS_MODELS": "speech models",
+    "SONIOX_STT_MODELS": "transcription models",
+    "SONIOX_SPEECH_CONTAINERS": "[\"mp3\", \"wav\", \"opus\"]",
+    "SONIOX_SPEECH_RESPONSE_FORMATS": "containers plus \"json\" (gateway wrapper)",
+    "SONIOX_SPEECH_CONTENT_TYPES": "source content-type labels per container",
+    "SONIOX_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\", \"verbose_json\"]",
+    "SONIOX_DIARIZATION_FIELDS": "source diarization field spellings"
+  },
+  "provider": {
+    "canonicalId": "soniox",
+    "aliases": ["sx"],
+    "uiAlias": "sx",
+    "existingRegistryEntry": null,
+    "serviceKinds": ["tts", "stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "validateUrl": "https://api.soniox.com/v1/transcriptions",
+    "formats": { "tts": "soniox-tts", "stt": "soniox" }
+  },
+  "models": {
+    "tts": [
+      { "id": "tts-rt-v2", "name": "Soniox TTS RT v2" },
+      { "id": "tts-rt-v1", "name": "Soniox TTS RT v1", "deprecated": true }
+    ],
+    "stt": [
+      { "id": "stt-async-v5", "name": "Soniox STT Async v5" },
+      { "id": "stt-async-v4", "name": "Soniox STT Async v4" }
+    ],
+    "voiceSuffix": "tts model/voice accepted; default voice Adrian; OpenAI stock voices map to Adrian",
+    "dynamicDiscovery": "none: the pinned source lists Soniox audio models statically and has no Soniox models fetcher; the only Soniox list call is the validation probe GET /v1/transcriptions"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://tts-rt.soniox.com/tts", "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"], "body": "{ text, model, language, voice, audio_format }", "answer": "audio bytes in the requested container" },
+    "fileUpload": { "method": "POST", "url": "https://api.soniox.com/v1/files", "headers": ["Authorization: Bearer <key>", "Content-Type: multipart/form-data"], "body": "file", "answer": "{ id }", "billable": false },
+    "createTranscription": { "method": "POST", "url": "https://api.soniox.com/v1/transcriptions", "headers": ["Authorization: Bearer <key>", "Content-Type: application/json"], "body": "{ model, file_id, enable_language_identification: true, enable_speaker_diarization?, context?, language_hints? }", "answer": "{ id }", "billable": true },
+    "transcriptionStatus": { "method": "GET", "url": "https://api.soniox.com/v1/transcriptions/{id}", "headers": ["Authorization: Bearer <key>"], "answer": "{ status: queued | processing | completed | error }" },
+    "transcript": { "method": "GET", "url": "https://api.soniox.com/v1/transcriptions/{id}/transcript", "headers": ["Authorization: Bearer <key>"], "answer": "{ text?, tokens?: [{ text, start_ms, end_ms, speaker?, language? }] }" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "sttTotalTimeoutMs": 240000,
+    "sttCallTimeoutMs": 60000,
+    "pollIntervalMs": 2000,
+    "maxAudioBytes": 52428800,
+    "maxTtsRequestBytes": 262144,
+    "maxSttFileBytes": 104857600,
+    "maxTranscriptBytes": 16777216,
+    "redirects": "refused",
+    "retries": "0 for upload, create and speech; status checks repeat only inside the deadline"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/soniox.js",
+      "change": "new entry from SONIOX_PROVIDER_DEFINITION with model rows from SONIOX_TTS_MODELS / SONIOX_STT_MODELS (kind tts / stt); check the sx alias is still free; no ttsConfig needed at runtime when the adapter is in TTS_ADAPTERS, keep sttConfig (translationModels [] so supportsSttTranslation stays false)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { sonioxTtsAdapter } and add `soniox: sonioxTtsAdapter` to TTS_ADAPTERS; handleTtsCore passes language from the request; withTtsUsage adds input characters (cost stays unknown)"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add soniox to NAMED_FORMAT_PROVIDERS so a query-string response_format reaches the adapter as requestedResponseFormat; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"soniox\") return await sonioxSttAdapter.transcribe({ model, formData, credentials, kind, signal })`; the existing STT accepted-job recording in src/sse/handlers/stt.js then records result.acceptedJob on the selected connection"
+    },
+    {
+      "file": "src/shared/constants/providers (provider display list)",
+      "change": "add the Soniox display entry (name, icon mic, color #5B5BD6, text icon SX, website) and API key validation against validateUrl (401/403 -> invalid key)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Soniox tts and stt kinds after registration"
+    }
+  ]
+}

@@ -130,6 +130,7 @@ Most timeout variables parse an integer greater than zero. Invalid or nonpositiv
 | `OLLAMA_LOCAL_CONNECT_TIMEOUT_MS` | `120000` | Connect timeout for Ollama Local. Raise it for slow 70B loads. |
 | `COMBO_MODEL_TIMEOUT_MS` | `0` (off) | Per-member combo timeout. `0` uses fetch connect timeout. |
 | `FETCH_CONNECT_TIMEOUT_MS` | `60000` | Abort if upstream headers never arrive. |
+| `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS` | `max(MINIMAX_CODE_GATEWAY_TIMEOUT_MS, FETCH_CONNECT_TIMEOUT_MS)` | Upstream response-header wait for MiniMax Code; expands the default whole-call budget when set higher. |
 | `PROVIDER_BODY_TIMEOUT_MS` | `120000` | Bound for a successful non-streaming provider body. |
 | `RESPONSE_BODY_TIMEOUT_MS` | `120000` | Bound for forced stream-to-JSON conversion, and for a late non-stream reply read behind the early keepalive. |
 | `MAX_PROVIDER_BODY_BYTES` | `8388608` | Max provider body bytes. |

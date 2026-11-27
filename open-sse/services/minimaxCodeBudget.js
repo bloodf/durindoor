@@ -6,6 +6,7 @@
 // and the same `MINIMAX_CODE_*` environment names. The values are read on every call so an
 // operator can change them without a restart.
 import { isRecord } from "../../src/shared/utils/typeChecks.js";
+import { FETCH_CONNECT_TIMEOUT_MS, MAX_TIMER_DELAY_MS } from "../config/runtimeConfig.js";
 
 /** Context window the gateway answers in; also the ceiling for the input estimate. */
 export const MINIMAX_CODE_MAX_CONTEXT_WINDOW = 1_000_000;
@@ -56,6 +57,29 @@ export function resolveMinimaxCodeMaxTokens(body, env = process.env) {
 /** `MINIMAX_CODE_GATEWAY_TIMEOUT_MS`; zero, negative or non-numeric values fall back to the default. */
 export function resolveMinimaxCodeTimeoutMs(env = process.env) {
   return positiveInteger(env.MINIMAX_CODE_GATEWAY_TIMEOUT_MS) ?? MINIMAX_CODE_DEFAULT_TIMEOUT_MS;
+}
+
+/**
+ * Upstream response-header wait for MiniMax Code (upstream 9router #5889).
+ * Uses `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS` when positive; otherwise
+ * raises BaseExecutor's header timer to at least the call budget so slow
+ * MiniMax Code headers are not cut early at 60 s.
+ */
+export function resolveMinimaxCodeHeaderTimeoutMs(env = process.env) {
+  const explicit = positiveInteger(env.MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS);
+  const raw = explicit ?? Math.max(resolveMinimaxCodeTimeoutMs(env), FETCH_CONNECT_TIMEOUT_MS);
+  return Math.min(raw, MAX_TIMER_DELAY_MS);
+}
+
+/** Whole-call budget; expands to fit an explicit response-header wait when gateway timeout is unset. */
+export function resolveMinimaxCodeCallBudgetMs(env = process.env) {
+  const gateway = positiveInteger(env.MINIMAX_CODE_GATEWAY_TIMEOUT_MS);
+  if (gateway !== null) return Math.min(gateway, MAX_TIMER_DELAY_MS);
+  const explicitHeader = positiveInteger(env.MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS);
+  const raw = explicitHeader !== null
+    ? Math.max(MINIMAX_CODE_DEFAULT_TIMEOUT_MS, explicitHeader)
+    : MINIMAX_CODE_DEFAULT_TIMEOUT_MS;
+  return Math.min(raw, MAX_TIMER_DELAY_MS);
 }
 
 /** `MINIMAX_CODE_GATEWAY_RETRIES`: 0 turns the retry off, default 1, capped at 3. */

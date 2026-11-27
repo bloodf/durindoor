@@ -27,8 +27,9 @@ import {
   applyMinimaxCodeBudgets,
   isRetryableMinimaxCodeStatus,
   minimaxCodeBackoffMs,
+  resolveMinimaxCodeCallBudgetMs,
+  resolveMinimaxCodeHeaderTimeoutMs,
   resolveMinimaxCodeRetries,
-  resolveMinimaxCodeTimeoutMs,
 } from "../services/minimaxCodeBudget.js";
 import { isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -193,11 +194,12 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
 
     // One time budget for the whole call: the attempt, the backoff and the retry. It stops at
     // the response headers, so a stream that is already flowing is not cut by it.
-    const timeoutMs = resolveMinimaxCodeTimeoutMs();
+    const timeoutMs = resolveMinimaxCodeCallBudgetMs();
+    const headerTimeoutMs = resolveMinimaxCodeHeaderTimeoutMs();
     const budget = new AbortController();
     const timer = setTimeout(() => budget.abort(new Error(`MiniMax Code gateway call timed out after ${timeoutMs} ms`)), timeoutMs);
     const signal = input.signal ? AbortSignal.any([input.signal, budget.signal]) : budget.signal;
-    this.config = { ...this.config, retry: this.#retryConfig() };
+    this.config = { ...this.config, retry: this.#retryConfig(), timeoutMs: headerTimeoutMs };
     let result;
     try {
       result = await super.execute({ ...input, signal, model: resolution.model, body: budgeted.body });

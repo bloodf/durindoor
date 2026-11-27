@@ -1,24 +1,36 @@
 /** Small JSON HTTP client. Empty or non-JSON responses return null. */
 const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  signal.throwIfAborted?.();
+  throw signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+}
+
 async function request(method, url, requestOptions, data, jsonParseFallback = null, skipErrorBody = false) {
   // Mutation wrappers treat null options as omitted.
   const { strictJson = false, defaultHeaders = true, ...options } = requestOptions ?? {};
-  const init = { ...options, method, headers: { ...(defaultHeaders ? DEFAULT_HEADERS : null), ...options.headers } };
-  if (!defaultHeaders && !options.headers) delete init.headers;
+  throwIfAborted(options.signal);
+  const hasContentType = options.headers && Object.keys(options.headers).some((key) => key.toLowerCase() === "content-type");
+  const headers = { ...(defaultHeaders && !hasContentType ? DEFAULT_HEADERS : null), ...options.headers };
+  const init = { ...options, method };
+  if (Object.keys(headers).length) init.headers = headers;
   // Fetch defaults to GET; omit the explicit method for existing read callers.
   if (method === "GET") delete init.method;
   if (data !== undefined) init.body = JSON.stringify(data);
   // A bare read stays a one-argument fetch.
   const response = Object.keys(init).length ? await fetch(url, init) : await fetch(url);
+  throwIfAborted(options.signal);
   let body = null;
-  if (response.ok || !skipErrorBody) {
+  if ((response.ok || !skipErrorBody) && response.status !== 204 && response.status !== 205) {
     body = strictJson
-      ? (response.status === 204 ? null : await response.json())
+      ? await response.json()
       : await Promise.resolve().then(() => response.json()).catch(() => jsonParseFallback);
+    throwIfAborted(options.signal);
   }
   if (!response.ok) {
-    const error = new Error(body?.error || response.statusText);
+    const fallbackMessage = response.statusText || (response.status ? `Request failed (${response.status})` : "Request failed");
+    const error = new Error(body?.error || fallbackMessage);
     error.status = response.status;
     error.body = body;
     throw error;

@@ -24,6 +24,7 @@ import { LOCALE_FLAGS } from "@/shared/constants/locales";
 import { isBrowser, isUndefined, isObject } from "../../../../shared/utils/typeChecks.js";
 import SelectiveTransferPanel from "./SelectiveTransferPanel";
 import MfaCard from "./MfaCard.jsx";
+import api from "@/shared/utils/api";
 import useSettingsStore from "@/store/settingsStore";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 
@@ -156,11 +157,11 @@ export default function ProfilePage() {
   const [authAvailability, setAuthAvailability] = useState({ passwordAvailable: true, oidcAvailable: false });
 
   useEffect(() => {
-    let active = true;
-    fetch("/api/auth/status").then((res) => res.json()).then((data) => {
-      if (active) setAuthAvailability(data);
+    const controller = new AbortController();
+    api.get("/api/auth/status", { signal: controller.signal }).then((data) => {
+      if (!controller.signal.aborted && data) setAuthAvailability(data);
     }).catch(() => {});
-    return () => { active = false; };
+    return () => controller.abort();
   }, [settings.authMode, settings.oidcConfigured]);
 
   const loadSettings = useCallback(() => {
@@ -311,14 +312,8 @@ export default function ProfilePage() {
     setProxyStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch("/api/settings/proxy-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyUrl, testUrl: proxyForm.proxyTestUrl })
-      });
-
-      const data = await res.json();
-      if (res.ok && data?.ok) {
+      const data = await api.post("/api/settings/proxy-test", { proxyUrl, testUrl: proxyForm.proxyTestUrl });
+      if (data?.ok) {
         setProxyStatus({
           type: "success",
           message: `Proxy test OK (${data.status}) in ${data.elapsedMs}ms`
@@ -330,7 +325,10 @@ export default function ProfilePage() {
         });
       }
     } catch (err) {
-      setProxyStatus({ type: "error", message: "An error occurred" });
+      setProxyStatus({
+        type: "error",
+        message: err?.status !== undefined ? (err.body?.error || "Proxy test failed") : "An error occurred"
+      });
     } finally {
       setProxyTestLoading(false);
     }
@@ -696,18 +694,13 @@ export default function ProfilePage() {
         return;
       }
 
-      const res = await fetch("/api/auth/oidc/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          issuerUrl: saved.oidcIssuerUrl || issuerUrl,
-          clientId: saved.oidcClientId || clientId,
-          scopes: saved.oidcScopes || scopes || "openid profile email"
-        })
+      const data = await api.post("/api/auth/oidc/test", {
+        issuerUrl: saved.oidcIssuerUrl || issuerUrl,
+        clientId: saved.oidcClientId || clientId,
+        scopes: saved.oidcScopes || scopes || "openid profile email"
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok) {
+      if (data?.ok) {
         const statusMessage = data.clientSecretTested ?
         data.clientSecretValid === true ?
         `Connection OK. Discovery loaded from ${data.issuerUrl}. Client secret validated too.` :
@@ -718,10 +711,13 @@ export default function ProfilePage() {
           message: statusMessage
         });
       } else {
-        setOidcTestStatus({ type: "error", message: data.error || "OIDC connection test failed" });
+        setOidcTestStatus({ type: "error", message: data?.error || "OIDC connection test failed" });
       }
     } catch (err) {
-      setOidcTestStatus({ type: "error", message: "An error occurred" });
+      setOidcTestStatus({
+        type: "error",
+        message: err?.status !== undefined ? (err.body?.error || "OIDC connection test failed") : "An error occurred"
+      });
     } finally {
       setOidcTestLoading(false);
     }
@@ -785,15 +781,14 @@ export default function ProfilePage() {
   const [retentionCustomInput, setRetentionCustomInput] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/data-retention")
-      .then((res) => (res.ok ? res.json() : null))
+    const controller = new AbortController();
+    api.get("/api/data-retention", { signal: controller.signal })
       .then((data) => {
-        if (cancelled || !data?.lastRun) return;
+        if (controller.signal.aborted || !data?.lastRun) return;
         setRetentionStatus(describeRetentionRun(data.lastRun));
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, []);
 
   const updateDataRetention = async (patch) => {
@@ -824,16 +819,11 @@ export default function ProfilePage() {
     setRetentionRunning(true);
     setRetentionStatus("Cleaning old data…");
     try {
-      const res = await fetch("/api/data-retention", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setRetentionStatus(data?.error || "Cleanup failed.");
-        return;
-      }
+      const data = await api.post("/api/data-retention", {});
       setRetentionStatus(describeRetentionRun(data));
     } catch (err) {
       console.error("Failed to run data retention:", err);
-      setRetentionStatus("Cleanup failed.");
+      setRetentionStatus(err?.body?.error || "Cleanup failed.");
     } finally {
       setRetentionRunning(false);
     }
@@ -882,15 +872,11 @@ export default function ProfilePage() {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings/database", {
+      const payload = await api.get("/api/settings/database", {
         headers: { "x-9r-password": password }
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to export database");
-      }
+      if (payload == null) throw new Error("Failed to export database");
 
-      const payload = await res.json();
       const content = JSON.stringify(payload, null, 2);
       const blob = new Blob([content], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -905,7 +891,10 @@ export default function ProfilePage() {
 
       setDbStatus({ type: "success", message: "Database backup downloaded" });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Failed to export database" });
+      setDbStatus({
+        type: "error",
+        message: err?.body?.error || (err?.status !== undefined ? "Failed to export database" : err.message) || "Failed to export database"
+      });
     } finally {
       setDbLoading(false);
     }
@@ -928,22 +917,16 @@ export default function ProfilePage() {
       const raw = await file.text();
       const payload = JSON.parse(raw);
 
-      const res = await fetch("/api/settings/database", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, password })
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to import database");
-      }
+      await api.post("/api/settings/database", { ...payload, password });
 
       useSettingsStore.getState().invalidate();
       await reloadSettings();
       setDbStatus({ type: "success", message: "Database imported successfully" });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
+      setDbStatus({
+        type: "error",
+        message: err?.body?.error || (err?.status !== undefined ? "Failed to import database" : err.message) || "Invalid backup file"
+      });
     } finally {
       pendingImportRef.current = null;
       setDbLoading(false);
@@ -983,20 +966,18 @@ export default function ProfilePage() {
   const handleShutdown = async () => {
     setIsShuttingDown(true);
     try {
-      await fetch("/api/version/shutdown", { method: "POST" });
-    } catch (e) {
-
+      await api.post("/api/version/shutdown");
+    } catch {
       // Expected to fail as server shuts down; ignore error
-    }setIsShuttingDown(false);
+    }
+    setIsShuttingDown(false);
     setShutdownOpen(false);
   };
 
   const handleLogout = async () => {
     try {
-      const res = await fetch("/api/auth/logout", { method: "POST" });
-      if (res.ok) {
-        window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
-      }
+      await api.post("/api/auth/logout");
+      window.location.assign((process.env.NEXT_PUBLIC_BASE_PATH || "") + "/login");
     } catch (err) {
       console.error("Failed to logout:", err);
     }

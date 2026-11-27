@@ -14,7 +14,7 @@
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
 import { RENDERHOUR_GENERATIONS_URL, RENDERHOUR_IMAGE_MODEL_IDS } from "../../providers/private/renderhour.js";
-import { awaitRenderHourImages, RENDERHOUR_MAX_IMAGES } from "../../services/renderhour/job.js";
+import { awaitRenderHourImages, RENDERHOUR_MAX_IMAGES, RENDERHOUR_REQUEST_TIMEOUT_MS } from "../../services/renderhour/job.js";
 import { isBoolean, isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS = new Set(RENDERHOUR_IMAGE_MODEL_IDS);
@@ -56,11 +56,19 @@ function modelConfig(body) {
 }
 
 /**
- * @param {object} [polling] - poll bounds and clock, for tests; see awaitRenderHourImages
+ * @param {object} [options] - submit bound and poll bounds and clock, for tests; see awaitRenderHourImages
  */
-export function createRenderHourImageAdapter(polling = {}) {
+export function createRenderHourImageAdapter({ submitTimeoutMs = RENDERHOUR_REQUEST_TIMEOUT_MS, ...polling } = {}) {
   return {
     async: true,
+    // Submit policy read by imageGenerationCore: a redirect is refused, never
+    // followed with the key; the submit is bounded; a transport failure after
+    // dispatch is a possibly billed job, so no other account resubmits it; a
+    // refused submit's Retry-After reaches account cooldown.
+    submitRedirect: "manual",
+    submitTimeoutMs,
+    submitOutcomeUnknown: true,
+    retryAfterResets: true,
     buildUrl: () => RENDERHOUR_GENERATIONS_URL,
     buildHeaders: (credentials) => {
       const key = credentials?.apiKey;

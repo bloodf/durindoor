@@ -29,7 +29,7 @@ Use an API key that starts with `rh_`. It is sent as `Authorization: Bearer rh_.
 | `POST https://renderhour.com/v1/generations` | Submit one job. Sent with a new `Idempotency-Key` |
 | `GET https://renderhour.com/v1/generations/{id}` | Read that job |
 
-Connection settings cannot change these addresses. Status requests refuse redirects. **The submit request does not refuse them yet** on a direct connection. See [Before registration](#before-registration).
+Connection settings cannot change these addresses. Neither request follows a redirect. A redirected submit is refused with `502` and the key is never sent to the new address. That failure records no accepted job, so another connection may try.
 
 The submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `config` when present:
 
@@ -43,9 +43,9 @@ The submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `co
 
 ## Polling and results
 
-The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The 5 minutes start when the submit is answered; the shared submit request has no time limit set by this provider.
+The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The submit itself waits at most 30 seconds. The 5 minutes start when the submit is answered.
 
-A result is returned as `data: [{ "url": ... }]`. Every file must be a PNG, JPEG or WebP with an HTTPS URL without embedded credentials, and there must not be more files than requested. Otherwise the whole result is rejected. The gateway returns the URLs without downloading them, even if you ask for `b64_json`. Binary output (`response_format=binary`) makes the shared handler fetch the first URL without your API key. Whether RenderHour file URLs work without a key, and how long they last, has not been verified.
+A result is returned as `data: [{ "url": ... }]`. Every file must be a PNG, JPEG or WebP with an HTTPS URL that has no embedded credentials and does not contain the connection's API key, raw or URL-encoded. There must not be more files than requested. Otherwise the whole result is rejected. The gateway returns the URLs without downloading them, even if you ask for `b64_json`. Binary output (`response_format=binary`) makes the shared handler fetch the first URL without your API key. Whether RenderHour file URLs work without a key, and how long they last, has not been verified.
 
 ## Usage and cost
 
@@ -53,12 +53,18 @@ Usage counts the images actually returned. Token counts and cost are **unknown**
 
 After a submit is accepted (any 2xx answer), the job may be billed. When its outcome cannot be seen, it is recorded as an accepted job with unknown cost, and the gateway does not resubmit it to another account. That covers cancellation, timeout, a rejected or failed status request and an unreadable or invalid response.
 
+A submit that may have reached RenderHour but got no answer is handled the same way: a submit timeout, a reset connection or any other transport failure after a connection may have been made. It is recorded on the connection that sent it as an accepted job with unknown cost (`jobState: "submit-unknown"`), and no other account gets a second submit. Only a failure before any connection exists (`ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED` or a connect timeout) counts as unsent, so another connection may try.
+
 ## Errors
 
 | Situation | Status | Accepted job recorded |
 | --- | --- | --- |
 | Bad key format, unsupported model or reference image | 401 or 400 | No, nothing sent |
 | Submit refused, such as 401, 403 or 429 | Same as RenderHour | No |
+| Submit redirected | 502 | No. The redirect is not followed |
+| Submit timed out after 30 seconds | 504 | Yes, as `submit-unknown` |
+| Submit connection lost after it may have been sent | 502 | Yes, as `submit-unknown` |
+| Submit could not connect at all | 502 | No |
 | Status request refused with 401 or 403 | Same | Yes |
 | Status request still 429 when retries or time run out | 429 | Yes |
 | Any other status request failure | 502 | Yes |
@@ -70,17 +76,15 @@ After a submit is accepted (any 2xx answer), the job may be billed. When its out
 | Cancelled after the submit was accepted | 499 | Yes |
 | Cancelled while the submit is in flight | 499 | No. Whether RenderHour accepted it is unknown |
 
-A job that RenderHour reports as failed is treated as a normal failure, so the shared account fallback policy decides whether another connection tries a new job. Whether RenderHour charges for failed jobs is unknown. Errors raised while following a job do not repeat RenderHour's text, and only the four failure reasons above are named. Errors from a refused submit are different, as listed below.
+A job that RenderHour reports as failed is treated as a normal failure, so the shared account fallback policy decides whether another connection tries a new job. Whether RenderHour charges for failed jobs is unknown. Errors raised while following a job do not repeat RenderHour's text, and only the four failure reasons above are named. A refused submit's message can come from RenderHour, but the selected connection's key is removed from it and from the error body, including on `401` and `403`. A `429` message is always replaced.
+
+When a refused submit is `429` with a `Retry-After` header, either in seconds or as an HTTP date, that exact reset is passed to account cooldown with the source `retry_after`. The client gets the same `Retry-After`. Without the header no reset is claimed.
 
 ## Before registration
 
-The shared image handler has three gaps that this staged code cannot close on its own. Each was seen in an offline run:
+The three gaps that offline runs found in the shared image handler are closed: submit redirects, an echoed key in submit errors, and a dropped `Retry-After`. Each one is covered by closed-network tests through the shared handler and the image route.
 
-1. **Submit redirects.** The shared submit sets no redirect policy. Proxy routes already refuse redirects, but a direct connection would follow one. It needs to refuse redirects for RenderHour.
-2. **Key in submit errors.** If RenderHour repeated the API key in a `401` or `403` message, the shared error would pass it to the caller. The handler needs to redact the selected connection's credential. A `429` message is already replaced.
-3. **Rate-limit time.** The shared handler drops the `Retry-After` of a refused submit for this provider, so no reset time reaches account cooldown.
-
-Registration also needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. A live check with a real account is separate and has not happened.
+Registration still needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. Until then, the tests have to substitute the adapter lookup. A live check with a real account is separate and has not happened. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
 
 ## Source
 

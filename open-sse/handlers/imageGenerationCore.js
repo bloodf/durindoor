@@ -10,6 +10,9 @@ import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeCh
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
 import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
+// Transport failures that happen before a connection exists: nothing was sent.
+const PRE_CONNECT_ERROR_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
+
 const OPENAI_IMAGE_ENUMS = Object.freeze({ complexity: ["low", "medium", "high"], moderation: ["auto", "low"] });
 
 // OmniRoute #20976: reject values OpenAI Images does not accept. null means unset.
@@ -109,9 +112,9 @@ export async function handleImageGenerationCore({
   const abortedResult = () => createErrorResult(499, "Image generation request aborted");
   // A 2xx async submit means the provider took the job and may bill it, whatever we
   // observe afterwards. No measured units or receipt exist, so the cost stays unknown.
-  const withAcceptedJob = (result) => ({
+  const withAcceptedJob = (result, jobState = "accepted") => ({
     ...result,
-    acceptedJob: { ...mediaAccounting(null, provider, "image"), costSource: "accepted-job", meta: { jobState: "accepted" } }
+    acceptedJob: { ...mediaAccounting(null, provider, "image"), costSource: "accepted-job", meta: { jobState } }
   });
   // fetchImageAsBase64 drops its own timeout when given a signal, so keep it here.
   // Built per call: the timeout must start at the prefetch, not at core entry.
@@ -215,6 +218,62 @@ export async function handleImageGenerationCore({
   let headers;
   let requestBody;
   const adapterOptions = { streamToClient, signal };
+  // Optional adapter submit policy. `submitRedirect: "manual"` keeps a redirect
+  // visible so it is refused here instead of followed with the credential;
+  // `submitTimeoutMs` bounds the submit; `submitOutcomeUnknown` marks a submit
+  // whose transport failed after it may have been sent as a possibly billed job,
+  // so account fallback does not send a second one.
+  const submitInit = () => ({
+    method: "POST",
+    headers,
+    body: serializeRequestBody(requestBody),
+    signal,
+    proxyOptions,
+    ...(adapter.submitRedirect ? { redirect: adapter.submitRedirect } : null)
+  });
+  // The caller's signal still reaches fetch unchanged; the bound stops waiting,
+  // and a late answer to a submit already reported as unknown is discarded.
+  const sendSubmit = async () => {
+    const pending = fetch(url, submitInit());
+    if (!Number.isFinite(adapter.submitTimeoutMs)) return pending;
+    let timer;
+    let timedOut = false;
+    const bound = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(Object.assign(new Error("submit timed out"), { name: "TimeoutError" }));
+      }, adapter.submitTimeoutMs);
+    });
+    try {
+      return await Promise.race([pending, bound]);
+    } finally {
+      clearTimeout(timer);
+      if (timedOut) pending.then((late) => late.body?.cancel().catch(() => {}), () => {});
+    }
+  };
+  const redirectRefused = (response) => adapter.submitRedirect === "manual" &&
+    (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400));
+  const refuseRedirect = (response) => {
+    void response.body?.cancel().catch(() => {});
+    log?.debug?.("IMAGE", `${provider.toUpperCase()} | submit redirect refused`);
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider} image submit redirect refused`);
+  };
+  // A failed submit transport: certainly unsent only when no connection was made.
+  const submitFailure = (error) => {
+    const sent = adapter.submitOutcomeUnknown && !PRE_CONNECT_ERROR_CODES.has(error?.cause?.code ?? error?.code);
+    // A client abort ends the request without fallback, so nothing is resubmitted.
+    if (isAbort(error)) return abortedResult();
+    if (!sent) {
+      const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
+      log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg, undefined, undefined, null, credentials);
+    }
+    // The transport text can describe the request, so it is not repeated.
+    const timedOut = error?.name === "TimeoutError";
+    const status = timedOut ? HTTP_STATUS.GATEWAY_TIMEOUT : HTTP_STATUS.BAD_GATEWAY;
+    const failed = createErrorResult(status, `${provider} image submit ${timedOut ? "timed out" : "was interrupted"}; whether it was accepted is unknown`);
+    return withAcceptedJob(failed, "submit-unknown");
+  };
 
   try {
     url = adapter.buildUrl(model, credentials, body, adapterOptions);
@@ -236,18 +295,9 @@ export async function handleImageGenerationCore({
 
   let providerResponse;
   try {
-    providerResponse = await fetch(url, {
-      method: "POST",
-      headers,
-      body: serializeRequestBody(requestBody),
-      signal,
-      proxyOptions
-    });
+    providerResponse = await sendSubmit();
   } catch (error) {
-    if (isAbort(error)) return abortedResult();
-    const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
-    log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);
-    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, errMsg);
+    return submitFailure(error);
   }
 
   // Handle 401/403 — try token refresh (skipped for noAuth providers)
@@ -270,14 +320,9 @@ export async function handleImageGenerationCore({
         requestBody = await adapter.buildBody(model, body, adapterOptions);
         headers = adapter.buildHeaders(credentials, requestBody, model, body);
         url = adapter.buildUrl(model, credentials, body, adapterOptions);
-        providerResponse = await fetch(url, {
-          method: "POST",
-          headers,
-          body: serializeRequestBody(requestBody),
-          signal,
-          proxyOptions
-        });
+        providerResponse = await sendSubmit();
       } catch (error) {
+        if (adapter.submitOutcomeUnknown) return submitFailure(error);
         if (isAbort(error)) return abortedResult();
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
       }
@@ -289,6 +334,7 @@ export async function handleImageGenerationCore({
   // Codex's parser knows its relative reset field; the shared parser bounds it
   // and classifies the response before any reset can reach account health.
   const parseImageError = (response) => parseUpstreamError(response, provider === "codex" && response.status === 429 ? executor : null, { provider });
+  if (redirectRefused(providerResponse)) return refuseRedirect(providerResponse);
   let upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
   const fallbackBody = upstreamError && adapter.buildFallbackBody?.(
     requestBody, upstreamError.statusCode, upstreamError.message
@@ -297,15 +343,11 @@ export async function handleImageGenerationCore({
     try {
       requestBody = fallbackBody;
       headers = adapter.buildHeaders(credentials, requestBody, model, body);
-      providerResponse = await fetch(url, {
-        method: "POST",
-        headers,
-        body: serializeRequestBody(requestBody),
-        signal,
-        proxyOptions
-      });
+      providerResponse = await sendSubmit();
+      if (redirectRefused(providerResponse)) return refuseRedirect(providerResponse);
       upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
     } catch (error) {
+      if (adapter.submitOutcomeUnknown) return submitFailure(error);
       if (isAbort(error)) return abortedResult();
       const message = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
       return createErrorResult(HTTP_STATUS.BAD_GATEWAY, message);
@@ -316,8 +358,12 @@ export async function handleImageGenerationCore({
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     log?.debug?.("IMAGE", `Provider error: ${errMsg}`);
     const evidence = upstreamError.rateLimitEvidence;
-    const provenReset = provider === "codex" && evidence?.state === "exhausted" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(statusCode, errMsg, provenReset?.resetAtMs, undefined, provenReset);
+    const codexReset = provider === "codex" && evidence?.state === "exhausted";
+    // An adapter may trust the provider's own Retry-After on a refused submit.
+    const retryAfterReset = adapter.retryAfterResets === true && evidence?.source === "retry_after";
+    const provenReset = (codexReset || retryAfterReset) && Number.isFinite(evidence.resetAtMs) ? evidence : null;
+    // The selected connection's credential values are redacted from the message.
+    return createErrorResult(statusCode, errMsg, provenReset?.resetAtMs, undefined, provenReset, credentials);
   }
 
   // Parse provider response — adapter may override (codex SSE / async polling / binary)

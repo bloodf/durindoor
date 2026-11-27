@@ -11,15 +11,11 @@
 //   * Isolation. Every shard gets its own available loopback port, its own
 //     private state file and a random owner token. Nothing shares the old
 //     fixed port 3100.
-//   * Ownership. A process is signalled only when the kernel's process table
-//     proves it belongs to this shard: same uid as this runner, the shard's
-//     owner token in its environment, and an unchanged kernel start time,
-//     re-read right before the signal. Only Linux /proc offers that proof.
-//     macOS has no /proc and `ps` cannot separate the environment from the
-//     arguments, so on macOS nothing is signalled at all; cleanup only
-//     observes, conservatively (see "macOS: observe, never signal" below).
-//     A PID that was reused by another program fails the token and
-//     start-time checks. A listener without the token is never touched,
+//   * Ownership. A process is signalled only when /proc proves it belongs to
+//     this shard: same uid as this runner, the shard's owner token in its
+//     environment, and an unchanged kernel start time between the scan and
+//     the signal. A PID that was reused by another program fails the token
+//     and start-time checks. A listener without the token is never touched,
 //     even when it holds the shard's port.
 //   * Fail closed. When an owned process survives SIGTERM and SIGKILL, when
 //     the kernel refuses a signal, or when ownership cannot be verified and
@@ -29,7 +25,6 @@
 // The guard touches only the processes it proves it owns. It writes no unit,
 // schedule or machine setting.
 
-import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
@@ -165,9 +160,8 @@ export function readShardServerState(stateFile, { owner, port, euid = process.ge
 // Signals only processes whose identity is re-read immediately before the
 // signal and still matches the earlier scan: same token, uid and kernel start
 // time. A recycled PID has a different start time and no token, so it is
-// skipped. A verified group leader takes its group with it: POSIX systems
-// (Linux and macOS) never hand out a PID while a live process still uses it as
-// a process group ID, and the
+// skipped. A verified group leader takes its group with it: Linux never hands
+// out a PID while a live process still uses it as a process group ID, and the
 // group was created by this shard's own launcher. ESRCH (already gone) is
 // fine; any other refusal is thrown so the caller fails closed.
 export function signalOwnedProcesses(processes, signal, { owner, procRoot = "/proc", euid = process.geteuid(), kill = process.kill.bind(process) } = {}) {
@@ -184,158 +178,6 @@ export function signalOwnedProcesses(processes, signal, { owner, procRoot = "/pr
     }
   }
   return signalled;
-}
-
-// macOS: observe, never signal
-//
-// macOS has no /proc and no stock tool that prints a process environment on
-// its own. `/bin/ps -E` appends the environment to the arguments with plain
-// spaces, so its output cannot prove that `WEBSITE_TRANSIENT_OWNER=<token>`
-// is an environment variable rather than an argument or part of another
-// variable's value. Comparing snapshots with and without `-E` does not fix
-// that: a process can change its arguments between reads. `ps` start times
-// also have only one-second resolution. Ownership read from `ps` is
-// therefore never used to authorize a signal: on macOS this guard signals
-// nothing.
-//
-// It still checks cleanup, conservatively. The launcher's own watchdog
-// stops the server when its runner is gone, and cleanup waits for that.
-// Every scan reads one `ps -axww -E` snapshot (`TZ=UTC0`, `LC_ALL=C`,
-// minimal PATH, no shard token, 10-second timeout). A process "may be
-// owned" when any of these holds:
-//
-//   * its line (arguments or environment) contains the exact
-//     `WEBSITE_TRANSIENT_OWNER=<token>` word;
-//   * it is a child of a process that may be owned;
-//   * it shares a process group with one, or sits in a group that one led
-//     at an earlier scan;
-//   * it is a process (PID plus start time) that may have been owned at an
-//     earlier scan. Identities are kept for the whole cleanup, so an orphan
-//     that lost its parent, title or group is still counted.
-//
-// Over-counting only makes cleanup fail. Cleanup succeeds only when a scan
-// finds no such process and the shard port is free. A `ps` failure, timeout,
-// empty table, duplicate PID or unparseable line fails the scan.
-//
-// Limits: a process whose environment macOS hides (Apple platform binaries
-// such as /bin/sh) and that never showed the token, never descended from or
-// shared a group with a process that did, and was never seen at an earlier
-// scan, is invisible. The shard's server tree is Node processes, whose
-// environment is visible to the same uid.
-export const DARWIN_PS = "/bin/ps";
-export const DARWIN_PS_ARGS = ["-axww", "-E", "-o", "pid=,ppid=,uid=,pgid=,stat=,lstart=,command="];
-export const DARWIN_PS_ENV = Object.freeze({ PATH: "/usr/bin:/bin", LC_ALL: "C", LANG: "C", TZ: "UTC0" });
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DARWIN_LINE_RE = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+([A-Z][a-z]{2}) ([A-Z][a-z]{2})\s+(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})(?:\s+(.*))?$/;
-
-export function runDarwinPs({ spawn = spawnSync, timeoutMs = 10_000 } = {}) {
-  const result = spawn(DARWIN_PS, DARWIN_PS_ARGS, {
-    encoding: "utf8",
-    timeout: timeoutMs,
-    maxBuffer: 64 * 1024 * 1024,
-    // No token, fixed locale and UTC start times, nothing inherited.
-    env: { ...DARWIN_PS_ENV },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.error) throw new Error(`cannot enumerate owned processes: ps ${result.error.code || result.error.message}`);
-  if (result.signal) throw new Error(`cannot enumerate owned processes: ps terminated by ${result.signal}`);
-  if (result.status !== 0) throw new Error(`cannot enumerate owned processes: ps exited with status ${result.status}`);
-  return { stdout: String(result.stdout ?? ""), pid: result.pid };
-}
-
-function darwinStartSeconds(month, day, hh, mm, ss, year) {
-  const m = MONTHS.indexOf(month);
-  const [y, d, h, mi, se] = [year, day, hh, mm, ss].map(Number);
-  if (m < 0 || h > 23 || mi > 59 || se > 59) return NaN;
-  const ms = Date.UTC(y, m, d, h, mi, se);
-  const check = new Date(ms);
-  // Every field must survive the round trip: no rolled-over day or time.
-  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m || check.getUTCDate() !== d
-    || check.getUTCHours() !== h || check.getUTCMinutes() !== mi || check.getUTCSeconds() !== se) return NaN;
-  return ms / 1000;
-}
-
-// Parses one snapshot into a Map keyed by PID.
-export function parseDarwinProcessTable(stdout) {
-  const lines = String(stdout).split("\n");
-  if (lines.at(-1) === "") lines.pop();
-  if (!lines.length || lines.every((line) => line.trim() === "")) {
-    throw new Error("cannot enumerate owned processes: ps returned an empty process table");
-  }
-  const table = new Map();
-  for (const line of lines) {
-    const match = DARWIN_LINE_RE.exec(line);
-    if (!match) throw new Error(`cannot enumerate owned processes: unparseable ps line: ${line.slice(0, 120)}`);
-    const [, pid, ppid, uid, pgid, state, , month, day, hh, mm, ss, year, command = ""] = match;
-    const startSec = darwinStartSeconds(month, day, hh, mm, ss, year);
-    if (!Number.isFinite(startSec)) throw new Error(`cannot enumerate owned processes: unparseable ps start time: ${line.slice(0, 120)}`);
-    const row = { pid: Number(pid), ppid: Number(ppid), uid: Number(uid), pgid: Number(pgid), state, startSec, command };
-    if (table.has(row.pid)) throw new Error(`cannot enumerate owned processes: ps listed PID ${row.pid} twice`);
-    table.set(row.pid, row);
-  }
-  return table;
-}
-
-export function createDarwinTracker(owner, { selfPid = process.pid } = {}) {
-  if (!isShardOwnerToken(owner)) throw new Error("invalid shard owner token");
-  // identities: pid -> startSec; groups: PGIDs led by a process that may be owned.
-  return { owner, selfPid, identities: new Map(), groups: new Set() };
-}
-
-// One scan. Returns every live process that may belong to this shard, sorted
-// by PID, and remembers them in the tracker. Never used to signal.
-export function scanDarwinProcesses(tracker, { runPs = runDarwinPs } = {}) {
-  const snapshot = runPs();
-  const table = parseDarwinProcessTable(snapshot.stdout);
-  const marker = `${SHARD_OWNER_ENV}=${tracker.owner}`;
-  const excluded = new Set([tracker.selfPid, snapshot.pid]);
-  const live = [...table.values()].filter((p) => p.pid > 1 && !excluded.has(p.pid) && !p.state.startsWith("Z"));
-
-  const found = new Map();
-  for (const p of live) {
-    if (p.command.split(" ").includes(marker)) found.set(p.pid, "token-text");
-    else if (tracker.identities.get(p.pid) === p.startSec) found.set(p.pid, "seen-before");
-  }
-  let grew = true;
-  while (grew) {
-    grew = false;
-    const groups = new Set(tracker.groups);
-    for (const pid of found.keys()) {
-      const p = table.get(pid);
-      groups.add(p.pgid);
-      if (p.pgid === p.pid) tracker.groups.add(p.pid);
-    }
-    for (const p of live) {
-      if (found.has(p.pid)) continue;
-      if (found.has(p.ppid)) found.set(p.pid, "descendant");
-      else if (groups.has(p.pgid)) found.set(p.pid, "group");
-      else continue;
-      grew = true;
-    }
-  }
-
-  for (const [pid, startSec] of tracker.identities) {
-    const p = table.get(pid);
-    if (!p || p.state.startsWith("Z") || p.startSec !== startSec) tracker.identities.delete(pid);
-  }
-  for (const pid of found.keys()) tracker.identities.set(pid, table.get(pid).startSec);
-  return [...found].map(([pid, via]) => {
-    const { ppid, uid, pgid, state, startSec } = table.get(pid);
-    return { pid, ppid, uid, pgid, state, startSec, via };
-  }).sort((a, b) => a.pid - b.pid);
-}
-
-export function findOwnedDarwinProcesses(owner, { selfPid = process.pid, runPs = runDarwinPs } = {}) {
-  return scanDarwinProcesses(createDarwinTracker(owner, { selfPid }), { runPs });
-}
-
-// Picks how ownership is proven on this host. Readable procfs wins; macOS
-// observes `ps` snapshots without signalling; anything else (including Linux with /proc missing
-// or unreadable) has no verified source, and cleanup fails closed.
-export function ownershipSource({ procRoot = "/proc", platform = process.platform } = {}) {
-  if (procfsAvailable(procRoot)) return "procfs";
-  if (platform === "darwin") return "darwin-ps";
-  return null;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -360,15 +202,12 @@ export async function cleanupShardServer({
   kill = process.kill.bind(process),
   probe = isPortListening,
   readDirectory = readdirSync,
-  platform = process.platform,
-  runPs = runDarwinPs,
 } = {}) {
   if (!isShardOwnerToken(owner)) throw new Error("invalid shard owner token");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("invalid shard port");
-  const source = ownershipSource({ procRoot, platform });
-  const result = { ok: false, reason: null, signalled: [], survivors: [], foreignListener: false, verification: source ?? "port-only" };
+  const result = { ok: false, reason: null, signalled: [], survivors: [], foreignListener: false, verification: "procfs" };
 
-  if (!source) {
+  if (!procfsAvailable(procRoot)) {
     // Without /proc, ownership cannot be proven, so nothing is signalled. The
     // launcher's watchdog may stop the listener, but a free port cannot prove
     // that every owned process exited. Cleanup must still fail closed.
@@ -381,42 +220,7 @@ export async function cleanupShardServer({
       }
       await sleep(pollMs);
     }
-    result.reason = "process ownership cannot be verified without readable procfs or a supported process table";
-    return result;
-  }
-
-  if (source === "darwin-ps") {
-    // macOS: nothing is signalled (see "macOS: observe, never signal"). The
-    // launcher's watchdog stops the tree; cleanup succeeds only once a scan
-    // finds nothing that may belong to this shard and the port is free.
-    const tracker = createDarwinTracker(owner);
-    const deadline = Date.now() + selfExitMs + termMs + killMs;
-    let left;
-    let held;
-    try {
-      for (;;) {
-        left = scanDarwinProcesses(tracker, { runPs });
-        held = await probe(host, port);
-        if ((!left.length && !held) || Date.now() >= deadline) break;
-        await sleep(pollMs);
-      }
-    } catch (error) {
-      result.reason = `shard server cleanup could not be verified: ${error.code || error.message}`;
-      return result;
-    }
-    if (left.length) {
-      result.survivors = left.map((p) => p.pid);
-      result.reason = `shard server processes may still be running (macOS cleanup never signals; ownership from ps is not proof): ${result.survivors.join(", ")}`;
-      return result;
-    }
-    if (held) {
-      // Without proof of who holds it, a held port is not reported as foreign.
-      result.reason = "the shard port is still held and its owner cannot be verified on macOS";
-      return result;
-    }
-    const { state } = readShardServerState(stateFile, { owner, port, euid });
-    if (state) rmSync(stateFile, { force: true });
-    result.ok = true;
+    result.reason = "process ownership cannot be verified without readable procfs";
     return result;
   }
 

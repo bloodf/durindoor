@@ -181,55 +181,29 @@ cases in discovery and execution. Before executing, local CI asks Playwright to
 list each proposed shard, reduces the count if a shard is empty, and verifies the
 complete exact-once union. Serial/file/project groups therefore follow Playwright's
 own allocation. Execution still rejects empty, skipped, failed and flaky reports.
-Owned-process enumeration errors fail cleanup even when the port is free. No
-unverified process is signalled.
+Owned-process enumeration errors fail cleanup even when the port is free; missing
+procfs cannot establish successful cleanup. No unverified process is signalled.
 Direct browser runs select and pin a fresh loopback port, while CI supplies each
 shard's port. An occupied selected port remains a hard failure. Chromium scratch
 uses a private short `/tmp/dd-pw-*` directory, removed on normal runner exit,
 independent of long report/output paths. Each planning and execution command
 retains the five-minute ceiling and private allowlisted CI environment.
 
-#### Shard server ownership by platform
+macOS is not a supported host for browser shard cleanup. It has no `/proc`, so
+`scripts/lib/website-shard-server.mjs` signals nothing there and every shard
+cleanup step fails, even when the port is free. Local CI then stops the
+remaining shards. Stock macOS tools cannot supply the proof this guard needs:
 
-`scripts/lib/website-shard-server.mjs` picks one ownership source per host and
-reports it as the cleanup step's `verification`:
+- `ps -E` joins the environment to the arguments with plain spaces, and a
+  process can rewrite its arguments between reads, so a token in its output is
+  not proof of ownership.
+- `ps` hides the environment of Apple platform binaries, and can fall back to
+  showing only the command name. An absent token is not proof of absence.
+- `lstart` has one-second resolution, so it cannot tell a recycled PID apart.
+- A process list and a port probe are separate moments, so both can look clear
+  while a late child binds the port.
 
-- `procfs` (Linux, and any host with a readable `/proc/self/stat`): each
-  process must run as this uid, carry `WEBSITE_TRANSIENT_OWNER=<token>` in
-  `/proc/<pid>/environ`, and keep its kernel start time until the signal.
-- `darwin-ps` (macOS): observe only; nothing is ever signalled. macOS has no
-  `/proc`, and `ps -E` prints the environment after the arguments with plain
-  spaces. A process can also change its arguments between reads. `ps`
-  therefore cannot prove that the token is an environment variable, and
-  start times have one-second resolution, so `ps` output is never used to
-  authorize a signal. Cleanup waits (up to the combined self-exit, TERM and
-  KILL budgets) for the launcher's watchdog to stop the tree. Each scan
-  reads one `/bin/ps -axww -E -o pid=,ppid=,uid=,pgid=,stat=,lstart=,command=`
-  snapshot, run with `TZ=UTC0`, `LC_ALL=C`, a minimal `PATH`, no shard token
-  and a 10-second timeout. A process may be the shard's when any of these
-  holds:
-  - its line contains the exact `WEBSITE_TRANSIENT_OWNER=<token>` word,
-    in its arguments or its environment;
-  - it is a child of such a process;
-  - it shares a process group with one, or sits in a group one once led;
-  - it is a PID plus start time counted at an earlier scan.
-  Over-counting only fails cleanup. Success requires a scan with no such
-  process and a free shard port. A held port is never reported as foreign
-  on macOS. A process that keeps running fails cleanup and is listed in
-  `survivors`, unsignalled. macOS hides the environment of Apple platform
-  binaries such as `/bin/sh`. A tokenless process that never showed the
-  token, never shared lineage or a group with one, and was never counted
-  earlier is invisible. The shard server tree is Node processes, whose
-  environment is visible to the same uid.
-- none (Linux with `/proc` missing or unreadable, other platforms): nothing is
-  signalled and cleanup fails, even when the port is free.
-
-On every source, cleanup succeeds only after a scan finds no live owned
-process or owned descendant. An enumeration error (`ps` missing, timed out,
-killed, non-zero exit, empty output, or a line that does not parse) fails
-cleanup instead of reading as "nothing left", and local CI stops the remaining
-shards. On procfs, a listener without ownership is reported as foreign and never
-signalled; on macOS a held port fails cleanup.
-Platform-independent tests inject the macOS process table and assert that the
-mocked `kill` is never called. A real-`ps` integration test runs only on
-macOS hosts; Linux evidence does not establish macOS `ps -E` behavior.
+Supporting macOS needs a source that separates the environment and reports
+precise start times per PID, such as a native `sysctl(KERN_PROCARGS2)` or
+`proc_pidinfo` reader. Until one exists, cleanup stays fail-closed. Run the
+browser checkpoint on Linux.

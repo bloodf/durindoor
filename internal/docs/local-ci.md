@@ -181,10 +181,39 @@ cases in discovery and execution. Before executing, local CI asks Playwright to
 list each proposed shard, reduces the count if a shard is empty, and verifies the
 complete exact-once union. Serial/file/project groups therefore follow Playwright's
 own allocation. Execution still rejects empty, skipped, failed and flaky reports.
-Owned-process enumeration errors fail cleanup even when the port is free; missing
-procfs cannot establish successful cleanup. No unverified process is signalled.
+Owned-process enumeration errors fail cleanup even when the port is free. No
+unverified process is signalled.
 Direct browser runs select and pin a fresh loopback port, while CI supplies each
 shard's port. An occupied selected port remains a hard failure. Chromium scratch
 uses a private short `/tmp/dd-pw-*` directory, removed on normal runner exit,
 independent of long report/output paths. Each planning and execution command
 retains the five-minute ceiling and private allowlisted CI environment.
+
+#### Shard server ownership by platform
+
+`scripts/lib/website-shard-server.mjs` picks one ownership source per host and
+reports it as the cleanup step's `verification`:
+
+- `procfs` (Linux, and any host with a readable `/proc/self/stat`): each
+  process must run as this uid, carry `WEBSITE_TRANSIENT_OWNER=<token>` in
+  `/proc/<pid>/environ`, and keep its kernel start time until the signal.
+- `darwin-ps` (macOS): one `/bin/ps -axww -E -o pid=,ppid=,uid=,pgid=,stat=,lstart=,command=`
+  snapshot per scan, run with `LC_ALL=C`, a minimal `PATH`, no shard token and
+  a 10-second timeout. A process is owned when it runs as this uid and either
+  carries the exact `WEBSITE_TRANSIENT_OWNER=<token>` word or descends by ppid
+  from a process that does. Zombies, this runner and the `ps` process itself are
+  excluded. Identity is PID plus `lstart` (one-second resolution). Each signal
+  round takes a fresh snapshot and skips any PID that is no longer owned or has
+  a different start time. macOS serves a process environment only to its own
+  uid, the only uid this guard signals.
+- none (Linux with `/proc` missing or unreadable, other platforms): nothing is
+  signalled and cleanup fails, even when the port is free.
+
+On every source, cleanup succeeds only after a scan finds no live owned
+process or owned descendant. An enumeration error (`ps` missing, timed out,
+killed, non-zero exit, empty output, or a line that does not parse) fails
+cleanup instead of reading as "nothing left", and local CI stops the remaining
+shards. A listener without ownership is reported as foreign and never signalled.
+Platform-independent tests inject the macOS process table and a mocked `kill`,
+so they never signal real processes. A real-`ps` integration test runs only on
+macOS hosts; Linux evidence does not establish macOS `ps -E` behavior.

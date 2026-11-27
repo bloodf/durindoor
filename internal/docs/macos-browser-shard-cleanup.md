@@ -63,7 +63,7 @@ Playwright runner (R)  [leader of G1]
 1. R's `gracefulShutdown` and `killProcess` (`SIGTERM` and `SIGKILL` to the whole group).
 2. T's signal handler and `server.stop()`.
 3. T's `watchRunner`.
-4. On Linux only, local-ci's token-and-procfs cleanup.
+4. On Linux only, local-ci's token-and-procfs cleanup. Since #2684 it classifies each PID as exited, foreign, owned or uncertain, fails on uncertain or unattributed state and signals only owned PIDs ([local-ci](local-ci.md)). That classification depends on `/proc/<pid>/environ`, `status` uids and clock-tick start times, none of which stock macOS exposes, so it does not carry over: macOS cleanup stays fail-closed until this design is approved.
 
 A macOS supervisor would add a fifth. **[open]** The design must state which authority wins and must remove or fence the others. Otherwise Playwright's `SIGKILL` to `-G2` can kill the supervisor itself (see [requirement 3](#3-place-the-helper-outside-every-group-another-component-force-kills)).
 

@@ -21,6 +21,7 @@ import {
   readShardServerState,
   reserveLoopbackPort,
   signalOwnedProcesses,
+  snapshotShardBaseline,
 } from "../../scripts/lib/website-shard-server.mjs";
 import {
   selectWebsiteBrowserShards,
@@ -121,6 +122,9 @@ describe.skipIf(!linux)("shard timeout leaves no server behind", () => {
   it("reproduces the leak after a shard group SIGKILL and cleans up only the owned server", async () => {
     const port = await reserveLoopbackPort();
     const owner = newShardOwnerToken();
+    // Host processes with protected environments (agents, sandboxes) predate
+    // the shard; local-ci records them the same way before each shard.
+    const baseline = snapshotShardBaseline();
     const { runner, serverPid } = startFakeShardRunner(port, owner);
     const pid = await serverPid;
     expect(await waitFor(() => isPortListening(HOST, port))).toBe(true);
@@ -133,8 +137,8 @@ describe.skipIf(!linux)("shard timeout leaves no server behind", () => {
     expect(alive(pid)).toBe(true);
     expect(await isPortListening(HOST, port)).toBe(true);
 
-    const result = await cleanupShardServer({ owner, port, stateFile: path.join(tempDir(), "absent.json"), selfExitMs: 200, pollMs: 25 });
-    expect(result).toMatchObject({ ok: true, verification: "procfs", foreignListener: false, survivors: [] });
+    const result = await cleanupShardServer({ owner, port, stateFile: path.join(tempDir(), "absent.json"), selfExitMs: 200, pollMs: 25, baseline });
+    expect(result).toMatchObject({ ok: true, verification: "procfs", unattributedListener: false, survivors: [], uncertain: [] });
     expect(result.signalled).toEqual([{ pid, group: true, signal: "SIGTERM" }]);
     expect(alive(pid)).toBe(false);
     expect(await isPortListening(HOST, port)).toBe(false);
@@ -155,26 +159,31 @@ describe.skipIf(!linux)("shard timeout leaves no server behind", () => {
 });
 
 describe.skipIf(!linux)("occupied shard port", () => {
-  it("never signals an unrelated listener that holds the shard port", async () => {
+  it("fails cleanup for an unattributed listener on the shard port and never signals it", async () => {
+    const baseline = snapshotShardBaseline();
     const port = await reserveLoopbackPort();
     const foreign = startListener(port, {}, { detached: true });
     expect(await waitFor(() => isPortListening(HOST, port))).toBe(true);
     const owner = newShardOwnerToken();
     const kill = vi.fn();
 
-    const result = await cleanupShardServer({ owner, port, stateFile: path.join(tempDir(), "s.json"), selfExitMs: 50, pollMs: 10, kill });
-    expect(result).toMatchObject({ ok: true, foreignListener: true, signalled: [] });
+    const result = await cleanupShardServer({ owner, port, stateFile: path.join(tempDir(), "s.json"), selfExitMs: 50, listenerGraceMs: 100, pollMs: 10, kill, baseline });
+    expect(result).toMatchObject({ ok: false, unattributedListener: true, signalled: [], uncertain: [] });
+    expect(result.reason).toMatch(/unattributed listener .* not signalled/);
     expect(kill).not.toHaveBeenCalled();
     expect(alive(foreign.pid)).toBe(true);
     expect(await isPortListening(HOST, port)).toBe(true);
   }, 15_000);
 
   it("never signals a process carrying a different shard's token", async () => {
+    const baseline = snapshotShardBaseline();
     const port = await reserveLoopbackPort();
     const other = startListener(port, { [SHARD_OWNER_ENV]: newShardOwnerToken() });
     expect(await waitFor(() => isPortListening(HOST, port))).toBe(true);
-    const result = await cleanupShardServer({ owner: newShardOwnerToken(), port, stateFile: path.join(tempDir(), "s.json"), selfExitMs: 50, pollMs: 10 });
-    expect(result).toMatchObject({ ok: true, foreignListener: true, signalled: [] });
+    const kill = vi.fn();
+    const result = await cleanupShardServer({ owner: newShardOwnerToken(), port, stateFile: path.join(tempDir(), "s.json"), selfExitMs: 50, listenerGraceMs: 100, pollMs: 10, kill, baseline });
+    expect(result).toMatchObject({ ok: false, unattributedListener: true, signalled: [] });
+    expect(kill).not.toHaveBeenCalled();
     expect(alive(other.pid)).toBe(true);
   }, 15_000);
 
@@ -338,9 +347,15 @@ describe("cleanup failure fails closed", () => {
       async () => { throw new Error("boom"); });
     expect(thrown).toMatchObject({ status: "failed", reason: "shard server cleanup could not be established: boom" });
 
-    const passed = await websiteBrowserShardCleanupStep("website-browser-shard-1", opts, 4000,
-      async () => ({ ok: true, foreignListener: true, signalled: [], survivors: [], verification: "procfs" }));
-    expect(passed).toMatchObject({ status: "passed", foreignListener: true });
-    expect(passed.reason).toMatch(/unrelated listener/);
+    const listener = await websiteBrowserShardCleanupStep("website-browser-shard-1", opts, 4000,
+      async () => ({ ok: false, reason: "an unattributed listener still holds shard port 4000; it was not signalled",
+        unattributedListener: true, signalled: [], survivors: [], uncertain: [], verification: "procfs" }));
+    expect(listener).toMatchObject({ status: "failed", unattributedListener: true, signalled: [] });
+
+    const baseline = ["77:123"];
+    const seen = vi.fn(async () => ({ ok: true, signalled: [], survivors: [], uncertain: [], unattributedListener: false, verification: "procfs" }));
+    const passed = await websiteBrowserShardCleanupStep("website-browser-shard-1", opts, 4000, seen, { baseline });
+    expect(passed).toMatchObject({ status: "passed", reason: "shard server stopped", unattributedListener: false, uncertain: [] });
+    expect(seen).toHaveBeenCalledWith(expect.objectContaining({ owner, port: 4000, baseline }));
   });
 });

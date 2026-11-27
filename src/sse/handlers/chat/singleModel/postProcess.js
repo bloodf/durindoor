@@ -12,6 +12,7 @@ import { requestAborted } from "../shared.js";
 import { RETRY, terminal } from "./context.js";
 import { antigravityPreResponseTimeout, evaluateProviderFailure } from "./providerHooks.js";
 import { MINIMAX_CODE_UNKNOWN_OUTCOME_CODES } from "open-sse/executors/minimax-code.js";
+import { WINDSURF_OUTCOME_UNKNOWN } from "open-sse/executors/windsurf.js";
 
 /** The executor-authored outcome-unknown code, or a header timeout thrown after sending. */
 function isMinimaxCodeOutcomeUnknown(result) {
@@ -126,6 +127,12 @@ export async function processAttemptResult(ctx, state, attempt, result) {
   // timeout). The same never-replay rule applies: no sibling account, no outer
   // transient retry, and no cooldown, because nothing proves the account failed.
   if (provider === "minimax-code" && isMinimaxCodeOutcomeUnknown(result)) {
+    result.response.upstreamPartialOutput = true;
+    return terminal(result.response);
+  }
+  // Windsurf marks work it accepted but did not complete (output frames before a
+  // failure, or a 200 body that broke) with the same never-replay rule.
+  if (provider === "windsurf" && result.errorBody?.error?.code === WINDSURF_OUTCOME_UNKNOWN) {
     result.response.upstreamPartialOutput = true;
     return terminal(result.response);
   }

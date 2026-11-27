@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { abortable, createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { isValidHttpHeaderName } from "./websession-utils.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -113,6 +113,30 @@ const MODEL_ALIAS_MAP = {
   "kimi-k2.5": "kimi-k2-5",
   "glm-5.1": "glm-5-1"
 };
+
+/**
+ * Error code of a Windsurf attempt the upstream accepted but did not complete:
+ * output frames arrived, or the 200 body failed after it was accepted. The
+ * gateway ends the request on the selected account instead of replaying it.
+ */
+export const WINDSURF_OUTCOME_UNKNOWN = "upstream_outcome_unknown";
+
+// Trusted gRPC status codes with a fixed gateway meaning. Only the numeric
+// status is read; grpc-message and error chunks never leave the executor.
+// PERMISSION_DENIED (7) keeps the existing 502 contract.
+const GRPC_TYPED_FAILURES = {
+  16: { status: 401, type: "authentication_error", code: "invalid_credentials", message: "Windsurf authentication failed" },
+  8: { status: 429, type: "rate_limit_error", code: "quota_exceeded", message: "Windsurf quota exhausted" }
+};
+const ACCEPTED_FAILURE = {
+  status: 502,
+  type: "upstream_error",
+  code: WINDSURF_OUTCOME_UNKNOWN,
+  message: "Windsurf accepted the request but did not complete it. It was not retried; check the conversation before sending it again."
+};
+
+// Executor-built failure responses and their fixed gateway classification.
+const executorFailures = new WeakMap();
 
 const TEXT_ENC = new TextEncoder();
 const TEXT_DEC = new TextDecoder();
@@ -374,11 +398,20 @@ function decodeGrpcWebCompletion(bytes) {
   const result = {
     ok: false,
     error: null,
+    output: false,
+    grpcStatus: null,
     contentParts: [],
     promptTokens: 0,
     completionTokens: 0
   };
   const parsed = parseGrpcWebFrames(bytes);
+  // A content or usage frame means the upstream started generating, even when
+  // a truncated frame follows. An error chunk alone is not output.
+  result.output = parsed.frames.some((frame) => {
+    if (frame.flag !== 0x00) return false;
+    const chunk = decodeCompletionChunk(frame.payload);
+    return chunk.kind === "content" && Boolean(chunk.text) || chunk.kind === "done";
+  });
   if (parsed.incomplete) {
     result.error = "Incomplete gRPC-web frame";
     return result;
@@ -388,6 +421,7 @@ function decodeGrpcWebCompletion(bytes) {
       const trailer = TEXT_DEC.decode(frame.payload);
       const statusMatch = /(?:^|\r?\n)grpc-status:\s*(\d{1,2})\s*(?:\r?\n|$)/i.exec(trailer);
       if (statusMatch) {
+        result.grpcStatus = Number(statusMatch[1]);
         if (statusMatch[1] === "0") {
           result.ok = true;
         } else {
@@ -412,6 +446,67 @@ function decodeGrpcWebCompletion(bytes) {
     result.error = "Missing gRPC OK trailer";
   }
   return result;
+}
+
+/** The numeric grpc-status of a trailers-only response sent as HTTP headers. */
+function headerGrpcStatus(headers) {
+  const value = headers?.get?.("grpc-status");
+  return isString(value) && /^\d{1,2}$/.test(value.trim()) ? Number(value.trim()) : null;
+}
+
+function failureResponse(failure, message = failure.message, code = failure.code) {
+  const response = new Response(JSON.stringify({
+    error: { message, type: failure.status === 502 ? "windsurf_error" : failure.type, code }
+  }), { status: failure.status, headers: { "Content-Type": "application/json" } });
+  executorFailures.set(response, failure);
+  return response;
+}
+
+/**
+ * Classify a completed gRPC-web body that is not a clean success. Output frames
+ * make it accepted work; a typed status before any output is a definite refusal.
+ * The executor body keeps its existing message and code; the gateway reads the
+ * fixed classification through parseError.
+ */
+function decodedFailureResponse(decoded, upstreamHeaders) {
+  const message = decoded.error || "Incomplete gRPC-web frame";
+  if (decoded.output) return failureResponse(ACCEPTED_FAILURE, message, "upstream_error");
+  const status = decoded.grpcStatus ?? headerGrpcStatus(upstreamHeaders);
+  const typed = GRPC_TYPED_FAILURES[status];
+  if (typed) return failureResponse(typed);
+  return new Response(JSON.stringify({
+    error: { message, type: "windsurf_error", code: "upstream_error" }
+  }), { status: 502, headers: { "Content-Type": "application/json" } });
+}
+
+/**
+ * Read the whole gRPC-web body. Cancellation stops waiting and cancels the
+ * upstream body. A body that fails after the 200 was accepted is uncertain work.
+ */
+async function readUpstreamBytes(upstream, signal) {
+  const reader = upstream.body?.getReader();
+  if (!reader) return { bytes: new Uint8Array(0), failed: false };
+  const chunks = [];
+  try {
+    for (;;) {
+      const { done, value } = await abortable(reader.read(), signal);
+      if (done) break;
+      if (value?.length) chunks.push(value);
+    }
+  } catch (error) {
+    void reader.cancel().catch(() => {});
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    if (error?.name === "AbortError") throw error;
+    return { bytes: null, failed: true };
+  }
+  const total = chunks.reduce((n, chunk) => n + chunk.length, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return { bytes, failed: false };
 }
 
 function parseGrpcWebFrames(buf) {
@@ -470,8 +565,27 @@ export class WindsurfExecutor extends BaseExecutor {
 
   // The gateway extracts bounded rate-limit evidence from the response itself.
   // Never pass arbitrary provider text into public errors or request logs.
+  // Executor-built failures carry a fixed classification instead.
   parseError(response) {
+    const failure = executorFailures.get(response);
+    if (failure) {
+      return {
+        status: failure.status,
+        message: failure.message,
+        errorBody: { error: { message: failure.message, type: failure.type, code: failure.code } }
+      };
+    }
     return { status: response.status, message: "Windsurf upstream error" };
+  }
+
+  /** Imported Windsurf tokens carry no refresh token; a rejected one needs a new import. */
+  async refreshCredentials() {
+    return null;
+  }
+
+  /** chatCore hook: a refresh cannot answer a rejected import token, so never resend it. */
+  shouldRefreshAfterAuthFailure() {
+    return false;
   }
 
   async execute(input) {
@@ -523,35 +637,37 @@ export class WindsurfExecutor extends BaseExecutor {
       return { response: upstream, url, headers, transformedBody: null };
     }
 
+    const read = await readUpstreamBytes(upstream, signal);
+    if (read.failed) {
+      return { response: failureResponse(ACCEPTED_FAILURE, "Windsurf response body failed", "upstream_error"), url, headers, transformedBody: null };
+    }
     const response = stream === false ?
-    await this.transformToJSON(upstream, model) :
-    await this.transformToSSE(upstream, model);
+    await this.transformToJSON(upstream, model, read.bytes) :
+    await this.transformToSSE(upstream, model, read.bytes);
 
     return {
       response,
       url,
       headers,
-      transformedBody: null
+      transformedBody: null,
+      // The executor checked the gRPC OK trailer before building a success.
+      ...(response.ok ? { terminalProvenance: "validated" } : null)
     };
   }
 
-  async transformToJSON(upstream, model) {
+  async transformToJSON(upstream, model, bytes = null) {
     const responseId = `chatcmpl-ws-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
-    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    const decoded = decodeGrpcWebCompletion(bytes ?? new Uint8Array(await upstream.arrayBuffer()));
     const {
       ok,
       error,
       contentParts,
       promptTokens,
       completionTokens
-    } = decodeGrpcWebCompletion(bytes);
+    } = decoded;
 
-    if (!ok || error) {
-      return new Response(JSON.stringify({
-        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" }
-      }), { status: 502, headers: { "Content-Type": "application/json" } });
-    }
+    if (!ok || error) return decodedFailureResponse(decoded, upstream.headers);
 
     const content = contentParts.join("");
 
@@ -580,23 +696,19 @@ export class WindsurfExecutor extends BaseExecutor {
     });
   }
 
-  async transformToSSE(upstream, model) {
+  async transformToSSE(upstream, model, bytes = null) {
     const responseId = `chatcmpl-ws-${Date.now()}`;
     const created = Math.floor(Date.now() / 1000);
-    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    const decoded = decodeGrpcWebCompletion(bytes ?? new Uint8Array(await upstream.arrayBuffer()));
     const {
       ok,
       error,
       contentParts,
       promptTokens,
       completionTokens
-    } = decodeGrpcWebCompletion(bytes);
+    } = decoded;
 
-    if (!ok || error) {
-      return new Response(JSON.stringify({
-        error: { message: error || "Incomplete gRPC-web frame", type: "windsurf_error", code: "upstream_error" }
-      }), { status: 502, headers: { "Content-Type": "application/json" } });
-    }
+    if (!ok || error) return decodedFailureResponse(decoded, upstream.headers);
 
     const sseStream = new ReadableStream({
       start(controller) {

@@ -1,0 +1,119 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/handlers/openrouterTranscription.ts",
+      "tests/unit/audio-transcription-opus-filename.test.ts"
+    ],
+    "registryFields": {
+      "stt": {
+        "id": "openrouter",
+        "baseUrl": "https://openrouter.ai/api/v1/audio/transcriptions",
+        "authType": "apikey",
+        "authHeader": "bearer",
+        "format": "openrouter-stt",
+        "supportedFormats": ["wav", "mp3", "flac", "m4a", "ogg", "webm", "aac"]
+      }
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/openrouter.js (serviceKinds llm, embedding, tts, imageToText, rerank, systemone; ttsConfig, embeddingConfig, imageConfig, systemoneConfig; no sttConfig, no stt model rows)",
+      "open-sse/handlers/sttCore.js handleSttCore (dispatches on sttConfig.format; no `openrouter-stt` case, and the openai default branch sends multipart, not the JSON input_audio envelope)",
+      "src/sse/handlers/stt.js (reads AI_PROVIDERS[provider].sttConfig; openrouter has none, so /v1/audio/transcriptions answers \"does not support STT\"; no accepted-job recording on the STT route)",
+      "`git grep -n openrouter-stt` and `git grep -n input_audio open-sse/handlers` (no JSON STT path anywhere)"
+    ],
+    "result": "the provider exists but has no transcription path; the generic multipart branch does not match the wire envelope, so this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-openrouter-stt/index.js",
+  "exports": {
+    "openrouterSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createOpenRouterSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes } for tests",
+    "buildOpenRouterTranscriptionRequest": "async (model, formData, { kind }) -> { body, responseFormat } or a 400 error result with local: true",
+    "resolveOpenRouterAudioFormat": "(file, bytes?) -> input_audio.format or null (source rule, byte check instead of the wav fallback)",
+    "sniffOpenRouterAudioFormat": "(bytes) -> container from leading bytes or null",
+    "openrouterSttAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "openrouterSttRefusal": "(status, { secrets, retryAfter }) refusal mapping that never quotes the upstream",
+    "OPENROUTER_PROVIDER_ID": "\"openrouter\"",
+    "OPENROUTER_STT_FORMAT": "\"openrouter-stt\"",
+    "OPENROUTER_ORIGIN": "https://openrouter.ai",
+    "OPENROUTER_TRANSCRIPTION_URL": "https://openrouter.ai/api/v1/audio/transcriptions",
+    "OPENROUTER_STT_CONFIG": "staged sttConfig for the existing openrouter registry entry",
+    "OPENROUTER_STT_MODELS": "eleven source transcription models (kind stt)",
+    "OPENROUTER_STT_AUDIO_FORMATS": "source supportedFormats",
+    "OPENROUTER_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\", \"verbose_json\"] (or none named)",
+    "OPENROUTER_STT_TIMEOUT_MS": "300000",
+    "OPENROUTER_MAX_STT_FILE_BYTES": "26214400",
+    "OPENROUTER_MAX_TRANSCRIPT_BYTES": "8388608",
+    "openrouterSttModel": "(id) -> model row or null"
+  },
+  "provider": {
+    "canonicalId": "openrouter",
+    "aliases": ["openrouter"],
+    "existingRegistryEntry": "open-sse/providers/registry/openrouter.js",
+    "existingServiceKinds": ["llm", "embedding", "tts", "imageToText", "rerank", "systemone"],
+    "addServiceKinds": ["stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "openrouter-stt",
+    "attributionHeaders": "none: the source STT request sends only Authorization and Content-Type, unlike the registry's HTTP-Referer / X-Title on other OpenRouter configs"
+  },
+  "models": {
+    "stt": [
+      { "id": "deepgram/nova-3", "name": "Deepgram Nova-3" },
+      { "id": "microsoft/mai-transcribe-1.5", "name": "Microsoft MAI-Transcribe 1.5" },
+      { "id": "nvidia/parakeet-tdt-0.6b-v3", "name": "NVIDIA Parakeet TDT 0.6B v3" },
+      { "id": "mistralai/voxtral-mini-transcribe", "name": "Mistral Voxtral Mini Transcribe" },
+      { "id": "qwen/qwen3-asr-flash-2026-02-10", "name": "Qwen3 ASR Flash 2026-02-10" },
+      { "id": "google/chirp-3", "name": "Google Chirp 3" },
+      { "id": "openai/gpt-4o-mini-transcribe", "name": "OpenAI GPT-4o Mini Transcribe" },
+      { "id": "openai/whisper-large-v3", "name": "OpenAI Whisper Large v3" },
+      { "id": "openai/whisper-large-v3-turbo", "name": "OpenAI Whisper Large v3 Turbo" },
+      { "id": "openai/whisper-1", "name": "OpenAI Whisper 1" },
+      { "id": "openai/gpt-4o-transcribe", "name": "OpenAI GPT-4o Transcribe" }
+    ],
+    "passthrough": "refused: the registry's passthroughModels covers chat; transcription takes only the listed ids",
+    "dynamicDiscovery": "none: the source lists OpenRouter transcription models statically; the registry's modelsFetcher (https://openrouter.ai/api/v1/models, type openrouter-free) feeds chat models and is not an STT contract"
+  },
+  "endpoints": {
+    "transcription": {
+      "method": "POST",
+      "url": "https://openrouter.ai/api/v1/audio/transcriptions",
+      "headers": ["Authorization: Bearer <key>", "Content-Type: application/json"],
+      "body": "{ model, input_audio: { data: <base64>, format }, language?, response_format?, temperature? (number), timestamp_granularities? (array) }",
+      "answer": "json / verbose_json object with string text (usage and duration kept), or text/plain"
+    },
+    "translation": "none"
+  },
+  "bounds": {
+    "sttTimeoutMs": 300000,
+    "maxSttFileBytes": 26214400,
+    "maxTranscriptBytes": 8388608,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/openrouter.js",
+      "change": "serviceKinds += \"stt\"; add model rows from OPENROUTER_STT_MODELS with kind \"stt\"; sttConfig: OPENROUTER_STT_CONFIG (translationModels [] so supportsSttTranslation stays false); keep every existing kind, config and the apikey auth mode"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"openrouter\" && cfg.format === \"openrouter-stt\") return await openrouterSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so the generic multipart default never serves openrouter"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "record `result.acceptedJob` once on the selected connection (modality stt, endpoint /v1/audio/transcriptions) and stop account fallback for it; today the STT route has no accepted-job path"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the OpenRouter stt kind after registration"
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/providers/ucImage.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/providers/ucVideo.ts",
+      "open-sse/config/providers/registry/uc-direct/index.ts",
+      "open-sse/executors/uc/constants.ts",
+      "tests/unit/uc-image.test.ts",
+      "tests/unit/uc-video.test.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-uc-video-image/index.js",
+  "exports": {
+    "ucImageAdapter": "default image adapter instance (guarded generate adapter, responseFormats [url, b64_json])",
+    "ucVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract, async, responseFormats [url])",
+    "createUcImageAdapter": "factory; options { timeoutMs, now } for tests",
+    "createUcVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now } for tests",
+    "buildUcImageRequest": "(model, body) -> { model, prompt, n, size? }; throws status 400",
+    "buildUcVideoRequest": "(model, body) -> { model, prompt, size?, aspect_ratio?, resolution?, duration?, image? }; throws status 400",
+    "runUcVideoJob": "submit + bounded status_url poll; { success, url, jobId, answer } or error result with acceptedJob",
+    "extractUcVideo": "source extractUcDirectVideo: { url?, statusUrl?, status?, requestId? }",
+    "ucStatusUrl": "status_url guard: https://api.uncensored.com/api/v1/videos/... only",
+    "ucAcceptedJob": "(modality, jobState, jobId?) accepted-job accounting with unknown cost",
+    "ucPublicUrl": "public https URL check used for results and input image URLs",
+    "ucToken": "uai_ developer key of the selected connection, or null",
+    "UC_PROVIDER_MEDIA_ADDITIONS": "serviceKinds, model kinds and imageConfig to add to the existing uc-direct registry entry",
+    "UC_IMAGE_MODELS": "22 source image ids",
+    "UC_VIDEO_MODELS": "13 source REST video ids with input text | image | any",
+    "UC_PERSONA_ENDPOINTS": "persona endpoints from the source, evidence only, never called"
+  },
+  "provider": {
+    "canonicalId": "uc-direct",
+    "aliases": ["ucd"],
+    "sourceId": "uc",
+    "sourceIdDisposition": "OmniRoute keys both media entries as `uc` (persona provider). The fork has no `uc` provider: the consumer-app persona path was retired in #1241 (closed not planned); the documented replacement is `uc-direct` (#1242). Do not add a `uc` alias.",
+    "existingRegistryEntry": "open-sse/providers/registry/uc-direct.js",
+    "addRegistryEntry": null,
+    "addServiceKinds": ["image", "video"],
+    "keepServiceKinds": ["llm"],
+    "authModes": ["apikey"],
+    "auth": { "header": "X-api-key", "scheme": "raw", "credentialFields": ["apiKey"], "keyShape": "uai_sk_live_..." , "existingEntryAuth": "transport.auth { combined: true, header: x-api-key, scheme: raw } unchanged" },
+    "connectionBaseUrlHonored": false,
+    "modelPrefixesStripped": ["uc-direct/", "ucd/", "uc/"],
+    "notEquivalent": {
+      "uc-direct (current registry entry)": "same vendor, origin and key, but LLM only: serviceKinds [llm], no imageConfig, no image or video adapter",
+      "generic OpenAI image adapter (imageProviders/openai.js)": "sends Authorization: Bearer; UC Direct needs X-api-key, and the generic adapter defaults size and forwards options the source never sent",
+      "/v1/videos proxy (videoCore.js)": "no uc-direct videoConfig, hands job ids to the client, no status_url origin check, no accepted-job ledger",
+      "uc persona (OmniRoute `uc`)": "Clerk JWT minted from consumer-app cookies; retired in #1241, not staged"
+    }
+  },
+  "models": {
+    "image": ["model-dev", "model-pro", "model-1.1", "model-1.2", "seedream-v4.5", "seedream-v5", "flux-2", "flux-2-pro", "lustify-v7", "nano-banana", "nano-banana-2", "nano-banana-pro", "nano-banana-ultra", "gpt-image", "gpt-image-2", "realism", "realism-2", "z-image-turbo", "prefect-pony-xl", "wan-2.6", "wan-2.7-text-to-image", "wan-2.7-text-to-image-pro"],
+    "video": ["t2v-turbo", "t2v-standard", "i2v-turbo", "i2v-standard", "i2v-pro", "i2v-sora", "i2v-sora-pro", "cosmos-predict", "av-gen", "ltx-distilled", "seedance-2.0", "seedance-2.0-fast", "happyhorse"],
+    "notStaged": { "wan-2.2-spicy": "persona picker default, not in the source REST catalog" },
+    "bareIdCollisions": "several image ids (nano-banana, z-image-turbo, gpt-image) also exist under other providers; the source keeps `uc` last so bare ids resolve to their historical owner. Register these as uc-direct-scoped models only.",
+    "dynamicDiscovery": "none for media in the source (static registry lists). The existing uc-direct modelsFetcher (GET https://api.uncensored.com/api/v1/models, openai) stays the LLM catalog and is not reused for media kinds."
+  },
+  "endpoints": {
+    "image": { "method": "POST", "url": "https://api.uncensored.com/api/v1/images/generations", "headers": ["X-api-key", "Content-Type"] },
+    "videoSubmit": { "method": "POST", "url": "https://api.uncensored.com/api/v1/videos/generations", "headers": ["X-api-key", "Content-Type"], "jobFields": ["request_id", "id", "job_id"], "statusField": "status_url" },
+    "videoStatus": { "method": "GET", "url": "<status_url> restricted to https://api.uncensored.com/api/v1/videos/...", "headers": ["X-api-key"] },
+    "personaNotStaged": {
+      "image": "https://internal.chatuncensored.ai/v2/image-gen",
+      "textToVideo": "https://internal.chatuncensored.ai/text_to_video",
+      "imageToVideo": "https://internal.chatuncensored.ai/image_to_video",
+      "signedUpload": "https://internal-6.pubyar.com/generate-signed-url",
+      "clerkMint": "https://clerk.uncensored.com/v1/client/sessions/{sid}/tokens",
+      "tts": "wss://tts-stream.chatuncensored.ai (WebSocket, separate inventory row)"
+    }
+  },
+  "responseFormats": { "image": ["url", "b64_json"], "video": ["url"] },
+  "serviceKinds": ["image", "video"],
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/uc-direct.js",
+      "change": "add serviceKinds image and video (keep llm) and the models from UC_PROVIDER_MEDIA_ADDITIONS.addModels with kind image / video; add imageConfig; keep transport, auth, modelsFetcher and passthroughModels; no videoConfig, so /v1/videos stays unavailable"
+    },
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { ucImageAdapter } and add `\"uc-direct\": ucImageAdapter, ucd: ucImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { ucVideoAdapter } and add `\"uc-direct\": ucVideoAdapter, ucd: ucVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate (default response_format url) and keeps acceptedJob on errors"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list UC Direct image and video kinds after registration"
+    }
+  ]
+}

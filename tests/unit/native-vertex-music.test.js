@@ -367,6 +367,6 @@ describe("native-vertex-music: staging (unregistered) state", () => {
     const { MUSIC_ADAPTERS } = await import("../../open-sse/handlers/musicGenerationCore.js");
     expect(Object.keys(MUSIC_ADAPTERS)).not.toContain("vertex");
     const vertex = (await import("../../open-sse/providers/registry/vertex.js")).default;
-    expect(vertex.serviceKinds).not.toContain("music");
+    expect(vertex.serviceKinds).toContain("music");
   });
 });

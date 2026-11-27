@@ -544,7 +544,18 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         getProviderAlias(providerId) ||
         staticAlias).
         trim();
-        const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
+        let providerModels = PROVIDER_MODELS[staticAlias] ?? [];
+        /** Project Vertex's declared transcription kind before ID lookup deduplication.
+         * Chat and mixed requests keep the canonical chat row for shared IDs.
+         */
+        if (providerId === "vertex" && kindFilter.includes("stt") && !kindFilter.includes(LLM_KIND)) {
+          const transcriptionModels = new Map(
+            (AI_PROVIDERS[providerId]?.sttConfig?.models ?? []).map((model) => [model.id, model])
+          );
+          providerModels = providerModels.map((model) => transcriptionModels.has(model.id)
+            ? { ...model, ...transcriptionModels.get(model.id), kind: "stt" }
+            : model);
+        }
         let enabledModels = resolveEnabledModels(providerId, conn);
         // An explicit provider-level allowlist restricts what this provider may
         // publish, even when the intersection ends up empty. Only Azure needs the

@@ -87,6 +87,9 @@ function imageFailureMessage(body) {
  * provider usage receipt was read before the cancel. A 2xx status alone is not
  * evidence (the unread body may be an error envelope), so it carries only
  * `cancelledAfterHeaders: true`, which no ledger records.
+ * A Codex `tool_usage.image_gen` count read before the cancel is such a receipt.
+ * An upstream abort (client still connected) carries the same evidence, tagged
+ * `meta.upstreamAborted`; the caller records it and keeps its fallback rules.
  * Streams report it on the abort outcome; buffered bodies return 499 with it.
  * Callback rejection resolves failure with failed accounting and a client error event.
  * @returns {Promise<{ success: boolean, response: Response, accounting?: object, completion?: Promise<object>, status?: number, error?: string }>}
@@ -340,7 +343,15 @@ export async function handleImageGenerationCore({
   // A 2xx status line proves neither acceptance nor completion: a provider can
   // answer 200 with an error envelope, and the unread body decides. Only a usage
   // receipt actually read before the cancel is evidence of billable work.
-  const cancelEvidence = () => (hasReceipt ? cancelledAccounting(accounting) : undefined);
+  // Codex's hosted image-tool counts (`tool_usage.image_gen`) are such a
+  // receipt even when the event carries no general usage: they prove the tool
+  // ran. They stay metadata (see imageToolUsage), never host-model tokens.
+  // The cause tag says who ended the read: the client, or the upstream body.
+  const cancelEvidence = (byClient = signal?.aborted) => {
+    if (!hasReceipt && !toolUsage) return undefined;
+    attachToolUsage();
+    return cancelledAccounting(accounting, byClient ? "client" : "upstream");
+  };
   try {
     if (adapter.parseResponse) {
       parsed = await adapter.parseResponse(providerResponse, {
@@ -367,8 +378,11 @@ export async function handleImageGenerationCore({
           if (outcome.status === "success") returnedImageUnits(accounting, outcome.value);
           outcome.accounting = accounting;
           if (outcome.status === "abort") {
-            outcome.cancelledUsage = cancelEvidence();
-            if (!outcome.cancelledUsage) headerOnlyCancel(outcome, log, provider, model);
+            // The SSE body cancelled by its reader is a client cancel even
+            // before the request signal fires.
+            const byClient = Boolean(outcome.clientCancelled || signal?.aborted);
+            outcome.cancelledUsage = cancelEvidence(byClient);
+            if (!outcome.cancelledUsage && byClient) headerOnlyCancel(outcome, log, provider, model);
           }
           try {
             // Clear account health before the ledger write, so a health failure
@@ -397,10 +411,11 @@ export async function handleImageGenerationCore({
       if (adapter.async) return withAcceptedJob(abortedResult());
       // The unread body held the outcome and usage. Keep any receipt read so far
       // and invent nothing; see cancelEvidence for when there is evidence at all.
-      if (!signal?.aborted) return abortedResult();
-      attachToolUsage();
+      // An upstream abort with a live client keeps its receipt too: the caller
+      // records it, then account health and fallback treat the 499 as before.
       const cancelledUsage = cancelEvidence();
       if (cancelledUsage) return { ...abortedResult(), cancelledUsage };
+      if (!signal?.aborted) return abortedResult();
       return headerOnlyCancel(abortedResult(), log, provider, model);
     }
     // An adapter may tag a parse/validation error with an explicit HTTP status

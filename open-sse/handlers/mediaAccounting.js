@@ -90,20 +90,24 @@ export function returnedImageUnits(accounting, normalized) {
 
 /**
  * Evidence for a client cancel that came after the provider answered 2xx but
- * before its body was fully read. Call it only once a provider usage receipt
+ * before its body was fully read, or for the same read ended by an upstream
+ * abort (`cause: "upstream"`). Call it only once a provider usage receipt
+ * (including Codex `tool_usage.image_gen`, which stays in `meta.imageToolUsage`)
  * was actually read: that receipt, not the 2xx status, is the evidence of
  * billable work. No returned image was observed, so native units stay empty
  * and an unknown cost stays unknown, tagged so the ledger says why. The
  * receipt's tokens and any USD cost are kept as reported.
  */
-export function cancelledAccounting(accounting) {
-  const meta = { ...accounting.meta, clientCancelled: "after-upstream-headers" };
+export function cancelledAccounting(accounting, cause = "client") {
+  const upstream = cause === "upstream";
+  const meta = { ...accounting.meta, [upstream ? "upstreamAborted" : "clientCancelled"]: "after-upstream-headers" };
   delete meta.nativeUnitsSource;
   return {
     ...accounting,
     state: "cancelled",
+    tokens: { ...accounting.tokens },
     nativeUnits: {},
-    costSource: accounting.costStatus === "known" ? accounting.costSource : "client-cancelled",
+    costSource: accounting.costStatus === "known" ? accounting.costSource : upstream ? "upstream-aborted" : "client-cancelled",
     meta,
   };
 }

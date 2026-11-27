@@ -42,11 +42,34 @@ describe("test:ci batched supervision", () => {
 
   it("fails closed when inventory cannot be read", async () => {
     await expect(killGroup(123, {
-      kill: () => { throw errno("EPERM"); }, members: () => { throw errno("EIO"); },
+      kill: () => { throw errno("EPERM"); }, members: () => { throw errno("EIO"); }, deadline: Date.now() + 30,
     })).rejects.toMatchObject({ message: "command cleanup could not be verified", errors: [
-      expect.objectContaining({ code: "EPERM" }), expect.objectContaining({ code: "EPERM" }),
+      expect.objectContaining({ code: "EPERM" }),
       expect.objectContaining({ code: "EIO" }),
     ] });
+  });
+
+  it("retries transient inventory failures and never signals an unverified leader", async () => {
+    const calls = [];
+    let attempts = 0;
+    await killGroup(123, {
+      kill: (pid) => { calls.push(pid); if (pid < 0) throw errno("EPERM"); },
+      members: () => { if (++attempts === 1) throw errno("ETIMEDOUT"); return []; },
+      deadline: Date.now() + 200,
+    });
+    expect(attempts).toBeGreaterThanOrEqual(2);
+    expect(calls).toEqual([-123]);
+  });
+
+  it("performs a final inventory after the last kill", async () => {
+    let alive = true;
+    let checks = 0;
+    await killGroup(123, {
+      kill: (pid) => { if (pid === 124) alive = false; },
+      members: () => { checks++; return alive ? [124] : []; },
+      deadline: Date.now() + 50,
+    });
+    expect(checks).toBeGreaterThanOrEqual(2);
   });
 
   it("propagates denied cleanup at the deadline without waiting forever for close", async () => {

@@ -38,7 +38,7 @@ const body = (cookies = [cookie()], extra = {}) => ({ provider, origin, cookies,
 let db, logs;
 async function issue(target = { action: "create", name: "PPLX" }) {
   const response = await pair(pairingRequest({ provider, ...target }));
-  expect(response.status).toBe(201);
+  expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
   return (await response.json()).pairing;
 }
 beforeEach(() => {
@@ -101,8 +101,8 @@ describe("Perplexity real cookie contract", () => {
     for (const bad of [body([cookie()], { origin: "https://attacker.example" }), body([{ ...cookie(), expirationDate: 1 }])]) {
       const p = await issue(); expect((await importCookies(importRequest(p.token, bad))).status).toBe(400);
     }
-    const a = await createProviderConnection({ provider, authType: "apikey", name: "A", apiKey: "old-a", isActive: true }, { createOnly: true });
-    const b = await createProviderConnection({ provider, authType: "apikey", name: "B", apiKey: "old-b", isActive: true }, { createOnly: true });
+    const a = await createProviderConnection({ provider, authType: "cookie", name: "A", apiKey: "old-a", isActive: true }, { createOnly: true });
+    const b = await createProviderConnection({ provider, authType: "cookie", name: "B", apiKey: "old-b", isActive: true }, { createOnly: true });
     const p = await issue({ action: "update", connectionId: a.id });
     expect((await importCookies(importRequest(p.token, body([cookie()], { connectionId: b.id })))).status).not.toBe(200);
     const p2 = await issue({ action: "update", connectionId: a.id });

@@ -13,8 +13,12 @@
 // Fork deviations:
 //   - opt-in env plus sign-in metadata are required; an API key, a Bearer
 //     header or the uc-direct backend are never used;
-//   - an auth challenge, a revoked session, a socket 401/403 or an
-//     unauthorized error frame fails closed (cached JWT dropped, no retry);
+//   - a Clerk mint 401/403 (any body, including a challenge code) is a
+//     re-login, 401 uc_auth_error, as in the source (clerkAuth.ts:85-87,
+//     uc.ts:198); a socket 401/403 or an unauthorized error frame is also
+//     401 and drops only that account's cached JWT; nothing retries;
+//   - a session-controller `needs_operator` result (sign-in challenge or MFA,
+//     never produced by a mint) is a fork-only 403 uc_auth_challenge;
 //   - no replay of any kind: the source's code-style retry after a refusal is
 //     not run, and every failure after the frame left carries `acceptedTurn`
 //     (`accepted` once UC answered with any frame, else `uncertain`);
@@ -95,7 +99,10 @@ function socketFailure(run) {
   }
 }
 
-/** Session-controller failure -> `{ status, code, message, retryAfter? }`; null for an abort. */
+/**
+ * Session-controller failure -> `{ status, code, message, retryAfter? }`; null for an abort.
+ * The controller maps a mint 401/403 to `reauth` (source clerkAuth.ts:85-87).
+ */
 function mintFailure(token) {
   switch (token.kind) {
     case "aborted": return null;

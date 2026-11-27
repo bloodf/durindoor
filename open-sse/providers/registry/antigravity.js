@@ -104,9 +104,10 @@ export default {
     { id: "claude-opus-5-5-low", name: "Claude Opus 5.5 (Low)", upstreamModelId: "claude-opus-5-5-low(low)" },
     { id: "claude-opus-5-5", name: "Claude Opus 5.5 (Thinking)", upstreamModelId: "claude-opus-5-5-medium(medium)" },
     { id: "claude-sonnet-5", name: "Claude Sonnet 5 (Thinking)" },
-    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
-    { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
-    { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
+    // Request aliases from OmniRoute 9671192 antigravityModelAliases.ts (legacy gemini-claude-*, bare gpt-oss-120b).
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)", aliases: ["gemini-claude-sonnet-4-5", "gemini-claude-sonnet-4-5-thinking"] },
+    { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)", aliases: ["gemini-claude-opus-4-5-thinking"] },
+    { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", aliases: ["gpt-oss-120b"] },
     { id: "gemini-3-flash", name: "Gemini 3 Flash", thinking: false },
     // Image generation models
     { id: "gemini-3.1-flash-image", name: "Gemini 3.1 Flash (Image)", kind: "image", imageGen: true, capabilities: ["textToImage"] },

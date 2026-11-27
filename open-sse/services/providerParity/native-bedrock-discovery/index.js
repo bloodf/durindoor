@@ -234,11 +234,9 @@ async function listInferenceProfiles(client, sendOptions) {
   const seen = new Set();
   let nextToken;
   for (let page = 0; page < BEDROCK_DISCOVERY_MAX_PROFILE_PAGES; page++) {
-    const output = await client.send(new ListInferenceProfilesCommand({
-      maxResults: 100,
-      typeEquals: "SYSTEM_DEFINED",
-      ...(nextToken ? { nextToken } : {}),
-    }), sendOptions);
+    const input = { maxResults: 100, typeEquals: "SYSTEM_DEFINED" };
+    if (nextToken) input.nextToken = nextToken;
+    const output = await client.send(new ListInferenceProfilesCommand(input), sendOptions);
     profiles.push(...validateInferenceProfilePage(output));
     const token = output?.nextToken;
     if (token === undefined || token === null || token === "") return profiles;

@@ -10,7 +10,7 @@
 //   which DurinDoor does not carry) and no prices are produced.
 // - `supportsStreaming` is reported only when AWS declares it. The source set it to `true`
 //   for every inference profile and every ARN-derived model; here those stay `null`.
-import { isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isObject, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 /** Bedrock model and inference-profile ids: vendor.model[:version], optional geo prefix. */
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
@@ -107,7 +107,7 @@ export function normalizeBedrockDiscoveredModels(foundation, profiles = []) {
       name: displayName(row.modelName, id),
       source: "foundation",
       provider: isString(row.providerName) ? displayName(row.providerName, null) : null,
-      supportsStreaming: typeof row.responseStreamingSupported === "boolean" ? row.responseStreamingSupported : null,
+      supportsStreaming: isBoolean(row.responseStreamingSupported) ? row.responseStreamingSupported : null,
       supportsVision: input.length || output.length ? input.includes("IMAGE") || output.includes("IMAGE") : null,
     });
   }

@@ -143,8 +143,16 @@ and each batch have an independent five-minute ceiling, including termination
 grace. A discovery error or a failed batch fails the check. An empty
 selection also fails, with one exception: when every changed file is under
 `website/tests/` (Playwright specs and browser helpers), Vitest can correctly
-select nothing, so the runner logs that and exits 0. Any other changed file,
-including other `website/` paths, keeps the empty-selection failure. Those
+select nothing, so the runner logs that and exits 0. The exemption fails
+closed. Each entry must be a canonical repo-relative POSIX path that starts
+with exactly `website/tests/`, with no backslashes, surrounding whitespace,
+control characters, or empty, `.`, or `..` segments. LF and CRLF lists are
+both accepted. It must also name an existing regular file whose `realpath`
+stays inside the real `website/tests` directory, which must not itself be a
+symlink. Absolute paths, case variants, symlink escapes, deleted files, and
+resolution errors all lose the exemption. Any other changed file, including
+other `website/` paths, keeps the empty-selection failure. Discovery errors,
+crashes, signals, and timeouts still fail, as do failing selected tests. Those
 browser files are covered by the website browser shards in exact-head local
 CI, and the full inventory checkpoint remains required for merges.
 

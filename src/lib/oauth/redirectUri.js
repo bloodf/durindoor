@@ -1,5 +1,8 @@
 // OAuth redirect_uri construction. Claude uses Anthropic's manual-code callback;
-// other non-loopback providers redirect to the browser-visible dashboard URL.
+// other non-loopback providers propose the browser-visible dashboard URL.
+// Antigravity profile selection is server-side: generateAuthData replaces this
+// proposal with the pinned desktop loopback callback for the built-in client.
+// Custom Antigravity clients retain the proposed registered dashboard redirect.
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export const CODEX_LOOPBACK_REDIRECT_URI = "http://localhost:1455/auth/callback";

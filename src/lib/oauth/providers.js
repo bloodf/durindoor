@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_DESKTOP_PROFILE, ANTIGRAVITY_DESKTOP_REDIRECT_URI, assertAntigravityOAuthConfig } from "../../../open-sse/providers/shared.js";
 /**
  * OAuth Provider Configurations and Handlers
  * Centralized DRY approach for all OAuth providers
@@ -2198,6 +2199,7 @@ export function getProviderNames() {
  * @param {object} [meta] - Provider-specific metadata (e.g. gitlab clientId/baseUrl)
  */
 export async function generateAuthData(providerName, redirectUri, meta, proxyOptions = null) {
+  if (providerName === "antigravity") assertAntigravityOAuthConfig();
   const provider = getProvider(providerName);
   const config = provider.prepareConfig ?
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
@@ -2205,7 +2207,7 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
   const generated = generatePKCE(provider.pkceVerifierBytes);
   const { codeChallenge, state } = generated;
   let { codeVerifier } = generated;
-  let effectiveRedirectUri = redirectUri;
+  let effectiveRedirectUri = providerName === "antigravity" && ANTIGRAVITY_DESKTOP_PROFILE ? ANTIGRAVITY_DESKTOP_REDIRECT_URI : redirectUri;
   let authMeta = null;
 
   // A token-import provider that also offers a browser PKCE sign-in (Devin
@@ -2258,11 +2260,13 @@ export async function generateAuthData(providerName, redirectUri, meta, proxyOpt
  */
 export async function exchangeTokens(providerName, code, redirectUri, codeVerifier, state, meta, proxyOptions = null, signal = null) {
   throwIfOAuthCancelled(signal);
+  if (providerName === "antigravity") assertAntigravityOAuthConfig();
   const provider = getProvider(providerName);
   const config = provider.prepareConfig ?
   await provider.prepareConfig(provider.config, meta || {}, proxyOptions) :
   provider.config;
 
+  if (providerName === "antigravity" && ANTIGRAVITY_DESKTOP_PROFILE && redirectUri !== ANTIGRAVITY_DESKTOP_REDIRECT_URI) throw new Error("Antigravity desktop callback URI does not match authorization");
   const exchangeArgs = [config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions];
   const tokens = providerName === "antigravity" ?
     await provider.exchangeToken(...exchangeArgs, signal) :

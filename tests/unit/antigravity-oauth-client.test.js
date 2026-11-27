@@ -2,8 +2,8 @@
 import { describe, it, expect } from "vitest";
 
 const EXPECTED = {
-  clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID || "",
-  clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET || "",
+  clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID ?? "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+  clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET ?? "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",
 };
 const GOOGLE = {
   clientId: process.env.GEMINI_OAUTH_CLIENT_ID || "",

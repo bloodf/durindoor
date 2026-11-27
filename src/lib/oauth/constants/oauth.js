@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_DESKTOP_PROFILE } from "../../../../open-sse/providers/shared.js";
 /**
  * OAuth Configuration Constants — static data lives in registry, re-exported here for consumers.
  */
@@ -52,6 +53,7 @@ export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
 export const ANTIGRAVITY_CONFIG = {
   ...ANTIGRAVITY_OAUTH_CLIENT,
   ...PROVIDER_OAUTH["antigravity"],
+  scopes: [...PROVIDER_OAUTH["antigravity"].scopes, ...(ANTIGRAVITY_DESKTOP_PROFILE ? ["https://www.googleapis.com/auth/aicode"] : [])],
   loadCodeAssistClientMetadata: JSON.stringify({ ideType: 9, platform: getOAuthPlatformEnum(), pluginType: 2 })
 };
 

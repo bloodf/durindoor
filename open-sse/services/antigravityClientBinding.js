@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ANTIGRAVITY_OAUTH_CLIENT } from "../providers/shared.js";
+import { ANTIGRAVITY_OAUTH_CLIENT, assertAntigravityOAuthConfig } from "../providers/shared.js";
 
 // Records which configured OAuth client issued an Antigravity/agy refresh
 // token, so a token is never refreshed under a different client. Idea from
@@ -50,7 +50,9 @@ export function clientBindingStatus(providerSpecificData, currentClientId) {
  */
 export function antigravityClientBindingBlocks(provider, providerSpecificData, currentClientId = ANTIGRAVITY_OAUTH_CLIENT.clientId) {
   if (provider !== "antigravity" && provider !== "agy") return false;
-  return clientBindingStatus(providerSpecificData, currentClientId) === "mismatch";
+  if (clientBindingStatus(providerSpecificData, currentClientId) === "mismatch") return true;
+  assertAntigravityOAuthConfig();
+  return false;
 }
 
 /** Error carrying the existing `reauth_required` category and reauth code. Touches no stored state. */

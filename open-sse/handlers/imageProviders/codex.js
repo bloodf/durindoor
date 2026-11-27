@@ -220,7 +220,7 @@ function buildSseResponse(providerResponse, log, onComplete, onReceipt, credenti
     },
     async cancel(reason) {
       cancelled = true;
-      if (!terminal) await finish({ status: "abort", error: reason });
+      if (!terminal) await finish({ status: "abort", error: reason, clientCancelled: true });
       else await finishing;
     }
   }, { highWaterMark: 0 });

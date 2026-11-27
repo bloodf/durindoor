@@ -5,7 +5,7 @@ import { isRefusedRedirect } from './sendRequest.js';
 import { isQuotaDispatchUnavailable } from '../services/quota/dispatch.js';
 import { errorResponse } from '../utils/error.js';
 import { isString } from '../../src/shared/utils/typeChecks.js';
-import { POE_WEB_MODELS } from '../providers/private/poe-web.js';
+import { POE_WEB_MODELS } from '../providers/registry/poe-web.js';
 
 export const POE_WEB_URL = 'https://www.poe.com/api/gql_POST';
 const ORIGIN = 'https://www.poe.com';

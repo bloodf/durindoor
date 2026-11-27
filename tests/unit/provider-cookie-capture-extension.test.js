@@ -765,3 +765,113 @@ describe("local distribution", () => {
     }
   });
 });
+
+// #2034: Inner.ai Web and Venice Web capture. Each is one exact-origin, one-cookie entry; the
+// Inner.ai account email is bound by the dashboard pairing and never read or sent by the extension.
+describe("Inner.ai Web and Venice Web capture", () => {
+  const INNER = "https://app.innerai.com";
+  const CLERK = "https://clerk.venice.ai";
+  const innerPairing = (overrides = {}) => pairing({ provider: "inner-ai-web", name: "Synthetic Inner", contract: { origin: INNER, cookieNames: ["token"], cookiePrefixes: [] }, ...overrides });
+  const venicePairing = (overrides = {}) => pairing({ provider: "venice-web", name: "Synthetic Venice", contract: { origin: CLERK, cookieNames: ["__client"], cookiePrefixes: [] }, ...overrides });
+  const fetchFor = (provider) => makeFetch(201, { ok: true, action: "create", connection: { id: "conn-1", provider, name: "Synthetic" } });
+
+  it("compiles exactly one origin and one cookie for each, and lists only those host permissions", () => {
+    expect(PROVIDERS["inner-ai-web"]).toEqual({ label: "Inner.ai Web", origin: INNER, cookieNames: ["token"], cookiePrefixes: [] });
+    expect(PROVIDERS["venice-web"]).toEqual({ label: "Venice Web", origin: CLERK, cookieNames: ["__client"], cookiePrefixes: [] });
+    const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION_DIR, "manifest.json"), "utf8"));
+    const hosts = manifest.optional_host_permissions.filter((pattern) => /innerai|venice/.test(pattern));
+    expect(hosts).toEqual([`${INNER}/*`, `${CLERK}/*`]);
+    expect(manifest.optional_host_permissions.filter((pattern) => pattern.includes("*.")).every((pattern) => pattern === "https://*/*")).toBe(true);
+  });
+
+  it("refuses wrong-provider, wrong-origin and widened pairings, and ignores an email in the pairing", () => {
+    expect(parsePairing(JSON.stringify(innerPairing({ contract: { origin: CLERK, cookieNames: ["token"] } })), NOW).code).toBe("origin_mismatch");
+    expect(parsePairing(JSON.stringify(venicePairing({ contract: { origin: "https://venice.ai", cookieNames: ["__client"] } })), NOW).code).toBe("origin_mismatch");
+    expect(parsePairing(JSON.stringify(venicePairing({ contract: { origin: CLERK, cookieNames: ["__session"] } })), NOW).code).toBe("invalid_pairing");
+    expect(parsePairing(JSON.stringify(innerPairing({ contract: { origin: INNER, cookieNames: ["token"], extensionCapture: false } })), NOW).code).toBe("invalid_pairing");
+    const wide = parsed(venicePairing({ contract: { origin: CLERK, cookieNames: ["__client", "__session", "__client_uat"], cookiePrefixes: ["__client."] } }));
+    expect(wide).toMatchObject({ cookieNames: ["__client"], cookiePrefixes: [], optionalCookies: [], localStorageKeys: [] });
+    const tampered = parsed(innerPairing({ accountEmail: "attacker@example.com", contract: { origin: INNER, cookieNames: ["token"], accountEmail: "attacker@example.com" } }));
+    expect(JSON.stringify(tampered)).not.toContain("attacker@example.com");
+    expect(JSON.stringify(describePlan(tampered))).not.toContain("attacker@example.com");
+  });
+
+  it.each([
+    ["venice.ai, where the user signs in", "https://venice.ai/chat"],
+    ["the Venice API host", "https://outerface.venice.ai/"],
+    ["a lookalike Clerk host", "https://clerk.venice.ai.evil.example/"],
+    ["plain http Clerk", "http://clerk.venice.ai/"],
+  ])("binds Venice capture to the exact Clerk tab, not %s", async (_label, tabUrl) => {
+    const harness = makeChrome({ tabUrl });
+    const result = await prepareCapture({ chrome: harness.chrome, text: JSON.stringify({ pairing: venicePairing() }), now: NOW });
+    expect(result).toMatchObject({ ok: false, code: "wrong_tab", expectedOrigin: CLERK });
+    expect(callNames(harness.calls)).toEqual(["tabs.query"]);
+  });
+
+  it.each([
+    ["the Inner.ai marketing site", "https://innerai.com/"],
+    ["another Inner.ai host", "https://chatapi.innerai.com/"],
+  ])("binds Inner.ai capture to the exact app tab, not %s", async (_label, tabUrl) => {
+    const harness = makeChrome({ tabUrl });
+    const result = await prepareCapture({ chrome: harness.chrome, text: JSON.stringify({ pairing: innerPairing() }), now: NOW });
+    expect(result).toMatchObject({ ok: false, code: "wrong_tab", expectedOrigin: INNER });
+  });
+
+  it("captures the Clerk __client cookie from the Clerk tab, asks for exactly two origins and gives them back", async () => {
+    const harness = makeChrome({ tabUrl: `${CLERK}/v1/client` });
+    const prepared = await prepareCapture({ chrome: harness.chrome, text: JSON.stringify({ pairing: venicePairing() }), now: NOW });
+    expect(prepared.ok).toBe(true);
+    harness.calls.length = 0;
+    const jar = { __client: cookie("__client", VALUE, { domain: ".clerk.venice.ai" }), __session: cookie("__session", NOISE, { domain: "venice.ai" }) };
+    Object.assign(harness.chrome.cookies, { get: async (details) => { harness.calls.push({ name: "cookies.get", arg: details }); return jar[details.name] ?? null; } });
+    const fetchImpl = fetchFor("venice-web");
+    const result = await runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan: prepared.plan, confirmed: confirmationFor(prepared.plan), now: () => NOW });
+    expect(result).toMatchObject({ ok: true, cookieCount: 1 });
+    expect(harness.calls.filter((c) => c.name === "cookies.get").map((c) => c.arg)).toEqual([{ url: `${CLERK}/`, name: "__client", storeId: "store-1" }]);
+    const request = harness.calls.find((c) => c.name === "permissions.request").arg;
+    expect(request).toEqual({ permissions: ["cookies"], origins: [`${CLERK}/*`, `${DASHBOARD}/*`] });
+    expect(harness.calls.find((c) => c.name === "permissions.remove").arg).toEqual(request);
+    expect([...harness.state.held]).toEqual([]);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body).toEqual({ provider: "venice-web", origin: CLERK, cookies: [{ name: "__client", value: VALUE, domain: "clerk.venice.ai", secure: true }] });
+    leaks(result, [VALUE, TOKEN]);
+  });
+
+  it.each([
+    ["the Venice API host", "outerface.venice.ai"],
+    ["another site", "evil.example"],
+    ["a bare suffix", "ai"],
+  ])("drops a Venice __client cookie scoped to %s", async (_label, domain) => {
+    const { result, fetch } = await capture({ p: venicePairing(), chromeOpts: { tabUrl: `${CLERK}/`, cookies: { __client: cookie("__client", NOISE, { domain }) } } });
+    expect(result).toMatchObject({ ok: false, code: "no_cookies" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("captures the .innerai.com token cookie and never sends an account email", async () => {
+    const jar = { token: cookie("token", VALUE, { domain: ".innerai.com" }), refresh_token: cookie("refresh_token", NOISE, { domain: ".innerai.com" }) };
+    const fetchImpl = fetchFor("inner-ai-web");
+    const { calls, result, state } = await capture({ p: innerPairing({ accountEmail: "attacker@example.com" }), chromeOpts: { tabUrl: `${INNER}/chat`, cookies: jar }, fetchImpl });
+    expect(result).toMatchObject({ ok: true, cookieCount: 1 });
+    expect(calls.filter((c) => c.name === "cookies.get").map((c) => c.arg.name)).toEqual(["token"]);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body).toEqual({ provider: "inner-ai-web", origin: INNER, cookies: [{ name: "token", value: VALUE, domain: "innerai.com", secure: true }] });
+    expect(fetchImpl.mock.calls[0][1].body).not.toContain("attacker@example.com");
+    expect(calls.find((c) => c.name === "permissions.request").arg).toEqual({ permissions: ["cookies"], origins: [`${INNER}/*`, `${DASHBOARD}/*`] });
+    expect(callNames(calls).at(-1)).toBe("permissions.remove");
+    expect([...state.held]).toEqual([]);
+  });
+
+  it("gives back its grants when the Inner.ai tab navigates away before the read", async () => {
+    const harness = makeChrome({ tabUrl: `${INNER}/`, request: async () => { harness.state.tabUrl = "https://innerai.com/"; return true; }, cookies: { token: cookie("token", VALUE, { domain: ".innerai.com" }) } });
+    const plan = parsed(innerPairing());
+    plan.tabId = 7;
+    const fetchImpl = fetchFor("inner-ai-web");
+    await preflightPermissions(harness.chrome, plan);
+    const result = await runCapture({ chrome: harness.chrome, fetch: fetchImpl, plan, confirmed: confirmationFor(plan), now: () => NOW });
+    expect(result.code).toBe("wrong_tab");
+    expect(callNames(harness.calls).filter((n) => n.startsWith("cookies."))).toEqual([]);
+    expect(callNames(harness.calls)).toContain("permissions.remove");
+    expect([...harness.state.held]).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});

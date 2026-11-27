@@ -29,6 +29,42 @@ async function derivedOwner(module) {
 
 const byProvider = Object.groupBy(manifest.modules, ({ provider }) => provider);
 
+/** Owner implied by a module path alone: an executor file or its helper directory. */
+const pathOwner = (module) => (module.match(EXECUTOR) ?? module.match(HELPER))?.[1];
+
+function helperOwners(modules) {
+  const owners = new Map();
+  for (const { module, provider } of modules.filter(({ module }) => HELPER.test(module))) {
+    const name = path.basename(module);
+    expect(pathOwner(module), module).toBe(provider);
+    owners.set(name, [...(owners.get(name) || []), provider]);
+  }
+  return owners;
+}
+
+// The four web sessions promoted from staging for #2034 (1127). Their former
+// manifest rows stay here as a stable fixture, so the duplicate-helper and
+// shared-owner invariants keep exact coverage after promotion.
+const PROMOTED_1127 = Object.freeze(["inner-ai-web", "venice-web", "poe-web", "v0-vercel-web"]);
+const PROMOTED_1127_FIXTURE = Object.freeze([
+  ["open-sse/executors/inner-ai-web.js", "inner-ai-web"],
+  ["open-sse/executors/inner-ai-web/credential.js", "inner-ai-web"],
+  ["open-sse/executors/inner-ai-web/discovery.js", "inner-ai-web"],
+  ["open-sse/executors/inner-ai-web/errors.js", "inner-ai-web"],
+  ["open-sse/executors/inner-ai-web/events.js", "inner-ai-web"],
+  ["open-sse/executors/poe-web.js", "poe-web"],
+  ["open-sse/executors/v0-vercel-web.js", "v0-vercel-web"],
+  ["open-sse/executors/venice-web.js", "venice-web"],
+  ["open-sse/executors/venice-web/credential.js", "venice-web"],
+  ["open-sse/executors/venice-web/errors.js", "venice-web"],
+  ["open-sse/executors/venice-web/events.js", "venice-web"],
+  ["open-sse/executors/venice-web/session.js", "venice-web"],
+  ["open-sse/providers/private/inner-ai-web.js", "inner-ai-web"],
+  ["open-sse/providers/private/poe-web.js", "poe-web"],
+  ["open-sse/providers/private/v0-vercel-web.js", "v0-vercel-web"],
+  ["open-sse/providers/private/venice-web.js", "venice-web"],
+].map(([module, provider]) => Object.freeze({ module, provider })));
+
 describe("provider staging ownership", () => {
   it("lists each module once and assigns it the owner its location or definition implies", async () => {
     const modules = manifest.modules.map(({ module }) => module);
@@ -40,25 +76,54 @@ describe("provider staging ownership", () => {
   });
 
   it("keeps same-named helpers apart under their own providers", () => {
-    const owners = new Map();
-    for (const { module, provider } of manifest.modules.filter(({ module }) => HELPER.test(module))) {
-      const name = path.basename(module);
-      owners.set(name, [...(owners.get(name) || []), provider]);
+    for (const modules of [manifest.modules, PROMOTED_1127_FIXTURE]) {
+      const owners = helperOwners(modules);
+      // No basename resolves to an owner: none of the helper names is a provider.
+      for (const name of owners.keys()) expect(STAGED_PROVIDERS[path.basename(name, ".js")], name).toBeUndefined();
     }
+    // Stable fixture of the last staged state with duplicate helper names (#2034, 1127).
+    const owners = helperOwners(PROMOTED_1127_FIXTURE);
     for (const name of ["credential.js", "errors.js", "events.js"]) {
       expect(owners.get(name), name).toEqual(["inner-ai-web", "venice-web"]);
     }
-    // No basename resolves to an owner: none of the helper names is a provider.
-    for (const name of owners.keys()) expect(STAGED_PROVIDERS[path.basename(name, ".js")], name).toBeUndefined();
+    for (const { module, provider } of PROMOTED_1127_FIXTURE) expect(pathOwner(module) ?? provider, module).toBe(provider);
   });
 
   it("gives an executor and its private definition one shared owner entry", () => {
-    for (const id of ["inner-ai-web", "venice-web", "poe-web", "v0-vercel-web"]) {
-      const modules = byProvider[id].map(({ module }) => module);
+    const fixture = Object.groupBy(PROMOTED_1127_FIXTURE, ({ provider }) => provider);
+    for (const id of PROMOTED_1127) {
+      const modules = fixture[id].map(({ module }) => module);
       expect(modules, id).toContain(`open-sse/executors/${id}.js`);
       expect(modules, id).toContain(`open-sse/providers/private/${id}.js`);
     }
+    // Live manifest: an owner with both an executor and a private definition lists both under one entry.
+    for (const [id, entries] of Object.entries(byProvider)) {
+      const modules = entries.map(({ module }) => module);
+      if (fs.existsSync(path.join(root, `open-sse/executors/${id}.js`)) && fs.existsSync(path.join(root, `open-sse/providers/private/${id}.js`))) {
+        expect(modules, id).toEqual(expect.arrayContaining([`open-sse/executors/${id}.js`, `open-sse/providers/private/${id}.js`]));
+      }
+    }
     expect(Object.keys(byProvider).sort()).toEqual(Object.keys(STAGED_PROVIDERS).sort());
+  });
+
+  it("registers the promoted 1127 web sessions and leaves none of their modules staged", () => {
+    const catalog = new Set(REGISTRY.map(({ id }) => id));
+    const staged = new Set(manifest.modules.map(({ module }) => module));
+    for (const { module, provider } of PROMOTED_1127_FIXTURE) {
+      const live = module.replace("open-sse/providers/private/", "open-sse/providers/registry/");
+      expect(fs.existsSync(path.join(root, live)), live).toBe(true);
+      expect(staged.has(module), module).toBe(false);
+      expect(staged.has(live), live).toBe(false);
+      expect(byProvider[provider], provider).toBeUndefined();
+    }
+    for (const id of PROMOTED_1127) {
+      expect(fs.existsSync(path.join(root, `open-sse/providers/private/${id}.js`)), id).toBe(false);
+      expect(STAGED_PROVIDERS[id], id).toBeUndefined();
+      expect(catalog.has(id), id).toBe(true);
+      expect(hasSpecializedExecutor(id), id).toBe(true);
+      expect(REGISTERED_EXECUTOR_IDS, id).toContain(id);
+      expect(REGISTRY.find((entry) => entry.id === id)?.transport?.executor, id).toBe(id);
+    }
   });
 
   it("covers every private provider definition and every staged module of it", async () => {

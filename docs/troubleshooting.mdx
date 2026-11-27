@@ -177,13 +177,13 @@ See [Hidden and retired providers](./providers/retired.mdx#registry-ids-with-no-
 
 ## OAuth login never finishes
 
-From a remote browser, a loopback callback cannot reach the server. Copy the failed page's full URL into the modal's paste step. Claude Code, Antigravity, and Gemini CLI use `localhost:<dashboard port>/callback`; Codex uses `localhost:1455/auth/callback`.
+From a remote browser, a loopback callback cannot reach the server. Copy the failed page's full URL into the modal's paste step. Claude Code, Gemini CLI, and Antigravity with your own OAuth client use `localhost:<dashboard port>/callback`. Antigravity with the built-in client uses `localhost:51121/oauth-callback`. Codex uses `localhost:1455/auth/callback`.
 
 If Codex reports port `1455` in use, stop the conflicting login listener and retry. Verify the dashboard connection becomes active. See [OpenAI Codex](./providers/codex.mdx), [Claude Code](./providers/claude-code.mdx), and [Antigravity](./providers/antigravity.mdx).
 
 ## Google rejects the Antigravity or Gemini CLI login
 
-Set both the provider's OAuth client ID and secret, then restart. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`, or the `GEMINI_OAUTH_*` pair, default to empty values.
+For Gemini CLI, set both `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`, then restart; they default to empty values. Antigravity uses a built-in public desktop client when both `ANTIGRAVITY_OAUTH_CLIENT_*` variables are unset. If only one is set, or either is blank, sign-in stops with a configuration message. Set both or unset both, then restart.
 
 Restart the authorize flow and verify consent completes. See [Antigravity setup](./providers/antigravity.mdx#before-you-connect).
 

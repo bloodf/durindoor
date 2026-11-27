@@ -44,12 +44,16 @@ export function clientBindingStatus(providerSpecificData, currentClientId) {
  * Refresh preflight: true when a marked antigravity/agy row was issued by a
  * client other than the one configured now (or no client is configured). The
  * caller must stop before any lease acquisition or outbound refresh and
- * report `reauth_required`. Unmarked legacy rows and other providers pass.
+ * report `reauth_required`. With no client configured every row is refused;
+ * otherwise unmarked legacy rows and other providers pass.
  * Reads the configured client at call time; the client itself is fixed when
  * open-sse/providers/shared.js first loads.
  */
 export function antigravityClientBindingBlocks(provider, providerSpecificData, currentClientId = ANTIGRAVITY_OAUTH_CLIENT.clientId) {
   if (provider !== "antigravity" && provider !== "agy") return false;
+  // An invalid override configures no client: refuse every row, marked or
+  // not, rather than refresh with an empty client or fall back to another.
+  if (!clientBindingFor(currentClientId)) return true;
   return clientBindingStatus(providerSpecificData, currentClientId) === "mismatch";
 }
 

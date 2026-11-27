@@ -36,10 +36,12 @@ export function isWellFormedPairingToken(token) {
 }
 
 /**
- * @param {{ provider: string, owner: string, target: { action: "create", name: string } | { action: "update", connectionId: string } }} binding
+ * @param {{ provider: string, owner: string, target: { action: "create", name: string } | { action: "update", connectionId: string }, accountEmail?: string }} binding
+ *   `accountEmail` (already validated) is kept only in this server-side entry: it is never returned
+ *   to the client, and the import request cannot set or change it.
  * @returns {{ token: string, expiresAt: number } | null} null when the global pending cap is reached
  */
-export function issuePairing({ provider, owner, target }, now = Date.now()) {
+export function issuePairing({ provider, owner, target, accountEmail = "" }, now = Date.now()) {
   sweep(now);
   const mine = [...store()].filter(([, entry]) => entry.owner === owner);
   // A new pairing supersedes the oldest of the operator's pending ones.
@@ -47,14 +49,14 @@ export function issuePairing({ provider, owner, target }, now = Date.now()) {
   if (store().size >= MAX_PENDING_TOTAL) return null;
   const token = `${PAIRING_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
   const expiresAt = now + PAIRING_TTL_MS;
-  store().set(digest(token), { provider, owner, target: Object.freeze({ ...target }), expiresAt });
+  store().set(digest(token), Object.freeze({ provider, owner, target: Object.freeze({ ...target }), accountEmail: isString(accountEmail) ? accountEmail : "", expiresAt }));
   return { token, expiresAt };
 }
 
 /**
  * Atomically take a pairing. Unknown, expired and already-used secrets are
  * indistinguishable to the caller.
- * @returns {{ provider: string, owner: string, target: object } | null}
+ * @returns {{ provider: string, owner: string, target: object, accountEmail: string } | null}
  */
 export function consumePairing(token, now = Date.now()) {
   if (!isWellFormedPairingToken(token)) return null;

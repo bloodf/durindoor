@@ -132,6 +132,8 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     log.warn("RETRY", `ACC:${credentials.connectionName} replaying once after upstream request-buffer overflow`);
     return RETRY;
   }
+  // Preserve a backend error after generated output; replay could repeat tools.
+  if (result.upstreamPartialOutput === true) return terminal(result.response);
   if (preferredConnectionId) {
     // A pinned connection must not rotate. Return the failure response immediately.
     log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);

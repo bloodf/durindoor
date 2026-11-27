@@ -1,0 +1,146 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/handlers/grokMedia.ts",
+      "open-sse/config/grokBuild.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "tests/unit/grok-oauth-media.test.ts",
+      "docs/providers/grok-cli-media.md"
+    ],
+    "registryFields": {
+      "tts": { "id": "grok-cli", "baseUrl": "https://api.x.ai/v1/tts", "authType": "oauth", "authHeader": "bearer", "format": "grok-tts", "models": ["grok-tts"] },
+      "stt": { "id": "grok-cli", "baseUrl": "https://api.x.ai/v1/stt", "authType": "oauth", "authHeader": "bearer", "format": "grok-stt", "models": ["grok-voice-transcribe-2.0"] }
+    },
+    "inventoryNote": "the second inventory STT row (grok-tts format, /v1/tts endpoint) is a copy error: the pinned STT entry is format grok-stt on https://api.x.ai/v1/stt"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/grok-cli.js (alias gb, aliases gcli, grok-build; authModes [\"oauth\"]; chat on cli-chat-proxy.grok.com; no serviceKinds, ttsConfig or sttConfig)",
+      "open-sse/providers/registry/xai.js (ttsConfig format xai-tts and sttConfig format xai-stt on the same api.x.ai /v1/tts and /v1/stt URLs, authType apikey; same wire body family but Bearer API key only, no X-XAI-Token-Auth or Grok client identity, xai-tts requires language and has no codec/speed validation)",
+      "open-sse/handlers/ttsProviders/genericFormats.js xaiTts and open-sse/handlers/sttCore.js transcribeNativeSpeech (xai-stt): reachable only through the xai API-key provider",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS and open-sse/handlers/sttCore.js handleSttCore: no grok-cli, grok-tts or grok-stt path",
+      "open-sse/handlers/videoCore.js: no grok-cli job dispatch (source grok-cli video is a separate videoRegistry delta, not part of this tts/stt row)",
+      "src/sse/handlers/tts.js REFRESHED_BEFORE_DISPATCH = [\"renderhour\"] and src/sse/handlers/stt.js (refresh only for codex)"
+    ],
+    "result": "the xai API-key voice path is not an equivalent: auth mode, token-auth header and client identity differ and the OAuth connection pool never reaches it. The grok-cli OAuth voice path is missing, so this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-grok-cli-tts-stt/index.js",
+  "exports": {
+    "grokCliTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options) -> { base64, format, accounting } or error result",
+    "grokCliSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createGrokCliTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes }",
+    "createGrokCliSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes }",
+    "buildGrokSpeechRequest": "(model, text, options) -> source JSON body; throws a 400 error",
+    "buildGrokTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData, responseFormat } or a 400 error result with local: true",
+    "matchesGrokCodec": "(codec, bytes) -> boolean (mp3/wav magic bytes, headerless codecs non-empty)",
+    "grokUploadFileName": "(file) -> upload filename (.opus -> .ogg, unnamed -> audio.wav)",
+    "grokOAuthToken": "(credentials, now?) -> { token } or { failure } (OAuth access token only, expiry checked)",
+    "grokRefusal": "(status, { modality, label, secrets, retryAfter }) refusal mapping that never quotes the upstream",
+    "grokAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "grokVoiceHeaders": "(token) -> source grokMediaHeaders with the fork's pinned Grok CLI identity",
+    "GROK_CLI_PROVIDER_ID": "\"grok-cli\"",
+    "GROK_CLI_ALIASES": "[\"gb\", \"gcli\", \"grok-build\"]",
+    "GROK_TTS_FORMAT": "\"grok-tts\"",
+    "GROK_STT_FORMAT": "\"grok-stt\"",
+    "GROK_VOICE_ORIGIN": "https://api.x.ai",
+    "GROK_SPEECH_URL": "https://api.x.ai/v1/tts",
+    "GROK_TRANSCRIPTION_URL": "https://api.x.ai/v1/stt",
+    "GROK_TOKEN_AUTH": "\"xai-grok-cli\"",
+    "GROK_CLI_TTS_CONFIG": "staged ttsConfig for the existing grok-cli registry entry",
+    "GROK_CLI_STT_CONFIG": "staged sttConfig for the existing grok-cli registry entry",
+    "GROK_TTS_MODELS": "[grok-tts] (kind tts)",
+    "GROK_STT_MODELS": "[grok-voice-transcribe-2.0] (kind stt)",
+    "GROK_SPEECH_CODECS": "[\"mp3\", \"wav\", \"pcm\", \"mulaw\", \"alaw\"]",
+    "GROK_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"verbose_json\", \"text\"]",
+    "GROK_STT_OPTION_FIELDS": "source native options in source order",
+    "GROK_TTS_TIMEOUT_MS": "120000",
+    "GROK_STT_TIMEOUT_MS": "300000",
+    "GROK_MAX_TTS_REQUEST_BYTES": "262144",
+    "GROK_MAX_AUDIO_BYTES": "52428800",
+    "GROK_MAX_STT_FILE_BYTES": "26214400",
+    "GROK_MAX_TRANSCRIPT_BYTES": "8388608"
+  },
+  "provider": {
+    "canonicalId": "grok-cli",
+    "aliases": ["gb", "gcli", "grok-build"],
+    "existingRegistryEntry": "open-sse/providers/registry/grok-cli.js",
+    "existingServiceKinds": [],
+    "addServiceKinds": ["llm", "tts", "stt"],
+    "authModes": ["oauth"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["accessToken"],
+      "apiKeySubstitution": "refused: an apiKey-only connection gets 401 unsent, as in the source; the xai API-key provider stays a separate mode",
+      "extraHeaders": ["X-XAI-Token-Auth: xai-grok-cli", "x-grok-client-version: <GROK_CLI_VERSION>", "x-grok-client-identifier: grok-shell", "x-grok-client-mode: headless", "User-Agent: <GROK_CLI_SHELL_USER_AGENT>"],
+      "refresh": "not done in the adapter; the route refreshes the selected connection before dispatch. An expired or unparseable expiresAt is a 401 before any send"
+    },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "tts": [{ "id": "grok-tts", "name": "Grok Text to Speech (OAuth)", "upstreamModelField": "none (routing id only)" }],
+    "stt": [{ "id": "grok-voice-transcribe-2.0", "name": "Grok Voice Transcribe 2.0 (OAuth)", "upstreamModelField": "multipart model" }],
+    "passthrough": "refused: the registry's passthroughModels covers chat; voice takes only the listed ids",
+    "dynamicDiscovery": "none: the source lists Grok voice models statically; the registry modelsUrl (cli-chat-proxy /v1/models) feeds chat models and is not a voice contract"
+  },
+  "endpoints": {
+    "speech": {
+      "method": "POST",
+      "url": "https://api.x.ai/v1/tts",
+      "headers": ["<extraHeaders>", "Authorization: Bearer <OAuth access token>", "Content-Type: application/json"],
+      "body": "{ text, voice_id, language, output_format: { codec, sample_rate?, bit_rate? }, speed? }",
+      "answer": "audio bytes in the requested codec"
+    },
+    "transcription": {
+      "method": "POST",
+      "url": "https://api.x.ai/v1/stt",
+      "headers": ["<extraHeaders>", "Authorization: Bearer <OAuth access token>", "Content-Type: multipart/form-data; boundary=..."],
+      "body": "multipart: model, [language, diarize, multichannel, channels, sample_rate, audio_format, format, filler_words], file (last)",
+      "answer": "JSON object with string text (duration, words kept); text format returns text/plain"
+    },
+    "translation": "none"
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "sttTimeoutMs": 300000,
+    "maxTtsRequestBytes": 262144,
+    "maxAudioBytes": 52428800,
+    "maxSttFileBytes": 26214400,
+    "maxTranscriptBytes": 8388608,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/grok-cli.js",
+      "change": "serviceKinds: [\"llm\", \"tts\", \"stt\"]; add GROK_TTS_MODELS / GROK_STT_MODELS rows with their kind; ttsConfig: GROK_CLI_TTS_CONFIG; sttConfig: GROK_CLI_STT_CONFIG; keep alias gb, aliases, oauth auth mode, transport and every chat model"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "add \"grok-cli\": grokCliTtsAdapter to TTS_ADAPTERS so getTtsAdapter serves it before synthesizeViaConfig"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the token/format switch, `if (provider === \"grok-cli\" && cfg.format === \"grok-stt\") return await grokCliSttAdapter.transcribe({ model, formData, credentials, kind, signal })`, so neither the apiKey-or-accessToken generic path nor xai-stt serves grok-cli"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add \"grok-cli\" to REFRESHED_BEFORE_DISPATCH so checkAndRefreshToken renews the selected OAuth connection before submit; result.acceptedJob is already recorded once on the selected connection"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "refresh grok-cli with checkAndRefreshToken before dispatch (as for codex, without a resend after a post-send 401), and record result.acceptedJob once on the selected connection without account fallback"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the grok-cli tts and stt kinds after registration"
+    }
+  ]
+}

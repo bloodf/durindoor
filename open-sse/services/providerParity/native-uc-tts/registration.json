@@ -1,0 +1,131 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/uc/ucTts.ts",
+      "open-sse/executors/uc/constants.ts",
+      "open-sse/executors/uc/credentials.ts",
+      "open-sse/executors/uc/clerkAuth.ts",
+      "src/shared/constants/providers/web-cookie.ts"
+    ],
+    "registryFields": { "id": "uc", "baseUrl": "wss://tts-stream.chatuncensored.ai", "authType": "web-cookie", "authHeader": "none", "format": "uc-tts" },
+    "sttEntry": "none: the pinned AUDIO_TRANSCRIPTION_PROVIDERS has no `uc` key and audioTranscription.ts has no uc-tts branch; the inventory's STT row has no source to port"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry (no `uc` or `ucn` entry; PROVIDERS.uc and PROVIDER_MEDIA.uc are undefined)",
+      "open-sse/providers/registry/uc-direct.js (llm only, https://api.uncensored.com/api/v1/chat/completions with an API key: a different, metered REST backend, not the chatuncensored.ai TTS socket or the Clerk cookie)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (getTtsAdapter('uc') and getTtsAdapter('ucn') are null)",
+      "open-sse/handlers/ttsProviders/genericFormats.js (no uc-tts format)",
+      "checkout search for chatuncensored, uc-tts, clerk.uncensored.com: no matches outside this module"
+    ],
+    "result": "no existing equivalent; this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-uc-tts/index.js",
+  "exports": {
+    "ucTtsAdapter": "default TTS adapter instance (TTS_ADAPTERS synthesize contract: synthesize(text, model, credentials, responseFormat, options))",
+    "createUcTtsAdapter": "factory; options { timeoutMs, mintTimeoutMs, handshakeTimeoutMs, idleTimeoutMs, maxFrameBytes, maxAudioBytes, WebSocketImpl } for tests",
+    "buildUcSpeechInput": "(model, text, options) -> { model, voice, text }; throws status 400 before any network call",
+    "resolveUcCredential": "(credentials) -> { clientCookie, sid, uid, cookies } from providerSpecificData, or null",
+    "mintUcSessionToken": "(credential, { signal, timeoutMs }) -> { ok, jwt } or { ok: false, kind, status? }; never throws",
+    "ucMintUrl": "Clerk token mint URL for a sid",
+    "ucMintHeaders": "Clerk mint headers for a cookie jar",
+    "buildUcTtsWsUrl": "(uid, jwt) -> wss://tts-stream.chatuncensored.ai/{uid}?token={jwt}",
+    "buildUcTtsStartFrame": "source `start` frame",
+    "runUcTtsSocket": "one synthesis; { outcome, sent, audio, usagePercent?, thresholdCrossed?, handshakeStatus? }; never throws",
+    "__setUcTtsWebSocketForTesting": "swap the WebSocket constructor; returns a restore function",
+    "ucAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "isMp3": "MP3 magic-byte check",
+    "normalizeCookieJar": "flat cookie jar from a flat or CDP-shaped record, unsafe entries dropped",
+    "cookieHeader": "Cookie header value from a jar",
+    "uidFromSessionJwt": "unverified `uid` claim of a session JWT",
+    "ucSecrets": "selected connection values for error redaction",
+    "UC_TTS_REGISTRY_ENTRY": "exact pinned audioRegistry.ts fields and models",
+    "UC_PROVIDER_DEFINITION": "provider definition for registration (alias, display, category, authType, credential fields, serviceKinds, ttsConfig, models)",
+    "UC_TTS_MODELS": "supported speech models",
+    "UC_TTS_RESPONSE_FORMATS": "[\"mp3\"]"
+  },
+  "provider": {
+    "canonicalId": "uc",
+    "aliases": ["ucn"],
+    "existingRegistryEntry": null,
+    "unrelatedRegistryEntry": "uc-direct (API key, REST); not an alias, not changed",
+    "sourceServiceKinds": ["llm"],
+    "addServiceKinds": ["tts"],
+    "llmKindNote": "the source `uc` row is an llm web-cookie provider (persona WebSocket executor). That chat executor is not part of this delta; registration adds a `uc` entry whose only kind is tts until a separate chat port lands",
+    "category": "webCookie",
+    "authModes": ["web-cookie"],
+    "auth": {
+      "credentialSource": "providerSpecificData",
+      "credentialFields": {
+        "clientCookie": ["ucClientCookie", "clientCookie", "__client"],
+        "sid": ["ucSid", "sid"],
+        "uid": ["ucUid", "uid"],
+        "cookies": ["ucCookies", "cookies"]
+      },
+      "apiKeyRead": false,
+      "oauthRead": false,
+      "mint": "Clerk __session JWT minted per call from the durable __client cookie; never cached across connections",
+      "socketAuth": "JWT in ?token= query and echoed as `token` in the start frame; upgrade carries Origin only"
+    },
+    "connectionBaseUrlHonored": false,
+    "format": "uc-tts"
+  },
+  "models": {
+    "tts": [{ "id": "jade", "name": "UC Voice (Jade)", "startFrameModel": "jade (the source sends the parsed model id as `model`)", "defaultVoice": "jade" }],
+    "dynamicDiscovery": "none: the source lists the one TTS model statically and has no voice or model listing endpoint for the socket"
+  },
+  "endpoints": {
+    "mint": {
+      "method": "POST",
+      "url": "https://clerk.uncensored.com/v1/client/sessions/{sid}/tokens?_clerk_js_version=5.127.1",
+      "headers": ["Origin: https://uncensored.com", "Referer: https://uncensored.com/", "Cookie: <jar incl. __client>", "Content-Type: application/x-www-form-urlencoded"],
+      "body": "",
+      "redirect": "manual (refused)"
+    },
+    "synthesize": {
+      "url": "wss://tts-stream.chatuncensored.ai/{uid}?token={jwt}",
+      "headers": ["Origin: https://uncensored.com"],
+      "send": "{ message_type: \"start\", text, raw_text, turn_anchor_message_id, message_id, thread_id, threadId, model, voice, token }",
+      "receive": "{ type: \"usage_update\", usage_percent, threshold_crossed } and { data: <base64 MP3 chunk> }, closed by the server when done",
+      "redirect": "not followed"
+    }
+  },
+  "bounds": {
+    "totalMs": 120000,
+    "mintMs": 15000,
+    "handshakeMs": 15000,
+    "idleMs": 30000,
+    "maxMintBytes": 16384,
+    "maxFrameBytes": 4194304,
+    "maxAudioBytes": 52428800,
+    "maxInputChars": 4096
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { ucTtsAdapter } and add `uc: ucTtsAdapter` to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage adds input characters"
+    },
+    {
+      "file": "open-sse/providers/registry/uc.js",
+      "change": "new entry from UC_PROVIDER_DEFINITION: id uc, alias ucn, category webCookie, serviceKinds [\"tts\"], tts model rows; the credential form stores clientCookie, sid, uid and cookies in providerSpecificData"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "pass `requestedResponseFormat` for uc so a named container other than mp3 is refused before the mint; acceptedJob recording via recordAcceptedTts and onAccountFailure already exists and must not fall back to another account after a sent frame"
+    },
+    {
+      "file": "src connection credential UI / validation",
+      "change": "accept the providerSpecificData fields above for the uc web-cookie mode; existing auth/cookie/OAuth modes of other providers are unchanged"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list UC tts after registration"
+    }
+  ]
+}

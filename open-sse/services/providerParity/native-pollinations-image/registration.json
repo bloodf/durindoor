@@ -1,0 +1,93 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/generationOptions.ts",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts",
+      "open-sse/handlers/imageGeneration/pollinationsAnonAuth.ts"
+    ]
+  },
+  "localEquivalentCheck": {
+    "result": "missing",
+    "evidence": "open-sse/handlers/imageProviders/index.js IMAGE_ADAPTERS has no `pollinations` or `pol` key, and lookupMediaAdapter (open-sse/handlers/mediaRegistry.js) does no alias resolution; open-sse/providers/registry/pollinations.js declares only the chat transport https://gen.pollinations.ai/v1/chat/completions, no serviceKinds image and no imageConfig; open-sse/executors/pollinations.js is chat-only. g4f-pollinations (g4f.space proxy) is a different provider with chat only."
+  },
+  "module": "open-sse/services/providerParity/native-pollinations-image/index.js",
+  "exports": {
+    "pollinationsImageAdapter": "default image adapter instance (guarded generate adapter)",
+    "createPollinationsImageAdapter": "factory; options { timeoutMs, now } for tests",
+    "buildPollinationsImageRequest": "(model, body) -> Pollinations OpenAI-style body; throws status 400",
+    "pollinationsAcceptedJob": "(modality, jobState, authScope) accepted-job accounting with unknown cost",
+    "pollinationsAuth": "(credentials) -> { mode: apikey, token } | { mode: anonymous } | { mode: invalid }",
+    "pollinationsPublicUrl": "public https URL check used for results and the qwen-image reference",
+    "POLLINATIONS_PROVIDER_ID": "\"pollinations\"",
+    "POLLINATIONS_ALIASES": "[\"pollinations\", \"pol\"]",
+    "POLLINATIONS_ORIGIN": "the only origin the key is sent to",
+    "POLLINATIONS_IMAGE_URL": "image endpoint",
+    "POLLINATIONS_IMAGE_FORMAT": "\"openai\" (source registry format)",
+    "POLLINATIONS_IMAGE_MODELS": "image catalog metadata (kind \"image\", inputModalities)",
+    "POLLINATIONS_IMAGE_SIZES": "supported sizes",
+    "POLLINATIONS_RESPONSE_FORMATS": "[\"url\", \"b64_json\"]",
+    "POLLINATIONS_IMAGE_TIMEOUT_MS": "whole-call deadline",
+    "POLLINATIONS_IMAGE_MAX_N": "n ceiling",
+    "pollinationsImageModel": "(id) -> catalog row or null"
+  },
+  "provider": {
+    "canonicalId": "pollinations",
+    "aliases": ["pollinations", "pol"],
+    "existingRegistryEntry": "open-sse/providers/registry/pollinations.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["image"],
+    "authModes": ["apikey"],
+    "noAuth": true,
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken"],
+      "keylessPlaceholders": ["public", "sk_durindoor", "connection id noauth"],
+      "keylessBehavior": "sent without Authorization; 401/402/403 answer 401 'requires an API key' and never set quotaExhausted"
+    },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "image": [
+      { "id": "klein", "name": "FLUX.2 Klein 4B", "inputModalities": ["text"] },
+      { "id": "flux", "name": "Flux Schnell", "inputModalities": ["text"] },
+      { "id": "zimage", "name": "Z-Image Turbo", "inputModalities": ["text"] },
+      { "id": "qwen-image", "name": "Qwen Image Plus", "inputModalities": ["text", "image"] },
+      { "id": "wan-image", "name": "Wan 2.7 Image", "inputModalities": ["text"] },
+      { "id": "gpt-image-2", "name": "GPT Image 2", "inputModalities": ["text"] },
+      { "id": "gptimage-large", "name": "GPT Image 1.5", "inputModalities": ["text"] },
+      { "id": "gptimage", "name": "GPT Image 1 Mini", "inputModalities": ["text"] }
+    ],
+    "publicIds": "pollinations/<id> or pol/<id>, e.g. pollinations/flux",
+    "notPorted": "the source image-model alias `pollinations/kontext` resolves to black-forest-labs/flux-kontext-pro, not to this provider",
+    "dynamicDiscovery": "none for images in the source; static list only. The source's live discovery (providerSets.ts NAMED_OPENAI_STYLE_PROVIDERS) covers the chat /v1/models list and stays on the llm kind."
+  },
+  "endpoints": {
+    "image": { "method": "POST", "url": "https://gen.pollinations.ai/v1/images/generations", "redirect": "manual (refused)" }
+  },
+  "responseFormats": { "image": ["url", "b64_json"], "binary": false, "stream": false },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { pollinationsImageAdapter } and add `pollinations: pollinationsImageAdapter` and `pol: pollinationsImageAdapter` to IMAGE_ADAPTERS (lookup does no alias resolution); handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/providers/registry/pollinations.js",
+      "change": "serviceKinds [\"llm\", \"image\"]; add the eight POLLINATIONS_IMAGE_MODELS rows with kind \"image\"; imageConfig { baseUrl: POLLINATIONS_IMAGE_URL, supportedSizes: POLLINATIONS_IMAGE_SIZES }; keep noAuth, authModes and the chat transport"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Pollinations image kind after registration"
+    },
+    {
+      "file": "open-sse/AGENT-INDEX.md",
+      "change": "regenerate after the registry edit"
+    }
+  ]
+}

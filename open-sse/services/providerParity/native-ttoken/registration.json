@@ -1,0 +1,20 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "https://github.com/cheaper-inference/OmniRoute",
+    "license": "MIT",
+    "pullRequest": "https://github.com/cheaper-inference/OmniRoute/pull/21441",
+    "head": "7ec5270551bdda0c0a692c7aea9b9ee0fd0ccc77",
+    "files": ["open-sse/config/providers/registry/ttoken/index.ts", "src/shared/constants/providers/apikey/ttoken.ts", "src/app/api/providers/[id]/models/discovery/providerSets.ts"]
+  },
+  "module": "open-sse/services/providerParity/native-ttoken/index.js",
+  "exports": { "TTOKEN_PROVIDER": "declarative registry entry, including transport, display, key-scoped fetcher and seed models" },
+  "registration": {
+    "owner": "register-native-19",
+    "registry": "default export from open-sse/providers/registry/ttoken.js; generate registry/index.js and AGENT-INDEX.md",
+    "executor": "DefaultExecutor; OpenAI chat translation",
+    "discovery": "authenticated /v1/models; redirect, cancellation, cache isolation and error contracts must be resolved before registration",
+    "precedence": "append behind pre-existing providers when resolving bare model IDs"
+  }
+}

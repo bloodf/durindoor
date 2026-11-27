@@ -23,6 +23,7 @@ import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
 import { classifyVertexCredential, VERTEX_CREDENTIAL, refreshVertexToken, refreshGoogleToken } from "../../tokenRefresh.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
+import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 
 export const VERTEX_MUSIC_PROVIDER_ID = "vertex";
 export const VERTEX_MUSIC_PROVIDER_ALIASES = Object.freeze(["vx"]);
@@ -87,14 +88,14 @@ function fail(status, message, credentials, extra = {}) {
  * is minted or sent. Returns `{ error }` or `{ instance, parameters, model }`.
  */
 export function buildVertexMusicRequest(model, body) {
-  if (body === null || typeof body !== "object" || Array.isArray(body)) return { error: "Request body must be a JSON object" };
-  const resolvedModel = typeof model === "string" && model.trim() ? model.trim() : VERTEX_MUSIC_DEFAULT_MODEL;
+  if (!isRecord(body)) return { error: "Request body must be a JSON object" };
+  const resolvedModel = isString(model) && model.trim() ? model.trim() : VERTEX_MUSIC_DEFAULT_MODEL;
   if (!MODEL_IDS.has(resolvedModel)) return { error: `Unsupported Vertex music model: ${resolvedModel}` };
   for (const key of Object.keys(body)) {
     if (!ALLOWED_FIELDS.has(key)) return { error: `Unsupported field for Vertex Lyria: ${key}` };
   }
-  if (typeof body.prompt !== "string" || !body.prompt.trim()) return { error: "Missing required field: prompt" };
-  if (body.negative_prompt !== undefined && typeof body.negative_prompt !== "string") return { error: "negative_prompt must be a string" };
+  if (!isString(body.prompt) || !body.prompt.trim()) return { error: "Missing required field: prompt" };
+  if (body.negative_prompt !== undefined && !isString(body.negative_prompt)) return { error: "negative_prompt must be a string" };
   if (body.seed !== undefined && (!Number.isInteger(body.seed) || body.seed < 0 || body.seed > MAX_SEED)) {
     return { error: `seed must be an integer between 0 and ${MAX_SEED}` };
   }
@@ -112,7 +113,7 @@ export function buildVertexMusicRequest(model, body) {
   for (const key of ["instrumental", "is_instrumental", "make_instrumental"]) {
     if (body[key] !== undefined && body[key] !== true) return { error: "Vertex Lyria only generates instrumental music" };
   }
-  if (body.user !== undefined && typeof body.user !== "string") return { error: "user must be a string" };
+  if (body.user !== undefined && !isString(body.user)) return { error: "user must be a string" };
 
   const instance = { prompt: body.prompt };
   if (body.negative_prompt) instance.negative_prompt = body.negative_prompt;
@@ -133,8 +134,8 @@ export function vertexMusicOrigin(location) {
 function resolveLocation(credentials) {
   const psd = credentials?.providerSpecificData;
   // `location` is the local connection field; `region` is the OmniRoute source field.
-  const raw = typeof psd?.location === "string" && psd.location.trim() ? psd.location : psd?.region;
-  return typeof raw === "string" && raw.trim() ? raw.trim() : VERTEX_MUSIC_DEFAULT_LOCATION;
+  const raw = isString(psd?.location) && psd.location.trim() ? psd.location : psd?.region;
+  return isString(raw) && raw.trim() ? raw.trim() : VERTEX_MUSIC_DEFAULT_LOCATION;
 }
 
 /**
@@ -147,10 +148,10 @@ export function classifyVertexMusicAuth(credentials) {
   if (credential.error) return { error: credential.error };
   const saJson = credential.kind === VERTEX_CREDENTIAL.SERVICE_ACCOUNT ? credential.json : null;
   const adcJson = credential.kind === VERTEX_CREDENTIAL.ADC ? credential.json : null;
-  const presetToken = typeof credentials?.accessToken === "string" && credentials.accessToken.trim() ? credentials.accessToken.trim() : null;
+  const presetToken = isString(credentials?.accessToken) && credentials.accessToken.trim() ? credentials.accessToken.trim() : null;
   if (saJson || adcJson || presetToken) {
     const projectId = saJson?.project_id || adcJson?.quota_project_id || credentials?.providerSpecificData?.projectId;
-    if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) {
+    if (!isString(projectId) || !PROJECT_ID.test(projectId)) {
       return { error: "Vertex Lyria with Service Account/ADC/OAuth credentials requires a valid project_id" };
     }
     const location = resolveLocation(credentials);
@@ -250,7 +251,7 @@ async function readBounded(response, maxBytes, overall, callerSignal) {
 function googleStatusLabel(text) {
   try {
     const status = JSON.parse(text)?.error?.status;
-    return typeof status === "string" && GOOGLE_STATUS.test(status) ? ` ${status}` : "";
+    return isString(status) && GOOGLE_STATUS.test(status) ? ` ${status}` : "";
   } catch {
     return "";
   }
@@ -306,7 +307,7 @@ export async function handleVertexMusicGeneration({
           refreshAdcToken(auth.adcJson.refresh_token, auth.adcJson.client_id, auth.adcJson.client_secret, log, proxyOptions),
         tokenSignal, signal,
       );
-      bearerToken = typeof minted?.accessToken === "string" && minted.accessToken ? minted.accessToken : null;
+      bearerToken = isString(minted?.accessToken) && minted.accessToken ? minted.accessToken : null;
     } catch (error) {
       if (error?.kind) return fail(stopStatus(error), `${error.message} while minting the Vertex token; nothing was submitted`, credentials, { outcome: error.kind === "abort" ? "aborted" : "timeout", connectionId });
       bearerToken = null;
@@ -391,7 +392,7 @@ export async function handleVertexMusicGeneration({
   let audioSeconds = 0;
   for (const prediction of predictions) {
     const b64 = prediction?.bytesBase64Encoded;
-    if (typeof b64 !== "string" || !b64 || !BASE64.test(b64)) return malformed("invalid base64");
+    if (!isString(b64) || !b64 || !BASE64.test(b64)) return malformed("invalid base64");
     if (prediction.mimeType !== undefined && prediction.mimeType !== "audio/wav") return malformed("unexpected mime type");
     const seconds = wavDurationSeconds(Buffer.from(b64, "base64"));
     if (!(seconds > 0) || !Number.isFinite(seconds)) return malformed("not a WAV container");

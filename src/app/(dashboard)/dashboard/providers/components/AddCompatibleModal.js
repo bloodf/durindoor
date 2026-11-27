@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import api from "@/shared/utils/api.js";
 import PropTypes from "prop-types";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -80,30 +81,21 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
     setSubmitting(true);
     setSaveError("");
     try {
-      const res = await fetch("/api/provider-nodes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          prefix: formData.prefix,
-          providerIdSuffix: formData.providerIdSuffix,
-          ...(config.hasApiType ? { apiType: formData.apiType } : null),
-          baseUrl: formData.baseUrl,
-          type: config.type,
-          iconUrl: formData.iconUrl,
-        }),
+      const data = await api.post("/api/provider-nodes", {
+        name: formData.name,
+        prefix: formData.prefix,
+        providerIdSuffix: formData.providerIdSuffix,
+        ...(config.hasApiType ? { apiType: formData.apiType } : null),
+        baseUrl: formData.baseUrl,
+        type: config.type,
+        iconUrl: formData.iconUrl,
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        onCreated(data.node);
-        setFormData(initialFormData());
-        setCheckKey("");
-        setValidationResult(null);
-      } else {
-        setSaveError(data.error || `Failed to create ${config.errorLabel} node`);
-      }
+      onCreated(data?.node);
+      setFormData(initialFormData());
+      setCheckKey("");
+      setValidationResult(null);
     } catch (error) {
-      setSaveError(error?.message || `Failed to create ${config.errorLabel} node`);
+      setSaveError(error.status ? error.body?.error || `Failed to create ${config.errorLabel} node` : error?.message || `Failed to create ${config.errorLabel} node`);
     } finally {
       setSubmitting(false);
     }
@@ -112,20 +104,15 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   const handleValidate = async () => {
     setValidating(true);
     try {
-      const res = await fetch("/api/provider-nodes/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: formData.baseUrl,
-          ...(checkKey ? { apiKey: checkKey } : null),
-          type: config.type,
-          modelId: checkModelId.trim() || undefined,
-        }),
+      const data = await api.post("/api/provider-nodes/validate", {
+        baseUrl: formData.baseUrl,
+        ...(checkKey ? { apiKey: checkKey } : null),
+        type: config.type,
+        modelId: checkModelId.trim() || undefined,
       });
-      const data = await res.json();
       setValidationResult(data);
-    } catch {
-      setValidationResult({ valid: false, error: "Network error" });
+    } catch (error) {
+      setValidationResult(error.status && error.body ? error.body : { valid: false, error: "Network error" });
     } finally {
       setValidating(false);
     }

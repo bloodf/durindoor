@@ -98,6 +98,39 @@ export function waitForRetryDelay(delayMs, signal = null) {
 }
 
 /**
+ * Race a caller wait against `signal` without cancelling the underlying
+ * operation (so an already-started refresh can finish and persist safely).
+ * Removes the abort listener synchronously before settling and absorbs late
+ * rejections from detached operations.
+ */
+export function raceCallerAbort(pending, signal = null) {
+  if (!signal) return pending;
+  const operation = Promise.resolve(pending);
+  if (signal.aborted) {
+    operation.catch(() => {});
+    return Promise.reject(requestAbortError(signal.reason));
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, requestAbortError(signal.reason));
+    signal.addEventListener?.("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        if (signal.aborted) finish(reject, requestAbortError(signal.reason));
+        else finish(resolve, value);
+      },
+      (error) => finish(reject, error)
+    );
+  });
+}
+
+/**
  * BaseExecutor - Base class for provider executors
  */
 export class BaseExecutor {
@@ -675,12 +708,13 @@ export class BaseExecutor {
         lastError = error;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
-        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
+        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error?.name}: ${error?.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // A caller-initiated abort (signal aborted but NOT our connect timer) must propagate.
-        if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
-          error.errorKind = "aborted";
-          error.providerAttemptStartedAt = sender.attemptStartedAt;
-          throw error;
+        if (!isConnectTimeout && (error?.name === "AbortError" || signal?.aborted)) {
+          const abortError = error?.name === "AbortError" ? error : requestAbortError(signal?.reason);
+          abortError.errorKind = "aborted";
+          abortError.providerAttemptStartedAt = sender.attemptStartedAt;
+          throw abortError;
         }
 
         if (claudeFast) {

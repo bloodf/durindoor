@@ -46,6 +46,7 @@ import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 import { resolveProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 import { getExecutor } from "../executors/index.js";
+import { raceCallerAbort } from "../executors/base.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
@@ -1736,15 +1737,25 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       // request. The application injects its CAS-backed coordinator; standalone
       // open-sse callers retain one legacy refresh attempt without persistence.
       // In particular, strict-pool may never fall back to direct.
-      const newCredentials = isFunction(refreshCredentials) ?
-      await refreshCredentials({ signal: providerSignal, force: true }) :
-      await executor.refreshCredentials(credentials, log, proxyOptions);
+      // Only the caller wait races against `providerSignal` so an already-started
+      // refresh and any persistence callback still finish if the caller detaches.
+      const refreshOperation = isFunction(refreshCredentials)
+        ? refreshCredentials({ signal: providerSignal, force: true })
+        : (async () => {
+          const refreshed = await executor.refreshCredentials(credentials, log, proxyOptions);
+          if (refreshed?.accessToken || refreshed?.copilotToken) {
+            if (!providerSignal?.aborted) Object.assign(credentials, refreshed);
+            if (onCredentialsRefreshed) {
+              try { await onCredentialsRefreshed(refreshed); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
+            }
+          }
+          return refreshed;
+        })();
+      const newCredentials = await raceCallerAbort(refreshOperation, providerSignal);
+      if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${cleanModel}`);
         Object.assign(credentials, newCredentials);
-        if (!refreshCredentials && onCredentialsRefreshed) {
-          try {await onCredentialsRefreshed(newCredentials);} catch (e) {log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`);}
-        }
         try {
           const retryResult = await executeProvider();
           providerResponse = retryResult.response;
@@ -1777,8 +1788,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
         finishTimeline("error", "error", "quota capacity unavailable after refresh");
         return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
       }
-      if (error?.name === "AbortError") {
-        streamController.handleError(error);
+      if (error?.name === "AbortError" || providerSignal?.aborted) {
+        const abortError = error?.name === "AbortError" ? error : requestAbortError(providerSignal?.reason);
+        streamController.handleError(abortError);
         finishTimeline("aborted", "abort", "token refresh aborted");
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }

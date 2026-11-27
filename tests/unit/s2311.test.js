@@ -3,6 +3,9 @@ import * as entry from "../../open-sse/executors/chatgpt-web-http.js";
 import { readFileSync, readdirSync } from "node:fs";
 describe("ChatGPT Web HTTP module boundaries", () => {
  it("preserves the public exports", () => { expect(Object.keys(entry).sort()).toEqual(["ChatGptWebHttpExecutor", "__buildImageDownloadHeadersForTesting", "__derivePublicBaseUrlForTesting", "__resetChatGptWebCachesForTesting", "__waitForImageViaWebSocketForTesting", "detectImageResolutionFailure"]); });
+ it("keeps the entry thin", () => {
+ expect(readFileSync(new URL("../../open-sse/executors/chatgpt-web-http.js", import.meta.url), "utf8").split("\n").length).toBeLessThanOrEqual(200);
+ });
  it("keeps focused modules under 800 lines", () => {
  const dir = new URL("../../open-sse/executors/chatgpt-web/", import.meta.url);
  for (const file of readdirSync(dir).filter(name => name.endsWith(".js"))) {

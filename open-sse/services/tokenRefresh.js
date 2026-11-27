@@ -277,7 +277,7 @@ async function refreshAntigravityProvider(provider, credentials, log, proxyOptio
 
 const REFRESH_HANDLERS = {
   openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
-  cursor: (c, log, p) => refreshCursorToken(c.refreshToken, log, p),
+  cursor: (c, log, p, options) => refreshCursorToken(c.refreshToken, log, p, options),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
   antigravity: (c, log, p) => refreshAntigravityProvider("antigravity", c, log, p),
   agy: (c, log, p) => refreshAntigravityProvider("agy", c, log, p),
@@ -351,14 +351,15 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyOptions)
 
 /**
  * Refresh credentials using the caller's immutable egress contract.
- * `proxyOptions` is intentionally trailing so existing integrations remain
- * source-compatible while proactive and reactive refresh paths can opt in.
+ * The optional Cursor caller options follow the existing proxy context. They
+ * detach only that caller; the shared token exchange uses its own deadline.
+ * Other provider adapters retain their existing refresh signatures.
  */
-export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
+export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null, options = null) {
   if (!credentials.refreshToken) return null;
   const handler = REFRESH_HANDLERS[provider];
   return handler ?
-  handler(credentials, log, proxyOptions) :
+  handler(credentials, log, proxyOptions, options) :
   refreshAccessToken(provider, credentials.refreshToken, credentials, log, proxyOptions);
 }
 

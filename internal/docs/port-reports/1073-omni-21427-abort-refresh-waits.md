@@ -52,3 +52,19 @@ All checks ran in an isolated temporary `HOME`, `DATA_DIR`, and `XDG_CACHE_HOME`
   - `git diff --check`: passed.
 
 Full local CI (`scripts/local-ci.mjs --mode full`) and independent review remain separate merge gates.
+
+## Caller wiring review correction, 2026-11-27
+
+This follow-up addresses OmniRoute #21427 at `ac29c6493b2f2cb8c01f4a0d5cb8c27aee371aa6`, tracked locally by #1073. The earlier 145-test evidence covered helpers but did not prove the embeddings, image-generation, or Cursor dispatch callsites. It is not evidence of full parity.
+
+The new `tests/unit/parity-refresh-abort-caller-wiring.test.js` reproduced the gaps before implementation. The original eight cases all failed. The final eleven-case file also failed against unchanged local base `ab387ffba56d618071a6a3c50384b554a1706571` in a private environment. Embeddings and real image-generation 401 handlers remained unsettled after abort during pending refresh or retry backoff. Cursor dispatch ignored caller cancellation. The real image-handler failures confirm the narrow image callsite gap; no speculative image behavior was changed.
+
+Embeddings and image generation now pass their request signal into media refresh, return 499 when that wait aborts, and avoid later credential mutation or retry dispatch. Fallback OAuth refresh and `onCredentialsRefreshed` persistence run as one detached operation. An injected refresher continues to own durable persistence. A persistence error does not trigger another token rotation. The open-sse Cursor provider dispatch forwards optional caller options; Cursor still uses its independent runtime deadline for the shared network exchange, so one caller leaving cannot cancel another caller's refresh.
+
+Coverage includes both handlers with injected and fallback refresh, pending refresh and retry backoff, abort during pending persistence, late durable token persistence, no retry dispatch or request credential mutation after abort, real `providerCredentials` injection, Cursor dispatch pre-abort, and two Cursor callers sharing one credential. Deferred promises and fake timers replace network calls and sleep-based timing.
+
+No changes were made to image accounting, credential fencing, edit cancellation, the protected abort test files, the failure baseline, or the refresh serialization backend. No GitHub write or full local-CI/parity claim is made. Confirmed reproduction is ready for the orchestrator to record on #1073.
+
+Follow-up validation: eight focused files passed, 133 tests total: `parity-refresh-abort-caller-wiring` (11), `parity-abort-refresh-waits` (17), `embeddingsCore` (42), `image-abort-signal` (13), `agy-refresh-lease-media` (4), `token-refresh-transient` (2), `provider-credentials` (36), and `port-omniroute-21275-abort-chain` (8). Scoped ESLint passed for the six changed JavaScript files, and the anti-slop gate passed with zero diagnostics. Final checks used sanitized `env -i`, private `HOME`/`DATA_DIR`/cache paths, two Vitest workers and a 300-second command ceiling. The pnpm-linked ESLint configuration required `NODE_PATH` pointing at this worktree's `node_modules`; no installation or host setting was changed to resolve it.
+
+Gate correction: restored `src/sse/services/tokenRefresh.js` exactly to its pre-follow-up contents because that path is forbidden for this task. The dashboard wrapper remains unchanged. The allowed open-sse dispatch and real-handler caller tests retain the bounded fix.

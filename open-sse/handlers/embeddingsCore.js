@@ -31,7 +31,7 @@ function hasValidVectors(normalized) {
  *
  * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
  */
-import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 export async function handleEmbeddingsCore({
   body,
   modelInfo,
@@ -113,13 +113,18 @@ export async function handleEmbeddingsCore({
   providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
   providerResponse.status === HTTP_STATUS.FORBIDDEN))
   {
-    const newCredentials = await refreshMediaCredentials({ provider, executor, credentials, refreshCredentials, log, proxyOptions });
+    let newCredentials;
+    try {
+      newCredentials = await refreshMediaCredentials({ provider, executor, credentials, refreshCredentials, log, proxyOptions, signal, onCredentialsRefreshed });
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") return createErrorResult(499, "Embeddings request aborted");
+      throw error;
+    }
+    if (signal?.aborted) return createErrorResult(499, "Embeddings request aborted");
 
     if (newCredentials?.accessToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for embeddings`);
       Object.assign(credentials, newCredentials);
-      // An injected refresher has already committed what it returns.
-      if (!isFunction(refreshCredentials) && onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
         const retryHeaders = adapter.buildHeaders(credentials, ctx);

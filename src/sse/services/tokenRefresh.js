@@ -1,7 +1,7 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
   removeConnection } from
@@ -98,6 +98,24 @@ function isStorableSecret(value) {
   value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
+/** A finite, positive time (epoch number or parseable timestamp string). */
+function isPositiveTime(value) {
+  if (isNumber(value)) return Number.isFinite(value) && value > 0;
+  return isString(value) && value.trim() !== "" && Number.isFinite(new Date(value).getTime()) &&
+  new Date(value).getTime() > 0;
+}
+
+/** Copy of provider data without malformed Copilot token or expiry fields. */
+function withoutMalformedCopilotFields(data) {
+  if (!isRecord(data)) return null;
+  const { copilotToken, copilotTokenExpiresAt, ...rest } = data;
+  return {
+    ...rest,
+    ...(isStorableSecret(copilotToken) ? { copilotToken } : null),
+    ...(isPositiveTime(copilotTokenExpiresAt) ? { copilotTokenExpiresAt } : null)
+  };
+}
+
 /**
  * Non-blocking: fetch and persist a missing project ID after token refresh.
  * Stored project IDs survive access-token rotation because Google binds them
@@ -185,17 +203,21 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
         updates.expiresIn = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
       }
     }
-    if (newCredentials.providerSpecificData) {
+    const providerSpecificData = withoutMalformedCopilotFields(newCredentials.providerSpecificData);
+    if (providerSpecificData) {
       updates.providerSpecificData = {
         ...(newCredentials.existingProviderSpecificData || {}),
-        ...newCredentials.providerSpecificData
+        ...providerSpecificData
       };
     }
-    if (newCredentials.copilotToken || newCredentials.copilotTokenExpiresAt) {
+    const copilotToken = isStorableSecret(newCredentials.copilotToken) ? newCredentials.copilotToken : null;
+    const copilotTokenExpiresAt = isPositiveTime(newCredentials.copilotTokenExpiresAt) ?
+    newCredentials.copilotTokenExpiresAt : null;
+    if (copilotToken || copilotTokenExpiresAt) {
       updates.providerSpecificData = {
         ...(updates.providerSpecificData || newCredentials.existingProviderSpecificData || {}),
-        ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : null),
-        ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : null)
+        ...(copilotToken ? { copilotToken } : null),
+        ...(copilotTokenExpiresAt ? { copilotTokenExpiresAt } : null)
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;

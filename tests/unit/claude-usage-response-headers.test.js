@@ -79,6 +79,45 @@ describe("Claude response quota observations", () => {
     expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
   });
 
+  it("exposes usable cold-start observed rows through the ProviderLimits message contract", async () => {
+    observe({ "7d_oi": 0.8 });
+    endpoint({ message: "private upstream body" }, 429);
+    const result = await read();
+    // ProviderLimits renders quota.message as an error instead of its quota table.
+    expect(result.message).toBeUndefined();
+    expect(result).toEqual({ quotas: { "weekly fable (7d)": {
+      used: 80, total: 100, remaining: 20, remainingPercentage: 20,
+      resetAt: null, unlimited: false
+    } } });
+    expect(await read("a", true)).toEqual(result);
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+    // Observations expire independently and do not extend the endpoint cooldown.
+    await vi.advanceTimersByTimeAsync(14 * minute);
+    observe({ "7d": 0.3 });
+    await vi.advanceTimersByTimeAsync(minute);
+    endpoint({}, 429);
+    expect(await read()).toEqual({ quotas: { "weekly (7d)": {
+      used: 30, total: 100, remaining: 70, remainingPercentage: 70,
+      resetAt: null, unlimited: false
+    } } });
+    await vi.advanceTimersByTimeAsync(14 * minute);
+    expect(await read("a", true)).toEqual({ message: "Rate limited, try again later." });
+    await vi.advanceTimersByTimeAsync(15 * minute);
+    expect(await read("a", true)).toEqual({ message: "Rate limited, try again later." });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([false, true])("keeps the blocking 429 message without usable observations (expired=%s)", async (expired) => {
+    if (expired) {
+      observe({ "7d_oi": 0.8 });
+      await vi.advanceTimersByTimeAsync(15 * minute);
+    }
+    endpoint({ message: "private upstream body" }, 429);
+    expect(await read()).toEqual({ message: "Rate limited, try again later." });
+    expect(await read("a", true)).toEqual({ message: "Rate limited, try again later." });
+    expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("supports header-only cooldown results but preserves auth and other failures", async () => {
     observe({ "7d_oi": 0.8 }); endpoint({}, 429);
     expect((await read()).quotas["weekly fable (7d)"].used).toBe(80);

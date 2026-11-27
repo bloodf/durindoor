@@ -166,7 +166,13 @@ function overlayObservedQuotas(key, usage) {
     changed = true;
   }
   if (!Object.keys(windows).length) observedQuotas.delete(key);
-  return changed ? { ...usage, quotas } : usage;
+  if (!changed) return usage;
+  const result = { ...usage, quotas };
+  // ProviderLimits treats message as a blocking error. Fresh observations are
+  // usable partial quota data even when endpoint polling is rate-limited.
+  // Keep the endpoint cooldown/strikes intact and preserve all other failures.
+  if (result.message === "Rate limited, try again later.") delete result.message;
+  return result;
 }
 
 function getOAuthCacheKey(accessToken) {

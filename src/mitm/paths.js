@@ -1,34 +1,13 @@
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
+// Shared precedence and fallback rules; see the contract in dataDir.cjs.
+const { resolveDataDirWith } = require("../lib/updater/dataDir.cjs");
 
-const APP_NAME = "9router";
-
-function defaultDir() {
-  if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), APP_NAME);
-  }
-  return path.join(os.homedir(), `.${APP_NAME}`);
-}
-
+// MITM keeps its own directory policy: create a configured DATA_DIR without
+// changing modes, and never create or chmod the default directory. The MITM
+// server may run elevated, where owner-only repair would target the wrong user.
 function getDataDir() {
-  const configured = process.env.DATA_DIR;
-  if (!configured) return defaultDir();
-  if (process.platform === "win32" && /^\//.test(configured)) {
-    console.warn(`[DATA_DIR] '${configured}' is a Unix path on Windows → fallback to default`);
-    return defaultDir();
-  }
-  const resolved = path.resolve(configured);
-  try {
-    fs.mkdirSync(resolved, { recursive: true });
-    return resolved;
-  } catch (e) {
-    if (e?.code === "EACCES" || e?.code === "EPERM") {
-      console.warn(`[DATA_DIR] '${resolved}' not writable → fallback ~/.${APP_NAME}`);
-      return defaultDir();
-    }
-    throw e;
-  }
+  return resolveDataDirWith({ ensureDir: (dir) => fs.mkdirSync(dir, { recursive: true }) });
 }
 
 const DATA_DIR = getDataDir();

@@ -2187,8 +2187,8 @@ const PROVIDERS = {
   "zed-hosted": zedHosted,
   freebuff,
   workbuddy,
-  // RenderHour plan sign-in (authorization code + PKCE, public client). Needs
-  // the operator's RENDERHOUR_OAUTH_CLIENT_ID; without it sign-in refuses to start.
+  // RenderHour plan sign-in (authorization code + PKCE, public client).
+  // RENDERHOUR_OAUTH_CLIENT_ID is an optional client override.
   renderhour: renderhourOAuthProvider
 };
 

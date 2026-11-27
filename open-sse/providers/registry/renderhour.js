@@ -102,7 +102,7 @@ export const RENDERHOUR_OAUTH = Object.freeze({
   // Wired hooks. Paths are relative to the repository root.
   oauthHandler: "src/lib/oauth/services/renderhour.js#renderhourOAuthProvider",
   refreshHooks: "open-sse/services/renderhour/oauth.js#createRenderHourRefreshHooks",
-  // The operator's RenderHour client id; there is no embedded default.
+  // Optional client override. The default public client lives in oauth.js.
   clientIdEnv: "RENDERHOUR_OAUTH_CLIENT_ID",
   // Same media tasks as an rh_ key, paid in plan credits (per the source).
   serviceKinds: Object.freeze(["image", "video", "tts"]),
@@ -119,14 +119,14 @@ export default {
     textIcon: "RH",
     website: RENDERHOUR_ORIGIN,
     notice: {
-      text: "Image, text-to-video and speech jobs with an rh_ API key, or a plan sign-in when the operator sets RENDERHOUR_OAUTH_CLIENT_ID. No reference images, image-to-video or voice choice. Images and video return file URLs only (response_format url). Cost is not reported.",
+      text: "Image, text-to-video and speech jobs with an rh_ API key, or a plan sign-in. Sign-in redirects to localhost; on a remote dashboard, paste the callback URL back. No reference images, image-to-video or voice choice. Images and video return file URLs only (response_format url). Cost is not reported.",
       apiKeyUrl: RENDERHOUR_ORIGIN,
     },
   },
   category: "apikey",
   authType: "apikey",
   authModes: ["apikey", "oauth"],
-  authHint: "An rh_ API key from renderhour.com, or sign in to a RenderHour plan (needs RENDERHOUR_OAUTH_CLIENT_ID on the server).",
+  authHint: "An rh_ API key from renderhour.com, or sign in to a RenderHour plan (no setup needed; RENDERHOUR_OAUTH_CLIENT_ID optionally overrides the client).",
   transport: null,
   models: RENDERHOUR_MEDIA.models.map((model) => ({ ...model, params: [...model.params] })),
   serviceKinds: [...RENDERHOUR_MEDIA.serviceKinds],

@@ -94,17 +94,15 @@ describe("RenderHour OAuth authorize request", () => {
     });
   });
 
-  it("has no embedded client id and ignores a malformed one", () => {
-    expect(resolveRenderHourClientId({})).toBeNull();
+  it("defaults to the public client only when the override is absent, and refuses a malformed one", () => {
+    expect(resolveRenderHourClientId({})).toBe("rhc_omniroute");
     expect(resolveRenderHourClientId({ RENDERHOUR_OAUTH_CLIENT_ID: "not-a-client" })).toBeNull();
     expect(resolveRenderHourClientId({ RENDERHOUR_OAUTH_CLIENT_ID: ` ${CLIENT_ID} ` })).toBe(CLIENT_ID);
-    expect(() => beginRenderHourSignIn({ redirectUri: REDIRECT, env: {} })).toThrow(
+    expect(() => beginRenderHourSignIn({ redirectUri: REDIRECT, env: { RENDERHOUR_OAUTH_CLIENT_ID: "not-a-client" } })).toThrow(
       expect.objectContaining({ code: "not_configured", status: 400 })
     );
-    // The source's OmniRoute-named client id is not shipped in either module.
-    for (const file of ["open-sse/services/renderhour/oauth.js", "src/lib/oauth/services/renderhour.js"]) {
-      expect(fs.readFileSync(path.join(ROOT, file), "utf8")).not.toMatch(/rhc_omniroute|renderhour_id/);
-    }
+    // One declaration: the handler never carries its own copy of the client id.
+    expect(fs.readFileSync(path.join(ROOT, "src/lib/oauth/services/renderhour.js"), "utf8")).not.toMatch(/rhc_omniroute/);
   });
 
   it.each([

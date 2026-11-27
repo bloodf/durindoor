@@ -128,11 +128,16 @@ function makeRequest(method, path, body = null) {
           
           // Check if response indicates error
           if (res.statusCode >= 400 || parsed.error) {
-            resolve({
+            const failure = {
               success: false,
               error: parsed.error || `HTTP ${res.statusCode}`,
               statusCode: res.statusCode,
-            });
+            };
+            // Device polls report "still waiting" as a non-terminal pending flag.
+            if (path.startsWith("/api/oauth/") && path.endsWith("/poll") && parsed.pending === true) {
+              failure.pending = true;
+            }
+            resolve(failure);
           } else {
             resolve({
               success: true,
@@ -226,11 +231,13 @@ async function getProviderModels(id) {
 /**
  * Get OAuth authorization URL
  * @param {string} provider - Provider ID
- * @returns {Promise<Object>} { success, data: { authUrl, codeVerifier, state, redirectUri } }
+ * @returns {Promise<Object>} Public { authUrl, state, flowId, expiresAt }; private context stays on the server.
  */
 async function getOAuthAuthUrl(provider) {
   // Codex requires fixed port 1455 and path /auth/callback
-  const redirectUri = provider === "codex" 
+  const redirectUri = provider === "claude"
+    ? "https://platform.claude.com/oauth/code/callback"
+    : provider === "codex"
     ? "http://localhost:1455/auth/callback"
     : "http://localhost:20128/callback";
   return makeRequest("GET", `/api/oauth/${provider}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`);
@@ -239,7 +246,7 @@ async function getOAuthAuthUrl(provider) {
 /**
  * Exchange OAuth authorization code for token
  * @param {string} provider - Provider ID
- * @param {Object} data - { code, redirectUri, codeVerifier, state }
+ * @param {Object} data - { code, state, flowId }
  * @returns {Promise<Object>} { success, data }
  */
 async function exchangeOAuthCode(provider, data) {
@@ -249,20 +256,28 @@ async function exchangeOAuthCode(provider, data) {
 /**
  * Get OAuth device code
  * @param {string} provider - Provider ID
- * @returns {Promise<Object>} { success, data: { device_code, user_code, verification_uri, verification_uri_complete, codeVerifier, extraData } }
+ * @returns {Promise<Object>} Public device instructions, interval, expiresAt and flowId.
  */
 async function getOAuthDeviceCode(provider) {
   return makeRequest("GET", `/api/oauth/${provider}/device-code`);
 }
 
+/** Cancel the server-owned flow without sending private provider credentials. */
+async function cancelOAuthFlow(provider, data) {
+  return makeRequest("POST", `/api/oauth/${provider}/cancel`, data);
+}
+
 /**
- * Poll OAuth token using device code
+ * Poll OAuth token using the server-owned device flow
  * @param {string} provider - Provider ID
- * @param {Object} data - { deviceCode, codeVerifier, extraData }
- * @returns {Promise<Object>} { success, data: { pending } }
+ * @param {Object} data - { flowId }
+ * @returns {Promise<Object>} OAuth { success, pending, error }, independent of HTTP success.
  */
 async function pollOAuthToken(provider, data) {
-  return makeRequest("POST", `/api/oauth/${provider}/poll`, data);
+  const result = await makeRequest("POST", `/api/oauth/${provider}/poll`, data);
+  // makeRequest wraps HTTP success, while OAuth pending is an application
+  // result. Preserve that result even when the server returns an error field.
+  return result.data ? { ...result.data, statusCode: result.statusCode } : result;
 }
 
 /**
@@ -531,6 +546,7 @@ module.exports = {
   exchangeOAuthCode,
   getOAuthDeviceCode,
   pollOAuthToken,
+  cancelOAuthFlow,
   createApiKeyProvider,
   
   // API Keys

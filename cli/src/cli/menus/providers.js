@@ -1,4 +1,5 @@
 const api = require("../api/client");
+const { createCallbackSubmission, pollDeviceFlow, oauthFailure } = require("../utils/oauthFlow");
 const { prompt, confirm, pause } = require("../utils/input");
 const { clearScreen, showStatus, showHeader } = require("../utils/display");
 const { formatDate, getRelativeTime } = require("../utils/format");
@@ -593,17 +594,23 @@ async function handleAddOAuthConnection(providerId) {
   const authResult = await api.getOAuthAuthUrl(providerId);
   
   if (!authResult.success) {
-    showStatus(`Failed: ${authResult.error}`, "error");
+    showStatus(oauthFailure(authResult), "error");
     await pause();
     return;
   }
   
   const authData = authResult.data || authResult;
   const authUrl = authData.authUrl;
-  const codeVerifier = authData.codeVerifier;
-  const state = authData.state;
-  const redirectUri = authData.redirectUri;
-  
+  let submit;
+  try {
+    if (authData.flowType && !["authorization_code", "authorization_code_pkce"].includes(authData.flowType)) throw new Error("Unsupported sign-in mode");
+    submit = createCallbackSubmission(providerId, authData, api.exchangeOAuthCode);
+  } catch (error) {
+    showStatus(error.message, "error");
+    await pause();
+    return;
+  }
+
   if (!authUrl) {
     showStatus("Failed: No auth URL received", "error");
     await pause();
@@ -621,55 +628,32 @@ async function handleAddOAuthConnection(providerId) {
   console.log();
   console.log(`  ${COLORS.bold}${COLORS.cyan}2.${COLORS.reset} Complete authorization in browser`);
   console.log();
-  console.log(`  ${COLORS.bold}${COLORS.cyan}3.${COLORS.reset} Copy the callback URL from address bar`);
-  console.log(`     ${COLORS.dim}(looks like: http://localhost:20128/callback?code=...)${COLORS.reset}`);
+  console.log(`  ${COLORS.bold}${COLORS.cyan}3.${COLORS.reset} ${providerId === "claude" ? "Copy code#state from the authorization page, or the complete callback URL" : "Copy the complete callback URL from the address bar"}`);
+  console.log(`     ${COLORS.dim}(include both code and state)${COLORS.reset}`);
   console.log();
   
-  const callbackUrl = await prompt("  Paste callback URL: ");
+  const callbackUrl = await prompt(providerId === "claude" ? "  Paste code#state or callback URL: " : "  Paste callback URL: ");
   if (!callbackUrl) {
+    await api.cancelOAuthFlow(providerId, { flowId: authData.flowId, state: authData.state });
     showStatus("Cancelled", "warning");
     await pause();
     return;
   }
   
-  let code, urlState, error;
+  let exchangeResult;
   try {
-    const url = new URL(callbackUrl.trim());
-    code = url.searchParams.get("code");
-    urlState = url.searchParams.get("state");
-    error = url.searchParams.get("error");
-    
-    if (error) {
-      const errorDesc = url.searchParams.get("error_description") || error;
-      showStatus(`Authorization failed: ${errorDesc}`, "error");
-      await pause();
-      return;
-    }
-    
-    if (!code) {
-      showStatus("No authorization code found in URL", "error");
-      await pause();
-      return;
-    }
-  } catch (err) {
-    showStatus("Invalid URL format", "error");
+    exchangeResult = await submit(callbackUrl);
+  } catch (error) {
+    showStatus(error.message, "error");
+    await api.cancelOAuthFlow(providerId, { flowId: authData.flowId, state: authData.state });
     await pause();
     return;
   }
-  
-  console.log();
-  showStatus("Exchanging code for tokens...", "info");
-  const exchangeResult = await api.exchangeOAuthCode(providerId, {
-    code,
-    redirectUri,
-    codeVerifier,
-    state: urlState || state
-  });
-  
+
   if (exchangeResult.success) {
     showStatus("Connection created successfully!", "success");
   } else {
-    showStatus(`Failed: ${exchangeResult.error}`, "error");
+    showStatus(oauthFailure(exchangeResult), "error");
   }
   
   await pause();
@@ -687,21 +671,18 @@ async function handleAddDeviceCodeConnection(providerId) {
   const deviceResult = await api.getOAuthDeviceCode(providerId);
   
   if (!deviceResult.success) {
-    showStatus(`Failed: ${deviceResult.error}`, "error");
+    showStatus(oauthFailure(deviceResult), "error");
     await pause();
     return;
   }
   
   const deviceData = deviceResult.data || deviceResult;
-  const device_code = deviceData.device_code;
   const user_code = deviceData.user_code;
   const verification_uri = deviceData.verification_uri;
   const verification_uri_complete = deviceData.verification_uri_complete;
-  const codeVerifier = deviceData.codeVerifier;
-  const extraData = deviceData.extraData || deviceData;
   
-  if (!device_code) {
-    showStatus("Failed: No device code received", "error");
+  if (!deviceData.flowId || !(verification_uri_complete || verification_uri)) {
+    showStatus("Failed: Incomplete device session received", "error");
     await pause();
     return;
   }
@@ -719,37 +700,25 @@ async function handleAddDeviceCodeConnection(providerId) {
     console.log(`  ${COLORS.bold}${COLORS.cyan}2.${COLORS.reset} Enter code: ${COLORS.bold}${user_code}${COLORS.reset}`);
     console.log();
   }
-  console.log(`  ${COLORS.dim}Waiting for authorization...${COLORS.reset}`);
+  console.log(`  ${COLORS.dim}Waiting for authorization (Esc or Ctrl+C to cancel)...${COLORS.reset}`);
   console.log();
   
-  const maxAttempts = 60; // 5 minutes (5s interval)
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    const pollResult = await api.pollOAuthToken(providerId, {
-      deviceCode: device_code,
-      codeVerifier,
-      extraData
-    });
-    
-    if (pollResult.success) {
-      showStatus("\nConnection created successfully!", "success");
-      await pause();
-      return;
-    }
-    
-    // Check if still pending (pending flag is at root level, not in data)
-    const isPending = pollResult.pending || pollResult.error === "authorization_pending" || pollResult.error === "slow_down";
-    if (!isPending) {
-      showStatus(`\nFailed: ${pollResult.error || "Unknown error"}`, "error");
-      await pause();
-      return;
-    }
-    
-    process.stdout.write(".");
+  const controller = new AbortController();
+  const onKey = (_text, key = {}) => {
+    if (key.name === "escape" || (key.ctrl && key.name === "c")) controller.abort();
+  };
+  const onSigint = () => controller.abort();
+  process.stdin.on("keypress", onKey);
+  process.on("SIGINT", onSigint);
+  try {
+    const result = await pollDeviceFlow(providerId, deviceData, api, { signal: controller.signal });
+    showStatus(result.success ? "Connection created successfully!" : oauthFailure(result), result.success ? "success" : "warning");
+  } catch (error) {
+    showStatus(error.message, "error");
+  } finally {
+    process.stdin.removeListener("keypress", onKey);
+    process.removeListener("SIGINT", onSigint);
   }
-  
-  showStatus("\nTimeout waiting for authorization", "error");
   await pause();
 }
 
@@ -974,5 +943,7 @@ module.exports = {
     buildConnectionHeader,
     toggleConnectionAutoPing,
     PROVIDER_MODELS,
+    handleAddOAuthConnection,
+    handleAddDeviceCodeConnection,
   },
 };

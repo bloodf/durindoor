@@ -55,6 +55,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [chatgpt-web-2034.md](./chatgpt-web-2034.md)
 - [chatgpt-web-codex-2034.md](./chatgpt-web-codex-2034.md)
 - [claude-web-2034.md](./claude-web-2034.md)
+- [Shipped terminal sign-in ownership (#2034)](./cli-oauth-flow-ownership-2034.md)
 - [cline-signin-2034.md](./cline-signin-2034.md)
 - [codebuddy-signin-parity-2034.md](./codebuddy-signin-parity-2034.md)
 - [codex-alpha-search-2034.md](./codex-alpha-search-2034.md)
@@ -120,6 +121,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [zcode-2034.md](./zcode-2034.md)
 - [zcode-v4-compatibility-1252.md](./zcode-v4-compatibility-1252.md)
 - [zed-signin-parity-2034.md](./zed-signin-parity-2034.md)
+- [Zed Hosted credential isolation and error redaction follow-up (#2034)](./zed-hosted-followup-2034.md)
 - [zenmux-free-signin-parity-2034.md](./zenmux-free-signin-parity-2034.md)
 
 ### Provider contracts and implementation notes

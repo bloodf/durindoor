@@ -10,8 +10,9 @@
 // The default export still declares images only, the slice already staged.
 // Video and speech are staged as named exports (RENDERHOUR_STAGED_MEDIA) for
 // the later registration change. The pinned source also declares a
-// subscription OAuth sign-in, which is not declared here, and there is no chat
-// transport.
+// subscription OAuth sign-in; its staged protocol is described by
+// RENDERHOUR_STAGED_OAUTH below and lives in services/renderhour/oauth.js. It is
+// not declared on the default export. There is no chat transport.
 
 export const RENDERHOUR_ID = "renderhour";
 export const RENDERHOUR_ORIGIN = "https://renderhour.com";
@@ -94,6 +95,22 @@ export const RENDERHOUR_STAGED_MEDIA = Object.freeze({
     ...entries(VIDEO_MODELS, "video", ["duration", "aspect_ratio", "resolution"]),
     ...entries(SPEECH_MODELS, "tts", []),
   ]),
+});
+
+// What registration will declare for the subscription sign-in, kept off the
+// default export so the API-key identity is unchanged. Nothing reads this yet.
+// Source: src/lib/oauth/providers/renderhour.ts and
+// open-sse/services/tokenRefresh/providers/renderhour.ts at the pinned commit.
+export const RENDERHOUR_STAGED_OAUTH = Object.freeze({
+  authType: "oauth",
+  flowType: "authorization_code_pkce",
+  // Hooks registration wires in. Paths are relative to the repository root.
+  oauthHandler: "src/lib/oauth/services/renderhour.js#renderhourOAuthProvider",
+  refreshHooks: "open-sse/services/renderhour/oauth.js#createRenderHourRefreshHooks",
+  // The operator's RenderHour client id; there is no embedded default.
+  clientIdEnv: "RENDERHOUR_OAUTH_CLIENT_ID",
+  // Same media tasks as an rh_ key, paid in plan credits (per the source).
+  serviceKinds: Object.freeze(["image", "video", "tts"]),
 });
 
 export default {

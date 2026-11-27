@@ -18,6 +18,8 @@ Reconcile the remaining review compositions against live dashboard workflows and
 
 ## Evidence and validation commands
 
+The regenerated inventory retains 197 approved rows, 451 pending rows and 1,496 pending references. Runtime status remains pending.
+
 Run the following commands from the repository root to regenerate the story catalog and check the inventory.
 
 ```sh

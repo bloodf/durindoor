@@ -1,10 +1,10 @@
-import { ANTIGRAVITY_DESKTOP_PROFILE } from "../../../../open-sse/providers/shared.js";
 /**
  * OAuth Configuration Constants — static data lives in registry, re-exported here for consumers.
  */
 import { platform, arch } from "os";
 import { getKimiOAuthClientId } from "../../../../open-sse/config/appConstants.js";
 import { ANTIGRAVITY_OAUTH_CLIENT, GOOGLE_OAUTH_CLIENT } from "../../../../open-sse/providers/shared.js";
+import { ANTIGRAVITY_OAUTH_PROFILE, ANTIGRAVITY_DESKTOP_REDIRECT_URI, ANTIGRAVITY_DESKTOP_SCOPES } from "../../../../open-sse/providers/shared.js";
 import { PROVIDER_OAUTH } from "../../../../open-sse/providers/index.js";
 
 /**
@@ -50,10 +50,17 @@ export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
 // Antigravity OAuth Configuration (Standard OAuth2 with Google)
 // clientId/clientSecret from ANTIGRAVITY_OAUTH_CLIENT (shared.js) — not stored in registry
 // loadCodeAssistClientMetadata is dynamic (runtime platform detection)
+// The built-in desktop profile asks for all six upstream scopes (aicode
+// included) and uses the desktop client's loopback callback; a custom client
+// keeps the registry scope set and the caller's registered redirect.
+const ANTIGRAVITY_DESKTOP = ANTIGRAVITY_OAUTH_PROFILE.profile === "desktop";
 export const ANTIGRAVITY_CONFIG = {
   ...ANTIGRAVITY_OAUTH_CLIENT,
   ...PROVIDER_OAUTH["antigravity"],
-  scopes: [...PROVIDER_OAUTH["antigravity"].scopes, ...(ANTIGRAVITY_DESKTOP_PROFILE ? ["https://www.googleapis.com/auth/aicode"] : [])],
+  ...(ANTIGRAVITY_DESKTOP ? { scopes: [...ANTIGRAVITY_DESKTOP_SCOPES] } : null),
+  oauthProfile: ANTIGRAVITY_OAUTH_PROFILE.profile,
+  oauthConfigError: ANTIGRAVITY_OAUTH_PROFILE.configError,
+  fixedRedirectUri: ANTIGRAVITY_DESKTOP ? ANTIGRAVITY_DESKTOP_REDIRECT_URI : null,
   loadCodeAssistClientMetadata: JSON.stringify({ ideType: 9, platform: getOAuthPlatformEnum(), pluginType: 2 })
 };
 

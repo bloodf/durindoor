@@ -9,14 +9,9 @@ The provider page shows a risk notice: this is a subscription session that was n
 
 ## Before you connect
 
-The Google OAuth client is not bundled. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` are unset by default. Set both in the environment DurinDoor starts with, then restart. With empty values Google rejects the authorize request.
+With both `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` absent, DurinDoor uses the already-public desktop profile pinned from [CLIProxyAPI constants.go](https://github.com/router-for-me/CLIProxyAPI/blob/47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e/internal/auth/antigravity/constants.go) and [auth.go](https://github.com/router-for-me/CLIProxyAPI/blob/47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e/internal/auth/antigravity/auth.go). It requests cloud-platform, userinfo.email, userinfo.profile, aicode, cclog, and experimentsandconfigs scopes. Existing tokens need fresh consent to gain expanded scopes; reconnect the account.
 
-```bash
-export ANTIGRAVITY_OAUTH_CLIENT_ID="CHANGE_ME"
-export ANTIGRAVITY_OAUTH_CLIENT_SECRET="CHANGE_ME"
-```
-
-Keep those values available for token refresh and quota checks. DurinDoor reads them once at startup. See [Environment variables](../reference/environment.mdx).
+Operators can set both variables to nonblank values to use their own registered client and existing scope set (without aicode). Blank or incomplete overrides fail locally with configuration guidance; they never fall back to the public profile. Unset both to restore the default. Restart after changing configuration. Keep the same client available for refresh and quota checks. Closed-network mocks verify the protocol, not live Google acceptance.
 
 Sign-in and reconnect record which client issued the refresh token, as a SHA-256 digest of the client ID. The client ID itself and the secret are not stored. If you change or clear `ANTIGRAVITY_OAUTH_CLIENT_ID` later, DurinDoor will not refresh those connections. Refresh stops before any lease or Google request, reports `reauth_required`, and leaves the stored tokens and status unchanged. Restore the original client and restart to resume refresh, or reconnect the account under the new client. Connections made before this record existed have no digest and refresh as before.
 
@@ -30,7 +25,7 @@ Open **Providers**, then **Antigravity**, then Connect.
 Sign in with Google and approve the scopes. The request asks for offline access, so Google returns a refresh token.
 </Step>
 <Step>
-Google redirects to `http://localhost:<dashboard port>/callback`. If you opened the dashboard on a loopback host, the popup finishes on its own. From any other host, the modal switches to a paste step: copy the full callback URL from the browser (`/callback?code=...`) and paste it back.
+The default desktop profile redirects to `http://localhost:51121/oauth-callback`, including when the dashboard is hosted remotely. Copy the full callback URL (including code and state) from the browser address bar and paste it into the modal; the local page may be unreachable. Custom clients retain their registered dashboard callback and existing local popup behavior.
 </Step>
 </Steps>
 

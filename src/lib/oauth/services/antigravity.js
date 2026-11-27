@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_DESKTOP_PROFILE, ANTIGRAVITY_DESKTOP_REDIRECT_URI, assertAntigravityOAuthConfig } from "../../../../open-sse/providers/shared.js";
 import open from "open";
 import { generatePKCE } from "../utils/pkce.js";
 import { ANTIGRAVITY_CONFIG, getOAuthClientMetadata } from "../constants/oauth.js";
@@ -18,6 +19,7 @@ export class AntigravityService {
    * Build Antigravity authorization URL
    */
   buildAuthUrl(redirectUri, state, codeChallenge) {
+    assertAntigravityOAuthConfig();
     if (!isString(codeChallenge) || !codeChallenge) {
       throw new Error("Antigravity authorization requires a PKCE challenge");
     }
@@ -40,6 +42,7 @@ export class AntigravityService {
    * Exchange authorization code for tokens
    */
   async exchangeCode(code, redirectUri, codeVerifier) {
+    assertAntigravityOAuthConfig();
     if (!isString(codeVerifier) || !codeVerifier) {
       throw new Error("Antigravity token exchange requires a PKCE verifier");
     }
@@ -243,10 +246,10 @@ export class AntigravityService {
       let callbackParams = null;
       const { port, close } = await startLocalServer((params) => {
         callbackParams = params;
-      });
+      }, ANTIGRAVITY_DESKTOP_PROFILE ? 51121 : null);
       closeServer = close;
 
-      const redirectUri = `http://localhost:${port}/callback`;
+      const redirectUri = ANTIGRAVITY_DESKTOP_PROFILE ? ANTIGRAVITY_DESKTOP_REDIRECT_URI : `http://localhost:${port}/callback`;
       spinner.succeed(`Local server started on port ${port}`);
 
       const { codeVerifier, codeChallenge, state } = generatePKCE();

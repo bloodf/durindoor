@@ -307,14 +307,25 @@ export const ANTIGRAVITY_IDE_VERSION = "2.33.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
-// Antigravity OAuth client credentials (public CLI client — duplicated in usage.js + src/lib/oauth)
-// Set via env vars — see SECRETS_AND_CONFIG.md
-const ANTIGRAVITY_OAUTH_CLIENT_ID = process.env.ANTIGRAVITY_OAUTH_CLIENT_ID || "";
-const ANTIGRAVITY_OAUTH_CLIENT_SECRET = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET || "";
-
+// Public desktop profile ported from CLIProxyAPI internal/auth/antigravity/
+// constants.go and auth.go at 47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e.
+export const ANTIGRAVITY_DESKTOP_PROFILE = process.env.ANTIGRAVITY_OAUTH_CLIENT_ID === undefined &&
+  process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET === undefined;
+export const ANTIGRAVITY_DESKTOP_REDIRECT_URI = "http://localhost:51121/oauth-callback";
+const antigravityClientId = ANTIGRAVITY_DESKTOP_PROFILE ?
+  "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com" :
+  (process.env.ANTIGRAVITY_OAUTH_CLIENT_ID || "").trim();
+const antigravityClientSecret = ANTIGRAVITY_DESKTOP_PROFILE ?
+  "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" :
+  (process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET || "").trim();
+export function assertAntigravityOAuthConfig() {
+  if (!antigravityClientId || !antigravityClientSecret) {
+    throw new Error("Set both ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET to nonblank values, or unset both to use the public desktop profile; restart DurinDoor.");
+  }
+}
 export const ANTIGRAVITY_OAUTH_CLIENT = {
-  clientId: ANTIGRAVITY_OAUTH_CLIENT_ID,
-  clientSecret: ANTIGRAVITY_OAUTH_CLIENT_SECRET
+  clientId: antigravityClientId,
+  clientSecret: antigravityClientSecret
 };
 
 // Gemini (Google) OAuth client credentials (public CLI client — shared by gemini, gemini-cli, src/lib/oauth)

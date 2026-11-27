@@ -31,19 +31,50 @@ function readWindowsEnv(env, name) {
   return key === undefined ? undefined : env[key];
 }
 
+// Extensions cmd.exe launches itself (batch files) or through CreateProcess when the
+// file is named explicitly, independent of PATHEXT.
+const WINDOWS_INHERENT_EXTENSIONS = [".com", ".exe", ".bat", ".cmd"];
+
+/**
+ * The executable token cmd.exe sees for `bin`, or null when its meaning is not a
+ * single unambiguous file name. The credentialed executor spawns with `shell: true`
+ * on Windows, so Node runs `cmd.exe /d /s /c "<bin> acp ..."` without quoting `bin`.
+ * One balanced pair of quotes wrapping the whole value is therefore stripped (cmd
+ * does the same). Anything cmd would split, expand or redirect is rejected: interior
+ * or unbalanced quotes, `%` expansion, unquoted whitespace or `& | < > ^`, padding
+ * inside the quotes, and drive-relative or other stray `:` forms.
+ */
+function windowsShellToken(bin) {
+  let token = bin;
+  const quoted = token.length >= 2 && token.startsWith('"') && token.endsWith('"');
+  if (quoted) token = token.slice(1, -1);
+  if (!token || token.includes('"') || token.includes("%") || token !== token.trim()) return null;
+  if (!quoted && /[\s&|<>^]/.test(token)) return null;
+  if (/[\0-\x1f]/.test(token)) return null;
+  const colon = token.indexOf(":");
+  if (colon !== -1 && !(colon === 1 && /^[A-Za-z]:[\\/]/.test(token) && !token.includes(":", 2))) return null;
+  return token;
+}
+
 /**
  * File names cmd.exe could launch for `bin`. A name whose extension is listed in
- * PATHEXT (case-insensitive) is tried as written; any other name is tried only
- * with each PATHEXT extension appended, because Windows will not run an
- * extensionless or unknown-extension file. Bare names search PATH entries only
- * (not the current directory), which can under-report but never over-report.
+ * PATHEXT (case-insensitive) is tried as written, as is a directory-qualified path
+ * ending in .com/.exe/.bat/.cmd, which cmd runs regardless of PATHEXT. Any other
+ * name is tried only with each PATHEXT extension appended, because Windows will not
+ * run an extensionless or unknown-extension file. Bare names search PATH entries
+ * only (not the current directory), which can under-report but never over-report.
+ * Returns no candidates when `bin` is malformed or ambiguous for the shell.
  */
 function windowsCommandCandidates(bin, env) {
+  const token = windowsShellToken(bin);
+  if (token === null) return [];
   const extensions = (readWindowsEnv(env, "PATHEXT") || DEFAULT_WINDOWS_PATHEXT)
     .split(";").map((ext) => ext.trim().toLowerCase()).filter((ext) => /^\.[^.\\/:*?"<>|\s]+$/.test(ext));
-  const ownExt = path.win32.extname(bin).toLowerCase();
-  const names = ownExt && extensions.includes(ownExt) ? [bin] : extensions.map((ext) => bin + ext);
-  if (/[\\/]/.test(bin) || path.win32.isAbsolute(bin)) return names;
+  const explicitPath = /[\\/]/.test(token) || path.win32.isAbsolute(token);
+  const ownExt = path.win32.extname(token).toLowerCase();
+  const runsAsWritten = ownExt && (extensions.includes(ownExt) || (explicitPath && WINDOWS_INHERENT_EXTENSIONS.includes(ownExt)));
+  const names = runsAsWritten ? [token] : extensions.map((ext) => token + ext);
+  if (explicitPath) return names;
   const dirs = (readWindowsEnv(env, "PATH") || "").split(";").map((dir) => dir.trim().replace(/^"(.*)"$/, "$1")).filter(Boolean);
   return dirs.flatMap((dir) => names.map((name) => path.win32.join(dir, name)));
 }

@@ -60,6 +60,68 @@ describe("isDevinBinAvailable on Windows", () => {
     expect(win({ CLI_DEVIN_BIN: "devin.exe", PATH: "C:\\Other" }, { "C:\\Tools\\devin.exe": "file" })).toBe(false);
   });
 
+  it("accepts explicitly named .exe/.com/.bat/.cmd paths even when PATHEXT omits their extension", () => {
+    const narrow = { PATH: "", PATHEXT: ".BAT;.CMD" };
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.exe" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:/Tools/DEVIN.EXE" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "\\\\server\\share\\devin.com" }, { "\\\\server\\share\\devin.com": "file" })).toBe(true);
+    expect(win({ PATH: "", PATHEXT: ".EXE", CLI_DEVIN_BIN: "C:\\Tools\\devin.cmd" }, { "C:\\Tools\\devin.cmd": "file" })).toBe(true);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: ".\\bin\\devin.exe" }, { "bin\\devin.exe": "file" })).toBe(true);
+  });
+
+  it("does not stretch the explicit-path exemption to bare names, other extensions, or missing files", () => {
+    const narrow = { PATH, PATHEXT: ".BAT;.CMD" };
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.ps1" }, { "C:\\Tools\\devin.ps1": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.js" }, { "C:\\Tools\\devin.js": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.exe" }, { "C:\\Tools\\devin.exe.bat": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.exe" }, { "C:\\Tools\\devin.exe": "dir" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.exe" }, {})).toBe(false);
+  });
+
+  it("strips one balanced pair of quotes the shell would remove", () => {
+    const files = { "C:\\Program Files\\Devin\\devin.exe": "file" };
+    expect(win({ CLI_DEVIN_BIN: '"C:\\Program Files\\Devin\\devin.exe"', PATH: "" }, files)).toBe(true);
+    expect(win({ CLI_DEVIN_BIN: '"C:\\Program Files\\Devin\\devin"', PATH: "" }, files)).toBe(true);
+    expect(win({ CLI_DEVIN_BIN: '"C:\\Program Files\\Devin\\devin.exe"', PATH: "", PATHEXT: ".CMD" }, files)).toBe(true);
+    expect(win({ CLI_DEVIN_BIN: '"devin"', PATH: "C:\\Program Files\\Devin" }, files)).toBe(true);
+    expect(win({ CLI_DEVIN_BIN: '"C:\\Tools\\devin.exe"', PATH: "" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+  });
+
+  it("rejects malformed or shell-ambiguous command strings instead of guessing", () => {
+    const files = {
+      "C:\\Program Files\\Devin\\devin.exe": "file",
+      "C:\\Tools\\devin.exe": "file",
+      '"C:\\Tools\\devin.exe"': "file",
+      "C:\\Tools\\%X%\\devin.exe": "file",
+      "C:\\Tools\\a&b\\devin.exe": "file"
+    };
+    const reject = (bin, env = {}) => expect(win({ CLI_DEVIN_BIN: bin, PATH: "C:\\Tools", ...env }, files)).toBe(false);
+    reject("C:\\Program Files\\Devin\\devin.exe"); // unquoted whitespace: cmd splits at the space
+    reject('"C:\\Tools\\devin.exe'); // unbalanced
+    reject('C:\\Tools\\devin.exe"');
+    reject('"'); // lone quote
+    reject('""'); // empty quoted
+    reject('"C:\\Tools\\"devin.exe"'); // interior quote
+    reject('C:\\"Program Files"\\Devin\\devin.exe'); // partial quoting
+    reject('""C:\\Tools\\devin.exe""'); // nested quotes
+    reject('" C:\\Tools\\devin.exe"'); // padding inside quotes
+    reject("C:\\Tools\\%X%\\devin.exe"); // env expansion
+    reject('"C:\\Tools\\%X%\\devin.exe"');
+    reject("C:\\Tools\\a&b\\devin.exe"); // command separator
+    reject("devin|more");
+    reject("devin>out");
+    reject("dev^in");
+    reject("C:devin.exe"); // drive-relative
+    reject("C:\\Tools\\devin.exe:stream");
+    reject("C:\\Tools\\dev\tin.exe");
+  });
+
+  it("does not claim the default install when its path would be split by the shell", () => {
+    const local = "C:\\Users\\Jo Doe\\AppData\\Local";
+    expect(win({ LOCALAPPDATA: local, PATH: "" }, { [`${local}\\devin\\cli\\bin\\devin.exe`]: "file" })).toBe(false);
+  });
+
   it("keeps the agentic provider unavailable on Windows", () => {
     expect(win({ CLI_DEVIN_BIN: "C:\\Tools\\devin.exe", PATH }, { "C:\\Tools\\devin.exe": "file" }, { agentic: true })).toBe(false);
     expect(win({ CLI_DEVIN_BIN: "devin", PATH }, { "C:\\Tools\\devin.exe": "file" }, { agentic: true })).toBe(false);
@@ -80,5 +142,12 @@ describe("isDevinBinAvailable on POSIX (injected)", () => {
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin", PATHEXT: ".EXE" }, { "/opt/bin/devin.exe": "exec" })).toBe(false);
     expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin", PATH: "" }, { "/opt/bin/devin": "exec" }, { agentic: true })).toBe(true);
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin" }, { "/opt/bin/devin": "exec" }, { agentic: true })).toBe(false);
+  });
+
+  it("does not apply Windows quote or explicit-extension handling", () => {
+    // POSIX spawns without a shell, so quotes are literal file-name characters.
+    expect(posix({ CLI_DEVIN_BIN: '"/opt/bin/devin"', PATH: "" }, { "/opt/bin/devin": "exec" })).toBe(false);
+    expect(posix({ CLI_DEVIN_BIN: "/opt/my bin/devin", PATH: "" }, { "/opt/my bin/devin": "exec" })).toBe(true);
+    expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin.exe", PATH: "" }, { "/opt/bin/devin.exe": "file" })).toBe(false);
   });
 });

@@ -1,0 +1,81 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/executors/vertexMedia.ts"
+    ],
+    "registryEntry": {
+      "id": "vertex",
+      "baseUrl": "https://us-central1-aiplatform.googleapis.com/v1",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "format": "vertex-veo"
+    }
+  },
+  "provider": {
+    "canonicalId": "vertex",
+    "aliases": ["vx"],
+    "existingDefinition": "open-sse/providers/registry/vertex.js (chat connection; unchanged)",
+    "serviceKindsToAdd": ["video"],
+    "connectionModes": "unchanged: Service Account JSON, authorized_user ADC JSON, preset access token with providerSpecificData.projectId, or Vertex AI Express API key; providerSpecificData.location selects the region (default us-central1)",
+    "notCovered": ["vertex-partner"]
+  },
+  "models": [
+    { "id": "veo-3.1-generate-001", "name": "Veo 3.1 (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
+    { "id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
+    { "id": "veo-3.0-generate-001", "name": "Veo 3.0 (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
+    { "id": "veo-3.0-fast-generate-001", "name": "Veo 3.0 Fast (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
+    { "id": "veo-2.0-generate-001", "name": "Veo 2.0 (Vertex)", "durationSeconds": [5, 6, 7, 8], "aspectRatios": ["16:9", "9:16"] }
+  ],
+  "endpoints": {
+    "bearer": {
+      "auth": "Authorization: Bearer <access token>",
+      "submit": "POST https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predictLongRunning",
+      "poll": "POST https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:fetchPredictOperation"
+    },
+    "express": {
+      "auth": "?key=<Express API key> (source contract; best effort)",
+      "submit": "POST https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:predictLongRunning?key={apiKey}",
+      "poll": "POST https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:fetchPredictOperation?key={apiKey}"
+    },
+    "redirects": "refused",
+    "dynamicDiscovery": "none in source; static model list"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-vertex-video/index.js",
+    "adapter": "default export of adapter.js (also vertexVideoAdapter from index.js): { async: true, responseFormats: [\"b64_json\"], defaultResponseFormat: \"b64_json\", generate({ model, body, credentials, signal, log }) }",
+    "factory": "createVertexVideoAdapter(jobOptions)",
+    "metadata": "VERTEX_VIDEO_PROVIDER_METADATA, VERTEX_VIDEO_MODELS, VERTEX_VIDEO_MODEL_IDS, VERTEX_VIDEO_PROVIDER_ID, VERTEX_VIDEO_PROVIDER_ALIASES, VERTEX_VIDEO_FORMAT",
+    "helpers": "buildVertexVideoRequest, vertexVideoScope, resolveVertexVideoAuth, vertexVideoAction, runVertexVideoJob, vertexVideoAcceptedJob, isVertexVideoOperationName, vertexVideoMp4Base64"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import vertexVideoAdapter from \"../../services/providerParity/native-vertex-video/adapter.js\" and add `vertex: vertexVideoAdapter` to VIDEO_GENERATION_ADAPTERS ; lookupMediaAdapter does not resolve aliases, so confirm the route canonicalizes vx to vertex first, or also register `vx`"
+    },
+    {
+      "file": "open-sse/handlers/videoGenerationCore.js",
+      "change": "none: generateWithAdapter already honors adapter.responseFormats / defaultResponseFormat and acceptedJob"
+    },
+    {
+      "file": "open-sse/providers/registry/vertex.js",
+      "change": "add \"video\" to serviceKinds and the five Veo models as video models"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Vertex video (b64_json, text-to-video only)"
+    }
+  ],
+  "publicContract": {
+    "route": "POST /v1/video/generations",
+    "accepted": ["prompt", "aspect_ratio | aspectRatio | size (16:9 or 9:16)", "duration | durationSeconds", "negative_prompt", "n = 1", "response_format = b64_json"],
+    "refusedBeforeSubmit": ["image and other media inputs", "n > 1", "stream", "response_format url", "other aspect ratios or sizes", "durations outside the model's list", "non-regional location", "missing project for Bearer credentials"],
+    "response": "{ created, data: [{ b64_json, format: \"mp4\" }] }",
+    "accounting": "nativeUnits.videos = 1, cost unknown; acceptedJob (costSource accepted-job) on every failure that may bill"
+  }
+}

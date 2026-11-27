@@ -1,0 +1,96 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/mediaGeneration/fal.ts",
+      "open-sse/config/falEndpoint.ts",
+      "open-sse/handlers/fal/client.ts",
+      "open-sse/handlers/fal/schema.ts",
+      "open-sse/handlers/fal/compatibility.ts"
+    ],
+    "registryEntry": {
+      "id": "fal-ai",
+      "baseUrl": "https://queue.fal.run",
+      "authType": "apikey",
+      "authHeader": "key",
+      "format": "fal-ai-video"
+    }
+  },
+  "provider": {
+    "canonicalId": "fal-ai",
+    "aliases": ["fal"],
+    "existingDefinition": "open-sse/providers/registry/fal-ai.js (image connection; unchanged)",
+    "serviceKindsToAdd": ["video"],
+    "connectionModes": "unchanged: one fal API key (apiKey, or accessToken when that is where the key is stored), sent as Authorization: Key <key>; connection proxy settings honored"
+  },
+  "models": [
+    {
+      "id": "veo3.1/lite",
+      "name": "Veo 3.1 Lite",
+      "endpoint": "fal-ai/veo3.1/lite",
+      "acceptedIds": ["veo3.1/lite", "fal-ai/veo3.1/lite"],
+      "inputs": "text only; aspect_ratio 16:9 | 9:16; duration 4s | 6s | 8s; resolution 720p | 1080p; generate_audio, negative_prompt, safety_tolerance, seed, auto_fix"
+    },
+    {
+      "id": "google/gemini-omni-flash",
+      "name": "Gemini Omni Flash",
+      "endpoint": "google/gemini-omni-flash, or google/gemini-omni-flash/image-to-video with one image",
+      "acceptedIds": ["google/gemini-omni-flash", "google/gemini-omni-flash/image-to-video"],
+      "inputs": "aspect_ratio; duration 3 to 10 whole seconds; at most one image"
+    },
+    {
+      "id": "xai/grok-imagine-video/text-to-video",
+      "name": "Grok Imagine Video",
+      "endpoint": "xai/grok-imagine-video/{text|image|reference}-to-video, chosen from the image count",
+      "acceptedIds": ["xai/grok-imagine-video/text-to-video", "xai/grok-imagine-video/image-to-video", "xai/grok-imagine-video/reference-to-video"],
+      "inputs": "aspect_ratio; whole-second duration; resolution; zero, one or several images"
+    }
+  ],
+  "dynamicModels": "any other fal video endpoint id (owner/app[/path]; first-party ids get the fal-ai/ owner) or a built-in id with fal_input: its OpenAPI 3 schema is discovered per call (or from a connection-scoped store), metadata.category must end in 'video', and the input is checked against the schema before submit",
+  "endpoints": {
+    "auth": "Authorization: Key <key>",
+    "submit": "POST https://queue.fal.run/{endpoint} (Content-Type: application/json, X-Fal-No-Retry: 1, redirect manual and refused)",
+    "status": "GET status_url pinned to https://queue.fal.run/.../requests/{request_id}/status (fallback {submit}/requests/{request_id}/status), redirect error",
+    "result": "GET response_url pinned to https://queue.fal.run/.../requests/{request_id} (fallback {submit}/requests/{request_id}), redirect error",
+    "discover": "GET https://api.fal.ai/v1/models?endpoint_id={endpoint}&expand=openapi-3.0, redirect error, at most two Retry-After retries of 429/503 up to 5 s",
+    "redirects": "refused",
+    "cancel": "none (the source never cancels a queued request)"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-fal-ai-video/index.js",
+    "adapter": "default export of adapter.js (also falVideoAdapter from index.js): { async: true, responseFormats: [\"url\"], defaultResponseFormat: \"url\", generate({ model, body, credentials, signal, log }) }",
+    "factory": "createFalVideoAdapter(jobOptions) with optional { store } for connection-scoped discovered definitions",
+    "metadata": "FAL_VIDEO_PROVIDER_METADATA, FAL_VIDEO_MODELS, FAL_VIDEO_MODEL_IDS, FAL_VIDEO_PROVIDER_ID, FAL_VIDEO_PROVIDER_ALIASES, FAL_VIDEO_FORMAT, FAL_QUEUE_ORIGIN, FAL_API_ORIGIN",
+    "helpers": "buildFalVideoRequest, falVideoEndpoint, falBuiltInFamily, canonicalFalEndpoint, discoverFalVideoDefinition, falVideoCompatibilityInput, validateFalVideoInput, runFalVideoJob, falVideoAcceptedJob, falVideoTrackingUrl, falVideoResultUrl, falVideoArtifact"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import falVideoAdapter from \"../../services/providerParity/native-fal-ai-video/adapter.js\" and add `\"fal-ai\": falVideoAdapter` to VIDEO_GENERATION_ADAPTERS; lookupMediaAdapter does not resolve aliases, so confirm the route canonicalizes fal to fal-ai first, or also register `fal`"
+    },
+    {
+      "file": "open-sse/handlers/videoGenerationCore.js",
+      "change": "none: generateWithAdapter already honors adapter.responseFormats / defaultResponseFormat and acceptedJob"
+    },
+    {
+      "file": "open-sse/providers/registry/fal-ai.js",
+      "change": "add \"video\" to serviceKinds and the three source models with kind \"video\"; keep imageConfig and the image models"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list fal video (url output; built-in models plus schema-discovered video endpoints)"
+    }
+  ],
+  "publicContract": {
+    "route": "POST /v1/video/generations",
+    "accepted": ["prompt", "aspect_ratio | aspectRatio | size (WxH, reduced)", "duration (8, \"8\" or \"8s\")", "resolution | quality=hd", "image_url | image_urls (https on a public host, or a base64 image data URI up to 10 MiB)", "n = 1", "response_format = url", "fal_input (object, merged over the mapped input, schema-checked)"],
+    "refusedBeforeSubmit": ["n > 1", "stream", "response_format b64_json", "image/images/mask/video uploads", "images for Veo 3.1 Lite", "values outside the built-in models' ranges", "undocumented, missing or mistyped fields for discovered endpoints", "endpoints whose category is not video", "private, credentialed or non-https image URLs", "a missing key (local 401, nothing sent)"],
+    "response": "{ created, data: [{ url, format? }] } with format from content_type or the URL extension (mp4, webm, mov)",
+    "accounting": "nativeUnits.videos = 1, cost unknown; acceptedJob (costSource accepted-job) on every failure after a possible queue acceptance"
+  }
+}

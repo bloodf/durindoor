@@ -157,7 +157,7 @@ export function createRequestSender({
     clearHeaderTimer();
     const controller = new AbortController();
     const mergedSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-    const timer = setTimeout(() => controller.abort(fetchConnectTimeoutError()), headerTimeoutMs);
+    const timer = setTimeout(() => controller.abort(fetchConnectTimeoutError(headerTimeoutMs)), headerTimeoutMs);
     deadline = { controller, mergedSignal, timer };
 
     try {

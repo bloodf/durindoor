@@ -1,0 +1,117 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/executors/kie.ts",
+      "open-sse/utils/kieTask.ts",
+      "open-sse/utils/audioMultipart.ts"
+    ],
+    "registryFields": { "id": "kie", "baseUrl": "https://api.kie.ai", "authType": "apikey", "authHeader": "bearer", "format": "kie-audio" }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/kie.js (llm only: chat https://api.kie.ai/v1/chat/completions, no ttsConfig or sttConfig)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no kie entry)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS (no kie-audio format)",
+      "open-sse/handlers/sttCore.js handleSttCore format switch (no kie-audio branch)",
+      "open-sse/handlers/ttsProviders/elevenlabs.js (direct ElevenLabs wire: api.elevenlabs.io and xi-api-key, not Kie's createTask/recordInfo job API)"
+    ],
+    "result": "no existing equivalent; this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-kie-tts-stt/index.js",
+  "exports": {
+    "kieTtsAdapter": "default TTS adapter instance (TTS_ADAPTERS synthesize contract)",
+    "kieSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal, log })",
+    "createKieTtsAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now, downloadTimeoutMs, maxAudioBytes } for tests",
+    "createKieSttAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now } for tests",
+    "buildKieSpeechRequest": "(model, text, options) -> Kie speech task body; throws status 400",
+    "buildKieTranscriptionRequest": "async (model, formData, { kind }) -> { payload, responseFormat } or a 400 error result with local: true",
+    "runKieTask": "createTask + bounded recordInfo poll; { success, value, taskId, accounting } or error result with acceptedJob",
+    "downloadKieAudio": "credential-free public-only audio download; { success, bytes, format } or error result with acceptedJob",
+    "findKieAudioUrl": "result URL from a record (named keys only), public https or null",
+    "kieTranscriptText": "transcript text from a polled record, or null",
+    "normalizeKieTaskState": "success | failed | pending",
+    "parseKieResultJson": "data.resultJson as an object",
+    "normalizeKieVoice": "source OpenAI voice aliases, default Rachel",
+    "kieAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "kiePublicUrl": "public https URL check for result URLs",
+    "sniffAudioFormat": "audio container from magic bytes",
+    "kieUploadFileName": "source upload file name rule",
+    "KIE_TTS_MODELS": "supported speech models",
+    "KIE_STT_MODELS": "supported transcription models",
+    "KIE_EXCLUDED_MODELS": "source rows refused here, with reasons",
+    "KIE_SPEECH_RESPONSE_FORMATS": "[\"mp3\", \"json\"] (or none named)",
+    "KIE_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\"]"
+  },
+  "provider": {
+    "canonicalId": "kie",
+    "aliases": ["kie"],
+    "existingRegistryEntry": "open-sse/providers/registry/kie.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["tts", "stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "kie-audio"
+  },
+  "models": {
+    "tts": [
+      { "id": "elevenlabs/text-to-speech-multilingual-v2", "name": "ElevenLabs TTS v2", "voiceSuffix": "model/voice accepted" },
+      { "id": "elevenlabs/text-to-speech-turbo-2-5", "name": "ElevenLabs TTS Turbo 2.5", "voiceSuffix": "model/voice accepted" }
+    ],
+    "stt": [
+      { "id": "elevenlabs/speech-to-text", "name": "ElevenLabs STT" }
+    ],
+    "excluded": ["elevenlabs/text-to-dialogue-v3", "elevenlabs/sound-effect-v2", "elevenlabs/audio-isolation"],
+    "dynamicDiscovery": "none: the source lists audio models statically and has no Kie audio model fetcher. The chat /v1/models validateUrl stays on the llm kind."
+  },
+  "endpoints": {
+    "createTask": { "method": "POST", "url": "https://api.kie.ai/api/v1/jobs/createTask", "headers": ["Authorization: Bearer <key>", "Content-Type: application/json"] },
+    "recordInfo": { "method": "GET", "url": "https://api.kie.ai/api/v1/jobs/recordInfo?taskId={taskId}", "headers": ["Authorization: Bearer <key>"] },
+    "speechResult": { "method": "GET", "url": "public https result URL from the task record", "headers": ["Accept: audio/*"], "credential": "none" }
+  },
+  "bounds": {
+    "ttsTaskMs": 60000,
+    "sttTaskMs": 120000,
+    "pollIntervalMs": 2000,
+    "submitTimeoutMs": 30000,
+    "requestTimeoutMs": 30000,
+    "maxPollRetries": 5,
+    "downloadTimeoutMs": 60000,
+    "maxAudioBytes": 52428800,
+    "maxSttFileBytes": 26214400,
+    "maxTtsRequestBytes": 262144
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { kieTtsAdapter } and add `kie: kieTtsAdapter` to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage adds input characters"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "pass `requestedResponseFormat` for kie (today only REFRESHED_BEFORE_DISPATCH providers get it) so a named container other than mp3/json is refused before submit; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "add `case \"kie-audio\": return await kieSttAdapter.transcribe({ model, formData, credentials, kind, signal, log })` before the default branch, and route the kind check so translations reach the adapter's refusal (supportsSttTranslation already returns false for kie-audio)"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "record `result.acceptedJob` once on the selected connection (modality stt, endpoint /v1/audio/transcriptions) and stop account fallback for it, as tts.js does with onAccountFailure; today the STT route has no accepted-job path"
+    },
+    {
+      "file": "open-sse/providers/registry/kie.js",
+      "change": "serviceKinds [\"llm\", \"tts\", \"stt\"]; add tts and stt model rows (kind) from KIE_TTS_MODELS / KIE_STT_MODELS; sttConfig { baseUrl: \"https://api.kie.ai\", authType: \"apikey\", authHeader: \"bearer\", format: \"kie-audio\" }; no ttsConfig (the adapter is registered in TTS_ADAPTERS)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Kie tts and stt kinds after registration"
+    }
+  ]
+}

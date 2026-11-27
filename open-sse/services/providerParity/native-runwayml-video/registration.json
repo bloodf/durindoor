@@ -1,0 +1,25 @@
+{
+  "state": "private-unregistered",
+  "source": "OmniRoute c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+  "exports": { "index.js": ["default", "config", "buildRequest", "createRunwayVideoAdapter"] },
+  "canonicalId": "runwayml",
+  "aliases": ["runway"],
+  "models": ["gen4.5", "gen4_turbo", "gen3a_turbo", "veo3.1", "veo3.1_fast"],
+  "serviceKinds": ["video"],
+  "format": "runwayml",
+  "auth": { "type": "bearer", "header": "Authorization", "credential": "selected connection apiKey or accessToken", "versionHeader": { "X-Runway-Version": "2024-11-06" } },
+  "endpoints": {
+    "textSubmit": "POST https://api.dev.runwayml.com/v1/text_to_video",
+    "imageSubmit": "POST https://api.dev.runwayml.com/v1/image_to_video",
+    "poll": "GET https://api.dev.runwayml.com/v1/tasks/{id}"
+  },
+  "discovery": { "mode": "static", "reason": "Pinned Runway video registry imports five supported models; no Runway dynamic model discovery endpoint is configured." },
+  "responseFormats": ["url"],
+  "integration": {
+    "dispatcher": "open-sse/handlers/videoProviders/index.js: register default adapter for runwayml and runway",
+    "core": "open-sse/handlers/videoGenerationCore.js: existing generate/acceptedJob/accounting contract",
+    "provider": "open-sse/providers/registry/runwayml.js: retain existing apikey connection and image support; add video service kind and missing source video models",
+    "catalog": "derive video catalog from existing provider metadata during serial registration",
+    "tests": "Promote only isolated unregistered staging block to positive adapter identity assertions"
+  }
+}

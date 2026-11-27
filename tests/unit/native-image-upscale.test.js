@@ -154,6 +154,14 @@ describe("catalog and model resolution", () => {
     expect(vendor.state.calls).toHaveLength(0);
   });
 
+  it("refuses a provider whose adapter a custom service omits, without network", async () => {
+    const custom = createImageUpscaleService({ adapters: {} });
+    const result = await custom.upscale({ body: { model: "topaz/topaz-enhance", image: PNG_URI }, credentials: { apiKey: TOPAZ_KEY } });
+    expect(result.status).toBe(400);
+    expect(errorText(result)).toMatch(/No upscale adapter is configured for topaz \(topaz-upscale\)/);
+    expect(vendor.state.calls).toHaveLength(0);
+  });
+
   it("refuses a non-object body", async () => {
     expect((await service().upscale({ body: "x" })).status).toBe(400);
   });

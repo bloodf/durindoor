@@ -77,7 +77,7 @@ export function createImageUpscaleService(options = {}) {
       }
       if (resolved.unavailable) return adobeFireflyUpscaleUnavailable(resolved.unavailable);
       const adapter = adapters[resolved.provider];
-      if (!adapter) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Upscale is not implemented for provider format: ${resolved.config.format}`);
+      if (!adapter) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `No upscale adapter is configured for ${resolved.provider} (${resolved.config.format}) in this service`);
       return adapter.upscale({ model: resolved.model, body, credentials: credentials ?? {}, signal, log });
     },
   };

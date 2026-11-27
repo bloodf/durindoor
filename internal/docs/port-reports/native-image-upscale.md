@@ -89,7 +89,7 @@ Both IDs return a fixed 501 with `unavailable: true`. The response comes before 
 
 ## Tests
 
-`tests/unit/native-image-upscale.test.js` runs 130 cases with closed synthetic mocks and no live accounts. It covers:
+`tests/unit/native-image-upscale.test.js` runs 131 cases with closed synthetic mocks and no live accounts. It covers:
 
 - the catalog and model resolution
 - the Firefly guard, with no reads and no network

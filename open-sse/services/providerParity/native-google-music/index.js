@@ -242,6 +242,9 @@ export async function handleGeminiMusicGeneration({
       label = read.text ? googleStatusLabel(read.text) : "";
     } catch { /* body is never surfaced */ }
     // 5xx other than 503 may have run the generation: keep it as possibly billed.
+    // 503 is a refusal by status alone: Gemini API docs list 503 service_unavailable
+    // ("temporarily overloaded or down", retry with backoff) and the billing FAQ says an
+    // HTTP 4xx or 5xx error is not billed. See internal/docs/port-reports/native-audio-503-contract.md.
     if (status >= 500 && status !== 503) {
       return fail(502, `Gemini Lyria submit outcome unknown (HTTP ${status}${label}); it was not resubmitted`, credentials, {
         outcome: "outcome_unknown", acceptedJob: acceptedJob("submit_outcome_unknown", { httpStatus: status }), connectionId,

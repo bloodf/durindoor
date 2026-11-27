@@ -312,8 +312,11 @@ describe("HuggingFace speech failures", () => {
     expect(limited).toMatchObject({ success: false, status: 429 });
     expect(limited.resetsAtMs).toBeGreaterThan(Date.now());
     expect(loading).toMatchObject({ success: false, status: 503 });
+    expect(loading.resetsAtMs).toBeGreaterThan(Date.now());
     expect(limited.acceptedJob).toBeUndefined();
-    expect(loading.acceptedJob).toBeUndefined();
+    // No published HuggingFace contract says a 503 did no billable work, so it is
+    // kept as an unknown-cost job (see internal/docs/port-reports/native-audio-503-contract.md).
+    expect(loading.acceptedJob).toMatchObject({ modality: "tts", cost: null, costStatus: "unknown", costSource: "accepted-job", meta: { jobState: "submit-unknown" } });
     expectNoLeak(limited);
     expectNoLeak(loading);
   });

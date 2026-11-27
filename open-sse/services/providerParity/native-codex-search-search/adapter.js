@@ -3,6 +3,7 @@
 // as dispatched by open-sse/handlers/search.ts. Upstream output is validated and rebuilt, never relayed.
 import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { classifyHost } from "../../../../src/shared/utils/ssrfGuard.js";
+import { extractCompleteSseFrames, parseSseFrame } from "../../../utils/sseFrames.js";
 import { resolveCodexAccountId } from "../../../shared/codexAccountId.js";
 import {
   CODEX_SEARCH_ID, CODEX_SEARCH_ALIASES, CODEX_SEARCH_DEFAULT_MODEL, CODEX_SEARCH_EFFORTS,
@@ -201,14 +202,12 @@ function observe(state, value, target, title) {
 }
 
 function parseBlock(block) {
-  const lines = block.split("\n");
-  const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
-  const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+  const { eventName, data } = parseSseFrame(block);
   if (!data || data === "[DONE]") return null;
   let payload;
   try { payload = JSON.parse(data); } catch { throw new CodexSearchError(); }
   if (!isRecord(payload)) throw new CodexSearchError();
-  return { type: nonempty(payload.type) || event, payload };
+  return { type: nonempty(payload.type) || eventName, payload };
 }
 
 function handleEvent(state, type, payload) {
@@ -254,7 +253,9 @@ function handleEvent(state, type, payload) {
 export function parseCodexSearchSse(body, maxResults) {
   if (!isString(body) || Buffer.byteLength(body, "utf8") > CODEX_SEARCH_MAX_BYTES) throw new CodexSearchError();
   const state = { sources: [], annotations: [], messages: [], outputTexts: [], observed: new Set(), calls: 0, completed: false, searches: 0, usage: {} };
-  for (const block of body.replace(/\r\n/g, "\n").split("\n\n")) {
+  const { frames, remainder } = extractCompleteSseFrames(body);
+  // The source accepts a final snapshot without a trailing blank line.
+  for (const block of [...frames, remainder]) {
     const event = parseBlock(block);
     if (event) handleEvent(state, event.type, event.payload);
   }

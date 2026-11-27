@@ -131,3 +131,5 @@ cd tests && node node_modules/vitest/vitest.mjs run unit/native-zai-search-searc
 
 Result: 1 file, 50 tests passed. The anti-slop/oxlint gate reports 0 diagnostics. The
 unregistered-state assertions are isolated in the final `staging registration state` block.
+
+Shared SSE framing (Refs #2034): the native adapter uses `open-sse/utils/sseFrames.js` for LF, CRLF and CR boundaries, comments, optional field spaces and joined data lines. This keeps framing consistent with the gateway while retaining provider payload validation, result filtering, errors and bounds. Final unterminated events are accepted at end of input. The wire contract remains attributed to OmniRoute `c71f0065a7efe9230ec23b96a12253b050c4d7ad`, `open-sse/handlers/search.ts` (Codex additionally `open-sse/handlers/search/codexSearch.ts`); framing is shared local infrastructure.

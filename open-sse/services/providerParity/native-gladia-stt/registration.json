@@ -1,0 +1,97 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/config/registryUtils.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "src/shared/constants/providers/audio.ts"
+    ],
+    "registryFields": {
+      "stt": { "id": "gladia", "baseUrl": "https://api.gladia.io/v2/pre-recorded", "authType": "apikey", "authHeader": "x-gladia-key", "async": true, "format": "gladia" }
+    },
+    "reachability": "reachable in the source: AUDIO_TRANSCRIPTION_PROVIDERS.gladia is returned by getTranscriptionProvider / parseTranscriptionModel, and handleAudioTranscription dispatches format \"gladia\" to handleGladiaTranscription; no AUDIO_TRANSLATION_PROVIDERS or speech entry exists; the display entry in audio.ts lists serviceKinds [] (display only)",
+    "inventoryRow": "| STT | `gladia` | apikey / x-gladia-key / gladia; endpoint https://api.gladia.io/v2/pre-recorded | `open-sse/config/audioRegistry.ts` -> `handlers/audioTranscription.ts` | MISSING (`sttConfig`) |"
+  },
+  "localEquivalence": {
+    "checked": [
+      "git grep -i gladia over HEAD and origin/main (a6cb6dea80): only internal/docs/port-reports inventory rows; no provider, alias, model row, sttConfig, x-gladia-key auth header or format handler",
+      "open-sse/handlers/sttCore.js handleSttCore: no gladia format; its other async job formats use other endpoints, auth headers and envelopes",
+      "no local auth-header builder emits x-gladia-key"
+    ],
+    "result": "no Gladia path exists today, so this module (provider definition and STT adapter) is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-gladia-stt/index.js",
+  "exports": {
+    "gladiaSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createGladiaSttAdapter": "factory; options { fetchImpl, totalTimeoutMs, callTimeoutMs, pollCallTimeoutMs, pollWindowMs, pollIntervalMs, maxResultBytes, wait, now } for tests",
+    "buildGladiaTranscriptionRequest": "async (model, formData, { kind }) -> { upload: FormData, model, responseFormat } or a 400 error result with local: true",
+    "gladiaJobBody": "(audioUrl, model) -> source submit body { audio_url, model }",
+    "gladiaAudioUrl": "(uploadAnswer) -> audio_url when it is a plain https URL, else null",
+    "gladiaResultJob": "(submitAnswer) -> { jobId, pollUrl } when result_url is exactly https://api.gladia.io/v2/pre-recorded/<id>, else null",
+    "gladiaTranscriptText": "(pollAnswer) -> result.transcription.full_transcript or null",
+    "gladiaUploadFileName": "source upload file name rule",
+    "gladiaAcceptedJob": "(modality, jobState, jobId) accepted-job accounting with unknown cost",
+    "GLADIA_PROVIDER_DEFINITION": "staged registry entry (id, alias, display, apikey auth, transport, serviceKinds, sttConfig)",
+    "GLADIA_STT_MODELS": "transcription models",
+    "GLADIA_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\"]",
+    "GLADIA_DROPPED_FIELDS": "request fields the source ignores; refused when set"
+  },
+  "provider": {
+    "canonicalId": "gladia",
+    "aliases": [],
+    "uiAlias": "gladia",
+    "existingRegistryEntry": null,
+    "serviceKinds": ["stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "x-gladia-key", "scheme": null, "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "validateUrl": null,
+    "formats": { "stt": "gladia" }
+  },
+  "models": {
+    "stt": [
+      { "id": "solaria-1", "name": "Solaria 1" },
+      { "id": "solaria-mini", "name": "Solaria Mini" }
+    ],
+    "dynamicDiscovery": "none: the pinned source lists Gladia models statically, has no Gladia models fetcher and no Gladia validation probe"
+  },
+  "endpoints": {
+    "upload": { "method": "POST", "url": "https://api.gladia.io/v2/upload", "headers": ["x-gladia-key: <key>", "Content-Type: multipart/form-data"], "body": "audio (file part)", "answer": "{ audio_url }", "billable": false },
+    "submit": { "method": "POST", "url": "https://api.gladia.io/v2/pre-recorded", "headers": ["x-gladia-key: <key>", "Content-Type: application/json"], "body": "{ audio_url, model }", "answer": "{ id?, result_url: https://api.gladia.io/v2/pre-recorded/<id> }", "billable": true },
+    "result": { "method": "GET", "url": "https://api.gladia.io/v2/pre-recorded/{id}", "headers": ["x-gladia-key: <key>"], "answer": "{ status: queued | processing | done | error, error_code?, result?: { transcription: { full_transcript } } }" }
+  },
+  "bounds": {
+    "totalTimeoutMs": 240000,
+    "callTimeoutMs": 60000,
+    "pollCallTimeoutMs": 15000,
+    "pollWindowMs": 120000,
+    "pollIntervalMs": 2000,
+    "maxSttFileBytes": 104857600,
+    "maxResultBytes": 16777216,
+    "redirects": "refused",
+    "retries": "0 for upload and submit; result polls repeat only after 408/425/429/5xx or a transport error, inside the deadline"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/gladia.js",
+      "change": "new entry from GLADIA_PROVIDER_DEFINITION with model rows from GLADIA_STT_MODELS (kind stt); keep sttConfig (translationModels [] so supportsSttTranslation stays false); check the gladia id is still free"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"gladia\") return await gladiaSttAdapter.transcribe({ model, formData, credentials, kind, signal })`; the existing STT accepted-job recording in src/sse/handlers/stt.js then records result.acceptedJob on the selected connection"
+    },
+    {
+      "file": "src/shared/constants/providers (provider display list)",
+      "change": "add the Gladia display entry (name, icon record_voice_over, color #6425FE, text icon GL, website); no validation probe exists in the source"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Gladia stt after registration"
+    }
+  ]
+}

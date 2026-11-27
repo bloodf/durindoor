@@ -276,6 +276,81 @@ wait,
   throw reauthorizationError();
 }
 
+/** Validate refresh fields before either request or background persistence. */
+export function validatedRefreshUpdates(connection, refreshResult, now = Date.now) {
+    const nowMs = safeRefreshClock(now);
+    const accessToken = optionalSecret(refreshResult, "accessToken");
+    if (!accessToken) throw malformedRefreshResult();
+    const updateData = { accessToken, updatedAt: new Date(nowMs).toISOString() };
+    for (const field of ["refreshToken", "idToken"]) {
+      const replacement = optionalSecret(refreshResult, field);
+      if (replacement) updateData[field] = replacement;
+    }
+    if (Object.hasOwn(refreshResult, "lastRefreshAt") && refreshResult.lastRefreshAt !== null && refreshResult.lastRefreshAt !== undefined && refreshResult.lastRefreshAt !== "") {
+      const lastRefreshAt = canonicalTimestamp(refreshResult.lastRefreshAt);
+      if (!lastRefreshAt || new Date(lastRefreshAt).getTime() > nowMs + MAX_REFRESH_CLOCK_SKEW_MS) throw malformedRefreshResult();
+      updateData.lastRefreshAt = lastRefreshAt;
+    }
+
+    const hasExpiresIn = Object.hasOwn(refreshResult, "expiresIn") && refreshResult.expiresIn !== null && refreshResult.expiresIn !== undefined && refreshResult.expiresIn !== "";
+    const hasExpiresAt = Object.hasOwn(refreshResult, "expiresAt") && refreshResult.expiresAt !== null && refreshResult.expiresAt !== undefined && refreshResult.expiresAt !== "";
+    const expiresIn = hasExpiresIn ? positiveExpirySeconds(refreshResult.expiresIn) : null;
+    const expiresAt = hasExpiresAt ? canonicalTimestamp(refreshResult.expiresAt) : null;
+    const expiresInMs = expiresIn === null ? null : expiresIn * 1000;
+    if (
+    hasExpiresIn && (
+
+    !Number.isFinite(expiresInMs) ||
+    expiresInMs > MAX_REFRESH_LIFETIME_MS ||
+    !canonicalTimestamp(nowMs + expiresInMs)))
+
+    {
+      throw malformedRefreshResult();
+    }
+    if (
+    hasExpiresAt && (
+    !expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS))
+    throw malformedRefreshResult();
+    if (hasExpiresIn) {
+      updateData.expiresAt = canonicalTimestamp(nowMs + expiresInMs);
+      updateData.expiresIn = expiresIn;
+    } else if (hasExpiresAt) {
+      updateData.expiresAt = expiresAt;
+    }
+
+    const providerSpecificUpdates = {};
+    const copilotToken = optionalSecret(refreshResult, "copilotToken");
+    if (copilotToken) providerSpecificUpdates.copilotToken = copilotToken;
+    if (Object.hasOwn(refreshResult, "copilotTokenExpiresAt") && refreshResult.copilotTokenExpiresAt !== null && refreshResult.copilotTokenExpiresAt !== undefined && refreshResult.copilotTokenExpiresAt !== "") {
+      const expiresAt = canonicalTimestamp(refreshResult.copilotTokenExpiresAt);
+      if (!expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS) {
+        throw malformedRefreshResult();
+      }
+      providerSpecificUpdates.copilotTokenExpiresAt = expiresAt;
+    }
+    if (Object.hasOwn(refreshResult, "providerSpecificData") && refreshResult.providerSpecificData !== null && refreshResult.providerSpecificData !== undefined) {
+      if (!isObject(refreshResult.providerSpecificData) || Array.isArray(refreshResult.providerSpecificData)) {
+        throw malformedRefreshResult();
+      }
+      const originalProviderData = connection.providerSpecificData && isObject(
+        connection.providerSpecificData) &&
+      !Array.isArray(connection.providerSpecificData) ?
+      connection.providerSpecificData :
+      {};
+      for (const [field, value] of Object.entries(refreshResult.providerSpecificData)) {
+        if (!REFRESH_METADATA_FIELDS.has(field) || value === null || value === undefined || value === "") continue;
+        // Some legacy refreshers echo their entire input metadata object. Do
+        // not revalidate or rewrite unchanged stored values after an upstream
+        // may already have rotated its one-time refresh token.
+        if (Object.hasOwn(originalProviderData, field) && originalProviderData[field] === value) continue;
+        providerSpecificUpdates[field] = validatedMetadataValue(field, value);
+      }
+    }
+    if (Object.keys(providerSpecificUpdates).length > 0) updateData.providerSpecificData = providerSpecificUpdates;
+
+    return updateData;
+}
+
 /**
  * Refresh one provider connection without coupling shared workers to an API
  * route. Stored credentials change only when the provider returns an explicit
@@ -442,75 +517,7 @@ proxyOptions = null,
       if (connection.accessToken) return { connection, refreshed: false };
       throw reauthorizationError();
     }
-    const nowMs = safeRefreshClock(now);
-    const accessToken = optionalSecret(refreshResult, "accessToken");
-    if (!accessToken) throw malformedRefreshResult();
-    const updateData = { accessToken, updatedAt: new Date(nowMs).toISOString() };
-    for (const field of ["refreshToken", "idToken"]) {
-      const replacement = optionalSecret(refreshResult, field);
-      if (replacement) updateData[field] = replacement;
-    }
-    if (Object.hasOwn(refreshResult, "lastRefreshAt") && refreshResult.lastRefreshAt !== null && refreshResult.lastRefreshAt !== undefined && refreshResult.lastRefreshAt !== "") {
-      const lastRefreshAt = canonicalTimestamp(refreshResult.lastRefreshAt);
-      if (!lastRefreshAt || new Date(lastRefreshAt).getTime() > nowMs + MAX_REFRESH_CLOCK_SKEW_MS) throw malformedRefreshResult();
-      updateData.lastRefreshAt = lastRefreshAt;
-    }
-
-    const hasExpiresIn = Object.hasOwn(refreshResult, "expiresIn") && refreshResult.expiresIn !== null && refreshResult.expiresIn !== undefined && refreshResult.expiresIn !== "";
-    const hasExpiresAt = Object.hasOwn(refreshResult, "expiresAt") && refreshResult.expiresAt !== null && refreshResult.expiresAt !== undefined && refreshResult.expiresAt !== "";
-    const expiresIn = hasExpiresIn ? positiveExpirySeconds(refreshResult.expiresIn) : null;
-    const expiresAt = hasExpiresAt ? canonicalTimestamp(refreshResult.expiresAt) : null;
-    const expiresInMs = expiresIn === null ? null : expiresIn * 1000;
-    if (
-    hasExpiresIn && (
-
-    !Number.isFinite(expiresInMs) ||
-    expiresInMs > MAX_REFRESH_LIFETIME_MS ||
-    !canonicalTimestamp(nowMs + expiresInMs)))
-
-    {
-      throw malformedRefreshResult();
-    }
-    if (
-    hasExpiresAt && (
-    !expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS))
-    throw malformedRefreshResult();
-    if (hasExpiresIn) {
-      updateData.expiresAt = canonicalTimestamp(nowMs + expiresInMs);
-      updateData.expiresIn = expiresIn;
-    } else if (hasExpiresAt) {
-      updateData.expiresAt = expiresAt;
-    }
-
-    const providerSpecificUpdates = {};
-    const copilotToken = optionalSecret(refreshResult, "copilotToken");
-    if (copilotToken) providerSpecificUpdates.copilotToken = copilotToken;
-    if (Object.hasOwn(refreshResult, "copilotTokenExpiresAt") && refreshResult.copilotTokenExpiresAt !== null && refreshResult.copilotTokenExpiresAt !== undefined && refreshResult.copilotTokenExpiresAt !== "") {
-      const expiresAt = canonicalTimestamp(refreshResult.copilotTokenExpiresAt);
-      if (!expiresAt || new Date(expiresAt).getTime() > nowMs + MAX_REFRESH_LIFETIME_MS) {
-        throw malformedRefreshResult();
-      }
-      providerSpecificUpdates.copilotTokenExpiresAt = expiresAt;
-    }
-    if (Object.hasOwn(refreshResult, "providerSpecificData") && refreshResult.providerSpecificData !== null && refreshResult.providerSpecificData !== undefined) {
-      if (!isObject(refreshResult.providerSpecificData) || Array.isArray(refreshResult.providerSpecificData)) {
-        throw malformedRefreshResult();
-      }
-      const originalProviderData = connection.providerSpecificData && isObject(
-        connection.providerSpecificData) &&
-      !Array.isArray(connection.providerSpecificData) ?
-      connection.providerSpecificData :
-      {};
-      for (const [field, value] of Object.entries(refreshResult.providerSpecificData)) {
-        if (!REFRESH_METADATA_FIELDS.has(field) || value === null || value === undefined || value === "") continue;
-        // Some legacy refreshers echo their entire input metadata object. Do
-        // not revalidate or rewrite unchanged stored values after an upstream
-        // may already have rotated its one-time refresh token.
-        if (Object.hasOwn(originalProviderData, field) && originalProviderData[field] === value) continue;
-        providerSpecificUpdates[field] = validatedMetadataValue(field, value);
-      }
-    }
-    if (Object.keys(providerSpecificUpdates).length > 0) updateData.providerSpecificData = providerSpecificUpdates;
+    const updateData = validatedRefreshUpdates(connection, refreshResult, now);
 
     if (Object.keys(updateData).length === 1) {
       if (connection.accessToken) return { connection, refreshed: false };

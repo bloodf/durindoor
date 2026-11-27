@@ -73,8 +73,8 @@ function normalizeAgentMessage(item) {
 
 /**
  * Normalize Responses API input to array format.
- * Accepts string or array, returns array of message items. Plaintext agent items
- * become user turns with provenance; ordinary history passes through unchanged.
+ * Accepts string or array, returns array of message items. Native agent items
+ * and ordinary history pass through unchanged; Chat lowering is separate.
  * An empty array is treated like an empty string — providers require at least one user
  * message, so we inject a placeholder rather than forwarding an empty messages[].
  * @param {string|Array} input - raw input from Responses API body
@@ -90,9 +90,14 @@ export function normalizeResponsesInput(input) {
     if (input.length === 0) {
       return [{ type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: "..." }] }];
     }
-    return input.map(normalizeAgentMessage);
+    return input;
   }
   return null;
+}
+
+/** Lower agent context only when converting Responses input to Chat messages. */
+export function normalizeResponsesInputForChat(input) {
+  return normalizeResponsesInput(input)?.map(normalizeAgentMessage) ?? null;
 }
 
 // Strict Responses upstreams reject overlong call_ids with InputValidationError (#393).
@@ -337,7 +342,7 @@ export function convertResponsesApiFormat(body) {
   // serialization contract (tests/unit/responses-file-id-handler.test.js).
   let pendingToolImages = [];
 
-  const inputItems = repairMissingResponsesCallIds(normalizeResponsesInput(body.input));
+  const inputItems = repairMissingResponsesCallIds(normalizeResponsesInputForChat(body.input));
   if (!inputItems) return body;
 
   for (const item of inputItems) {

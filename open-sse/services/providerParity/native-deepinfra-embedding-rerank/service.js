@@ -1,4 +1,5 @@
 // One bounded submit, no refresh/retry/failover. A lost POST may already be billed.
+import { isRecord } from "../../../../src/shared/utils/typeChecks.js";
 import { createErrorResult, readBoundedResponseText, parseRateLimitEvidence } from "../../../utils/error.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
@@ -46,10 +47,9 @@ async function request({ url, body, credentials, signal, timeoutMs = 30_000, fet
     sent = true;
     const pending = Promise.resolve().then(() => {
       if (combined.aborted) { sent = false; throw new Error("DeepInfra cancelled before send"); }
-      return fetchImpl(url, {
-        method: body ? "POST" : "GET", headers, redirect: "manual", signal: combined,
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      }, resolveCredentialProxyOptions(credentials));
+      const init = { method: body ? "POST" : "GET", headers, redirect: "manual", signal: combined };
+      if (body) init.body = JSON.stringify(body);
+      return fetchImpl(url, init, resolveCredentialProxyOptions(credentials));
     });
     pending.then((late) => { if (combined.aborted) discard(late); }, () => {});
     response = await Promise.race([pending, interrupted]);
@@ -74,7 +74,7 @@ async function request({ url, body, credentials, signal, timeoutMs = 30_000, fet
       const evidence = status === 429 ? parseRateLimitEvidence({ status, headers: new Headers({ "retry-after": response.headers.get("retry-after") ?? "" }), now: Date.now() }) : null;
       return createErrorResult(status >= 400 && status < 500 ? status : 502, "DeepInfra request refused", evidence?.resetAtMs, undefined, evidence);
     }
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.error) return unknown(createErrorResult(502, "Invalid DeepInfra response"), "completed-unusable");
+    if (!isRecord(raw) || raw.error) return unknown(createErrorResult(502, "Invalid DeepInfra response"), "completed-unusable");
     return { ok: true, raw };
   } catch (error) {
     discard(response);

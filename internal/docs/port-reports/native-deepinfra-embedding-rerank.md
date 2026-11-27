@@ -128,6 +128,11 @@ pnpm exec eslint open-sse/services/providerParity/native-deepinfra-embedding-rer
 ```
 
 Result: 71 focused tests passed; scoped ESLint passed with no findings.
+The subsequent gate exposed 11 anti-slop lint diagnostics (direct runtime type
+checks and conditional empty-object spreads). Replaced those with existing
+`src/shared/utils/typeChecks.js` predicates and explicit property assignments.
+Protocol, validation and accounting behavior remain covered by the same tests.
+Also validated `pnpm run lint:anti-slop` after the correction.
 
 Closed mocks cover wire bodies/headers, source catalog identity, native sorting and
 vectors, supported/custom models, two credentials, failure/quota, numeric receipts,

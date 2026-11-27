@@ -20,6 +20,7 @@ import {
   isValidCookieName,
   isValidCookieValue,
   cookieChunkIndex,
+  hashedCookiePrefixOf,
 } from "./cookieImportContract";
 
 /** A pasted header or cURL command may not exceed this size. */
@@ -294,6 +295,14 @@ export function filterCandidateCookies(candidate, contract) {
     const gap = chunks.findIndex((entry, position) => entry.index !== position);
     if (gap !== -1) return fail(`The chunked ${base} cookie is incomplete: chunk ${gap} is missing.`);
     for (const entry of chunks) final.push(entry.cookie);
+  }
+  // A hashed family (WordPress `wordpress_logged_in_<md5>`) needs exactly one member: two
+  // different digests mean two site sessions, and the operator has to pick the right input.
+  for (const prefix of contract.hashedCookiePrefixes ?? []) {
+    const members = [...byName.values()].filter((cookie) => hashedCookiePrefixOf(contract, cookie.name) === prefix);
+    if (!members.length) return fail(`The input has no ${prefix}<md5> cookie.`);
+    if (members.length > 1) return fail(`The input has more than one ${prefix}<md5> cookie; keep only the session you want.`);
+    final.push(members[0]);
   }
   // Optional cookies ride along when present; their absence is never an error.
   for (const name of contract.optionalCookies ?? []) {

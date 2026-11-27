@@ -53,8 +53,13 @@ import { createVeoAiFreeVideoAdapter } from "../../open-sse/services/providerPar
 
 const DASHBOARD = "https://dashboard.example";
 const ORIGIN = "https://veoaifree.com";
-// WordPress names its logged-in cookie after md5(site URL); this is the one for https://veoaifree.com.
+// WordPress names its logged-in cookie `wordpress_logged_in_` + md5(siteurl option). The digest is
+// site configuration, so the contract approves the family by grammar; md5("https://veoaifree.com")
+// is used here as one synthetic member, not as a verified site value.
+const WP_PREFIX = "wordpress_logged_in_";
 const WP = "wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b";
+const WP_OTHER_HASH = "wordpress_logged_in_0123456789abcdef0123456789abcdef";
+const VEO_CONTRACT = { origin: ORIGIN, cookieNames: [], cookiePrefixes: [], hashedCookiePrefixes: [WP_PREFIX] };
 // Synthetic only: none of these is a real credential.
 const VALUE = "synthetic-user%7C1900000000%7Ctoken%7Chmac";
 const OTHER = "synthetic-other-session";
@@ -104,29 +109,33 @@ afterAll(() => {
 });
 
 describe("import contract", () => {
-  it("is an optional session of the anonymous provider: exact origin, exact cookie name, no sign-in", () => {
+  it("is an optional session of the anonymous provider: exact origin, one WordPress logged-in family, no sign-in", () => {
     const contract = getCookieImportContract("veoaifree-web");
     expect(contract).toMatchObject({ provider: "veoaifree-web", authType: "apikey", origin: ORIGIN, host: "veoaifree.com", extensionCapture: true });
-    expect([...contract.cookieNames]).toEqual([WP]);
+    expect([...contract.cookieNames]).toEqual([]);
     expect([...contract.cookiePrefixes]).toEqual([]);
-    expect(describeCookieImportContract(contract)).toEqual({ origin: ORIGIN, cookieNames: [WP], cookiePrefixes: [] });
+    expect([...contract.hashedCookiePrefixes]).toEqual([WP_PREFIX]);
+    expect(describeCookieImportContract(contract)).toEqual(VEO_CONTRACT);
     expect(veoRegistry).toMatchObject({ noAuth: true, category: "free", serviceKinds: ["video"] });
     expect(veoRegistry.webLogin).toBeUndefined();
     expect(veoRegistry.authType).toBeUndefined();
     // The dashboard lists saved sessions next to the anonymous proxy card; the card stays.
-    expect(FREE_PROVIDERS["veoaifree-web"].cookieImport).toMatchObject({ origin: ORIGIN, cookieNames: [WP] });
+    expect(FREE_PROVIDERS["veoaifree-web"].cookieImport).toMatchObject({ origin: ORIGIN, cookieNames: [], hashedCookiePrefixes: [WP_PREFIX] });
     expect(shouldShowProviderConnections(FREE_PROVIDERS["veoaifree-web"], { storedNoAuth: true })).toBe(true);
     // Only an explicit optional-session profile on a no-auth entry is importable.
     expect(cookieImportConfig({ ...veoRegistry, noAuth: false })).toBeNull();
     expect(cookieImportConfig({ ...veoRegistry, cookieImport: { ...veoRegistry.cookieImport, optionalSession: false } })).toBeNull();
   });
 
-  it("accepts only the exact cookie on the exact host and composes the stored header", () => {
+  it("accepts only one logged-in family cookie on the exact host and composes the stored header", () => {
     const contract = getCookieImportContract("veoaifree-web");
     expect(buildImportedCookieHeader(contract, [wpCookie()])).toEqual({ ok: true, header: `${WP}=${VALUE}` });
     expect(buildImportedCookieHeader(contract, [wpCookie({ domain: ".veoaifree.com" })]).ok).toBe(true);
+    // Any md5 COOKIEHASH is a valid site digest: the guessed one is not privileged.
+    expect(buildImportedCookieHeader(contract, [wpCookie({ name: WP_OTHER_HASH })])).toEqual({ ok: true, header: `${WP_OTHER_HASH}=${VALUE}` });
     for (const cookies of [
-      [wpCookie({ name: "wordpress_logged_in_0123456789abcdef0123456789abcdef" })],
+      [wpCookie(), wpCookie({ name: WP_OTHER_HASH, value: OTHER })],
+      [wpCookie({ name: "wordpress_logged_in_0123456789ABCDEF0123456789ABCDEF" })],
       [wpCookie({ name: "wordpress_logged_in" })],
       [wpCookie({ name: "wordpress_sec_04e805bfa8c7064a04c2e480966a748b" })],
       [wpCookie({ domain: "evil.example" })],
@@ -165,7 +174,7 @@ describe("import contract", () => {
 describe("pairing import API", () => {
   it("creates and replaces a selectable session connection through the existing pairing guards", async () => {
     const created = await issue({ provider: "veoaifree-web", action: "create", name: "Veo session A" });
-    expect(created.contract).toEqual({ origin: ORIGIN, cookieNames: [WP], cookiePrefixes: [] });
+    expect(created.contract).toEqual(VEO_CONTRACT);
     const res = await importCookies(importRequest(created.token, { provider: "veoaifree-web", origin: ORIGIN, cookies: [wpCookie()] }));
     expect(res.status).toBe(201);
     const { connection } = await res.json();
@@ -252,7 +261,8 @@ describe("browser extension capture", () => {
   }
 
   it("ships the exact built-in Veo entry that matches the dashboard contract", () => {
-    expect(EXTENSION_PROVIDERS["veoaifree-web"]).toEqual({ label: "Veo AI Free Web", origin: ORIGIN, cookieNames: [WP], cookiePrefixes: [] });
+    expect(EXTENSION_PROVIDERS["veoaifree-web"]).toMatchObject({ label: "Veo AI Free Web", origin: ORIGIN, cookieNames: [], cookiePrefixes: [], hashedCookiePrefixes: [WP_PREFIX] });
+    expect(EXTENSION_PROVIDERS["veoaifree-web"].hashedCookieCandidates).toContain(WP);
     const manifest = JSON.parse(fs.readFileSync(new URL("../../extensions/provider-cookie-capture/manifest.json", import.meta.url), "utf8"));
     expect(manifest.optional_host_permissions).toContain(`${ORIGIN}/*`);
     expect(manifest.host_permissions).toBeUndefined();
@@ -262,8 +272,12 @@ describe("browser extension capture", () => {
     const jar = { [WP]: wpCookie({ domain: ".veoaifree.com" }), wordpress_test_cookie: wpCookie({ name: "wordpress_test_cookie", value: NOISE }) };
     const { result, calls, fetchImpl, plan } = await capture({ jar });
     expect(result.ok).toBe(true);
-    expect(describePlan(plan).cookieNames).toEqual([WP]);
-    expect(calls.filter((c) => c.name === "cookies.get").map((c) => c.arg)).toEqual([{ url: `${ORIGIN}/`, name: WP, storeId: "store-1" }]);
+    expect(describePlan(plan).cookieNames).toEqual([`${WP_PREFIX}<md5>`]);
+    // Exact-name reads of the built-in candidates only, on the provider URL in the tab's store.
+    const reads = calls.filter((c) => c.name.startsWith("cookies."));
+    expect(reads.every((c) => c.name === "cookies.get" && c.arg.url === `${ORIGIN}/` && c.arg.storeId === "store-1" && c.arg.name.startsWith(WP_PREFIX))).toBe(true);
+    expect(reads.map((c) => c.arg.name)).toContain(WP);
+    expect(reads.map((c) => c.arg.name)).not.toContain("wordpress_test_cookie");
     expect(calls.find((c) => c.name === "permissions.request").arg.origins).toEqual([`${ORIGIN}/*`, `${DASHBOARD}/*`]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];
@@ -283,10 +297,11 @@ describe("browser extension capture", () => {
   it("refuses a pairing that widens or moves the built-in allowlist", () => {
     const contract = describeCookieImportContract(getCookieImportContract("veoaifree-web"));
     expect(parsePairing(JSON.stringify({ pairing: veoPairing({ contract: { ...contract, origin: "https://evil.example" } }) }), NOW)).toMatchObject({ ok: false, code: "origin_mismatch" });
-    expect(parsePairing(JSON.stringify({ pairing: veoPairing({ contract: { ...contract, cookieNames: [] } }) }), NOW)).toMatchObject({ ok: false, code: "invalid_pairing" });
-    const widened = parsePairing(JSON.stringify({ pairing: veoPairing({ contract: { ...contract, cookieNames: [WP, "wordpress_sec_x"] } }) }), NOW);
+    expect(parsePairing(JSON.stringify({ pairing: veoPairing({ contract: { ...contract, hashedCookiePrefixes: [] } }) }), NOW)).toMatchObject({ ok: false, code: "invalid_pairing" });
+    const widened = parsePairing(JSON.stringify({ pairing: veoPairing({ contract: { ...contract, cookieNames: [WP, "wordpress_sec_x"], hashedCookiePrefixes: [WP_PREFIX, "wordpress_sec_"] } }) }), NOW);
     expect(widened.ok).toBe(true);
-    expect(widened.plan.cookieNames).toEqual([WP]);
+    expect(widened.plan.cookieNames).toEqual([]);
+    expect(widened.plan.hashedCookiePrefixes).toEqual([WP_PREFIX]);
     expect(parsePairing(JSON.stringify({ pairing: veoPairing({ importUrl: `${ORIGIN}/api/providers/cookie-import` }) }), NOW)).toMatchObject({ ok: false, code: "invalid_destination" });
   });
 });

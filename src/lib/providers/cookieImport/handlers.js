@@ -18,7 +18,7 @@ import { createProvider } from "@/lib/providerRouteHandlers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { isIsolatedLoginRequest, ownerBinding } from "@/lib/webLoginSession";
 import { isString, isRecord } from "@/shared/utils/typeChecks";
-import { normalizeAccountEmail } from "@/shared/utils/cookieImportContract";
+import { normalizeAccountEmail, contractUsesCookies } from "@/shared/utils/cookieImportContract";
 import { getCookieImportContract, describeCookieImportContract, buildImportedCookieHeader, validateImportedLocalStorage } from "./contract";
 import { issuePairing, consumePairing, isWellFormedPairingToken, PAIRING_TTL_MS } from "./pairing";
 
@@ -208,7 +208,7 @@ export async function handleCookieImport(request) {
     // An explicit active status is what clears a pending reauthentication marker on credential replacement.
     // A localStorage-only import replaces the stored value and clears a pasted key, which would otherwise win.
     const update = { provider: pairing.provider, testStatus: "active" };
-    if (contract.cookieNames.length) update.apiKey = built.header;
+    if (contractUsesCookies(contract)) update.apiKey = built.header;
     else update.apiKey = null;
     if (hasStoredValues) update.providerSpecificData = { ...(existing.providerSpecificData || {}), ...stored.values };
     const updated = await updateProviderConnection(target.connectionId, update, { replacesCredential: true });

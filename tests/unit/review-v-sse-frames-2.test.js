@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatClaudeSseError } from "../../open-sse/utils/sseFrames.js";
+import { formatClaudeSseError, parseSseFrame, replaceSseFrameData } from "../../open-sse/utils/sseFrames.js";
 import { buildStreamErrorBytes } from "../../open-sse/utils/streamHelpers.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
+
+it.each(["\n", "\r\n", "\r"])("replaces data while preserving metadata (%j)", (eol) => {
+  const raw = [": heartbeat", "event: message", "id: 42", "data: old", "retry: 1000", "data", "data: second"].join(eol);
+  expect(replaceSseFrameData(parseSseFrame(raw), '{"ok":true}'))
+    .toBe(': heartbeat\nevent: message\nid: 42\nretry: 1000\ndata: {"ok":true}\n\n');
+});
 
 describe("Claude SSE error frames", () => {
   it("writes the standard event and JSON payload", () => {

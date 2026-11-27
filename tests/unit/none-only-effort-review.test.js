@@ -52,7 +52,8 @@ describe("clampTierToSupported with a none-only tier set (#2648)", () => {
   });
 
   it("never folds a reasoning request onto none when a reasoning tier exists", () => {
-    expect(clampTierToSupported("bogus", ["none", "low", "high", "max"])).toBe("low");
+    // #2635 ranks unknown tiers as high.
+    expect(clampTierToSupported("bogus", ["none", "low", "high", "max"])).toBe("high");
     expect(clampTierToSupported("medium", ["none", "low", "high", "max"])).toBe("high");
     expect(clampTierToSupported("none", ["low", "high"])).toBe("low");
     expect(clampTierToSupported("ultra", ["none", "low", "high", "max"])).toBe("max");
@@ -124,7 +125,8 @@ describe("models with a reasoning tier are unaffected (#2648)", () => {
 
   it("does not fold a reasoning request onto a leading none tier", () => {
     const caps = customCaps({ thinkingEfforts: ["none", "low", "medium"] });
-    expect(responses({ reasoning_effort: "max" }, caps).reasoning?.effort).toBe("low");
+    // #2635 clamps by rank: above the declared range lands on the highest tier.
+    expect(responses({ reasoning_effort: "max" }, caps).reasoning?.effort).toBe("medium");
     expect(responses({ reasoning_effort: "medium" }, caps).reasoning?.effort).toBe("medium");
   });
 

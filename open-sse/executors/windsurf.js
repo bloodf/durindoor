@@ -386,15 +386,12 @@ function decodeGrpcWebCompletion(bytes) {
   for (const frame of parsed.frames) {
     if (frame.flag === 0x80) {
       const trailer = TEXT_DEC.decode(frame.payload);
-      const statusMatch = /grpc-status:\s*(\d+)/i.exec(trailer);
+      const statusMatch = /(?:^|\r?\n)grpc-status:\s*(\d{1,2})\s*(?:\r?\n|$)/i.exec(trailer);
       if (statusMatch) {
         if (statusMatch[1] === "0") {
           result.ok = true;
         } else {
-          const msgMatch = /grpc-message:\s*(.+)/i.exec(trailer);
-          result.error = msgMatch ?
-          decodeURIComponent(msgMatch[1].trim()) :
-          `gRPC status ${statusMatch[1]}`;
+          result.error = `gRPC status ${statusMatch[1]}`;
         }
       }
       continue;
@@ -408,7 +405,7 @@ function decodeGrpcWebCompletion(bytes) {
       result.promptTokens = chunk.promptTokens;
       result.completionTokens = chunk.completionTokens;
     } else if (chunk.kind === "error") {
-      result.error = chunk.message;
+      result.error = "Windsurf upstream error";
     }
   }
   if (!result.ok && !result.error) {
@@ -469,6 +466,12 @@ export class WindsurfExecutor extends BaseExecutor {
 
   transformRequest() {
     return null;
+  }
+
+  // The gateway extracts bounded rate-limit evidence from the response itself.
+  // Never pass arbitrary provider text into public errors or request logs.
+  parseError(response) {
+    return { status: response.status, message: "Windsurf upstream error" };
   }
 
   async execute(input) {

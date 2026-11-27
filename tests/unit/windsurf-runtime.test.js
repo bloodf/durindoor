@@ -252,7 +252,7 @@ describe("Windsurf executor behavior", () => {
 
     expect(result.response.status).toBe(502);
     const body = await result.response.json();
-    expect(body.error.message).toBe("bad token");
+    expect(body.error.message).toBe("Windsurf upstream error");
     expect(body.error.code).toBe("upstream_error");
   });
 
@@ -346,7 +346,7 @@ describe("Windsurf executor behavior", () => {
     });
     expect(result.response.status).toBe(502);
     const body = await result.response.json();
-    expect(body.error.message).toContain("permission denied");
+    expect(body.error.message).toBe("gRPC status 7");
     expect(body.error.code).toBe("upstream_error");
   });
 

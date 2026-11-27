@@ -1,18 +1,18 @@
 ---
-title: Adobe Firefly (web UI, staged)
-description: Staged and unavailable. A guarded browser flow for the Firefly website, image and video, driven by an operator-owned profile and an operator-validated control mapping.
-status: unreleased
+title: Adobe Firefly (experimental browser)
+description: Experimental operator-mapped browser provider, tested with mocks only. A guarded browser flow for the Firefly website, image and video, driven by an operator-owned profile and an operator-validated control mapping.
+status: experimental
 ---
 
-> **Staged and unavailable.** `adobe-firefly-web` is not in the provider catalog, the image adapter map or the video adapter map. You cannot add a connection or send requests to it yet. Nothing on this page is verified against Adobe.
+> **Experimental, operator-mapped, mock-only verification.** `adobe-firefly-web` is available in the catalog for explicit per-connection configuration. It is disabled by default. No live Adobe compatibility or entitlement is verified.
 
 This provider drives Adobe's ordinary Firefly website (`https://firefly.adobe.com`) in an unmodified Playwright Chromium. It is separate from the registered [Adobe Firefly Services API](./adobe-firefly-api.md) (`adobe-firefly-api`), which uses an Adobe Developer Console credential. It does not make `adobe-firefly` or `firefly` known IDs; see [Adobe Firefly](./adobe-firefly.md).
 
-## What is implemented (staged)
+## What is implemented
 
 - One canonical ID, `adobe-firefly-web`, with no alias and `authType: none`. It serves images and video.
-- Two adapters with the gateway's synchronous `.generate({ model, body, credentials, signal, log })` contract: images (`open-sse/handlers/imageProviders/adobe-firefly-web.js`) and video (`open-sse/handlers/videoProviders/adobe-firefly-web.js`). Neither is registered.
-- The browser flow in `open-sse/services/fireflyWebUi/`, plus setup helpers (`initializeFireflyWebUiProfile`, `openFireflyWebUiSetup`, `closeFireflyWebUiSetup`) for a later, authenticated operator integration. No route calls them yet.
+- Two adapters with the gateway's synchronous `.generate({ model, body, credentials, signal, log })` contract: images (`open-sse/handlers/imageProviders/adobe-firefly-web.js`) and video (`open-sse/handlers/videoProviders/adobe-firefly-web.js`). They are registered for `/v1/images/generations` and synchronous `/v1/video/generations`.
+- The browser flow in `open-sse/services/fireflyWebUi/`, plus setup helpers (`initializeFireflyWebUiProfile`, `openFireflyWebUiSetup`, `closeFireflyWebUiSetup`) behind the authenticated dashboard connection setup route.
 
 The tests use a synthetic fake browser only. No real browser was launched, no Adobe page was loaded and no generation was made.
 
@@ -35,6 +35,8 @@ DurinDoor ships **no default Adobe selectors**. Adobe's help pages describe a Pr
 The connection holds no API key, bearer, access token or cookie. Any such value on the connection is refused.
 
 ## Setup
+
+Use the provider dashboard browser configuration panel to create a disabled connection, explicitly enable it, and edit the JSON model/control mapping. Saving a mapping requires operator attestation; it does not verify the live site. Setup opens on the **DurinDoor host**, requires a display, and offers no remote browser or stealth fallback. Status reports `needs_operator` while open and `unknown` after close, never live sign-in verification.
 
 1. An operator creates the connection's private profile. The server mints the handle and stores it at `DATA_DIR/browser-profiles/adobe-firefly-web/<connectionId>/<profileHandle>`, with a marker that binds the handle to the connection.
 2. The operator opens a setup session. This needs an authenticated operator, `enabled: true` and the initialized profile, but no mapping. A headed, ordinary browser opens the Firefly home page. DurinDoor navigates once and does nothing else: the operator signs in, completes any MFA or challenge, and accepts any terms themselves. DurinDoor reads no cookies, storage or tokens and exports nothing.
@@ -70,7 +72,7 @@ After the click, any abort, deadline, page loss, ambiguity, operator marker or b
 
 ## Known limitations
 
-- Unavailable until a registration change adds it to the catalog and both media maps, and gives the image and video cores a path that runs `.generate` adapters with `b64_json` output. That wiring is not part of this staged change.
+- Model discovery lists only this connection’s configured image/video modelMap, never live entitlements. Automatic discovery and validation never open a browser.
 - No live parity is claimed. The tests prove our state machine on synthetic pages, not Adobe compatibility. An operator mapping can stop working whenever Adobe changes its UI.
 - The profile lock is per process.
 - An item list that virtualizes or reorders earlier results can make outcomes unknown.

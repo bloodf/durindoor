@@ -67,16 +67,14 @@ follows the gRPC status code table. It is not a port.
   sent a usage frame before failing.
 - Successful streaming output is unchanged.
 
-Combo routing still has a gap. `open-sse/services/combo.js` does not check
-`upstreamPartialOutput`, so a combo moves to its next member after accepted
-work. The flag is shared with Antigravity and MiniMax Code, and this change
-leaves combo behavior alone. Reproducer: one Windsurf account and a combo of
-`windsurf/swe-1.6` and `windsurf/gpt-5.5`. The first reply is a content frame
-followed by `grpc-status: 13`, and the second reply is a clean answer. The
-upstream receives two sends and the client gets 200 from the second member.
-The needed change is a terminal return for `result.upstreamPartialOutput ===
-true` next to the existing `claudeRequestScoped` check in the combo attempt
-loop.
+The shared combo guard now stops on `upstreamPartialOutput`. In the mocked
+chat-route regression, one Windsurf account and a combo of `windsurf/swe-1.6`
+and `windsurf/gpt-5.5` send once when the first reply contains text followed by
+`grpc-status: 13`; the client receives `upstream_outcome_unknown` and no success
+usage is recorded. With the predecessor's `combo.js`, the same regression sends
+twice. A no-output refusal still permits sibling-account fallback. This is
+mocked evidence for these scenarios, not proof of all protocol outcomes.
 
-All evidence comes from mocked transports (`tests/unit/windsurf-gateway-accounting-2034.test.js`).
+All evidence comes from mocked transports (`tests/unit/windsurf-gateway-accounting-2034.test.js` and
+`tests/unit/windsurf-combo-replay-2034.test.js`).
 It does not show that real Windsurf services send these status codes in these positions.

@@ -2,8 +2,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { formatModelProbeErrors, updateModelProbeErrors } from "@/shared/utils/modelTestResults.js";
 
 /** Transient errors belong to the current provider, probe connection and model inventory. */
-export default function useModelProbeErrors(providerAlias, connectionId, modelIds) {
-  const context = JSON.stringify([providerAlias, connectionId || "auto"]);
+export default function useModelProbeErrors(providerAlias, connectionId, modelIds, surfaceContext = null) {
+  const context = JSON.stringify([providerAlias, connectionId || "auto", surfaceContext]);
   const token = useMemo(() => ({ context }), [context]);
   const inventory = JSON.stringify([...new Set(modelIds)].sort());
   const current = useRef(null);
@@ -26,14 +26,16 @@ export default function useModelProbeErrors(providerAlias, connectionId, modelId
     return () => { current.current = null; };
   }, [token, modelTokens]);
 
+  const isCurrent = (modelId) => current.current?.token === token && modelTokens.has(modelId) &&
+    current.current.modelTokens.get(modelId) === modelTokens.get(modelId);
+
   const recordError = (modelId, error) => {
     // A probe completing after navigation, account changes or model removal
     // must not restore a retired error. Bulk probes use this same completion.
-    if (current.current?.token !== token || !modelTokens.has(modelId) ||
-        current.current.modelTokens.get(modelId) !== modelTokens.get(modelId)) return;
+    if (!isCurrent(modelId)) return;
     setStored((previous) => ({ ...previous, errors: updateModelProbeErrors(
       previous.errors, `${providerAlias}/${modelId}`, connectionId, error,
     ) }));
   };
-  return { error: formatModelProbeErrors(state.errors), recordError };
+  return { error: formatModelProbeErrors(state.errors), recordError, isCurrent };
 }

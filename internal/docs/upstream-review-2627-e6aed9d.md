@@ -42,7 +42,10 @@ An outdated GitHub anchor was not treated as evidence of a fix: the current sour
    Context changes retire errors; model removal prunes the corresponding error. Completion callbacks from retired contexts or removed models are ignored.
    Same-context inventory refreshes preserve unrelated failures; individual and bulk successes still clear only their own entry.
    `tests/unit/model-probe-error-context.test.js` mounts the real hook and covers these transitions, bulk success through the actual bulk helper, and navigating away/back before an old completion.
-   This changes transient banner errors only; persisted model-test history and row-status storage are outside the patch.
+   Follow-up for #2693, parent `e397d79f47b19c8357a330d660ccf735c2d3f18b`: the media `components/ModelsCard.js` was a second affected surface. Its own error map survived alias/provider/kind changes, active-connection refreshes and model removal; late single responses also wrote status and persisted history. Bulk success did not clear its single-probe error, and late bulk events could persist results against a retired connection.
+   The media card now reuses the hook with an additional provider/kind context, remounts its local state on provider/alias/kind changes, prunes removed row state and resets pending work on account changes. Single responses must still belong to the mounted context and model before writing errors, status or history. Bulk events use the same guard before collection; obsolete bulk cleanup cannot reset a newer run. Overlapping inventory refreshes accept only the latest response.
+   `tests/unit/models-card-probe-context.test.js` mounts the real card with mocked API responses and deferred single/bulk completions. It covers alias/provider/kind changes, account/model removal and return, retired writes to persistence, individual success, matching bulk-success clearing and late bulk events. Provider-detail behavior and terminal fixtures remain unchanged.
+   This disposition covers both provider detail and the media card; keep the thread open pending independent acceptance. No remote thread action was taken.
 
 5. **`PRRT_kwDOTM9Pps68Zzbd` — Cursor declaration between imports. Already addressed; propose resolve.**
    `open-sse/executors/cursor.js:43` is the final import (`crypto`); the estimate helper starts at line 47, below all imports.
@@ -70,7 +73,7 @@ An outdated GitHub anchor was not treated as evidence of a fix: the current sour
 ## Validation and limits
 
 Dependencies were installed with frozen lockfiles for root, CLI, tests and website before candidate execution.
-Each subsequent candidate/test process used `/tmp/durin-private-run.py`: a fresh mode-0700 directory with separate HOME, DATA_DIR, cache and temporary directories, `env` built from a small allowlist (PATH, private paths, CI and LANG), and `timeout 295`.
+Each subsequent candidate/test process used an isolated subprocess launcher: a fresh mode-0700 directory with separate HOME, DATA_DIR, cache and temporary directories, `env` built from a small allowlist (PATH, private paths, CI and LANG), and `timeout 295`.
 No publisher/provider credentials were forwarded. No real-provider tests were selected and no production services were started. `~/.9router` was not accessed.
 CodeGraph was attempted in the private environment but its CLI was unavailable; bounded source searches and exact-head `git show` were used instead.
 
@@ -90,7 +93,7 @@ Validation results:
 Candidate command, from `tests/` (the exact-head run omits the new hook file):
 
 ```sh
-python3 /tmp/durin-private-run.py node node_modules/vitest/vitest.mjs run \
+node node_modules/vitest/vitest.mjs run \
   unit/model-probe-error-context.test.js \
   unit/model-probe-errors.test.js \
   unit/port9r-3860-anthropic-incomplete-terminal.test.js \
@@ -101,8 +104,41 @@ python3 /tmp/durin-private-run.py node node_modules/vitest/vitest.mjs run \
   unit/endpoint-probe-polling-2620.test.js \
   unit/stream-terminal-outcome.test.js \
   unit/port9r-bulk-disable-failed-models-1740.test.js \
-  --maxWorkers=2 --reporter=json --outputFile=/tmp/durin-review-tests.json
+  --maxWorkers=2
 ```
 
-Local JSON reports and logs are retained under `/tmp/durin-review-evidence/` with private permissions.
+Temporary launchers and evidence paths are not review artifacts. Reproduction requires the checked-in tests and pinned commits only. Execute commands with a fresh private HOME, DATA_DIR, cache and temporary directory, using a credential-free environment allowlist and a 295-second subprocess timeout. Delete those directories after each invocation.
 The scratch commit is the review artifact; its exact SHA is reported in the handoff, since a commit cannot include its own hash.
+
+
+## #2693 media-card extension validation
+
+Parent: `e397d79f47b19c8357a330d660ccf735c2d3f18b`. Scratch branch: `scratch/2693-media-probe`. The resulting head is recorded in the handoff.
+
+The new media suite was copied into a fresh archive of the parent with dependency directories linked from the frozen installation; candidate execution used the same suite. No tracked parent source was changed for reproduction. Parent failures demonstrate retained errors across context changes, late writes after account/model retirement, missing bulk-success clearing and stale bulk persistence. The individual-success control passes on the parent.
+
+All test and lint subprocesses use newly created mode-0700 disposable HOME/DATA_DIR/cache/tmp directories, an environment containing only PATH, those private paths, CI and LANG, and a 295-second timeout. No services, providers, secrets, remote branches or review threads were accessed. The failure baseline is unchanged.
+
+Follow-up checks: the twelve-file focused run adds `unit/models-card-probe-context.test.js` and `unit/g2-modelscard-delete.test.js` to the ten-file candidate command above. Full local CI/build and independent cross-family review remain outstanding; DOM fixtures do not establish native browser behavior or live provider behavior.
+
+
+Results for this extension:
+
+- Parent archive plus the new media suite: **9 failures, 1 passing control**, ten tests collected. Late first-response tests fail with `alias/a (c1): late failure` after account/model removal and return.
+- Candidate: **108/108 passed**, twelve focused files, including all ten new media tests and seven unchanged provider-detail hook tests.
+- Root `pnpm run lint`: exit 0; ESLint reports 349 warnings and zero errors, anti-slop reports zero diagnostics. A separate changed-source ESLint run with `--max-warnings=0` exits 1 on six warnings (effect state updates, cleanup-ref and existing memoization); there are no lint errors. This is not a warning-free result.
+- `git diff --check`: passed. Generated lint-bundle drift was discarded; no failure-baseline changes.
+
+A reproducible private runner can be saved to any disposable file and invoked with the commands above (it is not dependent on a historical temporary path):
+
+```python
+import os, subprocess, sys, tempfile
+with tempfile.TemporaryDirectory(prefix="durin-review-") as run:
+    os.chmod(run, 0o700)
+    for name in ("home", "data", "cache", "tmp"):
+        os.mkdir(f"{run}/{name}", 0o700)
+    env = {"PATH": os.environ["PATH"], "HOME": f"{run}/home",
+           "DATA_DIR": f"{run}/data", "XDG_CACHE_HOME": f"{run}/cache",
+           "TMPDIR": f"{run}/tmp", "CI": "1", "LANG": "en_US.UTF-8"}
+    sys.exit(subprocess.run(sys.argv[1:], env=env, timeout=295).returncode)
+```

@@ -135,8 +135,9 @@ export async function readTextStream(body, signal) {
   let text = "";
   try {
     while (true) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+      if (signal?.aborted) throw signal.reason ?? abortError();
       const { value, done } = await reader.read();
+      if (signal?.aborted) throw abortError();
       if (done) break;
       text += decoder.decode(value, { stream: true });
     }
@@ -157,10 +158,16 @@ export async function* readStreamLines(body, { signal, tail = true } = {}) {
   const decoder = new TextDecoder();
   let pending = "";
   let finished = false;
+  // Cancel pending reads too: checking only before read() leaves idle bodies stuck.
+  const abortError = () => signal.reason?.name === "AbortError"
+    ? signal.reason : new DOMException("Aborted", "AbortError");
+  const onAbort = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+      if (signal?.aborted) throw signal.reason ?? abortError();
       const { value, done } = await reader.read();
+      if (signal?.aborted) throw abortError();
       if (done) break;
       pending += decoder.decode(value, { stream: true });
       const lines = pending.split(/\r?\n/);
@@ -171,6 +178,7 @@ export async function* readStreamLines(body, { signal, tail = true } = {}) {
     finished = true;
     if (tail && pending) yield pending;
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     if (finished) reader.releaseLock();
     else await reader.cancel().catch(() => {});
   }

@@ -35,6 +35,7 @@ import { toOpenAIUsage, toRequiredResponsesUsage } from "../../translator/concer
 import { toOpenAIFinish } from "../../translator/concerns/finishReason.js";
 import { encodeToolCallIdWithSignature } from "../../translator/concerns/signatureTransport.js";
 import { storeAccountThoughtSignature } from "../../services/thoughtSignatureStore.js";
+import { generatedGeminiToolCallId } from "../../translator/response/gemini-to-openai.js";
 import { createGeminiPlaceholderStripper } from "../../translator/concerns/geminiPlaceholderArgs.js";
 import { hasResponsesContentItem, isResponsesReceipt } from "../../utils/responsesContent.js";
 import { classifyMaskedGatewayError, hasTokenLimitCompletion, isCoherentNonStreamingResponse } from "../../utils/streamTerminal.js";
@@ -454,7 +455,7 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
           // so the next-turn request translator can replay it.
           const partSignature = pendingThoughtSignature;
           pendingThoughtSignature = null;
-          const rawId = part.functionCall.id || `call_${part.functionCall.name}_${Date.now()}_${toolCalls.length}`;
+          const rawId = part.functionCall.id || generatedGeminiToolCallId(`call_${part.functionCall.name}`, toolCalls.length);
           // OmniRoute PR 21439: streaming persists signatures, the nonstream body did
           // not. Write only for the selected account and the upstream model family.
           if (persistSignatures && partSignature && isString(part.functionCall.name) && part.functionCall.name) {

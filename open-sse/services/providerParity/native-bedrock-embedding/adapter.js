@@ -1,4 +1,5 @@
 // OmniRoute native InvokeModel port; attribution and supported subset in registration.json.
+import { isNumber, isRecord } from "../../../../src/shared/utils/typeChecks.js";
 import { createErrorResult, readBoundedResponseText } from "../../../utils/error.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
@@ -11,9 +12,9 @@ const error = (status, message) => createErrorResult(status, `Bedrock ${message}
 const unknown = (status, state = "submit-unknown") => withAcceptedJob(error(status, "embedding outcome unavailable"), state);
 const count = value => Number.isSafeInteger(value) && value >= 0;
 export function normalizeBedrockEmbeddings(raw, plan, expected) {
-  if (!raw || typeof raw !== "object" || raw.error || raw.message || raw.failureCount > 0) throw new Error("Invalid answer");
+  if (!isRecord(raw) || raw.error || raw.message || raw.failureCount > 0) throw new Error("Invalid answer");
   const vectors = plan.cohere ? (Array.isArray(raw.embeddings) ? raw.embeddings : raw.embeddings?.float) : [raw.embedding ?? raw.embeddingsByType?.float];
-  if (!Array.isArray(vectors) || vectors.length !== expected || vectors.some(vector => !Array.isArray(vector) || vector.length !== plan.dimensions || vector.some(value => typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38))) throw new Error("Invalid vectors");
+  if (!Array.isArray(vectors) || vectors.length !== expected || vectors.some(vector => !Array.isArray(vector) || vector.length !== plan.dimensions || vector.some(value => !isNumber(value) || !Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38))) throw new Error("Invalid vectors");
   return vectors;
 }
 

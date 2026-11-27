@@ -1,5 +1,6 @@
 // Source: OmniRoute services/bedrock.ts + config/bedrock.ts at the pinned commit.
 // Discovery is descriptive: it never expands the embedding execution allowlist.
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 import { readBoundedResponseText } from "../../../utils/error.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
@@ -34,12 +35,12 @@ export async function discoverBedrockEmbeddingModels({ credentials, signal, fetc
     if (!Array.isArray(profiles?.inferenceProfileSummaries)) throw new Error("Invalid Bedrock profiles list");
     for (const profile of profiles.inferenceProfileSummaries) {
       for (const row of profile?.models ?? []) {
-        if (typeof row?.modelArn === "string") ids.add(row.modelArn.split(":foundation-model/")[1]);
+        if (isString(row?.modelArn)) ids.add(row.modelArn.split(":foundation-model/")[1]);
       }
     }
     nextToken = profiles.nextToken;
     if (!nextToken) return BEDROCK_EMBEDDING_MODELS.filter(model => ids.has(model.id));
-    if (typeof nextToken !== "string" || nextToken.length > 4096 || seen.has(nextToken)) throw new Error("Invalid Bedrock pagination");
+    if (!isString(nextToken) || nextToken.length > 4096 || seen.has(nextToken)) throw new Error("Invalid Bedrock pagination");
     seen.add(nextToken);
   }
   throw new Error("Bedrock discovery page limit exceeded");

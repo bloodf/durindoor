@@ -1,5 +1,6 @@
 // Ported from OmniRoute c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT):
 // open-sse/config/embeddingRegistry.ts and handlers/bedrockEmbeddings.ts.
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
 export const BEDROCK_PROVIDER_ID = "bedrock";
 export const BEDROCK_AUTH_HEADER = "Authorization";
 export const BEDROCK_AUTH_SCHEME = "Bearer";
@@ -17,7 +18,7 @@ export function bedrockRegion(credentials) {
   const data = credentials?.providerSpecificData;
   const explicit = data?.region;
   if (explicit !== undefined) {
-    if (typeof explicit !== "string" || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/.test(explicit)) throw new Error("Invalid Bedrock region");
+    if (!isString(explicit) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d+$/.test(explicit)) throw new Error("Invalid Bedrock region");
     return explicit;
   }
   try {

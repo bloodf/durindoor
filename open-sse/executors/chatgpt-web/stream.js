@@ -1,5 +1,6 @@
 /** Internal ChatGPT Web stream helpers; public compatibility exports live in ../chatgpt-web-http.js. */
 import { cleanChatGptText } from "./citations.js";
+import { extractContent } from "./conversation-detail.js";
 
 export function sseChunk(data) {
   return `data: ${JSON.stringify(data)}\n\n`;

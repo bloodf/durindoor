@@ -2,6 +2,7 @@
 import { buildNextAuthSessionCookie } from "../../../src/lib/providers/webCookieAuth.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { tlsFetchChatGpt, CHATGPT_BASE, browserHeaders, oaiHeaders, configuredProPollTimeoutMs, configuredProPollIntervalMs } from "./session.js";
+import { readChatGptSseEvents } from "./conversation.js";
 
 export const UPLOAD_PLACEHOLDER_POINTER_RE = /^(?:(?:file-service|sediment):\/\/)?file_upload/;
 
@@ -21,7 +22,7 @@ export function extractImagePointers(parts) {
   return out;
 }
 
-async function* extractContent(eventStream, signal) {
+export async function* extractContent(eventStream, signal) {
   // ChatGPT may echo prior assistant turns at the start of the stream with
   // status: "finished_successfully" and full content, before sending the new
   // generation. If we emit those bytes downstream, streaming consumers see

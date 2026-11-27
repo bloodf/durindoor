@@ -15,7 +15,7 @@ import { buildNextAuthSessionCookie } from "../../../src/lib/providers/webCookie
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { redirectPolicy, SEND_DEADLINE_MS, sendTls, CHATGPT_BASE, SESSION_URL, SENTINEL_PREPARE_URL, CONV_URL, CHATGPT_USER_AGENT, OAI_CLIENT_VERSION, deviceIdFor, browserHeaders, oaiHeaders, tokenCache, cookieKey, exchangeSession, SessionAuthError, runSessionWarmup, configuredProPollTimeoutMs, prepareChatRequirements, SentinelBlockedError, fetchDpl, randomHex, buildPrekeyConfig, solveProofOfWork } from "./session.js";
 import { parseOpenAIMessages, looksLikeImageGenRequest, looksLikeImageEditRequest, buildConversationBody } from "./conversation.js";
-import { pollForFinalAssistantAnswer } from "./conversation-detail.js";
+import { extractContent, pollForFinalAssistantAnswer } from "./conversation-detail.js";
 import { buildStreamingResponse, buildNonStreamingResponse } from "./stream.js";
 import { errorResponse, derivePublicBaseUrl, pollForAsyncImage, makeImageResolver } from "./images.js";
 export class ChatGptWebHttpExecutor extends BaseExecutor {

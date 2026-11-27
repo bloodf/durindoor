@@ -227,7 +227,7 @@ export function buildConversationBody(parsed, modelSlug, parentMessageId, option
  * and an asset_pointer like "file-service://file-XXXX" (final) or
  * "sediment://..." (in-progress preview).
  */
-async function* readChatGptSseEvents(body, signal) {
+export async function* readChatGptSseEvents(body, signal) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

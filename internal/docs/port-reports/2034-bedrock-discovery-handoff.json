@@ -1,0 +1,59 @@
+{
+  "canonicalId": "stage-bedrock-sigv4-discovery",
+  "issue": 2034,
+  "status": "checkpoint-incomplete-lease-recovery",
+  "activation": "private-unregistered",
+  "implementationPresent": false,
+  "exports": {},
+  "pins": {
+    "integration": "8f4fc37ee778aeb99f59e450de5ff932e95dae1b",
+    "qualifiedMain": "dc624113dc5728c04a01c1dd49e37f9a1dd80c4b",
+    "sourceOmni20103": "3a17f7e908308a217887a7617c2c793b95ea83c0",
+    "census": "afed4d23461"
+  },
+  "source": {
+    "repository": "cheaper-inference/OmniRoute",
+    "license": "MIT",
+    "files": ["open-sse/services/bedrock.ts", "open-sse/config/bedrock.ts"],
+    "verifiedExactPinInReadOnlyCache": true
+  },
+  "dependency": {
+    "package": "@aws-sdk/client-bedrock",
+    "version": "3.1132.0",
+    "lockGeneratedBy": "pnpm 12.18.0",
+    "privateLockResolution": "passed",
+    "privateFrozenRootInstallIgnoreScripts": "passed",
+    "compatibilityAndBehaviorTests": "not-run"
+  },
+  "privateProgress": {
+    "directory": "/var/tmp/bedrock2034.Ws407B",
+    "repository": "repo",
+    "store": "store",
+    "candidateEditsCopied": false,
+    "sharedGraphsMutated": false,
+    "diskHoldCleared": true
+  },
+  "ownership": {
+    "implementation": "open-sse/services/providerParity/native-bedrock-discovery/",
+    "test": "tests/unit/bedrock-sigv4-discovery-2034.test.js",
+    "publicRegistrationAndPromotion": "auth native14",
+    "reviewTrainLock": "preserved"
+  },
+  "preservation": {
+    "awsCredentialsTestGitBlob": "45bd3dc98f2d36e14fb43654202b1445a5bd243d",
+    "awsCredentialsHelperGitBlob": "b31877af7fb73fb41dfde3f2e5563f89b67d0824",
+    "executorAndProtectedPaths": "unchanged"
+  },
+  "remaining": [
+    "Resume same unit through native tracking with this checkpoint",
+    "Implement private discoverBedrockModels using existing auth helper and real control-plane SDK",
+    "Preserve source modes, selected account/region/proxy, nonbillable dispatch, fixed origin, abort and total deadline",
+    "Validate model lists and pagination; refuse redirects/overrides; sanitize auth/quota/config errors",
+    "Add required SDK/network and mocked-profile tests with two synthetic accounts and regions",
+    "Run new discovery suite and untouched AWS credentials suite with at most two workers and 300-second ceilings",
+    "Complete exact-head native isolated gate and independent review"
+  ],
+  "tests": "not-run",
+  "liveAws": "not-run-prohibited",
+  "readyForPromotion": false
+}

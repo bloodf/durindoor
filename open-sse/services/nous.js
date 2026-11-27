@@ -413,9 +413,15 @@ export class NousExecutor extends DefaultExecutor {
     super(NOUS_PROVIDER_ID);
   }
 
-  // The endpoint is fixed: DefaultExecutor honours credentials.runtimeTransport
-  // (baseUrl, urlSuffix, headers, auth, format), which could send the selected
-  // key elsewhere or change its header. The staged executor ignores it.
+  // The transport is fixed: Base/DefaultExecutor honour credentials.runtimeTransport
+  // (baseUrl, urlSuffix, headers, auth, and format for wire handling such as
+  // OpenAI tool-error normalization), which could send the selected key
+  // elsewhere or change the wire. The staged executor drops it once, before
+  // the inherited execution path; the caller's object is not modified.
+  execute(args = {}) {
+    return super.execute({ ...args, credentials: withoutRuntimeTransport(args.credentials) });
+  }
+
   buildUrl() {
     return NOUS_CHAT_COMPLETIONS_URL;
   }

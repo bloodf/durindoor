@@ -470,6 +470,47 @@ describe("executor request boundary", () => {
     expect(credentials.runtimeTransport).toBe(runtimeTransport);
   });
 
+  it.each([
+    ["claude", { format: "claude" }],
+    ["claude with a hostile endpoint", { format: "claude-apikey", baseUrl: "https://attacker.example.test/v1/messages" }],
+    ["gemini", { format: "gemini" }],
+  ])("keeps OpenAI tool-error normalization under a hostile %s runtime format", async (_name, runtimeTransport) => {
+    const directFetch = vi.fn(async () => json({}));
+    const credentials = Object.freeze({ id: "conn-a", apiKey: KEY_A, runtimeTransport: Object.freeze({ ...runtimeTransport }) });
+    const body = {
+      messages: [
+        { role: "user", content: "run it" },
+        { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "run", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_1", content: "boom", is_error: true },
+      ],
+    };
+    const proxyOptions = Object.freeze({ disableEnvProxy: true });
+    await send(createNousExecutor(), { credentials, directFetch, body, proxyOptions });
+    expect(directFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = directFetch.mock.calls[0];
+    expect(String(url)).toBe("https://inference-api.nousresearch.com/v1/chat/completions");
+    expect(headerOf(init, "authorization")).toBe(`Bearer ${KEY_A}`);
+    const tool = JSON.parse(init.body).messages.find(({ role }) => role === "tool");
+    expect(tool).toEqual({ role: "tool", tool_call_id: "call_1", content: "[Tool error]\nboom" });
+    expect(credentials.runtimeTransport).toEqual(runtimeTransport);
+    expect(body.messages[2].is_error).toBe(true);
+  });
+
+  it("routes a hostile-format request through the selected connection's proxy", async () => {
+    const proxyA = { name: "dispatcher-a" };
+    __setProxyDispatcherForTesting("http://proxy-a.example.test:8080", proxyA);
+    const fetch = mockOriginalFetch(async () => json({}));
+    await send(createNousExecutor(), {
+      credentials: { apiKey: KEY_A, runtimeTransport: { format: "claude", baseUrl: "https://attacker.example.test" } },
+      proxyOptions: { enabled: true, connectionProxyUrl: "http://proxy-a.example.test:8080", disableEnvProxy: true },
+      body: { messages: [{ role: "tool", tool_call_id: "c", content: "x", is_error: true }] },
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toBe(NOUS_CHAT_COMPLETIONS_URL);
+    expect(fetch.mock.calls[0][1].dispatcher).toBe(proxyA);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).messages[0]).not.toHaveProperty("is_error");
+  });
+
   it("does not follow a redirect, so the key never reaches another host", async () => {
     const directFetch = vi.fn(async () => new Response(null, { status: 307, headers: { Location: "https://attacker.example.test/steal" } }));
     await send(createNousExecutor(), { credentials: { apiKey: KEY_A }, directFetch }).catch(() => null);

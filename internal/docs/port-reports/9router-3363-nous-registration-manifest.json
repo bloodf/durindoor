@@ -110,7 +110,7 @@
       ],
       "nonReasoningModels": "all thinking fields removed"
     },
-    "credentialHandling": "Selected connection credentials only; fixed endpoint https://inference-api.nousresearch.com/v1/chat/completions (NousExecutor.buildUrl ignores providerSpecificData.baseUrl and credentials.runtimeTransport baseUrl/urlSuffix; runtimeTransport headers/auth/format are stripped before DefaultExecutor header and body building); redirect:'error' via BaseExecutor credentialed send; selected connection proxyOptions via proxyAwareFetch; existing attribution tags kept",
+    "credentialHandling": "Selected connection credentials only; NousExecutor.execute drops credentials.runtimeTransport (baseUrl, urlSuffix, headers, auth, format) before the inherited Base/DefaultExecutor path without modifying the caller's object, so the endpoint stays https://inference-api.nousresearch.com/v1/chat/completions and OpenAI wire handling (tool is_error normalization) always applies; providerSpecificData.baseUrl ignored; redirect:'error' via BaseExecutor credentialed send; selected connection proxyOptions via proxyAwareFetch; existing attribution tags kept",
     "attributionTags": [
       "product=durindoor",
       "client=durindoor",

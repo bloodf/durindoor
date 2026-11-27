@@ -51,7 +51,8 @@ export const zedHosted = {
       systemId: authData.systemId,
     };
   },
-  exchangeToken: async (config, code, _redirectUri, codeVerifier, _state, meta = {}, proxyOptions = null) => {
+  exchangeToken: async (config, code, _redirectUri, codeVerifier, _state, meta = {}, proxyOptions = null, signal = null) => {
+    signal?.throwIfAborted();
     const { userId, encryptedAccessToken } = parseZedCallbackPayload(code);
     const accessToken = decryptZedAccessToken(encryptedAccessToken, codeVerifier);
     const credentials = { accessToken, providerSpecificData: { userId, systemId: meta?.systemId } };
@@ -59,9 +60,10 @@ export const zedHosted = {
     let organizationId = "";
     try {
       const baseFetch = meta?.fetch || ((url, init) => proxyAwareFetch(url, init, proxyOptions));
-      userInfo = await fetchZedAuthenticatedUser(credentials, { config, fetch: (url, init) => credentialFetch(baseFetch, url, init) });
+      userInfo = await fetchZedAuthenticatedUser(credentials, { config, signal, fetch: (url, init) => credentialFetch(baseFetch, url, init, { maxRedirects: 0 }) });
       organizationId = resolveZedOrganizationId(credentials, userInfo);
-    } catch {
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError" || error?.name === "TimeoutError") throw error;
       // Non-fatal: the account still works without a resolved profile. The LLM token
       // exchange resolves the organization on first use.
     }

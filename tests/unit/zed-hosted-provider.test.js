@@ -346,7 +346,8 @@ describe("chat through the OpenAI and Anthropic routes", () => {
     const result = await openai(connection(ACCOUNT_A), { stream: true });
     const text = await result.response.text();
     expect(text).toContain("ZED_STREAM_FAILED");
-    expect(text).toContain("model overloaded");
+    expect(text).toContain("Zed upstream stream failed");
+    expect(text).not.toContain("model overloaded");
   });
 
   it("infers the vendor from the model name when the catalog is unavailable", async () => {

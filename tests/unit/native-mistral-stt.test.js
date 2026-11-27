@@ -135,10 +135,12 @@ describe("Mistral transcription wire contract", () => {
     expect(calls[0].init.redirect).toBe("manual");
     expect(calls[0].init.headers).toEqual({ Authorization: `Bearer ${KEY_A}` });
     expect(calls[0].init.body).toBeInstanceOf(FormData);
+    // Vendor AudioTranscriptionRequest (docs.mistral.ai/openapi.yaml, operationId
+    // audio_api_v1_transcriptions_post, read 2026-11-27) declares no
+    // response_format field, so the source's response_format part is not sent.
     expect(await partsOf(calls[0])).toEqual([
       ["model", MODEL],
       ["language", "en"],
-      ["response_format", "json"],
       ["temperature", "0.2"],
       ["file", { name: "voice.ogg", type: "audio/ogg", bytes: Buffer.from("OggSaudio") }],
     ]);
@@ -168,13 +170,16 @@ describe("Mistral transcription wire contract", () => {
     expect(file.type).toBe("application/octet-stream");
   });
 
-  it("merges both granularity spellings under timestamp_granularities[]", async () => {
+  // Vendor wire name: a repeated `timestamp_granularities` field without `[]`
+  // (AudioTranscriptionRequest; client-python 6e9e31ac utils/forms.py
+  // serialize_multipart_form), replacing the source's `timestamp_granularities[]`.
+  it("merges both granularity spellings under the vendor timestamp_granularities field", async () => {
     const { fetchImpl, calls } = transport(json(transcript("hi", { segments: [{ text: "hi", start: 0, end: 0.4 }] })));
     const fd = form([["timestamp_granularities[]", "segment"], ["timestamp_granularities", "word,segment"]]);
     const result = await createMistralSttAdapter({ fetchImpl }).transcribe({ model: MODEL, formData: fd, credentials: CRED_A });
     const parts = await partsOf(calls[0]);
     expect(parts.filter(([name]) => name.startsWith("timestamp_granularities"))).toEqual([
-      ["timestamp_granularities[]", "segment"], ["timestamp_granularities[]", "word"],
+      ["timestamp_granularities", "segment"], ["timestamp_granularities", "word"],
     ]);
     expect(result.success).toBe(true);
   });
@@ -274,8 +279,11 @@ describe("Mistral transcription failures and malformed answers", () => {
     expect(results[2]).toMatchObject({ quotaExhausted: true });
     expect(results[5].resetsAtMs).toBeGreaterThan(Date.now());
     expect(results[5].response.headers.get("retry-after")).toBe("5");
-    expect(results[7].acceptedJob).toMatchObject({ modality: "stt", cost: null, costStatus: "unknown", costSource: "accepted-job", meta: { jobState: "submit-unknown" } });
-    for (const result of results.slice(0, 7)) expect(result.acceptedJob).toBeUndefined();
+    // A 503 is a post-dispatch 5xx: unknown outcome, recorded as an accepted job.
+    for (const result of [results[6], results[7]]) {
+      expect(result.acceptedJob).toMatchObject({ modality: "stt", cost: null, costStatus: "unknown", costSource: "accepted-job", meta: { jobState: "submit-unknown" } });
+    }
+    for (const result of results.slice(0, 6)) expect(result.acceptedJob).toBeUndefined();
     for (const result of results) {
       expect(result.success).toBe(false);
       expect(result.local).toBeUndefined();

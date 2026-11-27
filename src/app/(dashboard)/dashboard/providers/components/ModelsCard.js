@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useState, useCallback, useEffect, useId, useMemo, useRef } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Modal, ConfirmModal } from "@/shared/components";
@@ -161,17 +163,14 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
 
   const fetchData = useCallback(async () => {
     try {
-      const [aliasRes, connRes, customRes] = await Promise.all([
-        fetch("/api/models/alias"),
-        fetch("/api/providers", { cache: "no-store" }),
-        fetch("/api/models/custom", { cache: "no-store" }),
+      const [aliasData, connData, customData] = await Promise.all([
+        api.get("/api/models/alias", { defaultHeaders: false }).catch((error) => { if (error.status) return undefined; throw error; }),
+        api.get("/api/providers", { cache: "no-store", defaultHeaders: false }).catch((error) => { if (error.status) return undefined; throw error; }),
+        api.get("/api/models/custom", { cache: "no-store", defaultHeaders: false }).catch((error) => { if (error.status) return undefined; throw error; }),
       ]);
-      const aliasData = await aliasRes.json();
-      const connData = await connRes.json();
-      const customData = await customRes.json();
-      if (aliasRes.ok) setModelAliases(aliasData.aliases || {});
-      if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
-      if (customRes.ok) setCustomModels(customData.models || []);
+      if (aliasData !== undefined) setModelAliases(aliasData?.aliases || {});
+      if (connData !== undefined) setConnections((connData?.connections || []).filter((c) => c.provider === providerId));
+      if (customData !== undefined) setCustomModels(customData?.models || []);
     } catch (e) { console.log("ModelsCard fetch error:", e); }
   }, [providerId]);
 
@@ -206,44 +205,32 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const handleSetAlias = async (modelId, alias) => {
     const fullModel = `${providerAlias}/${modelId}`;
     try {
-      const res = await fetch("/api/models/alias", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: fullModel, alias }),
-      });
-      if (res.ok) await fetchData();
+      await api.put("/api/models/alias", { model: fullModel, alias });
+      await fetchData();
     } catch (e) { console.log("set alias error:", e); }
   };
 
   const handleDeleteAlias = async (alias) => {
     try {
-      const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(alias)}`, { method: "DELETE" });
-      if (res.ok) await fetchData();
+      await api.del(`/api/models/alias?alias=${encodeURIComponent(alias)}`, { defaultHeaders: false });
+      await fetchData();
     } catch (e) { console.log("delete alias error:", e); }
   };
 
   const handleAddCustomModel = async (modelId) => {
     try {
-      const res = await fetch("/api/models/custom", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias, id: modelId, type: effectiveType }),
-      });
-      if (res.ok) {
-        await fetchData();
-        window.dispatchEvent(new CustomEvent("customModelChanged"));
-      }
+      await api.post("/api/models/custom", { providerAlias, id: modelId, type: effectiveType });
+      await fetchData();
+      window.dispatchEvent(new CustomEvent("customModelChanged"));
     } catch (e) { console.log("add custom model error:", e); }
   };
 
   const handleDeleteCustomModel = async (modelId) => {
     try {
       const params = new URLSearchParams({ providerAlias, id: modelId, type: effectiveType });
-      const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-      if (res.ok) {
-        await fetchData();
-        window.dispatchEvent(new CustomEvent("customModelChanged"));
-      }
+      await api.del(`/api/models/custom?${params}`, { defaultHeaders: false });
+      await fetchData();
+      window.dispatchEvent(new CustomEvent("customModelChanged"));
     } catch (e) { console.log("delete custom model error:", e); }
   };
 
@@ -252,12 +239,10 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const connectionId = activeConnectionId;
-      const res = await fetch("/api/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${modelId}`, kind: kindFilter, connectionId }),
+      const data = await api.post("/api/models/test", { model: `${providerAlias}/${modelId}`, kind: kindFilter, connectionId }).catch((error) => {
+        if (error.body) return error.body;
+        throw error;
       });
-      const data = await res.json();
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
       setTestError(outcome === "error" ? (data.error || "Model not reachable") : "");
@@ -320,11 +305,9 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
           for (const model of currentSelected) {
             try {
               const params = new URLSearchParams({ providerAlias: model.providerAlias, id: model.id, type: model.type });
-              const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-              if (res.ok) {
-                ok++;
-                deletedKeys.add(model._key);
-              } else failed++;
+              await api.del(`/api/models/custom?${params}`, { defaultHeaders: false });
+              ok++;
+              deletedKeys.add(model._key);
             } catch (err) { console.error("Delete failed:", model.id, err); failed++; }
           }
           // Acknowledged deletions stay removed even when the following refresh fails.
@@ -422,6 +405,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         kind: model.type || "llm",
       }));
 
+      // SSE streaming requires the raw response body.
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

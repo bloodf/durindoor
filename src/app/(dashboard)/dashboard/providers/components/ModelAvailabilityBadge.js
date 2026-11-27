@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 /**
  * ModelAvailabilityBadge — compact inline status indicator
  *
@@ -69,11 +71,8 @@ export default function ModelAvailabilityBadge() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/models/availability");
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
+      const json = await api.get("/api/models/availability", { defaultHeaders: false });
+      setData(json);
     } catch {
       // silent fail — will retry
     } finally {
@@ -100,17 +99,9 @@ export default function ModelAvailabilityBadge() {
   const handleClearCooldown = async (provider, model) => {
     setClearing(`${provider}:${model}`);
     try {
-      const res = await fetch("/api/models/availability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clearCooldown", provider, model }),
-      });
-      if (res.ok) {
-        notify.success(`Cooldown cleared for ${model}`);
-        await fetchStatus();
-      } else {
-        notify.error("Failed to clear cooldown");
-      }
+      await api.post("/api/models/availability", { action: "clearCooldown", provider, model });
+      notify.success(`Cooldown cleared for ${model}`);
+      await fetchStatus();
     } catch {
       notify.error("Failed to clear cooldown");
     } finally {

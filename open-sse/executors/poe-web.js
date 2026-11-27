@@ -4,6 +4,7 @@ import { WebSessionExecutor } from './web-session-executor.js';
 import { isRefusedRedirect } from './sendRequest.js';
 import { isQuotaDispatchUnavailable } from '../services/quota/dispatch.js';
 import { errorResponse } from '../utils/error.js';
+import { isString } from '../../src/shared/utils/typeChecks.js';
 import { POE_WEB_MODELS } from '../providers/private/poe-web.js';
 
 export const POE_WEB_URL = 'https://www.poe.com/api/gql_POST';
@@ -18,7 +19,7 @@ const QUERY = `query ChatViewQuery($bot: String!, $query: String!) {
 
 /** Accept a bare p-b value or a cookie header containing exactly one p-b. */
 export function parsePoeCookie(raw) {
-  if (typeof raw !== 'string' || /[\r\n]/.test(raw)) return null;
+  if (!isString(raw) || /[\r\n]/.test(raw)) return null;
   const value = raw.trim().replace(/^cookie:\s*/i, '');
   if (!value) return null;
   let token;
@@ -41,7 +42,7 @@ export class PoeWebExecutor extends WebSessionExecutor {
     const model = input.model || body.model || 'poe-default';
     const bot = POE_WEB_MODELS.find(item => item.id === model)?.bot || model;
     const last = Array.isArray(body.messages) ? body.messages.filter(m => m?.role === 'user').at(-1) : null;
-    if (typeof last?.content !== 'string' || !last.content) return fail(400, 'Poe requires a text user message.', 'invalid_request');
+    if (!isString(last?.content) || !last.content) return fail(400, 'Poe requires a text user message.', 'invalid_request');
     const payload = { operationName: 'ChatViewQuery', query: QUERY, variables: { bot, query: last.content } };
     let upstream;
     try {
@@ -56,7 +57,7 @@ export class PoeWebExecutor extends WebSessionExecutor {
     let data;
     try { data = await upstream.json(); } catch { return fail(502, 'Poe returned invalid JSON.', 'invalid_response'); }
     const result = data?.data?.chatWithBot;
-    if (data?.errors?.length || typeof result?.text !== 'string' || (result.state && !['complete', 'completed'].includes(result.state.toLowerCase()))) return fail(502, 'Poe returned an error or incomplete response.', 'invalid_response');
+    if (data?.errors?.length || !isString(result?.text) || (result.state && !['complete', 'completed'].includes(result.state.toLowerCase()))) return fail(502, 'Poe returned an error or incomplete response.', 'invalid_response');
     const base = { id: `chatcmpl-poe-${Date.now()}`, created: Math.floor(Date.now() / 1000), model };
     if (!(input.stream === true || body.stream === true)) return reply(Response.json({ ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: result.text }, finish_reason: 'stop' }] }), payload);
     const chunk = (delta, finish_reason) => ({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason }] });

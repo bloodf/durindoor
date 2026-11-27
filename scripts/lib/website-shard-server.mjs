@@ -115,13 +115,13 @@ export function procfsAvailable(procRoot = "/proc") {
   }
 }
 
-export function findOwnedProcesses(owner, { procRoot = "/proc", euid = process.geteuid(), selfPid = process.pid } = {}) {
+export function findOwnedProcesses(owner, { procRoot = "/proc", euid = process.geteuid(), selfPid = process.pid, readDirectory = readdirSync } = {}) {
   const owned = [];
   let entries;
   try {
-    entries = readdirSync(procRoot);
-  } catch {
-    return owned;
+    entries = readDirectory(procRoot);
+  } catch (error) {
+    throw new Error(`cannot enumerate owned processes: ${error.code || error.message}`);
   }
   for (const entry of entries) {
     if (!/^\d+$/.test(entry)) continue;
@@ -201,6 +201,7 @@ export async function cleanupShardServer({
   euid = process.geteuid(),
   kill = process.kill.bind(process),
   probe = isPortListening,
+  readDirectory = readdirSync,
 } = {}) {
   if (!isShardOwnerToken(owner)) throw new Error("invalid shard owner token");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("invalid shard port");
@@ -208,8 +209,8 @@ export async function cleanupShardServer({
 
   if (!procfsAvailable(procRoot)) {
     // Without /proc, ownership cannot be proven, so nothing is signalled. The
-    // launcher's own runner watchdog is the only cleanup; accept it only when
-    // the port is observably released.
+    // launcher's watchdog may stop the listener, but a free port cannot prove
+    // that every owned process exited. Cleanup must still fail closed.
     result.verification = "port-only";
     const deadline = Date.now() + selfExitMs;
     while (await probe(host, port)) {
@@ -219,13 +220,13 @@ export async function cleanupShardServer({
       }
       await sleep(pollMs);
     }
-    result.ok = true;
+    result.reason = "process ownership cannot be verified without readable procfs";
     return result;
   }
 
   // The /proc scan is the authority: every process of the shard's tree
   // inherits the owner token. The state file is only cleaned up at the end.
-  const scan = () => findOwnedProcesses(owner, { procRoot, euid });
+  const scan = () => findOwnedProcesses(owner, { procRoot, euid, readDirectory });
 
   const waitGone = async (ms) => {
     const deadline = Date.now() + ms;
@@ -255,7 +256,8 @@ export async function cleanupShardServer({
     }
   } catch (error) {
     result.reason = `shard server signal failed: ${error.code || error.message}`;
-    result.survivors = scan().map((p) => p.pid);
+    try { result.survivors = scan().map((p) => p.pid); }
+    catch { /* Enumeration failure leaves survivors unknown and ok false. */ }
     return result;
   }
   if (remaining.length) {

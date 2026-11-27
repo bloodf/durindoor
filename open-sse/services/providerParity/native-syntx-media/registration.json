@@ -1,0 +1,149 @@
+{
+  "issue": "#1234",
+  "parentIssue": "#2034",
+  "status": "staged-unregistered",
+  "evidence": "synthetic source-shaped fixtures only; no live SYNTX request, account or capture backs this module",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/services/syntxAuth.ts",
+      "open-sse/services/syntxMedia.ts",
+      "open-sse/services/syntxMediaCatalog.ts",
+      "open-sse/handlers/syntxAudio.ts",
+      "open-sse/handlers/imageGeneration/providers/syntx.ts",
+      "open-sse/handlers/videoGeneration/syntxHandler.ts",
+      "open-sse/handlers/imageUpscale/syntx.ts",
+      "src/app/api/v1/images/edits/route.ts",
+      "src/shared/providers/webSessionCredentials.ts"
+    ],
+    "registryFields": {
+      "image": { "id": "syntx", "alias": "stx", "baseUrl": "https://api.syntx.ai/api/v1/design/generate", "authType": "apikey", "authHeader": "bearer", "format": "syntx-image" },
+      "video": { "id": "syntx", "alias": "stx", "baseUrl": "https://api.syntx.ai/api/v1/video/generate", "authType": "apikey", "authHeader": "bearer", "format": "syntx-video" },
+      "speech": { "id": "syntx", "alias": "stx", "baseUrl": "https://api.syntx.ai/api/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "syntx-audio" },
+      "transcription": { "id": "syntx", "alias": "stx", "baseUrl": "https://api.syntx.ai/api/v1/audio/transcriptions", "authType": "apikey", "authHeader": "bearer", "format": "syntx-audio" },
+      "music": { "id": "syntx", "baseUrl": "https://api.syntx.ai/api/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "syntx-music" }
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "git ls-files: no open-sse/providers/registry/syntx.js, no syntx executor, no syntx image/video/tts/stt/music adapter",
+      "open-sse/handlers/imageProviders, videoProviders, ttsProviders, sttCore.js, musicGenerationCore.js, imageEditCore.js: no syntx entry",
+      "docs/providers/syntx.mdx: status unreleased; records a 404 for the chat route https://api.syntx.ai/api/v1/chat/completions, which is not any route this module calls"
+    ],
+    "result": "no existing equivalent; this module is the whole media delta. The chat/auth provider entry is owned by the native-syntx-chat-auth unit."
+  },
+  "module": "open-sse/services/providerParity/native-syntx-media/index.js",
+  "modalities": {
+    "image": { "adapter": "syntxImageAdapter.generate", "endpoint": "/v1/images/generations", "route": "design", "scope": "image", "chatField": "chat_uuid" },
+    "imageEdit": { "adapter": "syntxImageAdapter.edit", "endpoint": "/v1/images/edits", "route": "design", "scope": "image", "chatField": "chat_uuid", "note": "source edits route calls the same image handler with the uploaded images as image_url" },
+    "video": { "adapter": "syntxVideoAdapter.generate", "endpoint": "/v1/videos/generations", "route": "video", "scope": "video", "chatField": "chat_id" },
+    "speech": { "adapter": "syntxTtsAdapter.synthesize", "endpoint": "/v1/audio/speech", "route": "audio", "scope": "audio", "chatField": "chat_uuid" },
+    "music": { "adapter": "syntxMusicAdapter.generate", "endpoint": "/v1/music/generations", "route": "audio", "scope": "audio", "chatField": "chat_uuid" },
+    "transcription": { "adapter": "syntxSttAdapter.transcribe", "endpoint": "/v1/audio/transcriptions", "route": "audio/transcribe", "synchronous": true },
+    "upscale": {
+      "status": "owned-by-native-image-upscale",
+      "owner": "native-image-upscale private framework unit",
+      "sourceFlow": "imageUpscale/syntx.ts: data URL source uploaded via upload-files, then runSyntxUpscale = design/generate with settings { model_type, image_url: [url], ...settings }, ideogram mode=upscale, prompt default \"upscale\", then poll and download like image",
+      "requiredExports": {
+        "resolveSyntxCredential": "(credentials) -> JWT or null (401 before any request when null)",
+        "syntxApiHeaders": "(token) -> source browser-shaped headers; only for https://api.syntx.ai",
+        "syntxSecretSource": "(credentials, token) -> redaction source for error results",
+        "uploadSyntxReference": "({ token, credentials, secrets, bytes, filename, mimeType, signal, options }) -> { success, url } or error result",
+        "runSyntxMediaJob": "({ scope: \"image\", route: \"design\", chatField: \"chat_uuid\", modality: \"image\", kindHint: \"image\", aiName, prompt, settings, inputUrls, token, credentials, secrets, signal, options }) -> { success, media, accounting } or error result with acceptedJob after submit",
+        "applySyntxProviderRules": "(aiName, settings, { modelType, fileCount }) -> mutates settings (ideogram upscale drops aspect_ratio)",
+        "downloadSyntxMedia": "(url, { signal }) -> credential-free guarded download",
+        "SYNTX_MEDIA_MODELS": "rows with kind \"upscale\": magnific/magnific, topaz_ai/topaz, ideogram/upscale"
+      }
+    }
+  },
+  "exports": {
+    "syntxImageAdapter": "default image adapter: generate({ model, body, credentials, signal, log }) and edit({ model, formData, jsonBody, credentials, signal, log })",
+    "syntxVideoAdapter": "default video adapter: generate({ model, body, credentials, signal, log })",
+    "syntxTtsAdapter": "default TTS adapter: synthesize(text, model, credentials, responseFormat, options) -> { base64, format, accounting }",
+    "syntxMusicAdapter": "default music adapter: generate({ model, body, credentials, signal, log })",
+    "syntxSttAdapter": "default STT adapter: transcribe({ model, formData, credentials, kind, signal, log })",
+    "createSyntx{Image,Video,Tts,Music,Stt}Adapter": "factories; options { fetchImpl, now, wait, timeoutMs, pollIntervalMs, requestTimeoutMs, submitTimeoutMs, uploadTimeoutMs, transcribeTimeoutMs, download: { fetchImpl, lookup, timeoutMs, maxBytes } } for tests",
+    "resolveSyntxModel": "(model, kind) -> exact catalog row or null",
+    "SYNTX_MEDIA_MODELS": "source seed catalog, every kind",
+    "build{Image,Video,Music}Request": "validation and settings mapping; throws status 400",
+    "runSyntxMediaJob / createSyntxChat / uploadSyntxReference": "job primitives (shared with the upscale unit)",
+    "downloadSyntxMedia / syntxPublicUrl / assertSyntxUrlResolvesPublic": "result URL policy and guarded download",
+    "map{Image,Video,Audio}Settings / applySyntxProviderRules": "source settings mappers and SPA rules",
+    "syntxAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost"
+  },
+  "provider": {
+    "canonicalId": "syntx",
+    "aliases": ["stx"],
+    "addServiceKinds": ["image", "video", "tts", "stt", "music"],
+    "authModes": ["apikey"],
+    "connectionBaseUrlHonored": false,
+    "fixedOrigin": "https://api.syntx.ai"
+  },
+  "auth": {
+    "kind": "SYNTX.ai site JWT (unofficial web session token)",
+    "header": "Authorization: Bearer <jwt>",
+    "credentialFields": ["accessToken", "apiKey", "providerSpecificData"],
+    "fieldOrder": "accessToken, apiKey, providerSpecificData; the first JWT-shaped value wins",
+    "wrappers": "raw token, \"Bearer <jwt>\", or JSON with accessToken/access_token/token/jwt/idToken/id_token/apiKey/authorization",
+    "validation": "eyJ prefix, three base64url parts, at most 16 KiB; otherwise 401 before any request",
+    "extraHeaders": { "accept": "application/json, text/plain, */*", "accept-language": "en", "origin": "https://syntx.ai", "referer": "https://syntx.ai/", "user-agent": "source Chrome UA string" },
+    "sourceCredentialUi": "webSessionCredentials.ts syntx: kind token, storageKeys token/apiKey/accessToken",
+    "accountScope": "only the selected connection's fields; egress through that connection's proxy options; no shared cache or environment fallback",
+    "downloads": "never carry the JWT, cookies or any credential, to any host"
+  },
+  "models": {
+    "selection": "exact ai_name/model_type ids from the source seed catalog for the requested kind (optional syntx/ or stx/ prefix); a bare model_type or ai_name only when it names exactly one row of that kind; no default model, no passthrough",
+    "dynamicDiscovery": "not staged: the source's GET /api/v1/ai and /api/v1/ai/models live catalog is not ported, so ids outside the seed are refused",
+    "image": ["sora-images/gpt-image-2", "sora-images/gpt-image-1", "flux/flux-pro", "flux/flux-dev", "midjourney/midjourney", "banana/nano-banana", "ideogram/ideogram", "seedream/seedream-4.5", "seedream/seedream-5", "grok_image/grok_i2i", "grok_image/grok_i2i_pro", "wan_image/wan-2.7", "wan_image/wan-2.7-pro", "recraft/recraft", "runway-frames/runway-frames", "luma_image/luma", "stable-diffusion/sdxl", "higgsfield/higgsfield", "kling-kolors/kling-kolors"],
+    "video": ["wan_video/wan-2.6", "wan_video/wan-2.7", "kling/kling-1.6", "kling/kling-2.1", "runway/gen3", "grok_video/grok_t2v", "grok_video/grok_i2v", "seedance/seedance", "sora/sora-2", "topaz_astra/topaz_astra", "beeble/beeble"],
+    "speech": ["elevenlabs/eleven_multilingual_v2", "elevenlabs/eleven_turbo_v2", "elevenlabs/eleven_flash_v2"],
+    "music": ["suno/chirp-v4", "suno/chirp-v3-5", "suno-music/suno"],
+    "transcription": ["transcribe"],
+    "upscaleOwnedElsewhere": ["magnific/magnific", "topaz_ai/topaz", "ideogram/upscale"]
+  },
+  "endpoints": {
+    "createChat": { "method": "POST", "url": "https://api.syntx.ai/api/v1/chats", "body": "{ title (prompt, whitespace-collapsed, 60 chars), scope: image|video|audio }", "answer": "{ uuid }" },
+    "upload": { "method": "POST", "url": "https://api.syntx.ai/api/v1/chats/upload-files", "body": "multipart files, destination=uploaded, check_duplicates=true, model_type=\"\"", "answer": "files[0].url or data.files[0].url" },
+    "generate": { "method": "POST", "url": "https://api.syntx.ai/api/v1/{design|video|audio}/generate?ai_name=<ai_name>", "body": "{ chat_uuid (chat_id for video), prompt, settings, file_urls?, audio_url? }" },
+    "poll": { "method": "GET", "url": "https://api.syntx.ai/api/v1/chats/{uuid}/messages?page_size=50", "ready": "latest author_id -1 message with every message_object completed" },
+    "transcribe": { "method": "POST", "url": "https://api.syntx.ai/api/v1/audio/transcribe", "body": "multipart file", "answer": "text, data.text, or a plain-text body" },
+    "download": { "method": "GET", "url": "public https result URL", "headers": ["accept: */*"], "credential": "none" }
+  },
+  "bounds": {
+    "pollTimeoutMs": 600000,
+    "minPollTimeoutMs": 1000,
+    "pollIntervalMaxMs": 5000,
+    "pollIntervalStartMs": 2000,
+    "maxConsecutivePollErrors": 5,
+    "requestTimeoutMs": 30000,
+    "submitTimeoutMs": 60000,
+    "uploadTimeoutMs": 120000,
+    "transcribeTimeoutMs": 300000,
+    "downloadTimeoutMs": 300000,
+    "maxDownloadRedirects": 3,
+    "maxMediaBytes": 52428800,
+    "maxTranscribeBytes": 52428800,
+    "maxJsonBytes": 1048576,
+    "maxPollBytes": 4194304,
+    "maxPromptChars": 32000,
+    "maxReferences": 8,
+    "maxResults": 16
+  },
+  "noReplay": "chat creation and uploads bill nothing and are not retried; generate and transcribe are sent once. Any failure after they may have reached SYNTX carries acceptedJob (jobState submit-unknown, accepted, cancelled, poll-lost or poll-timeout) and must stop account fallback for that request.",
+  "errors": "never quote the upstream body; only HTTP status and a bounded Retry-After on 429; credential values redacted through createErrorResult",
+  "quota": "none flagged: the source maps no SYNTX quota condition. 402 stays a plain 402; 429 is a rate limit with header-only reset evidence.",
+  "accounting": "mediaAccounting(null, \"syntx\", modality) with unknown cost; image nativeUnits.images from returned items; video nativeUnits.videos 1; speech characters added by ttsCore; meta.chatId",
+  "integrationPoints": [
+    { "file": "open-sse/providers/registry/syntx.js", "change": "owned with native-syntx-chat-auth: add serviceKinds image, video, tts, stt, music and model rows from SYNTX_MEDIA_MODELS by kind (upscale rows by the upscale unit)" },
+    { "file": "open-sse/handlers/imageProviders/index.js", "change": "add `syntx: syntxImageAdapter`" },
+    { "file": "open-sse/handlers/imageEditCore.js", "change": "add syntx to the native edit adapters (syntxImageAdapter.edit)" },
+    { "file": "open-sse/handlers/videoProviders/index.js", "change": "add `syntx: syntxVideoAdapter`" },
+    { "file": "open-sse/handlers/ttsProviders/index.js", "change": "add `syntx: syntxTtsAdapter` to TTS_ADAPTERS" },
+    { "file": "open-sse/handlers/sttCore.js", "change": "route provider syntx to syntxSttAdapter.transcribe" },
+    { "file": "open-sse/handlers/musicGenerationCore.js", "change": "route provider syntx to syntxMusicAdapter.generate" },
+    { "file": "src/sse/handlers (image, video, tts, stt, music)", "change": "record result.acceptedJob once on the selected connection and stop account fallback for it" },
+    { "file": "docs/providers/syntx.mdx and docs/providers/catalog.mdx", "change": "publish only after registration and a verified working SYNTX media route" },
+    { "file": "tests/unit/native-syntx-media.test.js", "change": "replace the isolated staging-state block with positive registry checks" }
+  ]
+}

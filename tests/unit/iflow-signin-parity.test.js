@@ -34,7 +34,10 @@ describe("retained iFlow contract", () => {
   it("rejects an unsuccessful user-info lookup", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ access_token: "fake-access" })).mockResolvedValueOnce(Response.json({ success: false, message: "denied" })).mockImplementation(() => { throw new Error("Unexpected outbound request"); });
     vi.stubGlobal("fetch", fetch);
-    await expect(exchangeTokens("iflow", "fake-code", redirect)).rejects.toThrow("denied");
+    // register-auth-02: profile failures report a fixed message, never the upstream text.
+    const error = await exchangeTokens("iflow", "fake-code", redirect).catch((caught) => caught);
+    expect(error.message).toBe("iFlow user info request failed");
+    expect(error.message).not.toContain("denied");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

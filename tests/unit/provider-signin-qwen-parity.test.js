@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQwenProviderHandlers } from "../../src/lib/oauth/providerParity/qwen/index.js";
 import { requestDeviceCode, pollForToken } from "../../src/lib/oauth/providers.js";
@@ -133,6 +134,13 @@ describe("production Qwen contracts", () => {
 });
 
 describe("staged provider registration", () => {
+  it("is wired into the existing OAuth provider table without touching Qwen Cloud keys", () => {
+    const providers = fs.readFileSync(new URL("../../src/lib/oauth/providers.js", import.meta.url), "utf8");
+    expect(providers).toContain('import { createQwenProviderHandlers } from "./providerParity/qwen/index.js";');
+    expect(providers).toContain("qwen: createQwenProviderHandlers(QWEN_CONFIG),");
+    expect(providers).not.toMatch(/["']?qwc["']?\s*:\s*createQwenProviderHandlers/);
+  });
+
   it("redacts upstream errors while preserving recognized polling states", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json({ error: "secret-body" }, 400)).mockResolvedValueOnce(json({ error: "slow_down", error_description: "secret-body" }, 400));
     vi.stubGlobal("fetch", fetch);

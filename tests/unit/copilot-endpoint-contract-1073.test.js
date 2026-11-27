@@ -61,9 +61,12 @@ const CHAT_BODY = {
   max_tokens: 16,
 };
 
+// A historical enterprise row. register-auth-02 (#2034) dispatches such a row
+// only with a stated, unexpired session; with no expiry it is re-minted first.
 const GHE_CREDENTIALS = {
   accessToken: "gho",
   copilotToken: "cp",
+  copilotTokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
   providerSpecificData: {
     gheUrl: "https://acme.ghe.com",
     copilotApiUrl: "https://copilot-api.acme.ghe.com",

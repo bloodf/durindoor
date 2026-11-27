@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KiroService } from "../../src/lib/oauth/services/kiro.js";
 import { getProvider } from "../../src/lib/oauth/providers.js";
@@ -180,9 +181,12 @@ describe("Kiro production service contracts (closed network)", () => {
   });
 });
 
-// Isolated staging assertions: remove this block when the ordered auth batch registers the helper.
+// The manifest stays immutable; register-auth-02 wired its sole slot.
 describe("Kiro staged registration", () => {
   it("documents its sole integration slot and preserves the IDC issuer distinction", () => {
+    const providers = fs.readFileSync(new URL("../../src/lib/oauth/providers.js", import.meta.url), "utf8");
+    expect(providers).toContain('import { buildKiroRegistration } from "./providerParity/kiro/index.js";');
+    expect(providers).toContain("const registration = buildKiroRegistration(config, authMethod);");
     expect(registration.status).toBe("staged");
     expect(Object.keys(registration.exports)).toEqual(["buildKiroRegistration"]);
     const config = getProvider("kiro").config;

@@ -33,6 +33,7 @@ import {
 import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
 import { hasCodexIdentityClaims } from "open-sse/services/usage/codexCredentialBinding.js";
 import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
+import { resolveConnectionProxyConfig } from "../../lib/network/connectionProxy.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
@@ -247,6 +248,13 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
   let creds = { ...credentials };
   if (!creds.connectionId && creds.id) {
     creds.connectionId = creds.id;
+  }
+  // An enterprise Copilot connection is bound to the proxy route it signed in
+  // through. Callers without request proxy options (the background scheduler)
+  // resolve the saved pool; an unavailable strict pool resolves to a failed
+  // route, which the connection binding refuses rather than refreshing direct.
+  if (provider === "ghe-copilot" && !proxyOptions) {
+    proxyOptions = await resolveConnectionProxyConfig(creds._connection?.providerSpecificData || creds.providerSpecificData || {});
   }
   const effectiveProxyOptions = _resolveCredentialProxyOptions(creds, proxyOptions);
   const force = options?.force === true;

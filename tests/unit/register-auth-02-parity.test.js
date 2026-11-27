@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ update: vi.fn(), refresh: vi.fn(), copilot: vi.fn() }));
@@ -74,5 +75,31 @@ describe("Copilot exchange compare-and-swap", () => {
     if (change === "proxy") expect(stored.providerSpecificData.proxyPoolId).toBe("pool-new");
     if (change === "reconnect") expect(stored.accessToken).toBe("oauth-new");
     if (change === "rotation") expect(stored.refreshToken).toBe("refresh-new");
+  });
+});
+
+describe("CLI reachability of the batch 2 sign-in modes", () => {
+  const read = (file) => fs.readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
+
+  it("reaches Copilot, Qwen OAuth and Kiro through the server-owned device flow and iFlow through the shared authorization flow", () => {
+    const menu = read("cli/src/cli/menus/providers.js");
+    const client = read("cli/src/cli/api/client.js");
+    expect(menu).toContain('const DEVICE_CODE_PROVIDERS = ["github", "qwen", "kiro"];');
+    for (const id of ["github", "qwen", "kiro", "iflow"]) expect(menu).toMatch(new RegExp(`\\b${id}: \\{ id: "${id}"`));
+    expect(client).toContain("`/api/oauth/${provider}/device-code`");
+    expect(client).toContain("`/api/oauth/${provider}/poll`");
+    expect(client).toContain("`/api/oauth/${provider}/exchange`");
+    // Qwen Cloud API keys are a separate provider; the CLI OAuth menu never maps qw to it.
+    expect(menu).not.toMatch(/qwen-cloud|\bqwc\b/);
+  });
+
+  it("states precisely why GitHub Enterprise Copilot is dashboard-only", () => {
+    const menu = read("cli/src/cli/menus/providers.js");
+    const route = read("src/app/api/oauth/[provider]/[action]/route.js");
+    // The CLI has no enterprise entry and its GET device request cannot carry gheUrl;
+    // the server route reads gheUrl only from the POST body.
+    expect(menu).not.toContain("ghe-copilot");
+    const getDevice = route.slice(route.indexOf('if (action === "device-code") {\n      return NextResponse.json(await beginDeviceCode(provider, {\n        ...searchProxySelection'));
+    expect(getDevice.slice(0, 400)).not.toContain("gheUrl");
   });
 });

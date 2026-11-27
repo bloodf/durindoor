@@ -43,6 +43,7 @@ import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/se
 import { OutboundUrlGuardError, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
 import { storedGheBinding, gheBoundFetch } from "@/lib/oauth/providerParity/copilot/gheConnection.js";
+import { gheSelectedProxy } from "open-sse/executors/gheBindingInput.js";
 
 import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
 
@@ -492,7 +493,7 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
   }
 
     const gheBinding = connection.provider === "ghe-copilot" ?
-      storedGheBinding(connection, effectiveProxy, { refresh: true }) : null;
+      storedGheBinding(connection, gheSelectedProxy(connection, effectiveProxy), { refresh: true }) : null;
     const testUrl = gheBinding ? `${gheBinding.gheUrl}/api/v3/user` :
       config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
     const headers = config.noAuth ?

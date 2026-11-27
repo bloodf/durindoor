@@ -20,6 +20,7 @@ import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
 import { updateProviderConnection } from "@/lib/localDb";
 import { gheRequestContext, gheBoundFetch } from "@/lib/oauth/providerParity/copilot/gheConnection.js";
+import { gheSelectedProxy, withSessionExpiry } from "open-sse/executors/gheBindingInput.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -675,7 +676,8 @@ export const PROVIDER_MODELS_CONFIG = {
     customResolver: async (connection, proxyOptions = null) => {
       let context;
       try {
-        context = gheRequestContext(connection, proxyOptions);
+        const sending = withSessionExpiry(connection);
+        context = gheRequestContext(sending, gheSelectedProxy(sending, proxyOptions));
       } catch {
         return { error: "Enterprise Copilot reauthentication needed", status: 401 };
       }

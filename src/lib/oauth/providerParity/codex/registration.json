@@ -1,8 +1,49 @@
 {
-  "status": "staged",
   "provider": "codex",
+  "issue": 2034,
+  "status": "staged",
   "module": "src/lib/oauth/providerParity/codex/index.js",
-  "exports": {
-    "exchangeCodexCode": "Replace codex.exchangeToken in src/lib/oauth/providers.js; retain mapTokens, flowStore ownership/state/PKCE guards, workspace validation and selected proxy. Forward the existing abort signal as argument eight."
-  }
+  "exports": [
+    "CODEX_SOURCE_TOKEN_URL",
+    "CODEX_LOGIN_MODES",
+    "CODEX_AUTHORIZE_DELTA",
+    "withCodexAuthorizeDelta",
+    "assertCodexLoginMode",
+    "codexDevicePollError",
+    "buildCodexRefreshRequest",
+    "exchangeCodexCode"
+  ],
+  "integrationSlots": [
+    {
+      "file": "src/lib/oauth/providers.js",
+      "symbol": "PROVIDERS.codex.buildAuthUrl",
+      "use": "withCodexAuthorizeDelta",
+      "alternative": "open-sse/providers/registry/codex.js oauth.extraParams.prompt = \"login\""
+    },
+    {
+      "file": "src/app/api/oauth/[provider]/[action]/route.js",
+      "symbol": "beginAuthorization and beginDeviceCode for provider codex",
+      "use": "assertCodexLoginMode"
+    },
+    {
+      "file": "src/lib/oauth/providers.js",
+      "symbol": "PROVIDERS.codex.deviceFlow.pollToken non-pending failure branch",
+      "use": "codexDevicePollError"
+    },
+    {
+      "file": "open-sse/services/tokenRefresh/providers.js",
+      "symbol": "refreshCodexToken exchange()",
+      "use": "buildCodexRefreshRequest"
+    },
+    {
+      "file": "src/lib/oauth/providers.js",
+      "symbol": "codex.exchangeToken",
+      "use": "Replace codex.exchangeToken in src/lib/oauth/providers.js; retain mapTokens, flowStore ownership/state/PKCE guards, workspace validation and selected proxy. Forward the existing abort signal as argument eight."
+    }
+  ],
+  "sources": [
+    "router-for-me/CLIProxyAPI@dbe641f286a489ecb39e3c041c554371e6add864",
+    "router-for-me/EasyCLIProxyAPI@29567ead8164a00724dfdc2087f02a23895636ee",
+    "cheaper-inference/OmniRoute@b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523"
+  ]
 }

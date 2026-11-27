@@ -1,0 +1,91 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (nanogpt: baseUrl https://nano-gpt.com/api/v1/images/generations, authType apikey, authHeader bearer, format openai, models qwen-image | z-image-turbo | chroma | hidream, supportedSizes [1024x1024, 1024x1280, 1280x1024], no fallbackUrl)",
+      "open-sse/handlers/imageGeneration.ts (format openai -> handleOpenAIImageGeneration; image_url only for OPENAI_IMAGE_TO_IMAGE_MODELS, which has no NanoGPT id)",
+      "open-sse/handlers/imageGeneration/generationOptions.ts (non-openai providers get only the validated output_format options)",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts (deadline covers body read; 2xx without b64_json/url -> 502)",
+      "open-sse/config/providers/registry/nanogpt/index.ts (modelsUrl https://nano-gpt.com/api/v1/models)",
+      "src/app/api/providers/[id]/models/discovery/providerSets.ts + normalizers.ts + helpers.ts (nanogpt is a named OpenAI-style provider: GET /v1/models, Content-Type + Bearer; array | data.data | data.models; id || model || name)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no nanogpt key on this branch or origin/main fdbb72865a; open-sse/providers/registry/nanogpt.js declares serviceKinds [\"llm\"] with no imageConfig, and no file names nano-gpt.com/api/v1/images/generations.",
+    "genericAdapter": "createOpenAIAdapter('nanogpt') would read PROVIDER_MEDIA.nanogpt.imageConfig (absent) and has no fixed-origin/redirect refusal and no uncertain-submit handling, so it is not used here.",
+    "sourceStatus": "the source entry is enabled and reachable through handleImageGeneration (format openai); no disabled flag or comment."
+  },
+  "module": "open-sse/services/providerParity/native-nanogpt-image/index.js",
+  "exports": {
+    "nanoGptImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createNanoGptImageAdapter": "factory; options { fetchImpl, submitTimeoutMs, timeoutMs, now } for tests",
+    "buildNanoGptImageRequest": "(model, body) -> { model, prompt, output_format?, n?, size?, quality?, response_format?, style? } in source order; throws status 400 before any network call",
+    "resolveNanoGptImageModel": "any safe model id passes through verbatim (source parity; nanogpt/... is a real NanoGPT id prefix, so nothing is stripped); null for unsafe ids",
+    "resolveNanoGptImageCredential": "source credentials.apiKey || credentials.accessToken",
+    "normalizeNanoGptImageItems": "usable items: public https url or base64 png/jpeg/webp -> { items, formats, unsafe }",
+    "nanoGptPublicUrl": "https on a public literal host without userinfo, or null",
+    "nanoGptAcceptedJob": "accepted-job accounting for an uncertain submit",
+    "discoverNanoGptModels": "bounded GET https://nano-gpt.com/api/v1/models with the selected key, manual redirects; returns every safe model id (not image-classified)",
+    "parseNanoGptModelList": "source normalizeOpenAiLikeModelsResponse items and id rule, safe de-duplicated ids",
+    "isSafeNanoGptModelId": "model id syntax check"
+  },
+  "provider": {
+    "canonicalId": "nanogpt",
+    "aliases": [],
+    "serviceKinds": ["image"],
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken"],
+      "sentTo": ["https://nano-gpt.com"]
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions for submit; discovery takes proxyOptions from the caller"
+  },
+  "models": [
+    { "id": "qwen-image", "name": "Qwen Image", "sizes": ["1024x1024", "1024x1280", "1280x1024"], "note": "source inputModalities text+image, but the source never forwarded an input image to NanoGPT; text-to-image only here" },
+    { "id": "z-image-turbo", "name": "Z Image Turbo", "sizes": ["1024x1024", "1024x1280", "1280x1024"] },
+    { "id": "chroma", "name": "Chroma", "sizes": ["1024x1024", "1024x1280", "1280x1024"] },
+    { "id": "hidream", "name": "Hidream I1 Full", "sizes": ["1024x1024", "1024x1280", "1280x1024"] }
+  ],
+  "modelAliases": {},
+  "request": {
+    "accepted": ["model", "prompt", "n (1..10)", "size (WxH, sides 64..2048)", "quality (short word)", "style (short word)", "response_format url | b64_json", "output_format png | jpeg | webp", "user (not sent)", "stream false"],
+    "refused": ["unsafe model id", "image / image_url / image_urls / mask / input images", "background", "frame_count / frame_duration_ms", "output_compression", "partial_images", "output_format gif | svg", "streaming", "any other non-null field"],
+    "responseFormats": ["url", "b64_json"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://nano-gpt.com/api/v1/images/generations", "body": "{ model, prompt, ... }", "answer": "{ created, data: [{ url } | { b64_json }], usage? }", "billable": true, "redirect": "manual (refused)" },
+    "discovery": { "method": "GET", "url": "https://nano-gpt.com/api/v1/models", "billable": false, "redirect": "manual (refused)", "note": "the source also probed https://nano-gpt.com/api/models after a failure; not ported" }
+  },
+  "bounds": { "submitTimeoutMs": 120000, "totalTimeoutMs": 180000, "discoveryTimeoutMs": 10000, "responseMaxBytes": 41943040, "discoveryMaxBytes": 4194304, "maxResults": 16 },
+  "accounting": {
+    "success": "nativeUnits.images = returned usable items; upstream usage (if any) recorded as internal tokens; cost unknown unless usage carries a USD receipt",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, foreign-origin answer; accepted: a 2xx that is unreadable or without a usable image. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed; no acceptedJob",
+    "redirect": "3xx -> 502, never followed"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add nanogpt: nanoGptImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore calls adapter.generate and records success)"
+    },
+    {
+      "file": "open-sse/providers/registry/nanogpt.js",
+      "change": "serviceKinds [\"llm\", \"image\"], imageConfig { baseUrl: https://nano-gpt.com/api/v1/images/generations } and the four image model entries (type image); keep authType apikey, chat transport, modelsFetcher and passthroughModels unchanged"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list image for nanogpt with the supported subset"
+    },
+    {
+      "file": "tests/unit/native-nanogpt-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

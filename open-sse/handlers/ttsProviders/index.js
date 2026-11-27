@@ -9,6 +9,8 @@ import openrouter from "./openrouter.js";
 import gemini, { fetchGeminiVoices } from "./gemini.js";
 import renderhour from "./renderhour.js";
 import vertex, { listVertexTtsVoices } from "../../services/providerParity/native-vertex-tts-stt/speech.js";
+import { kieTtsAdapter } from "../../services/providerParity/native-kie-tts-stt/index.js";
+import { deapiTtsAdapter } from "../../services/providerParity/native-deapi-tts-stt/index.js";
 import { FORMAT_HANDLERS } from "./genericFormats.js";
 import { parseModelVoice } from "./_base.js";
 
@@ -26,6 +28,10 @@ export const TTS_ADAPTERS = createMediaRegistry({
   // Vertex Gemini speech through generateContent on the existing connection.
   vertex,
   vx: vertex,
+  // ElevenLabs speech as a Kie createTask job; the audio is fetched without the key.
+  kie: kieTtsAdapter,
+  // deAPI speech: one bounded POST on https://oai.deapi.ai, mp3 bytes only.
+  deapi: deapiTtsAdapter,
 });
 
 export function getTtsAdapter(provider) {

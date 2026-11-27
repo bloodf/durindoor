@@ -112,17 +112,43 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Isolated staging block: the only assertions that depend on the adapter being
-// unregistered. The registration change replaces these with positive registry
-// identity checks; every other block holds staged and registered alike.
-describe("staging state (pre-registration only)", () => {
-  it("is not registered: the public music dispatch and the fal-ai registry have no music", async () => {
+// Isolated registration block: the only assertions that depend on the adapter
+// being registered (positive registry identity checks). Every other block holds
+// staged and registered alike.
+describe("canonical registration (isolated)", () => {
+  it("dispatches canonical and alias native music separately from cookie adapters", async () => {
     expect(MUSIC_ADAPTERS["fal-ai"]).toBeUndefined();
     expect(MUSIC_ADAPTERS.fal).toBeUndefined();
-    expect(falRegistry.serviceKinds).not.toContain("music");
+    expect(falRegistry.serviceKinds).toContain("music");
+    serve(result(), result());
+    for (const provider of ["fal-ai", "fal"]) {
+      const res = await handleMusicGenerationCore({ provider, model: "ace-step", body: { prompt: PROMPT }, credentials: { apiKey: KEY_A } });
+      expect(res.success).toBe(true);
+      expect(res.response.status).toBe(200);
+    }
+    expect(calls).toHaveLength(2);
+  });
+
+  it("lists the music row and config and dispatches fal-ai and fal to the canonical adapter", async () => {
+    // Not a cookie web adapter: it is dispatched ahead of MUSIC_ADAPTERS.
+    expect(MUSIC_ADAPTERS["fal-ai"]).toBeUndefined();
+    expect(MUSIC_ADAPTERS.fal).toBeUndefined();
+    expect(falRegistry.serviceKinds).toContain("music");
+    expect(falRegistry.models).toContainEqual(expect.objectContaining({ id: "ace-step", kind: "music" }));
+    // The registered musicConfig is the staged contract's { baseUrl } (see
+    // registration.json). No runtime code reads musicConfig.format: the core
+    // dispatches by provider id, which the spy below proves. The source format
+    // name stays on the staged metadata.
+    expect(falRegistry.musicConfig).toEqual({ baseUrl: "https://queue.fal.run" });
+    expect(falRegistry.musicConfig).toEqual(FAL_MUSIC_PROVIDER_METADATA.musicConfig);
+    expect(FAL_MUSIC_PROVIDER_METADATA.format).toBe(FAL_MUSIC_FORMAT);
+    const spy = vi.spyOn(defaultAdapter, "generate").mockResolvedValue({ success: false, status: 418, error: "spy" });
     const res = await handleMusicGenerationCore({ provider: "fal-ai", model: "ace-step", body: { prompt: PROMPT }, credentials: { apiKey: KEY_A } });
     expect(res.success).toBe(false);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(418);
+    const alias = await handleMusicGenerationCore({ provider: "fal", model: "ace-step", body: { prompt: PROMPT }, credentials: { apiKey: KEY_A } });
+    expect(alias.status).toBe(418);
+    expect(spy).toHaveBeenCalledTimes(2);
     expect(calls).toHaveLength(0);
   });
 });

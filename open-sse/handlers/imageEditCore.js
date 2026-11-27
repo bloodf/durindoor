@@ -5,6 +5,22 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { headerOnlyCancel, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { createMediaRegistry, lookupMediaAdapter } from "./mediaRegistry.js";
+import { leonardoImageEditAdapter } from "../services/providerParity/native-leonardo-image-edits/index.js";
+
+// Native edit adapters, consulted before any edit config so the OpenAI
+// multipart passthrough never sees these providers. Each one takes the parsed
+// request as received and returns a result whose failures may carry
+// `acceptedJob` (a submitted generation that may still bill).
+export const IMAGE_EDIT_ADAPTERS = createMediaRegistry({
+  // Init-image ticket, token-free pinned storage upload, then a polled generation.
+  leonardo: leonardoImageEditAdapter,
+  leo: leonardoImageEditAdapter,
+});
+
+export function getImageEditAdapter(provider) {
+  return lookupMediaAdapter(IMAGE_EDIT_ADAPTERS, provider);
+}
 
 const XAI_IMAGE_EDIT_FIELDS = new Set(["n", "response_format", "quality", "resolution", "aspect_ratio", "storage_options"]);
 
@@ -109,6 +125,15 @@ export async function handleImageEditCore({
   signal
 }) {
   const { provider, model } = modelInfo;
+  const native = getImageEditAdapter(provider);
+  if (native) {
+    try {
+      return await native.edit({ model, formData: jsonBody ? null : formData, jsonBody, credentials, signal, log });
+    } catch {
+      if (signal?.aborted) return createErrorResult(499, "Image edit request aborted");
+      return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Image edit failed");
+    }
+  }
   const mediaCfg = PROVIDER_MEDIA[provider];
   const editConfig = getImageEditConfig(mediaCfg);
   if (!editConfig?.baseUrl) {

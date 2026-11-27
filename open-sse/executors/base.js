@@ -488,6 +488,7 @@ export class BaseExecutor {
         let bodyStr = serialize(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
+        const boundTransport = this.boundRequestTransport?.(url, proxyOptions, credentials);
         const send = async (serializedBody) => {
           chargeDispatch(urlIndex);
           const response = await sender.sendRequest(url, {
@@ -495,7 +496,7 @@ export class BaseExecutor {
             // Credentials never follow a redirect unless the registry entry says why it must.
             ...(!this.config?.quirks?.allowRedirects && carriesCredential(url, headers, credentials) ? { redirect: "error" } : null),
             ...(directFetch ? { directFetch } : null)
-          }, proxyOptions);
+          }, proxyOptions, boundTransport ? { transport: boundTransport } : undefined);
           if (claudeOAuth) observeClaudeUsageHeaders(credentials.accessToken, response.headers);
           return response;
         };
@@ -668,7 +669,7 @@ export class BaseExecutor {
         };
       } catch (error) {
         sender.clearHeaderTimer();
-        if (isQuotaDispatchUnavailable(error)) throw error;
+        if (isQuotaDispatchUnavailable(error) || this.isTerminalRequestError?.(error)) throw error;
         const timeoutReason = sender.timeoutReason;
         const isConnectTimeout = Boolean(timeoutReason);
         if (isConnectTimeout) error = timeoutReason;

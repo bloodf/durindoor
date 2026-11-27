@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 407 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 409 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -112,9 +112,10 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | DaoXE | `daoxe` | apikey | 9 | [site](https://daoxe.com) |
 | Databricks | `databricks` | apikey | 4 | [site](https://www.databricks.com) |
 | DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
+| deAPI | `deapi` | apikey | 15 | [site](https://deapi.ai) |
 | DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
-| DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
+| DeepInfra | `deepinfra` | apikey | 15 | [site](https://deepinfra.com) |
 | DeepRelay | `deeprelay` | apikey | 17 | [site](https://deeprelay.ai) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |
 | DeepSeek Web | `deepseek-web` | apikey | 14 | [site](https://chat.deepseek.com) |
@@ -141,7 +142,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | EUrouter | `eurouter` | apikey | 0 |  |
 | Exa | `exa` | apikey | 0 | [site](https://exa.ai) |
 | Factory | `factory` | apikey | 1 | [site](https://factory.ai) |
-| Fal.ai | `fal-ai` | apikey | 7 | [site](https://fal.ai) |
+| Fal.ai | `fal-ai` | apikey | 11 | [site](https://fal.ai) |
 | FastRouter | `fastrouter` | apikey | 0 |  |
 | Featherless AI | `featherless-ai` | apikey | 9 | [site](https://featherless.ai) |
 | FenayAI | `fenayai` | apikey | 0 | [site](https://fenayai.com) |
@@ -187,7 +188,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Grokified | `grokified` | apikey | 7 | [site](https://grokified.com) |
 | Groq | `groq` | apikey | 14 | [site](https://groq.com) |
 | Hack Club AI | `hackclub` | apikey | 3 | [site](https://ai.hackclub.com) |
-| Haiper | `haiper` | apikey | 0 | [site](https://haiper.ai) |
+| Haiper | `haiper` | apikey | 2 | [site](https://haiper.ai) |
 | Huancheng Public API | `hcnsec` | apikey | 0 | [site](https://api.hcnsec.cn) |
 | HelixMind | `helixmind` | apikey | 0 |  |
 | Helyx AI | `helyxai` | apikey | 12 | [site](https://helyxai.space) |
@@ -211,7 +212,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Jina Reader | `jina-reader` | apikey | 0 | [site](https://jina.ai/reader) |
 | Keenable | `keenable` | none | 0 | [site](https://keenable.ai) |
 | Kenari | `kenari` | apikey | 0 | [site](https://kenari.id) |
-| Kie.ai | `kie` | apikey | 11 | [site](https://kie.ai) |
+| Kie.ai | `kie` | apikey | 59 | [site](https://kie.ai) |
 | Kilo Gateway | `kilo-gateway` | optional | 6 | [site](https://kilo.ai) |
 | Kilo Code | `kilocode` | oauth | 8 | [site](https://kilocode.ai) |
 | Kimchi | `kimchi` | oauth, apikey | 8 | [site](https://kimchi.dev) |
@@ -225,7 +226,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | LaoZhang AI | `laozhang` | apikey | 0 | [site](https://api.laozhang.ai) |
 | Laya (local) | `laya` | apikey | 4 | [site](https://github.com/NandhaKishorM/laya) |
 | Lemonade Server | `lemonade` | apikey | 0 | [site](https://lemonade-server.ai) |
-| Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
+| Leonardo.Ai | `leonardo` | apikey | 4 | [site](https://leonardo.ai) |
 | Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |
 | Liquid AI | `liquid` | apikey | 1 | [site](https://www.liquid.ai) |
 | LiteRouter | `literouter` | apikey | 0 |  |
@@ -278,7 +279,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | NoTrack | `notrack` | apikey | 1 | [site](https://notrack.ai) |
 | NoTrack Web | `notrack-web` | cookie | 1 | [site](https://notrack.ai) |
 | Nous Research | `nous-research` | apikey | 2 | [site](https://portal.nousresearch.com/help) |
-| Novita AI | `novita` | apikey | 4 | [site](https://novita.ai) |
+| Novita AI | `novita` | apikey | 6 | [site](https://novita.ai) |
 | nScale | `nscale` | apikey | 6 | [site](https://nscale.com) |
 | Nube.sh | `nube` | apikey | 8 | [site](https://nube.sh) |
 | NVIDIA NIM | `nvidia` | freeTier | 69 | [site](https://developer.nvidia.com/nim) |
@@ -336,7 +337,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Requesty | `requesty` | freeTier | 0 | [site](https://requesty.ai) |
 | Routeway | `routeway` | apikey | 8 |  |
 | Runcrate | `runcrate` | apikey | 6 | [site](https://www.runcrate.ai) |
-| Runway ML | `runwayml` | apikey | 4 | [site](https://runwayml.com) |
+| Runway ML | `runwayml` | apikey | 7 | [site](https://runwayml.com) |
 | SambaNova | `sambanova` | freeTier | 5 | [site](https://sambanova.ai) |
 | SAP Generative AI Hub | `sap` | apikey | 0 | [site](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/generative-ai-hub-in-sap-ai-core) |
 | Sarvam AI | `sarvam` | apikey | 2 | [site](https://docs.sarvam.ai) |
@@ -345,6 +346,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | SEA-LION | `sealion` | apikey | 5 | [site](https://sea-lion.ai) |
 | SearchAPI | `searchapi` | apikey | 0 | [site](https://www.searchapi.io) |
 | SearXNG | `searxng` | none | 0 | [site](https://docs.searxng.org) |
+| Segmind | `segmind` | apikey | 4 | [site](https://segmind.com) |
 | SenseNova | `sensenova` | freeTier | 6 | [site](https://platform.sensenova.cn) |
 | SenseNova (Intl) | `sensenova-intl` | apikey | 5 | [site](https://platform.sensenova.ai) |
 | Serper | `serper` | apikey | 0 | [site](https://serper.dev) |
@@ -395,7 +397,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Venice Web | `venice-web` | cookie | 5 | [site](https://venice.ai) |
 | Veo AI Free Web | `veoaifree-web` | none | 2 | [site](https://veoaifree.com) |
 | Vercel AI Gateway | `vercel-ai-gateway` | apikey | 0 | [site](https://vercel.com/ai-gateway) |
-| Vertex AI | `vertex` | freeTier | 15 | [site](https://cloud.google.com/vertex-ai) |
+| Vertex AI | `vertex` | freeTier | 14 | [site](https://cloud.google.com/vertex-ai) |
 | Vertex Partner | `vertex-partner` | apikey | 4 | [site](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-partner-models) |
 | vLLM | `vllm` | apikey | 0 | [site](https://github.com/vllm-project/vllm) |
 | Void AI | `void-ai` | apikey | 0 |  |

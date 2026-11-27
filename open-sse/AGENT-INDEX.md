@@ -201,6 +201,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `daoxe` |  | apikey | `https://api.daoxe.com/v1/chat/completions` |
 | `databricks` |  | apikey | `https://adb-0000000000000000.0.azuredatabricks.net/serving-endpoints` |
 | `datarobot` |  | apikey | `https://app.datarobot.com/api/v2/genai/llmgw/chat/completions/` |
+| `deapi` |  | apikey | `` |
 | `deepai` |  | apikey | `` |
 | `deepgram` |  | apikey | `https://api.deepgram.com/v1/listen` |
 | `deepinfra` |  | apikey | `https://api.deepinfra.com/v1/openai/chat/completions` |
@@ -434,6 +435,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `sealion` | openai | apikey | `https://api.sea-lion.ai/v1/chat/completions` |
 | `searchapi` |  | apikey | `` |
 | `searxng` |  | freeTier | `` |
+| `segmind` |  | apikey | `https://api.segmind.com/v1` |
 | `sensenova` |  | freeTier | `https://token.sensenova.cn/v1/chat/completions` |
 | `sensenova-intl` |  | apikey | `https://token.sensenova.ai/v1/chat/completions` |
 | `serper` |  | apikey | `` |

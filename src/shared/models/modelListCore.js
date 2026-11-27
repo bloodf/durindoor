@@ -608,9 +608,14 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         const liveModelById = new Map();
 
         // Build kind lookup for static models so we can filter even when only IDs are exposed
-        const staticModelKindById = new Map(
-          providerModels.map((m) => [m.id, modelKind(m)])
-        );
+        // One id may serve several media kinds (Haiper `gen2` is an image and a
+        // video row); it is listed under the kind this request asks for.
+        const staticModelKindById = new Map();
+        for (const m of providerModels) {
+          const kind = modelKind(m);
+          const known = staticModelKindById.get(m.id);
+          if (known === undefined || !kindFilter.includes(known) && kindFilter.includes(kind)) staticModelKindById.set(m.id, kind);
+        }
         const staticModelById = new Map(providerModels.map((m) => [m.id, m]));
         const hasUsableCredential = conn.id !== "noauth" && [conn.apiKey, conn.accessToken].
         some((value) => isString(value) &&

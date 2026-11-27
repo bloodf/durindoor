@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "module": "./import.js",
+  "exports": ["mapDevinCliImport"],
+  "integration": "In src/lib/oauth/providers.js replace the devin-cli mapTokens function with mapDevinCliImport. Keep import-token routing and connection storage in the existing OAuth handler; do not enable a CLI browser or device flow."
+}

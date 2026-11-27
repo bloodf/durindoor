@@ -82,7 +82,6 @@ export default {
     models: [
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Vertex Transcribe)" },
       { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Vertex Transcribe)" },
-      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (Vertex Transcribe)" },
     ],
   },
   // Lyria 2, synchronous WAV as b64_json. No videoConfig: /v1/videos has no

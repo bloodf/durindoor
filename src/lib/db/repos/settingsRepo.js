@@ -1,3 +1,4 @@
+import { mirrorCompressionPatch } from "../../../shared/utils/compressionConfig.js";
 import { getAdapter, getAdapterSync } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { DEFAULT_SETTINGS_SCHEMA as DEFAULT_SETTINGS, DEFAULT_QUOTA_TRACKER_STATE, SETTINGS_SCHEMA } from "../../settings/settingsSchema.js";
@@ -60,8 +61,8 @@ export function mergeCompressionEngines(stored, incoming) {
 
 /**
  * Apply the compression-engines merge to a settings patch. Only a patch that
- * actually carries `compressionEngines` is touched; every other key keeps the
- * plain top-level replace semantics.
+ * carries an alias mirrors its boolean before merging the existing map.
+ * Unrelated settings keep their schema-defined merge semantics.
  */
 function mergeObjectPatch(stored, incoming) {
   if (!isRecord(incoming)) return incoming;
@@ -82,6 +83,7 @@ function mergeObjectPatch(stored, incoming) {
 }
 
 export function mergeSettingsPatch(current, updates) {
+  updates = mirrorCompressionPatch(current, updates);
   const merged = { ...updates };
   for (const [key, rule] of Object.entries(SETTINGS_SCHEMA)) {
     if (!Object.prototype.hasOwnProperty.call(updates, key) || rule.merge !== "keys") continue;

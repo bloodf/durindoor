@@ -1,0 +1,20 @@
+{
+  "status": "staged",
+  "modules": [
+    {
+      "module": "./exchange.js",
+      "exports": [
+        "validateClineTokens",
+        "clineExchangeFailure"
+      ],
+      "integration": "In src/lib/oauth/providers.js, both cline and clinepass exchangeToken implementations should validate the result of either callback decoding or the HTTP exchange with validateClineTokens and use clineExchangeFailure for non-OK responses. Preserve existing route state and flow ownership checks."
+    },
+    {
+      "module": "./headers.js",
+      "exports": [
+        "applyClineTaskIdentity"
+      ],
+      "integration": "In open-sse/executors/default.js after all header layers for cline and clinepass, call applyClineTaskIdentity(headers, requestContext?.clientHeaders). Do not persist task identity on the connection."
+    }
+  ]
+}

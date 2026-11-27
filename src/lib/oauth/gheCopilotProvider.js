@@ -6,79 +6,144 @@
  * `requestDeviceCode` returns it as the private `_gheUrl` field so it is kept in
  * the server-side flow payload (never sent back to the browser) and handed to
  * `pollToken` and `postExchange` as extraData.
+ *
+ * Every request is bound to that host and the flow's proxy by
+ * `providerParity/copilot/gheConnection.js`: redirects are refused, the
+ * provider outbound guard applies, and token-supplied endpoints are kept only
+ * when the enterprise connection trusts them.
  */
+import { isDeepStrictEqual } from "node:util";
 import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 import { GITHUB_COPILOT } from "../../../open-sse/config/appConstants.js";
 import { gheCopilotTokenUrl, gheOAuthTokenUrl, normalizeGheUrl } from "../../../open-sse/config/gheCopilot.js";
+import { decodeCopilotPollResponse } from "./providerParity/copilot/index.js";
+import {
+  GheConnectionError,
+  bindGheConnection,
+  gheBoundFetch,
+  globalFetchTransport,
+  pickGheDeviceResponse,
+  pickGheUserInfo,
+  trustedGheEndpoints,
+  gheTokenHash,
+  decodeGheSessionToken
+} from "./providerParity/copilot/gheConnection.js";
 import { gheCopilotClientId } from "../../../open-sse/services/gheCopilotAuth.js";
+import { isRecord } from "../../shared/utils/typeChecks.js";
 
 const GHE_OAUTH = PROVIDER_OAUTH["ghe-copilot"] || {};
+/** Non-enumerable, in-process carrier of the poll's issuer/client/proxy. */
+const GHE_SIGNIN_BINDING = Symbol("gheSignInBinding");
+const transport = { transport: globalFetchTransport };
 
-function requireGheUrl(value) {
-  const gheUrl = normalizeGheUrl(value);
-  if (!gheUrl) throw new Error("A valid https GitHub Enterprise URL is required");
-  return gheUrl;
+function bind(gheUrl, config, proxyOptions) {
+  return bindGheConnection({ gheUrl, proxyOptions, clientId: config?.clientId });
 }
 
-async function readJsonOrError(response) {
-  const text = await response.text();
+async function getJson(binding, url, accessToken) {
   try {
-    return JSON.parse(text);
-  } catch {
-    return { error: "invalid_response", error_description: text.slice(0, 200) };
+    const response = await gheBoundFetch(binding, url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "X-GitHub-Api-Version": GHE_OAUTH.apiVersion,
+        "User-Agent": GITHUB_COPILOT.USER_AGENT
+      }
+    }, transport);
+    if (!response.ok) {
+      try { await response.body?.cancel?.(); } catch { /* best effort */ }
+      return {};
+    }
+    const data = await response.json().catch(() => ({}));
+    return isRecord(data) ? data : {};
+  } catch (error) {
+    if (error instanceof GheConnectionError) return {};
+    throw error;
   }
 }
 
-async function getJson(url, accessToken, proxyOptions) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-      "X-GitHub-Api-Version": GHE_OAUTH.apiVersion,
-      "User-Agent": GITHUB_COPILOT.USER_AGENT
-    },
-    proxyOptions
-  });
-  return response.ok ? response.json() : {};
+/** Keep the session token and trusted endpoints; drop a token that is already expired. */
+function sessionFromExchange(binding, data) {
+  const session = decodeGheSessionToken(binding, data);
+  if (!session) return {};
+  return { token: session.token, expires_at: session.expiresAt, endpoints: trustedGheEndpoints(binding, data.endpoints) };
 }
 
-export default {
+const gheCopilot = {
   config: { ...GHE_OAUTH, get clientId() {return gheCopilotClientId();} },
   flowType: "device_code",
   requestDeviceCode: async (config, _codeChallenge, options = {}, proxyOptions) => {
-    const gheUrl = requireGheUrl(options.gheUrl);
-    const response = await fetch(`${gheUrl}/login/device/code`, {
+    const binding = bind(options.gheUrl, config, proxyOptions);
+    const response = await gheBoundFetch(binding, `${binding.gheUrl}/login/device/code`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({ client_id: config.clientId, scope: config.scopes }),
-      proxyOptions
-    });
+      body: new URLSearchParams({ client_id: binding.clientId, scope: config.scopes })
+    }, transport);
     if (!response.ok) {
       throw new Error(`GitHub Enterprise device code request failed (HTTP ${response.status})`);
     }
-    return { ...await response.json(), _gheUrl: gheUrl };
+    return { ...pickGheDeviceResponse(await response.json()), _gheUrl: binding.gheUrl };
   },
   pollToken: async (config, deviceCode, _codeVerifier, extraData, proxyOptions) => {
-    const gheUrl = requireGheUrl(extraData?._gheUrl);
-    const response = await fetch(gheOAuthTokenUrl(gheUrl), {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({
-        client_id: config.clientId,
-        device_code: deviceCode,
-        grant_type: "urn:ietf:params:oauth:grant-type:device_code"
-      }),
-      proxyOptions
-    });
-    return { ok: response.ok, data: await readJsonOrError(response) };
+    const binding = bind(extraData?._gheUrl, config, proxyOptions);
+    let response;
+    try {
+      response = await gheBoundFetch(binding, gheOAuthTokenUrl(binding.gheUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: new URLSearchParams({
+          client_id: binding.clientId,
+          device_code: deviceCode,
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code"
+        })
+      }, transport);
+    } catch (error) {
+      if (error instanceof GheConnectionError) return { ok: false, data: { error: "invalid_response" } };
+      throw error;
+    }
+    const data = decodeCopilotPollResponse(await response.text());
+    // The issuing identity rides with this token, in process only, to postExchange.
+    if (isRecord(data) && data.access_token) {
+      Object.defineProperty(data, GHE_SIGNIN_BINDING, {
+        value: Object.freeze({ issuer: binding.gheUrl, clientId: binding.clientId, proxyOptions: binding.proxyOptions ? { ...binding.proxyOptions } : null })
+      });
+    }
+    return { ok: response.ok, data };
   },
   postExchange: async (tokens, proxyOptions, extraData) => {
-    const gheUrl = requireGheUrl(extraData?._gheUrl);
+    const saved = tokens?.[GHE_SIGNIN_BINDING];
+    if (saved && (saved.issuer !== normalizeGheUrl(extraData?._gheUrl) || !isDeepStrictEqual(saved.proxyOptions || null, proxyOptions || null))) {
+      throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise sign-in identity or proxy changed; restart sign-in");
+    }
+    const binding = bind(extraData?._gheUrl, saved, proxyOptions);
     const [copilotToken, userInfo] = await Promise.all([
-    getJson(gheCopilotTokenUrl(gheUrl), tokens.access_token, proxyOptions),
-    getJson(`${gheUrl}/api/v3/user`, tokens.access_token, proxyOptions)]
+    getJson(binding, gheCopilotTokenUrl(binding.gheUrl), tokens.access_token),
+    getJson(binding, `${binding.gheUrl}/api/v3/user`, tokens.access_token)]
     );
-    return { gheUrl, copilotToken, userInfo };
+    let session = sessionFromExchange(binding, copilotToken);
+    let kind = "session";
+    if (!session.token && !copilotToken.token && !copilotToken.endpoints?.api && binding.host.endsWith(".ghe.com")) {
+      // OmniRoute's GHE.com fallback uses OAuth, not a minted session token.
+      // Only its issuer may receive that credential; no sibling-domain guess.
+      const user = await getJson(binding, `${binding.gheUrl}/api/v3/copilot_internal/user`, tokens.access_token);
+      const api = user.endpoints?.api;
+      if (!trustedGheEndpoints(binding, { api }).api || new URL(api).origin !== binding.gheUrl) {
+        throw new GheConnectionError("unsupported_ghe_oauth_peer", "GHE.com returned no session credential: cross-origin OAuth fallback is unsupported; no safe peer credential contract in pinned sources");
+      }
+      session = { token: tokens.access_token, expires_at: Math.floor(Date.now() / 1000) + Math.min(Number(tokens.expires_in) || 3600, 3600), endpoints: { api } };
+      kind = "issuer-oauth";
+    }
+    if (!session.token) throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: exchange returned no valid unexpired scoped credential");
+    if (kind === "session" && session.token === tokens.access_token) throw new GheConnectionError("oauth_forwarding_refused", "Session exchange returned the OAuth credential instead of a scoped token");
+    return {
+      gheUrl: binding.gheUrl, gheBinding: saved ? { ...saved } : undefined,
+      gheSession: session.token ? {
+        issuer: binding.gheUrl, clientId: binding.clientId,
+        apiOrigin: new URL(session.endpoints?.api || binding.gheUrl).origin,
+        kind, tokenHash: gheTokenHash(session.token)
+      } : undefined,
+      copilotToken: session, userInfo: pickGheUserInfo(userInfo)
+    };
   },
   mapTokens: (tokens, extra) => {
     const endpoints = extra?.copilotToken?.endpoints || {};
@@ -91,8 +156,9 @@ export default {
       email: extra?.userInfo?.email || null,
       providerSpecificData: {
         gheUrl: extra?.gheUrl,
-        copilotApiUrl: normalizeGheUrl(endpoints.api) ? endpoints.api : undefined,
-        copilotProxyUrl: normalizeGheUrl(endpoints.proxy) ? endpoints.proxy : undefined,
+        ...(extra?.gheBinding ? { gheBinding: extra.gheBinding, gheSession: extra.gheSession } : null),
+        copilotApiUrl: endpoints.api,
+        copilotProxyUrl: endpoints.proxy,
         copilotToken: extra?.copilotToken?.token,
         copilotTokenExpiresAt: extra?.copilotToken?.expires_at,
         githubUserId: extra?.userInfo?.id,
@@ -103,3 +169,5 @@ export default {
     };
   }
 };
+
+export default gheCopilot;

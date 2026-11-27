@@ -3,7 +3,7 @@ import { parseRateLimitEvidence } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getProviderErrorRuleMatch, resolveRuleMatchBody } from "../config/providerErrorRules.js";
 import { resolveFallbackModelScope } from "./fallbackScope.js";
-import { isAnthropicAccountCreditExhausted, isAnthropicCreditProvider } from "./anthropicAccountCredit.js";
+import { anthropicAccountCreditMessage, isAnthropicCreditProvider, parseAnthropicRegainAccessResetMs } from "./anthropicAccountCredit.js";
 import { parseClineTryAgainInMs } from "./accountFallback/clineTryAgainIn.js";
 
 /**
@@ -240,9 +240,17 @@ function classifyFallbackError({
   }
 
   // OmniRoute #21076: an exhausted Anthropic balance blocks every model on the key.
-  if (Number(status) === 400 && isAnthropicCreditProvider(provider) &&
-      isAnthropicAccountCreditExhausted(errorText, structuredError)) {
-    return { ...checkFallbackErrorByRules(status, "credit balance is too low", backoffLevel), scope: "connection" };
+  // OmniRoute PR #21440 adds the console spend cap ("You have reached your specified
+  // API usage limits"), whose "regain access on <date> at <time> UTC" is the pause end.
+  // Both are matched only inside Anthropic's own envelope, on Anthropic identities.
+  const anthropicCreditMessage = Number(status) === 400 && isAnthropicCreditProvider(provider) ?
+    anthropicAccountCreditMessage(errorText, structuredError) : null;
+  if (anthropicCreditMessage !== null) {
+    const now = Date.now();
+    const quotaResetAtMs = parseAnthropicRegainAccessResetMs(anthropicCreditMessage, now, MAX_RATE_LIMIT_COOLDOWN_MS);
+    const base = { ...checkFallbackErrorByRules(status, "credit balance is too low", backoffLevel), scope: "connection", creditsExhausted: true };
+    return quotaResetAtMs === null ? base :
+      { ...base, cooldownMs: quotaResetAtMs - now, newBackoffLevel: 0, quotaResetAtMs, retryHintSource: "body_iso_reset" };
   }
 
   // Port-pending guards are explicit feature-not-implemented errors; they should not

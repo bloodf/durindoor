@@ -1,4 +1,4 @@
-// Haiper native image and video adapters, staged and unregistered (#2034).
+// Haiper native image and video adapters, registered on haiper / hp (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (videoRegistry.ts / imageRegistryData.ts `haiper`,
@@ -88,16 +88,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing haiper entry unchanged", () => {
-    expect(getImageAdapter("haiper")).toBeNull();
-    expect(getVideoGenerationAdapter("haiper")).toBeNull();
-    expect(haiperRegistry.serviceKinds).toEqual([]);
-    expect(haiperRegistry.hiddenKinds).toEqual(["image", "video"]);
-    expect(haiperRegistry.models).toEqual([]);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers both adapters on haiper and hp and lists the typed gen2 rows", () => {
+    for (const id of ["haiper", "hp"]) {
+      expect(getImageAdapter(id)).toBe(haiperImageAdapter);
+      expect(getVideoGenerationAdapter(id)).toBe(haiperVideoAdapter);
+    }
+    expect(haiperRegistry.serviceKinds).toEqual(["image", "video"]);
+    expect(haiperRegistry.hiddenKinds).toBeUndefined();
+    expect(haiperRegistry.models).toEqual([
+      { id: "gen2", name: "Gen 2 Image", kind: "image" },
+      { id: "gen2", name: "Gen 2", kind: "video" },
+    ]);
+    expect(haiperRegistry.alias).toBe("hp");
+    expect(haiperRegistry.authType).toBe("apikey");
+    expect(haiperRegistry.transport.auth).toEqual({ combined: true, header: "HAIPER_KEY", scheme: "raw" });
+    expect(haiperRegistry.videoConfig).toBeUndefined();
   });
 });
 

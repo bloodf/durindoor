@@ -1,4 +1,4 @@
-// Leonardo.Ai native image and video adapters, staged and unregistered (#2034).
+// Leonardo.Ai native image and video adapters, registered on leonardo / leo (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (imageGeneration/providers/leonardo.ts, videoGeneration/
@@ -102,16 +102,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing leonardo entry unchanged", () => {
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers both adapters on leonardo and leo and keeps the existing entry", () => {
     for (const id of ["leonardo", "leo"]) {
-      expect(getImageAdapter(id)).toBeNull();
-      expect(getVideoGenerationAdapter(id)).toBeNull();
+      expect(getImageAdapter(id)).toBe(leonardoImageAdapter);
+      expect(getVideoGenerationAdapter(id)).toBe(leonardoVideoAdapter);
     }
-    expect(leonardoRegistry.serviceKinds).toEqual([]);
-    expect(leonardoRegistry.hiddenKinds).toEqual(["image"]);
+    expect(leonardoRegistry.serviceKinds).toEqual(["image", "video"]);
+    expect(leonardoRegistry.hiddenKinds).toBeUndefined();
+    expect(leonardoRegistry.models.map(({ id, kind }) => `${kind}:${id}`)).toEqual([
+      "image:phoenix", "image:sdxl", "video:motion-2.0", "video:motion-2.0-fast",
+    ]);
+    expect(leonardoRegistry.videoConfig).toBeUndefined();
     expect(leonardoRegistry.alias).toBe("leo");
     expect(leonardoRegistry.authType).toBe("apikey");
     expect(leonardoRegistry.imageConfig).toEqual({ baseUrl: API, authType: "apikey", authHeader: "bearer" });

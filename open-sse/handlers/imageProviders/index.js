@@ -1,3 +1,4 @@
+import { kieImageAdapter } from "../../services/providerParity/native-kie-video-image/index.js";
 import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // Image provider adapter registry
 import createOpenAIAdapter from "./openai.js";
@@ -24,9 +25,13 @@ import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
 import aihorde from "./aihorde.js";
 import { agnesImageAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
+import { haiperImageAdapter } from "../../services/providerParity/native-haiper-video-image/index.js";
+import { leonardoImageAdapter } from "../../services/providerParity/native-leonardo-video-image/index.js";
+import { deapiImageAdapter } from "../../services/providerParity/native-deapi-video-image/index.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
+  kie: kieImageAdapter,
   openai: createOpenAIAdapter("openai"),
   // Dedicated adapter (OmniRoute #7108): MiniMax image_generation is not
   // OpenAI-compatible (aspect_ratio request, data.image_urls response).
@@ -74,6 +79,15 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   // Native Agnes image generation on the existing `agnes` chat connection:
   // the selected key goes only to apihub.agnes-ai.com; `size` is required.
   agnes,
+  // Native submit-and-poll jobs on fixed origins with the selected key; result
+  // URLs only, never downloaded. Haiper sends its raw HAIPER_KEY header.
+  haiper: haiperImageAdapter,
+  hp: haiperImageAdapter,
+  leonardo: leonardoImageAdapter,
+  leo: leonardoImageAdapter,
+  // deAPI: one bounded OpenAI-shaped call on https://oai.deapi.ai with the
+  // selected key; public https result URLs or b64_json, no edits.
+  deapi: deapiImageAdapter,
 });
 
 export function getImageAdapter(provider) {

@@ -1,0 +1,57 @@
+{
+  "status": "staged",
+  "issue": "#2034",
+  "modules": {
+    "src/lib/oauth/providerParity/copilot/index.js": [
+      "decodeCopilotPollResponse"
+    ],
+    "src/lib/oauth/providerParity/copilot/gheConnection.js": [
+      "GITHUB_COPILOT_PUBLIC_API_HOSTS",
+      "GheConnectionError",
+      "bindGheConnection",
+      "isTrustedGheEndpoint",
+      "trustedGheEndpoints",
+      "resolveBoundGheApiBase",
+      "proxyTransport",
+      "globalFetchTransport",
+      "gheBoundFetch",
+      "pickGheDeviceResponse",
+      "pickGheUserInfo",
+      "decodeGheSessionToken",
+      "mintBoundGheSession",
+      "refreshBoundGheOAuth",
+      "refreshBoundGheCopilotCredentials",
+      "storedGheBinding",
+      "gheRequestContext",
+      "gheTokenHash"
+    ]
+  },
+  "productionWired": [
+    "src/lib/oauth/gheCopilotProvider.js: requestDeviceCode, pollToken and postExchange use bindGheConnection + gheBoundFetch(globalFetchTransport); postExchange keeps only trustedGheEndpoints",
+    "open-sse/executors/ghe-copilot.js: execute preflights gheRequestContext; boundRequestTransport and fetchProviderRequest guard actual chat/Messages/Responses dispatch; refreshCredentials uses refreshBoundGheCopilotCredentials"
+  ],
+  "integrationSlots": [
+    {
+      "callsite": "src/lib/oauth/providers.js:1312 github.pollToken",
+      "change": "Replace the JSON.parse/error_description fallback with decodeCopilotPollResponse(await response.text())."
+    },
+    {
+      "callsite": "open-sse/services/tokenRefresh.js:290 \"ghe-copilot\" refresh handler",
+      "change": "Call refreshBoundGheCopilotCredentials(c, log, p) instead of refreshGheCopilotCredentials(c, log, p). Surface reauthentication_needed and unsupported_ghe_oauth_peer; merge rotated gheSession/canonical API and token/expiry fields with the existing connection without replacing gheBinding."
+    },
+    {
+      "callsite": "src/app/api/providers/[id]/models/modelsConfig.js:674 \"ghe-copilot\" customResolver",
+      "change": "Use gheRequestContext(connectionCredentials, proxyOptions) before discovery; send only context.token to context.base + /models via gheBoundFetch(context.binding, ...). Never construct a binding from a caller API URL or substitute accessToken."
+    },
+    {
+      "callsite": "src/app/api/providers/[id]/test/testUtils.js:114 \"ghe-copilot\" connection probe",
+      "change": "Use storedGheBinding(connectionCredentials, proxyOptions, { refresh: true }) before the issuer /api/v3/user probe; send OAuth only to binding.gheUrl via gheBoundFetch. Surface reauthentication_needed. Never infer issuer/client from an API host."
+    }
+  ],
+  "notes": "Use within the existing OAuth provider object, flow ownership and connection storage. No new store, route or global outbound policy.",
+  "provenance": {
+    "cli": "dbe641f286a489ecb39e3c041c554371e6add864: internal/auth/copilot/client.go (public-only flow, four API hosts, no GHE authentication)",
+    "omni": "b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523: src/lib/oauth/providers/ghe-copilot.ts (GHE and OAuth fallback)",
+    "connection": "gheBinding issuer/clientId/proxyOptions; gheSession issuer/clientId/apiOrigin/kind/tokenHash. The poll's issuer/client/proxy reach postExchange in process on a non-enumerable token property; device extraData keeps only _gheUrl. No request-body trust override."
+  }
+}

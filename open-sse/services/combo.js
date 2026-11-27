@@ -17,6 +17,10 @@ import { isUnavailableNotice } from "../utils/unavailableNotice.js";
 import { resolveProviderId } from "../../src/shared/constants/providers.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { filterByContextRequirements, sortByContextSize, validateContextRequirementsMembers } from "./combo/contextRequirements.js";
+import { createAffinityRelease } from "./combo/affinity.js";
+import { normalizeStickyLimit, recordRoundRobinServed } from "./combo/rotation.js";
+import { updateComboModelScore } from "./combo/scoring.js";
+import { planComboModels } from "./combo/planning.js";
 import { resolveReasoningBufferedMaxTokens } from "./reasoningTokenBuffer.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
 import { ROLE, OPENAI_BLOCK } from "../translator/schema/index.js";
@@ -342,121 +346,17 @@ function taskWeight(level) {
   return TASK_LEVEL_WEIGHT[level] || TASK_LEVEL_WEIGHT.standard;
 }
 
-// Shared across module copies in one process; this state is not shared between processes.
-const comboRuntimeState = globalThis.__durindoorComboRuntime ??= {
-  rotation: new Map(),
-  weightedRotation: new Map(),
-  affinity: new Map(),
-  affinityScopeCounts: new Map(),
-  scoring: new Map(),
-};
+// Process-local runtime state, rotation, affinity and scoring live in
+// ./combo/*.js (#2266). Re-exported here for existing importers.
+export { comboConversationAffinity } from "./combo/affinity.js"; // test access to round-robin sticky pin state (#6733)
+export { getComboModelQuotaHealth, getSmartScoredModels, resetComboScoring } from "./combo/scoring.js";
+export { getRotatedModels, getWeightedModels, resetComboRotation } from "./combo/rotation.js";
 
-/**
- * Track rotation state per combo (for round-robin strategy)
- * @type {Map<string, { index: number, consecutiveUseCount: number }>}
- */
-const comboRotationState = comboRuntimeState.rotation;
-const comboWeightedRotationState = comboRuntimeState.weightedRotation;
-
-/**
- * Keep chat-like traffic on the same first model so provider-side prompt caches
- * keep hitting. New conversations still use round-robin for distribution.
- * @type {Map<string, { index: number, lastUsed: number }>}
- */
-const comboConversationAffinity = comboRuntimeState.affinity;
-export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
-const affinityScopeCounts = comboRuntimeState.affinityScopeCounts;
-const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
-const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
-/**
- * Smart Scoring: health score (0-100) per model per combo.
- * Persists only in memory (resets on server restart — intentional).
- * @type {Map<string, Map<string, { score: number, lastSuccessMs: number|null, lastErrorMs: number|null }>>}
- */
-const comboScoringState = comboRuntimeState.scoring;
-
-const SCORE_CFG = {
-  initial: 100,
-  max: 100,
-  min: 10,
-  onSuccess: 5,
-  onTransient: -10, // 5xx / timeout
-  onQuota: -30, // 429
-  onForbidden: -50, // 403 / 401 (banned / suspended)
-  recoveryPerMinute: 3 // passive recovery after errors
-};
-
-/** Get current effective score for a model (includes passive recovery). */
-function _getScore(comboName, modelStr) {
-  const state = comboScoringState.get(comboName)?.get(modelStr);
-  if (!state) return SCORE_CFG.initial;
-  if (state.lastErrorMs) {
-    const elapsedMin = (Date.now() - state.lastErrorMs) / 60000;
-    const recovered = state.score + elapsedMin * SCORE_CFG.recoveryPerMinute;
-    return Math.min(Math.max(recovered, SCORE_CFG.min), SCORE_CFG.max);
-  }
-  return state.score;
-}
-
-/** Map legacy smart-scoring evidence into the shared quota scorer's health band. */
-export function getComboModelQuotaHealth(comboName, modelStr) {
-  const score = _getScore(comboName, modelStr);
-  if (score <= 50) return "unhealthy";
-  if (score < 95) return "degraded";
-  return "healthy";
-}
-
-/** Update a model's score after a request attempt. */
-function _updateScore(comboName, modelStr, success, httpStatus) {
-  if (!comboScoringState.has(comboName)) comboScoringState.set(comboName, new Map());
-  const scores = comboScoringState.get(comboName);
-  const current = _getScore(comboName, modelStr);
-  const existing = scores.get(modelStr);
-  const now = Date.now();
-  let delta;
-  if (success) {
-    delta = SCORE_CFG.onSuccess;
-  } else if (httpStatus === 403 || httpStatus === 401) {
-    delta = SCORE_CFG.onForbidden;
-  } else if (httpStatus === 429 || httpStatus === 402) {
-    delta = SCORE_CFG.onQuota;
-  } else {
-    delta = SCORE_CFG.onTransient;
-  }
-  scores.set(modelStr, {
-    score: Math.min(Math.max(current + delta, SCORE_CFG.min), SCORE_CFG.max),
-    lastSuccessMs: success ? now : existing?.lastSuccessMs ?? null,
-    lastErrorMs: success ? existing?.lastErrorMs ?? null : now
-  });
-}
-
-/**
- * Return models sorted for Smart Scoring:
- * - Primary: score descending (healthier models first)
- * - Tie-break: LRU (least recently succeeded first) → natural round-robin when all healthy
- */
 function getCapabilitiesForModelByModelStr(modelStr) {
   const slash = isString(modelStr) ? modelStr.indexOf("/") : -1;
   const provider = slash > 0 ? modelStr.slice(0, slash) : "";
   const model = slash > 0 ? modelStr.slice(slash + 1) : modelStr;
   return getCapabilitiesForModel(provider, model);
-}
-
-export function getSmartScoredModels(models, comboName) {
-  if (!models || models.length <= 1) return models;
-  const scores = comboScoringState.get(comboName);
-  return [...models].
-  map((m) => ({
-    m,
-    score: _getScore(comboName, m),
-    lastSuccessMs: scores?.get(m)?.lastSuccessMs ?? 0
-  })).
-  sort((a, b) => {
-    const diff = b.score - a.score;
-    if (Math.abs(diff) >= 5) return diff; // significant score gap → sort by score
-    return a.lastSuccessMs - b.lastSuccessMs; // equal scores → LRU (round-robin)
-  }).
-  map((x) => x.m);
 }
 
 // Trailing run of items after the last assistant/model turn = the current user
@@ -707,108 +607,6 @@ async function classifyTaskLevelWithJev(body, log, signal, backend = null) {
   const level = JEV_TIER_TO_TASK_LEVEL[classified.tier];
   if (!level) return null;
   return { level, tier: classified.tier, confidence: classified.confidence, source: classified.source || "jev" };
-}
-
-function isTaskRoutingStrategy(strategy) {
-  return ["smart", "task", "task-aware", "task_aware", "auto"].includes(String(strategy || "").toLowerCase());
-}
-
-function normalizeStickyLimit(stickyLimit) {
-  const parsed = Number.parseInt(stickyLimit, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-function rotateModelsFromIndex(models, currentIndex) {
-  const rotatedModels = [...models];
-  for (let i = 0; i < currentIndex; i++) {
-    const moved = rotatedModels.shift();
-    rotatedModels.push(moved);
-  }
-  return rotatedModels;
-}
-
-function getRotationState(rotationKey) {
-  const existingState = comboRotationState.get(rotationKey);
-  return isNumber(existingState) ?
-  { index: existingState, consecutiveUseCount: 0 } :
-  existingState || { index: 0, consecutiveUseCount: 0 };
-}
-
-function advanceRotationState(rotationKey, currentIndex, modelCount, normalizedStickyLimit, consecutiveUseCount) {
-  const nextUseCount = consecutiveUseCount + 1;
-
-  if (nextUseCount >= normalizedStickyLimit) {
-    comboRotationState.set(rotationKey, {
-      index: (currentIndex + 1) % modelCount,
-      consecutiveUseCount: 0
-    });
-  } else {
-    comboRotationState.set(rotationKey, {
-      index: currentIndex,
-      consecutiveUseCount: nextUseCount
-    });
-  }
-}
-
-function advanceRoundRobinPointerPastServedModel(models, comboName, comboStickyLimit, servedModel) {
-  if (!Array.isArray(models) || models.length <= 1 || !servedModel) return;
-  const servedIndex = models.indexOf(servedModel);
-  if (servedIndex < 0) return;
-  const sticky = normalizeStickyLimit(comboStickyLimit);
-  if (sticky > 1) {
-    // For sticky round-robin, pin the served model as the current rotation
-    // and start its sticky counter so subsequent requests continue from it.
-    comboRotationState.set(comboName || "__default__", {
-      index: servedIndex,
-      consecutiveUseCount: 1
-    });
-  } else {
-    comboRotationState.set(comboName || "__default__", {
-      index: (servedIndex + 1) % models.length,
-      consecutiveUseCount: 0
-    });
-  }
-}
-
-// Each caller has its own LRU budget; local callers share the legacy scope.
-function affinityKeyFor(rotationKey, conversationKey, apiKeyId) {
-  return apiKeyId ? `${rotationKey}:${conversationKey}:key:${JSON.stringify(apiKeyId)}` : `${rotationKey}:${conversationKey}`;
-}
-
-// Keep per-caller counts so ordinary insertions do not scan the affinity map.
-function deleteConversationAffinity(key) {
-  const entry = comboConversationAffinity.get(key);
-  if (!entry) return;
-  const scope = entry.scope || null;
-  const count = affinityScopeCounts.get(scope) || 0;
-  if (count <= 1) affinityScopeCounts.delete(scope);
-  else affinityScopeCounts.set(scope, count - 1);
-  comboConversationAffinity.delete(key);
-}
-
-function setConversationAffinity(key, entry) {
-  deleteConversationAffinity(key);
-  const scope = entry.scope || null;
-  affinityScopeCounts.set(scope, (affinityScopeCounts.get(scope) || 0) + 1);
-  comboConversationAffinity.set(key, entry);
-}
-
-function pruneConversationAffinity(scope, now = Date.now()) {
-  let count = 0;
-  for (const [key, value] of comboConversationAffinity) {
-    if (!value || now - value.lastUsed > CONVERSATION_AFFINITY_TTL_MS) {
-      deleteConversationAffinity(key);
-    } else if ((value.scope || null) === scope) {
-      count++;
-    }
-  }
-  for (const [key, value] of comboConversationAffinity) {
-    if (count < MAX_CONVERSATION_AFFINITY_ENTRIES) break;
-    if ((value.scope || null) === scope) {
-      deleteConversationAffinity(key);
-      count--;
-    }
-  }
 }
 
 function normalizeFingerprintText(value, maxChars = 12000) {
@@ -1209,126 +1007,6 @@ export function getConversationCacheKey(body) {
   return hashConversationSeed(`${promptFingerprint}\n${toolFingerprint}`, 12000 + 1 + toolFingerprint.length);
 }
 
-// Efraimidis-Spirakis weighted random permutation. Every member remains in the
-// fallback list, so a terminal 400 still returns immediately through the normal
-// `checkFallbackError` branch; weight changes selection only, never eligibility.
-// Weight-0 members keep fallback eligibility but always sort after positive-weight
-// members so they are never picked first when a positive-weight member exists.
-export function getWeightedModels(models, members = [], random = Math.random) {
-  if (!Array.isArray(models) || models.length < 2) return models;
-  const remaining = Array.isArray(members) ? [...members] : [];
-  return models.map((model, index) => {
-    const memberIndex = remaining.findIndex((member) => member?.id === model);
-    const value = memberIndex < 0 ? 1 : remaining.splice(memberIndex, 1)[0]?.weight;
-    const weight = Number.isFinite(value) && value >= 0 ? value : 1;
-    const key = weight > 0 ? Math.pow(random(), 1 / weight) : -1;
-    return { model, index, weight, key };
-  }).sort((a, b) => (b.weight > 0) - (a.weight > 0) || b.key - a.key || a.index - b.index).map(({ model }) => model);
-}
-
-/**
- * Get rotated model list based on strategy
- * @param {string[]} models - Array of model strings
- * @param {string} comboName - Name of the combo
- * @param {string} strategy - "fallback", "round-robin", or "weighted"
- * @param {number|string} [stickyLimit=1] - Requests per combo model before switching
- * @param {string|null} [conversationCacheKey=null] - Stable key used to keep a conversation on one model
- * @param {{id: string, weight: number}[]} [members=[]] - Persisted weights for weighted selection
- * @param {string|null} [apiKeyId=null] - Isolates conversation pins and their LRU budget
- * @returns {string[]} Rotated models array
- */
-export function getRotatedModels(models, comboName, strategy, stickyLimit = 1, conversationCacheKey = null, members = [], apiKeyId = null) {
-  if (strategy === "weighted") return getWeightedModels(models, members);
-  if (!models || models.length <= 1 || strategy !== "round-robin") {
-    return models;
-  }
-
-  // Match member occurrences so duplicate model entries retain their weights.
-  const remaining = Array.isArray(members) ? [...members] : [];
-  const weights = models.map((model) => {
-    const index = remaining.findIndex((member) => member?.id === model);
-    const value = index < 0 ? 1 : remaining.splice(index, 1)[0].weight;
-    return Number.isFinite(value) && value >= 0 ? value : 1;
-  });
-  if (weights.some((weight) => weight > 0) && weights.some((weight) => weight !== weights[0])) {
-    const key = comboName || "__default__";
-    const signature = JSON.stringify([models, weights]);
-    let state = comboWeightedRotationState.get(key);
-    if (!state || state.signature !== signature) state = { signature, current: weights.map(() => 0), head: -1, count: 0 };
-    if (state.head < 0 || state.count >= normalizeStickyLimit(stickyLimit)) {
-      weights.forEach((weight, i) => { state.current[i] += weight; });
-      state.head = weights.findIndex((weight) => weight > 0);
-      weights.forEach((weight, i) => { if (weight > 0 && state.current[i] > state.current[state.head]) state.head = i; });
-      state.current[state.head] -= weights.reduce((sum, weight) => sum + weight, 0);
-      state.count = 0;
-    }
-    state.count++;
-    comboWeightedRotationState.set(key, state);
-    const order = models.map((model, i) => ({ model, i }));
-    order.sort((a, b) => (a.i === state.head ? -1 : b.i === state.head ? 1 :
-      (weights[b.i] > 0) - (weights[a.i] > 0) || (state.current[b.i] + weights[b.i]) - (state.current[a.i] + weights[a.i]) || a.i - b.i));
-    return order.map(({ model }) => model);
-  }
-  comboWeightedRotationState.delete(comboName || "__default__");
-
-  const rotationKey = comboName || "__default__";
-  const normalizedStickyLimit = normalizeStickyLimit(stickyLimit);
-  const state = getRotationState(rotationKey);
-
-  const currentIndex = state.index % models.length;
-  // stickyLimit=1 means pure per-request round robin. Conversation affinity is
-  // only active when sticky rotation is explicitly configured above 1.
-  if (normalizedStickyLimit > 1 && conversationCacheKey) {
-    const now = Date.now();
-    const affinityKey = affinityKeyFor(rotationKey, conversationCacheKey, apiKeyId);
-    const affinity = comboConversationAffinity.get(affinityKey);
-    if (affinity && now - affinity.lastUsed <= CONVERSATION_AFFINITY_TTL_MS) {
-      const pinnedIndex = affinity.index % models.length;
-      setConversationAffinity(affinityKey, { index: pinnedIndex, lastUsed: now, scope: apiKeyId });
-      return rotateModelsFromIndex(models, pinnedIndex);
-    }
-
-    if (!affinity && (affinityScopeCounts.get(apiKeyId || null) || 0) >= MAX_CONVERSATION_AFFINITY_ENTRIES) {
-      pruneConversationAffinity(apiKeyId || null, now);
-    }
-    setConversationAffinity(affinityKey, { index: currentIndex, lastUsed: now, scope: apiKeyId });
-  }
-
-  const rotatedModels = rotateModelsFromIndex(models, currentIndex);
-  advanceRotationState(rotationKey, currentIndex, models.length, normalizedStickyLimit, state.consecutiveUseCount);
-
-  return rotatedModels;
-}
-
-/**
- * Reset in-memory rotation state when combo/settings change
- * @param {string} [comboName] - Combo name to reset; omit to clear all
- */
-export function resetComboRotation(comboName) {
-  if (comboName) {
-    comboWeightedRotationState.delete(comboName);
-    comboRotationState.delete(comboName);
-    const prefix = `${comboName}:`;
-    for (const key of comboConversationAffinity.keys()) {
-      if (key.startsWith(prefix)) deleteConversationAffinity(key);
-    }
-  } else {
-    comboWeightedRotationState.clear();
-    comboRotationState.clear();
-    comboConversationAffinity.clear();
-    affinityScopeCounts.clear();
-  }
-}
-
-/**
- * Reset Smart Scoring state when combo/settings change
- * @param {string} [comboName] - Combo name to reset; omit to clear all
- */
-export function resetComboScoring(comboName) {
-  if (comboName) comboScoringState.delete(comboName);else
-  comboScoringState.clear();
-}
-
 /**
  * Get combo models from combos data. `auto/<family>` resolves BEFORE the slash
  * guard and the combos-data lookup: a recognized auto id always returns an array
@@ -1513,6 +1191,45 @@ async function isBodyEmpty(response) {
   return false;
 }
 
+// Task-aware reordering for smart/task strategies. Optional Jev upgrade: when
+// configured, the judged tier replaces the keyword/size heuristic level.
+// Fail-open, so an unconfigured, slow, broken or unsure classifier leaves the
+// heuristic level in place.
+async function reorderForTask(models, { body, required, log, signal, jevClassify, decisionBackend, capabilitiesMap }) {
+  let task = classifyTask(body);
+  const backend = jevClassify && isFunction(decisionBackend) ? await decisionBackend().catch(() => null) : null;
+  const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal, backend) : null;
+  if (judged && judged.level !== task.level) {
+    task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`${judged.source}:${judged.tier}`] };
+  }
+  const reordered = reorderByTaskWeight(models, task, required, capabilitiesMap);
+  if (reordered[0] !== models[0]) {
+    const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";
+    log.info("COMBO", `smart-route task=${task.level}${reasons} → ${reordered[0]}`);
+  }
+  return reordered;
+}
+
+// Request-content helpers the planner needs; see combo/planning.js.
+const PLANNING_HELPERS = Object.freeze({
+  getConversationCacheKey,
+  detectRequiredCapabilities,
+  detectToolOutputCapabilities,
+  getFusionRequiredInput,
+  reorderByCapabilities,
+  filterByInputCapabilities,
+  reorderForTask
+});
+
+/**
+ * Build the ordered attempt plan for a combo request without dispatching.
+ * Same pipeline and state updates as handleComboChat; exposed for diagnostics
+ * and tests.
+ */
+export async function planComboRequest(options) {
+  return planComboModels(options, PLANNING_HELPERS);
+}
+
 export async function handleComboChat({
   body,
   models,
@@ -1546,139 +1263,17 @@ export async function handleComboChat({
     { status: 499, headers: { "Content-Type": "application/json" } }
   );
   if (signal?.aborted) return abortedResponse();
-  // #6546 (#6458): fail fast on an empty pool instead of looping zero times and
-  // leaking a generic "all models failed" after the fact.
-  if (!Array.isArray(models) || models.length === 0) {
-    const msg = `Combo "${comboName}" has no models`;
-    log.warn("COMBO", msg);
-    return new Response(
-      JSON.stringify({ error: { message: msg } }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
-    );
-  }
 
-  // Context-requirements ELIGIBILITY filter runs BEFORE rotation/scoring so the
-  // round-robin pointer, sticky rotation, smart-scoring, and conversation-affinity
-  // state are all computed over the ELIGIBLE pool. Filtering only after rotation
-  // would let the pointer land on an excluded member and skew the survivor
-  // sequence. `activeModels` is used for rotation AND every downstream pool
-  // reference (pointer, affinity release) so they share the SAME eligible set.
-  // Same reference when no requirement is configured, leaving fallback order intact.
-  const memberCheck = validateContextRequirementsMembers(models, contextRequirements);
-  if (!memberCheck.ok) {
-    log.warn("COMBO", memberCheck.message);
-    return new Response(
-      JSON.stringify({ error: { message: memberCheck.message } }),
-      { status: memberCheck.status, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const activeModels = filterByContextRequirements(models, contextRequirements, log, capabilitiesMap);
-  if (!Array.isArray(activeModels) || activeModels.length === 0) {
-    const msg = `Combo "${comboName}" has no models matching context requirements`;
-    log.warn("COMBO", msg);
-    return new Response(
-      JSON.stringify({ error: { message: msg } }),
-      { status: 503, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  // Apply rotation/scoring strategy
-  const conversationCacheKey = getConversationCacheKey(body);
-  let rotatedModels;
-  if (comboStrategy === "smart-scoring") {
-    rotatedModels = getSmartScoredModels(activeModels, comboName);
-  } else {
-    rotatedModels = getRotatedModels(activeModels, comboName, comboStrategy, comboStickyLimit, conversationCacheKey, comboMembers, apiKeyId);
-  }
-
-  // Context-requirements preferLargeContext SORT runs BEFORE capability-aware
-  // reordering (auto-switch) and task-aware reordering. Putting it here keeps
-  // the eligibility filter before rotation, lets preferLargeContext influence
-  // dispatch order, and still leaves hard-capability-aware auto-switch to push
-  // vision/audio models to the front when the request needs them. Same reference
-  // when off.
-  rotatedModels = sortByContextSize(rotatedModels, contextRequirements, log, capabilitiesMap);
-
-  // Required request capabilities hoisted so both the capability reorder and
-  // (for task strategies) the task reorder can use the same set.
-  const required = autoSwitch ? detectRequiredCapabilities(body) : new Set();
-
-  // Auto-switch satisfies request capabilities only. It must not override the
-  // explicit Fallback/Round Robin order for plain text requests.
-  if (autoSwitch) {
-    if (required.size > 0) {
-      const reordered = reorderByCapabilities(rotatedModels, required, capabilitiesMap);
-      if (reordered[0] !== rotatedModels[0]) {
-        log.info("COMBO", `auto-switch for [${[...required].join(",")}] → ${reordered[0]}`);
-      }
-      rotatedModels = reordered;
-    }
-  }
-  // Fusion requirements survive nested routing even when the nested router's
-  // own auto-switch is off. Ordinary fallback keeps its tool-only admission.
-  const toolOutputMedia = autoSwitch ? detectToolOutputCapabilities(body) : new Set();
-  const inputMedia = [...new Set([
-    ...getFusionRequiredInput(body),
-    ...toolOutputMedia
-  ])];
-  if (inputMedia.length > 0) {
-    const capable = filterByInputCapabilities(rotatedModels, inputMedia, capabilitiesMap);
-    if (capable.length === 0) {
-      const inputSource = getFusionRequiredInput(body).length > 0 ? "required input" : "input returned by a tool";
-      const msg = `Combo "${comboName}" has no member that supports [${inputMedia.join(",")}] ${inputSource}`;
-      log.warn("COMBO", msg);
-      return new Response(
-        JSON.stringify({ error: { message: msg, type: "invalid_request_error", code: "capability_unavailable" } }),
-        { status: HTTP_STATUS.BAD_REQUEST, headers: { "Content-Type": "application/json" } }
-      );
-    }
-    rotatedModels = capable;
-  }
-
-  // Task-aware reordering (smart/task strategies) runs after context sort.
-  if (autoSwitch && isTaskRoutingStrategy(comboStrategy)) {
-    let task = classifyTask(body);
-    // Optional Jev upgrade: when TYPESAFE_API_KEY is configured the judged tier
-    // replaces the keyword/size heuristic level. Fail-open, so an unconfigured,
-    // slow, broken or unsure classifier leaves the heuristic level in place.
-    const backend = jevClassify && isFunction(decisionBackend) ? await decisionBackend().catch(() => null) : null;
-    const judged = jevClassify ? await classifyTaskLevelWithJev(body, log, signal, backend) : null;
-    if (judged && judged.level !== task.level) {
-      task = { ...task, level: judged.level, weight: taskWeight(judged.level), reasons: [`${judged.source}:${judged.tier}`] };
-    }
-    const taskReordered = reorderByTaskWeight(rotatedModels, task, required, capabilitiesMap);
-    if (taskReordered[0] !== rotatedModels[0]) {
-      const reasons = Array.isArray(task.reasons) && task.reasons.length ? ` (${task.reasons.join(", ")})` : "";
-      log.info("COMBO", `smart-route task=${task.level}${reasons} → ${taskReordered[0]}`);
-    }
-    rotatedModels = taskReordered;
-  }
-
-  // Weighted strategy: the ranker always re-orders by `index`, which would
-  // collapse the weight-driven permutation on every chat call. Skip reordering
-  // so the weighted first pick survives the full dispatch pipeline.
-  if (isFunction(quotaRanker) && comboStrategy !== "weighted" && !(comboStrategy === "round-robin" && comboWeightedRotationState.has(comboName || "__default__"))) {
-    try {
-      const quotaOrdered = await quotaRanker(rotatedModels);
-      if (Array.isArray(quotaOrdered) && quotaOrdered.length === rotatedModels.length) {
-        rotatedModels = quotaOrdered;
-      }
-    } catch {
-
-
-      // Quota diagnostics are fail-open for unknown/repository errors; account
-      // selection still applies the authoritative atomic capacity gate.
-    }}
-  // Stable partition after strategy and quota ordering, including weighted picks.
-  if (isFunction(lockRanker)) {
-    try {
-      const ordered = await lockRanker(rotatedModels);
-      if (Array.isArray(ordered) && ordered.length === rotatedModels.length) rotatedModels = ordered;
-    } catch {
-      // Credential selection remains authoritative if inspection fails.
-    }
-  }
+  let plan = planComboModels({
+    body, models, log, comboName, comboStrategy, comboStickyLimit, apiKeyId, autoSwitch,
+    jevClassify, decisionBackend, quotaRanker, lockRanker, signal, contextRequirements,
+    capabilitiesMap, comboMembers
+  }, PLANNING_HELPERS);
+  // Await only when an async planning step ran, so dispatch timing is unchanged.
+  if (plan instanceof Promise) plan = await plan;
+  if (!plan.ok) return plan.response;
+  const { activeModels, conversationCacheKey, toolOutputMedia } = plan;
+  const rotatedModels = plan.models;
 
   let lastError = null;
   let earliestRetryAfter = null;
@@ -1699,29 +1294,16 @@ export async function handleComboChat({
   let requestScopedResult = null;
   let localPolicyRejections = 0;
 
-  // #6733: release the round-robin conversation-affinity pin when the
-  // affinity-pinned FIRST member fails. Affinity only exists when the sticky
-  // limit keeps >1 request on the same model, and the key is exactly
-  // the caller-scoped key from getRotatedModels. Release only when i===0
-  // (the pinned first member) AND
-  // the stored index still maps to the failed model — guards against a race
-  // that re-pointed the entry to a different member. Idempotent per request.
-  const stickyLimit = normalizeStickyLimit(comboStickyLimit);
-  const rrRotationKey = comboName || "__default__";
-  const rrAffinityKey =
-  comboStrategy === "round-robin" && stickyLimit > 1 && conversationCacheKey ?
-  affinityKeyFor(rrRotationKey, conversationCacheKey, apiKeyId) :
-  null;
-  let affinityReleased = false;
-  const releaseFailedAffinity = (failedModelStr, idx) => {
-    if (affinityReleased || !rrAffinityKey) return;
-    if (idx !== 0) return;
-    const pinned = comboConversationAffinity.get(rrAffinityKey);
-    if (pinned && activeModels[pinned.index % activeModels.length] === failedModelStr) {
-      deleteConversationAffinity(rrAffinityKey);
-    }
-    affinityReleased = true;
-  };
+  // #6733: release the round-robin conversation-affinity pin when the pinned
+  // first member fails (see createAffinityRelease).
+  const releaseFailedAffinity = createAffinityRelease({
+    strategy: comboStrategy,
+    stickyLimit: normalizeStickyLimit(comboStickyLimit),
+    comboName,
+    conversationCacheKey,
+    apiKeyId,
+    activeModels
+  });
 
   const dispatch = toolOutputMedia.has("vision") ?
     (attemptBody, model, attemptSignal) => handleSingleModel(attemptBody, model, attemptSignal, { reportComboPolicyRejections: true }) :
@@ -1758,6 +1340,12 @@ export async function handleComboChat({
         }
         let timeoutTimer = null;
         try {
+          // MiniMax may already have accepted the POST. Await its cancellation
+          // receipt instead of racing into a second model after the deadline.
+          if (["minimax-code", "mmcode"].includes(splitModelString(modelStr).provider)) {
+            timeoutTimer = setTimeout(() => attemptController.abort(), comboTimeoutMs);
+            return await dispatch(attemptBody, modelStr, attemptSignal);
+          }
           return await Promise.race([
             dispatch(attemptBody, modelStr, attemptSignal),
             new Promise((_, reject) => {
@@ -1776,6 +1364,11 @@ export async function handleComboChat({
       };
 
       const result = await runAttempt();
+
+      if (result.upstreamPartialOutput === true) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
+      }
 
       // A timed-out attempt may return a 499 Response; treat it as a deadline miss
       // rather than a genuine failure and fall back to the next model.
@@ -1804,7 +1397,7 @@ export async function handleComboChat({
             log.warn("COMBO", `Model ${modelStr} returned 200 with a non-fallback error`);
             return result;
           }
-          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+          if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, false, result.status);
           releaseFailedAffinity(modelStr, i);
           // A 200 has no error status of its own; 503 keeps status and message paired (decolua/9router#4823).
           recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, upstreamError);
@@ -1815,7 +1408,7 @@ export async function handleComboChat({
         // OmniRoute #21066: a 200 saying the model is gone is a failed member.
         const failOverNotice = (notice, status = HTTP_STATUS.GONE, kind = "an unavailable") => {
           const message = sanitizeErrorMessage(notice).slice(0, 300);
-          if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, status);
+          if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, false, status);
           releaseFailedAffinity(modelStr, i);
           recordFailure(status, message);
           log.warn("COMBO", `Model ${modelStr} answered 200 with ${kind} notice, trying next`);
@@ -1863,7 +1456,7 @@ export async function handleComboChat({
               );
             }
             if (comboStrategy === "smart-scoring" && !requestScoped) {
-              _updateScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
+              updateComboModelScore(comboName, modelStr, false, HTTP_STATUS.SERVICE_UNAVAILABLE);
             }
             releaseFailedAffinity(modelStr, i);
             recordFailure(HTTP_STATUS.SERVICE_UNAVAILABLE, "Provider returned an empty stream");
@@ -1888,7 +1481,7 @@ export async function handleComboChat({
             continue;
           }
           if (!retryResult.ok || await isBodyEmpty(retryResult)) {
-            if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
+            if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, false, HTTP_STATUS.BAD_GATEWAY);
             releaseFailedAffinity(modelStr, i);
             recordFailure(HTTP_STATUS.BAD_GATEWAY, "Provider returned empty content");
             log.warn("COMBO", `Model ${modelStr} still empty after retry, falling to next`);
@@ -1897,12 +1490,9 @@ export async function handleComboChat({
           successfulResult = retryResult;
         }
 
-        if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, true, null);
+        if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, true, null);
         if (comboStrategy === "round-robin") {
-          const actuallyRotated = modelStr !== rotatedModels[0];
-          if (actuallyRotated && !comboWeightedRotationState.has(comboName || "__default__")) {
-            advanceRoundRobinPointerPastServedModel(activeModels, comboName, comboStickyLimit, modelStr);
-          }
+          recordRoundRobinServed({ models: activeModels, rotatedModels, comboName, stickyLimit: comboStickyLimit, servedModel: modelStr });
         }
         log.info("COMBO", `Model ${modelStr} succeeded · ATTEMPT ${i + 1}/${rotatedModels.length}`);
         return jevClassify ? withRouteResponseHeaders(successfulResult, { combo: comboName, attempts: i + 1 }) : successfulResult;
@@ -2001,7 +1591,7 @@ export async function handleComboChat({
       }
 
       if (!shouldFallback) {
-        if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+        if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, false, result.status);
         log.warn("COMBO", `Model ${modelStr} failed (no fallback)`, { status: result.status });
         return result;
       }
@@ -2016,7 +1606,7 @@ export async function handleComboChat({
         }
       }
 
-      if (comboStrategy === "smart-scoring") _updateScore(comboName, modelStr, false, result.status);
+      if (comboStrategy === "smart-scoring") updateComboModelScore(comboName, modelStr, false, result.status);
 
       // Transient failures fall through immediately; the next member may be healthy.
       // Fallback to next model

@@ -1,19 +1,28 @@
 // Per-account Clerk session controller for staged UC consumer connections.
 // Port of OmniRoute c71f0065 open-sse/executors/uc/clerkAuth.ts:
 //
-//   mint:  POST /v1/client/sessions/{sid}/tokens  -> { jwt } (source also reads `token`)
-//   touch: POST /v1/client/sessions/{sid}/touch   -> { response: { id, status, expire_at }, client }
+//   mint (clerkAuth.ts:89-154):
+//     POST /v1/client/sessions/{sid}/tokens?_clerk_js_version=5.127.1   (empty body)
+//     -> 200 { object: "token", jwt }   (the source also reads a top-level `token`)
+//     Set-Cookie may rotate cookies; they are handed back for the same account.
+//   A 401/403 means the durable login is invalid: re-login (clerkAuth.ts:85-87).
+//   Cache: per session, re-mint 8 s before `exp` (constants.ts:35-36,
+//   clerkAuth.ts:156-180).
 //
-// Both carry only the selected connection's cookie jar. A rotated `__client`
-// from Set-Cookie is handed back as that connection's metadata patch; it is
-// never kept in a shared jar.
+// The source has no session touch call, so none is made here.
+//
+// Session JWT claims the source documents: a 60 s RS256 JWT with
+// `iss: clerk.uncensored.com`, `exp - iat = 60` (clerkAuth.ts:4-6) and a `uid`
+// claim equal to the account uid (credentials.ts:12-15, uidFromSessionJwt at
+// credentials.ts:62-66). The source never requires `uid` to be present.
 //
 // Fork deviations: the token cache lives inside one controller instance, is
 // keyed by uid, sid and a digest of the durable cookie (so two accounts, or one
 // account after a cookie rotation, never share an entry), holds only the JWT
-// and its expiry, is capped in size, and refreshes a bounded skew before
-// `exp`. A JWT whose `uid` claim names another account is refused. A revoked or
-// ended session evicts the cache and answers `reauth`; nothing retries it.
+// and its expiry, and is capped in size. A JWT whose `uid` claim names another
+// account, or whose Clerk `sid` claim names another session, is refused; an
+// absent claim is not a refusal. A revoked or ended session evicts the cache
+// and answers `reauth`; nothing retries it.
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
@@ -32,11 +41,10 @@ import {
   UC_SIGNIN_MESSAGES,
   isUcConsumerSignInEnabled,
 } from "./config.js";
-import { clerkErrorCode, clerkResource, ucClerkPost } from "./transport.js";
+import { clerkErrorCode, ucClerkPost } from "./transport.js";
 
 const SESSION_JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const REVOKED_CODES = new Set(["authentication_invalid", "session_not_found", "session_revoked", "session_ended", "resource_not_found", "signed_out"]);
-const LIVE_SESSION_STATUSES = new Set(["active"]);
 
 /** Failure result with its fixed message and dashboard status. */
 export function ucFailure(kind, extra = {}) {
@@ -46,19 +54,25 @@ export function ucFailure(kind, extra = {}) {
 export const clampRefreshSkew = (value) =>
   Math.min(UC_REFRESH_SKEW_MAX_MS, Math.max(UC_REFRESH_SKEW_MIN_MS, isNumber(value) && Number.isFinite(value) ? value : UC_REFRESH_SKEW_DEFAULT_MS));
 
-/** `exp` claim of a session JWT in milliseconds (unverified decode), or null. */
-export function expFromSessionJwt(jwt) {
+/** Claims of a session JWT (unverified decode, like the source's decodeJwtClaims), or null. */
+export function sessionJwtClaims(jwt) {
   try {
     const claims = JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString("utf8"));
-    return isRecord(claims) && isNumber(claims.exp) && Number.isFinite(claims.exp) ? claims.exp * 1000 : null;
+    return isRecord(claims) ? claims : null;
   } catch {
     return null;
   }
 }
 
+/** `exp` claim of a session JWT in milliseconds (unverified decode), or null. */
+export function expFromSessionJwt(jwt) {
+  const claims = sessionJwtClaims(jwt);
+  return claims && isNumber(claims.exp) && Number.isFinite(claims.exp) ? claims.exp * 1000 : null;
+}
+
+// Top-level `jwt`, else top-level `token` (clerkAuth.ts:128-131). Nothing else.
 const jwtFrom = (body) => {
-  const resource = clerkResource(body);
-  const candidate = isString(body?.jwt) ? body.jwt : isString(body?.token) ? body.token : isString(resource?.jwt) ? resource.jwt : "";
+  const candidate = isString(body?.jwt) ? body.jwt : isString(body?.token) ? body.token : "";
   return candidate && candidate.length <= UC_MAX_JWT_LENGTH && SESSION_JWT.test(candidate) ? candidate : null;
 };
 
@@ -66,8 +80,8 @@ const jwtFrom = (body) => {
 function sessionFailure(answer) {
   if (!answer.ok) return ucFailure(answer.kind, answer.status ? { status: answer.status } : {});
   const code = clerkErrorCode(answer.body);
-  if (answer.status === 401 || answer.status === 404 || (code && REVOKED_CODES.has(code))) return ucFailure("reauth", { status: answer.status });
-  if (answer.status === 403) return ucFailure("needs_operator", { reason: "challenge", status: answer.status });
+  // clerkAuth.ts:85-87: 401/403 = the durable login is invalid -> re-login.
+  if (answer.status === 401 || answer.status === 403 || answer.status === 404 || (code && REVOKED_CODES.has(code))) return ucFailure("reauth", { status: answer.status });
   if (answer.status === 429) return ucFailure("rate_limited", { status: 429, retryAfter: answer.retryAfter });
   return ucFailure("upstream", { status: answer.status });
 }
@@ -84,29 +98,23 @@ export function mergeCookies(jar, patch) {
 
 /**
  * Mint one session JWT for one account. Never throws.
- *   { ok: true, jwt, expiresAt, cookies }   `cookies` is the account's jar after Set-Cookie
+ *   { ok: true, jwt, uid, expiresAt, cookies }   `cookies` is the account's jar after Set-Cookie;
+ *                                                `uid` is the JWT `uid` claim, null when absent
  *   failure result (see ucFailure)
- * `expectedUid` null skips the identity check (first mint after sign-in).
+ * A `uid` claim that names another account than `expectedUid`, or a `sid`
+ * claim that names another session than `sid`, answers `identity`. An absent
+ * claim is accepted, as in the source and the staged TTS mint.
  */
 export async function mintUcSession(fetchImpl, { sid, cookies, expectedUid }, { signal, timeoutMs = UC_REQUEST_TIMEOUT_MS } = {}) {
-  const answer = await ucClerkPost(fetchImpl, `/v1/client/sessions/${sid}/tokens`, { cookies, signal, timeoutMs });
+  const answer = await ucClerkPost(fetchImpl, `/v1/client/sessions/${sid}/tokens`, { cookies, apiVersion: false, signal, timeoutMs });
   if (!answer.ok || answer.status !== 200) return sessionFailure(answer);
   const jwt = jwtFrom(answer.body);
-  if (!jwt) return ucFailure("malformed", { status: 200 });
+  const claims = jwt ? sessionJwtClaims(jwt) : null;
+  if (!claims) return ucFailure("malformed", { status: 200 });
   const claimed = uidFromSessionJwt(jwt);
   if (expectedUid && claimed && claimed !== expectedUid) return ucFailure("identity");
+  if (claims.sid !== undefined && claims.sid !== sid) return ucFailure("identity");
   return { ok: true, jwt, uid: claimed, expiresAt: expFromSessionJwt(jwt), cookies: mergeCookies(cookies, answer.cookies) };
-}
-
-/** Touch one account's session. `{ ok: true, status, expireAt, cookies }` or a failure. */
-export async function touchUcSession(fetchImpl, { sid, cookies }, { signal, timeoutMs = UC_REQUEST_TIMEOUT_MS } = {}) {
-  const answer = await ucClerkPost(fetchImpl, `/v1/client/sessions/${sid}/touch`, { cookies, signal, timeoutMs });
-  if (!answer.ok || answer.status !== 200) return sessionFailure(answer);
-  const session = clerkResource(answer.body);
-  if (!isRecord(session) || session.id !== sid || !isString(session.status)) return ucFailure("malformed", { status: 200 });
-  if (!LIVE_SESSION_STATUSES.has(session.status)) return ucFailure("reauth", { status: 200 });
-  const expireAt = isNumber(session.expire_at) && Number.isFinite(session.expire_at) ? session.expire_at : null;
-  return { ok: true, status: session.status, expireAt, cookies: mergeCookies(cookies, answer.cookies) };
 }
 
 /**
@@ -149,7 +157,6 @@ const cacheKey = (credential) => `${credential.uid}\u0000${credential.sid}\u0000
  * Private per-account session controller. Every call reads only the
  * credentials it is given.
  *   getSessionToken(credentials, { signal }) -> { ok, jwt, expiresAt, cached, rotated } | failure
- *   touch(credentials, { signal })            -> { ok, status, expireAt, rotated } | failure
  *   forget(credentials)                       drops that account's cached JWT
  */
 export function createUcSessionController({
@@ -197,17 +204,6 @@ export function createUcSessionController({
       if (hit && hit.expiresAt - now() > skew) return { ok: true, jwt: hit.jwt, expiresAt: hit.expiresAt, cached: true, rotated: null };
       cache.delete(key);
       return mintFresh(credential, key, signal);
-    },
-    async touch(credentials, { signal } = {}) {
-      const { credential, failure } = guard(credentials);
-      if (failure) return failure;
-      const key = cacheKey(credential);
-      const touched = await touchUcSession(fetchImpl, { sid: credential.sid, cookies: credential.cookies }, { signal, timeoutMs });
-      if (!touched.ok) {
-        if (touched.kind === "reauth") cache.delete(key);
-        return touched;
-      }
-      return { ok: true, status: touched.status, expireAt: touched.expireAt, rotated: rotationPatch(credential, touched.cookies) };
     },
     forget(credentials) {
       const credential = resolveUcCredential(credentials);

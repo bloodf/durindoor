@@ -30,15 +30,27 @@ const ACCOUNT_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A
 export const MAX_ACCOUNT_EMAIL_LENGTH = 254;
 /** Most localStorage items an import may carry. */
 export const MAX_IMPORT_LOCAL_STORAGE_ITEMS = 4;
+/** Most hashed cookie families one profile may name. */
+export const MAX_HASHED_COOKIE_PREFIXES = 2;
+// The one suffix grammar a hashed cookie family accepts: a lowercase md5 hex digest. WordPress
+// core names its signed-in cookie `wordpress_logged_in_` . COOKIEHASH, where COOKIEHASH is
+// md5(siteurl option) (wp-includes/default-constants.php, wp_cookie_constants()). The siteurl
+// option is site configuration (scheme, www, a moved install), so the digest is not derivable
+// from the public origin and is matched by grammar, never by a guessed value.
+const MD5_HEX_SUFFIX_RE = /^[0-9a-f]{32}$/;
 
 /**
  * Select an explicit import profile or reuse the provider's web sign-in rules.
  * A provider of any category may declare a `cookieImport` profile that names
  * `localStorageKeys`: its credential is a browser localStorage value (TinyCMS
- * `app-config-uuid`), not a cookie.
+ * `app-config-uuid`), not a cookie. A no-auth provider may declare a
+ * `cookieImport` profile with `optionalSession: true` for an optional session.
  */
 export function cookieImportConfig(provider) {
   if (Array.isArray(provider?.cookieImport?.localStorageKeys) && provider.cookieImport.localStorageKeys.length > 0) return provider.cookieImport;
+  // An anonymous provider may accept an optional saved web session (Veo AI
+  // Free). Its profile is explicit; the provider never gains a web sign-in.
+  if (provider?.noAuth === true && provider.cookieImport?.optionalSession === true) return provider.cookieImport;
   if (provider?.category !== "webCookie" || provider.authType !== "cookie") return null;
   return provider.cookieImport ?? provider.webLogin;
 }
@@ -55,6 +67,9 @@ export function isValidLocalStorageKey(name) {
  * @param {object|null|undefined} config registry `cookieImport` or `webLogin` block
  * `optionalCookies` names cookies that are kept when a capture or import carries them and never
  * required: a capture without them still succeeds.
+ * `hashedCookiePrefixes` names required cookie families whose full name is the prefix plus a
+ * lowercase md5 hex digest (WordPress `wordpress_logged_in_<COOKIEHASH>`). Each family must be
+ * matched by exactly one cookie. The grammar is fixed here; a profile cannot supply a pattern.
  * `accountEmail: "optional"` lets the operator bind an account email to the pairing; it is appended
  * to the stored Cookie header as ` <email>`. Any other value is refused.
  *
@@ -64,14 +79,17 @@ export function resolveCookieImportContract(config) {
   if (!config || !Array.isArray(config.cookieNames) || !config.cookieNames.every(isValidCookieName)) return null;
   const localStorageKeys = config.localStorageKeys === undefined ? [] : config.localStorageKeys;
   if (!Array.isArray(localStorageKeys) || localStorageKeys.length > MAX_IMPORT_LOCAL_STORAGE_ITEMS || !localStorageKeys.every(isValidLocalStorageKey)) return null;
-  // A contract names at least one credential: a cookie or a localStorage item.
-  if (config.cookieNames.length === 0 && localStorageKeys.length === 0) return null;
+  const hashedCookiePrefixes = config.hashedCookiePrefixes === undefined ? [] : config.hashedCookiePrefixes;
+  if (!Array.isArray(hashedCookiePrefixes) || hashedCookiePrefixes.length > MAX_HASHED_COOKIE_PREFIXES ||
+    !hashedCookiePrefixes.every(isValidHashedCookiePrefix) || new Set(hashedCookiePrefixes).size !== hashedCookiePrefixes.length) return null;
+  // A contract names at least one credential: a cookie, a hashed cookie family or a localStorage item.
+  if (config.cookieNames.length === 0 && hashedCookiePrefixes.length === 0 && localStorageKeys.length === 0) return null;
   const optionalCookies = config.optionalCookies === undefined ? [] : config.optionalCookies;
   // Optional names follow the cookie-name grammar and never repeat a required name.
   if (!Array.isArray(optionalCookies) || optionalCookies.length > MAX_IMPORT_COOKIES || !optionalCookies.every(isValidCookieName) ||
     new Set(optionalCookies).size !== optionalCookies.length || optionalCookies.some((name) => config.cookieNames.includes(name))) return null;
   // An account email rides next to one required cookie only, never a localStorage-only profile.
-  if (config.accountEmail !== undefined && (config.accountEmail !== "optional" || config.cookieNames.length !== 1 || localStorageKeys.length)) return null;
+  if (config.accountEmail !== undefined && (config.accountEmail !== "optional" || config.cookieNames.length !== 1 || localStorageKeys.length || hashedCookiePrefixes.length)) return null;
   let credentialPattern = null;
   if (config.credentialPattern !== undefined) {
     if (!isString(config.credentialPattern)) return null;
@@ -91,6 +109,7 @@ export function resolveCookieImportContract(config) {
     extensionCapture: config.extensionCapture !== false,
     cookieNames: Object.freeze([...config.cookieNames]),
     cookiePrefixes: Object.freeze(Array.isArray(config.cookiePrefixes) ? [...config.cookiePrefixes] : []),
+    ...(hashedCookiePrefixes.length ? { hashedCookiePrefixes: Object.freeze([...hashedCookiePrefixes]) } : null),
     ...(optionalCookies.length ? { optionalCookies: Object.freeze([...optionalCookies]) } : null),
     ...(localStorageKeys.length ? { localStorageKeys: Object.freeze([...localStorageKeys]) } : null),
     ...(credentialPattern ? { credentialPattern } : null),
@@ -155,11 +174,42 @@ export function cookieChunkIndex(contract, base, name) {
 }
 
 /**
- * True when the provider approves this cookie name: either the name itself or
- * a chunk of an approved cookie.
+ * A hashed family prefix is a cookie-name token that ends in `_`, so the digest is always a
+ * separate segment (`wordpress_logged_in_` never matches `wordpress_logged_inX…`).
+ */
+export function isValidHashedCookiePrefix(prefix) {
+  return isValidCookieName(prefix) && prefix.length <= 64 && prefix.endsWith("_");
+}
+
+/**
+ * The hashed family prefix `name` belongs to, or null. Only `<prefix><32 lowercase hex>` matches:
+ * the bare prefix, another length, upper case or any other suffix does not.
+ */
+export function hashedCookiePrefixOf(contract, name) {
+  if (!isString(name)) return null;
+  for (const prefix of contract?.hashedCookiePrefixes ?? []) {
+    if (name.startsWith(prefix) && MD5_HEX_SUFFIX_RE.test(name.slice(prefix.length))) return prefix;
+  }
+  return null;
+}
+
+/** True when the contract's credential includes at least one cookie (fixed name or hashed family). */
+export function contractUsesCookies(contract) {
+  return Boolean(contract?.cookieNames?.length || contract?.hashedCookiePrefixes?.length);
+}
+
+/** Names a client shows for the required cookies; a hashed family reads `<prefix><md5>`. */
+export function displayCookieNames(contract) {
+  return [...(contract?.cookieNames ?? []), ...(contract?.hashedCookiePrefixes ?? []).map((prefix) => `${prefix}<md5>`)];
+}
+
+/**
+ * True when the provider approves this cookie name: either the name itself,
+ * a chunk of an approved cookie, or a member of an approved hashed family.
  */
 export function isApprovedCookieName(contract, name) {
   if (contract.cookieNames.includes(name) || contract.optionalCookies?.includes(name)) return true;
+  if (hashedCookiePrefixOf(contract, name) !== null) return true;
   return contract.cookiePrefixes.some((prefix) =>
     name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)) &&
     contract.cookieNames.some((base) => prefix.startsWith(base)));
@@ -184,4 +234,9 @@ export function cookieDomainAllowed(host, domain) {
   if (!isString(domain)) return false;
   const d = domain.replace(/^\./, "").toLowerCase();
   return d.includes(".") && (host === d || host.endsWith(`.${d}`));
+}
+
+/** Connection auth type shared by the dashboard and server import contract. */
+export function cookieImportAuthType(provider) {
+  return provider.category === "webCookie" ? "cookie" : (provider.authType || "apikey");
 }

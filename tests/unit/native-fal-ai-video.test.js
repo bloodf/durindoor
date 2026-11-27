@@ -126,14 +126,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Isolated staging block: the only assertions that depend on the adapter being
-// unregistered. The registration change replaces these with positive registry
-// identity checks; every other block holds staged and registered alike.
-describe("staging state (pre-registration only)", () => {
-  it("is not registered: the public dispatch still has no fal video adapter", () => {
-    expect(getVideoGenerationAdapter("fal-ai")).toBeNull();
-    expect(getVideoGenerationAdapter("fal")).toBeNull();
-    expect(falRegistry.serviceKinds).not.toContain("video");
+// Isolated registration block: the only assertions that depend on the adapter
+// being registered (positive registry identity checks). Every other block holds
+// staged and registered alike.
+describe("canonical and alias registration", () => {
+  it("registers the real fal video adapter under both identities", () => {
+    expect(getVideoGenerationAdapter("fal-ai")).toBe(defaultAdapter);
+    expect(getVideoGenerationAdapter("fal")).toBe(defaultAdapter);
+    expect(falRegistry.serviceKinds).toContain("video");
+    expect(falRegistry.models.filter((model) => model.kind === "video").map((model) => model.id)).toEqual(FAL_VIDEO_MODEL_IDS);
   });
 });
 

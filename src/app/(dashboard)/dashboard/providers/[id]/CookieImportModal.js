@@ -7,7 +7,7 @@ import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
-import { normalizeAccountEmail, resolveCookieImportContract } from "@/shared/utils/cookieImportContract";
+import { normalizeAccountEmail, resolveCookieImportContract, contractUsesCookies, displayCookieNames } from "@/shared/utils/cookieImportContract";
 import { isFunction } from "@/shared/utils/typeChecks";
 import {
   MAX_HAR_FILE_BYTES,
@@ -73,7 +73,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   const selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
   // A provider whose credential is a localStorage item (TinyCMS) takes pasted values, not cookies.
   const storageKeys = contract?.localStorageKeys ?? [];
-  const usesCookies = Boolean(contract?.cookieNames?.length);
+  const usesCookies = contractUsesCookies(contract);
   const credentialPattern = useMemo(() => {
     try { return contract?.credentialPattern ? new RegExp(contract.credentialPattern) : null; } catch { return null; }
   }, [contract]);
@@ -84,7 +84,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   // Inner.ai Web: an optional account email the server binds to the pairing. Blank means token only.
   const takesAccountEmail = contract?.accountEmail === "optional";
   const emailCheck = takesAccountEmail ? normalizeAccountEmail(accountEmail) : { ok: true, email: "" };
-  const cookieConnections = usesCookies ? connections.filter((connection) => connection?.authType === "cookie") : connections;
+  const cookieConnections = connections.filter((connection) => connection?.provider === provider && connection.authType === (contract?.authType ?? "cookie"));
 
   const clearSensitiveInput = () => {
     setRawText("");
@@ -399,7 +399,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
                 <p className="text-dd-muted">Origin</p>
                 <code className="break-all font-mono">{pairing.contract?.origin}</code>
                 <p className="text-dd-muted">Cookie names</p>
-                <code className="break-all font-mono">{(pairing.contract?.cookieNames || []).join(", ") || "none"}</code>
+                <code className="break-all font-mono">{displayCookieNames(pairing.contract).join(", ") || "none"}</code>
                 {pairing.contract?.localStorageKeys?.length ? <>
                   <p className="text-dd-muted">localStorage items</p>
                   <code className="break-all font-mono">{pairing.contract.localStorageKeys.join(", ")}</code>

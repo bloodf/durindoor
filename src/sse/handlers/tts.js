@@ -11,7 +11,7 @@ import { handleTtsCore } from "open-sse/handlers/ttsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
-import { handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -31,8 +31,9 @@ const CREDENTIALED_PROVIDERS = new Set(
 const REFRESHED_BEFORE_DISPATCH = new Set(["renderhour"]);
 // Adapters that refuse a response_format they cannot produce: they need the
 // format the client named, not the route's mp3 default. Vertex mints its own
-// Google token per request, so it is not in the refresh set above.
-const NAMED_FORMAT_PROVIDERS = new Set(["renderhour", "vertex"]);
+// Google token per request, so it is not in the refresh set above. Kie returns
+// mp3 or json only and refuses any other named container before submit, as does deAPI.
+const NAMED_FORMAT_PROVIDERS = new Set(["renderhour", "vertex", "kie", "deapi"]);
 
 async function handleTtsHandler(request) {
   await captureRequestBillingEpoch(request);
@@ -144,7 +145,10 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
       endpoint: "/v1/audio/speech", modality: "tts",
       apiKeyId,
     });
-    return result.response;
+    // A combo must not send the same text to another model: the job may still bill.
+    const headers = new Headers(result.response.headers);
+    headers.set(ACCEPTED_JOB_HEADER, "1");
+    return new Response(result.response.body, { status: result.response.status, statusText: result.response.statusText, headers });
   };
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};

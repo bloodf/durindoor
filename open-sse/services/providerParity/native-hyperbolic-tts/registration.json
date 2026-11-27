@@ -1,0 +1,95 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "tests/unit/audio-speech-handler.test.ts"
+    ],
+    "registryFields": {
+      "tts": { "id": "hyperbolic", "baseUrl": "https://api.hyperbolic.xyz/v1/audio/generation", "authType": "apikey", "authHeader": "bearer", "format": "hyperbolic", "models": [{ "id": "melo-tts", "name": "Melo TTS" }] }
+    },
+    "handler": "handleHyperbolicSpeech: POST { text: body.input }, Content-Type application/json + Authorization Bearer; answer { audio: base64 } decoded with atob, served as audio/mpeg"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/hyperbolic.js (chat provider id hyperbolic, alias hyperbolic, aliases [\"hyp\"], authType apikey; chat transport only: no serviceKinds tts, no ttsConfig, no tts model row)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS.hyperbolic (same wire envelope: POST { text } with Bearer, reads data.audio; but unreachable, and no deadline, global fetch without the connection egress policy, follows redirects, quotes the upstream error via throwUpstreamError, no accepted-job outcome, no base64/mp3 validation, silently drops voice/speed)",
+      "open-sse/handlers/ttsProviders/index.js synthesizeViaConfig (returns null for hyperbolic because AI_PROVIDERS.hyperbolic.ttsConfig is undefined)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no hyperbolic or hyp entry)",
+      "src/shared/constants/ttsProviders.js (UI config for hyperbolic exists: hasModelSelector, voiceSource config)"
+    ],
+    "result": "the provider and connection exist, the speech route is dormant; this module is the speech delta, reusing the existing connection and auth mode"
+  },
+  "module": "open-sse/services/providerParity/native-hyperbolic-tts/index.js",
+  "exports": {
+    "hyperbolicTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createHyperbolicTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "buildHyperbolicSpeechRequest": "(model, text, options) -> { text }; throws status 400 for any field the source would drop",
+    "hyperbolicAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "isMp3": "mp3 magic-byte check",
+    "HYPERBOLIC_TTS_PROVIDER_ADDITIONS": "staged additions to the existing hyperbolic registry entry (serviceKinds, model rows, ttsConfig)",
+    "HYPERBOLIC_TTS_CONFIG": "ttsConfig block { baseUrl, authType, authHeader, format, models }",
+    "HYPERBOLIC_TTS_MODELS": "speech models",
+    "HYPERBOLIC_SPEECH_RESPONSE_FORMATS": "[\"mp3\", \"json\"] (or none named)",
+    "HYPERBOLIC_PROVIDER_ID": "hyperbolic",
+    "HYPERBOLIC_ALIASES": "[\"hyp\"]",
+    "HYPERBOLIC_TTS_URL": "https://api.hyperbolic.xyz/v1/audio/generation",
+    "HYPERBOLIC_ORIGIN": "https://api.hyperbolic.xyz",
+    "HYPERBOLIC_TTS_FORMAT": "hyperbolic",
+    "HYPERBOLIC_DEFAULT_TTS_MODEL": "melo-tts",
+    "HYPERBOLIC_SPEECH_CONTAINER": "mp3",
+    "HYPERBOLIC_TTS_TIMEOUT_MS": "120000",
+    "HYPERBOLIC_MAX_AUDIO_BYTES": "26214400",
+    "HYPERBOLIC_MAX_TTS_REQUEST_BYTES": "262144",
+    "hyperbolicTtsModel": "(id) -> model row or null"
+  },
+  "provider": {
+    "canonicalId": "hyperbolic",
+    "aliases": ["hyp"],
+    "existingRegistryEntry": "open-sse/providers/registry/hyperbolic.js",
+    "existingServiceKinds": ["llm (implicit)"],
+    "addServiceKinds": ["tts"],
+    "otherSourceKinds": "the source hyperbolic entry also serves image (imageRegistryData.ts); that is a separate #2034 row and must merge into the same registry entry",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "hyperbolic"
+  },
+  "models": {
+    "tts": [{ "id": "melo-tts", "name": "Melo TTS" }],
+    "voiceSuffix": "refused: the source sends no voice",
+    "dynamicDiscovery": "none: the source lists the speech model statically; the existing validateUrl https://api.hyperbolic.xyz/v1/models is the chat model list and is not used for speech"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://api.hyperbolic.xyz/v1/audio/generation", "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"], "body": "{ text }", "answer": "application/json { audio: <base64 mp3> }" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "maxAudioBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/hyperbolic.js",
+      "change": "merge HYPERBOLIC_TTS_PROVIDER_ADDITIONS: serviceKinds [\"llm\", \"tts\"] (plus image from its own row), add the melo-tts model row with kind tts, add ttsConfig HYPERBOLIC_TTS_CONFIG so the model selector and modelKindError see a tts model; keep id, aliases, display and chat transport unchanged"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { hyperbolicTtsAdapter } and add `hyperbolic: hyperbolicTtsAdapter, hyp: hyperbolicTtsAdapter` to TTS_ADAPTERS, so handleTtsCore uses the adapter before synthesizeViaConfig; the dormant FORMAT_HANDLERS.hyperbolic is then unused and can be removed"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add hyperbolic to NAMED_FORMAT_PROVIDERS so a query-string response_format other than mp3/json is refused before submit; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Hyperbolic tts kind after registration"
+    }
+  ]
+}

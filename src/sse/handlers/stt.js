@@ -16,7 +16,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
 import { MAX_AUDIO_BYTES } from "open-sse/handlers/codexSttAudio.js";
 import { runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
@@ -146,7 +146,11 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
       modality: "stt",
       apiKeyId,
     });
-    return result.response || errorResponse(result.status, result.error);
+    // A combo must not send the same audio to another model: the job may still bill.
+    const response = result.response || errorResponse(result.status, result.error);
+    const headers = new Headers(response.headers);
+    headers.set(ACCEPTED_JOB_HEADER, "1");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   };
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 

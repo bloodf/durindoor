@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "open-sse/shared/codexQuotaWindow.js";
 import { markAccountUnavailable } from "../../../services/auth.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { validateProviderRequestId } from "../../../utils/requestCorrelation.js";
@@ -10,6 +11,15 @@ import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { RETRY, terminal } from "./context.js";
 import { antigravityPreResponseTimeout, evaluateProviderFailure } from "./providerHooks.js";
+import { MINIMAX_CODE_UNKNOWN_OUTCOME_CODES } from "open-sse/executors/minimax-code.js";
+import { WINDSURF_OUTCOME_UNKNOWN } from "open-sse/executors/windsurf.js";
+
+/** The executor-authored outcome-unknown code, or a header timeout thrown after sending. */
+function isMinimaxCodeOutcomeUnknown(result) {
+  if (result.transportFailure === "connect_timeout" || result.transportFailure === "network") return true;
+  const code = result.errorBody?.error?.code;
+  return isString(code) && MINIMAX_CODE_UNKNOWN_OUTCOME_CODES.has(code);
+}
 
 /**
  * Peek a successful single-model stream for its first content frame
@@ -112,6 +122,20 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     result.response.upstreamPartialOutput = true;
     return terminal(result.response);
   }
+  // MiniMax Code reports an attempt the gateway may have accepted (a connection
+  // dropped after sending, a 502/504 from an intermediary, a header or call
+  // timeout). The same never-replay rule applies: no sibling account, no outer
+  // transient retry, and no cooldown, because nothing proves the account failed.
+  if (provider === "minimax-code" && isMinimaxCodeOutcomeUnknown(result)) {
+    result.response.upstreamPartialOutput = true;
+    return terminal(result.response);
+  }
+  // Windsurf marks work it accepted but did not complete (output frames before a
+  // failure, or a 200 body that broke) with the same never-replay rule.
+  if (provider === "windsurf" && result.errorBody?.error?.code === WINDSURF_OUTCOME_UNKNOWN) {
+    result.response.upstreamPartialOutput = true;
+    return terminal(result.response);
+  }
   if (state.antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
   // Process-local admission pressure is terminal for this request. Retrying a
   // sibling would hit the same queue and must not cool a healthy account.
@@ -177,7 +201,7 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     result.status,
     result.error,
     provider,
-    model,
+    provider === "codex" && codexBillingQuotaCode(resultErrorBody) ? null : model,
     fallbackResetAt,
     {
       attemptStartedAt: resultAttemptStartedAt,

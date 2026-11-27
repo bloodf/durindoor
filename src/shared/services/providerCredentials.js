@@ -2,7 +2,7 @@ import { getProviderConnectionById, updateProviderConnection } from "@/lib/local
 import { isAntigravityProvider, openAntigravityLease } from "@/lib/antigravity/refreshProtocol";
 import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
 import { getExecutor } from "open-sse/executors/index.js";
-import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
+import { serializeRefresh, trackRefreshPersistence } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import {
   providerRefreshContext,
@@ -573,6 +573,8 @@ proxyOptions = null,
   })();
   credentialRefreshInflight.set(key, operation);
   laneSignals.set(operation, laneAcquired);
+  // The store write runs inside `operation`; shutdown drains it (CLIProxyAPI 32c0c459).
+  trackRefreshPersistence(operation);
   operation.catch(() => {}).finally(() => {
     if (credentialRefreshInflight.get(key) === operation) credentialRefreshInflight.delete(key);
   });

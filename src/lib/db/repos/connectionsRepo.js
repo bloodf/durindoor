@@ -107,7 +107,8 @@ function mergeProviderConnectionWithHealthReset(existing, patch, { replacesCrede
     merged.lastError = normalized.lastError;
     merged.lastErrorAt = normalized.lastErrorAt;
   }
-  return merged;
+  // A replacement credential starts its own lifecycle; old failures say nothing about it.
+  return replacesCredential ? merged : reconcileReenabledConnection(existing, patch, merged);
 }
 
 /**
@@ -116,6 +117,50 @@ function mergeProviderConnectionWithHealthReset(existing, patch, { replacesCrede
  */
 function isDurableReauthPinned(connection) {
   return connection?.testStatus === "reauth_required" || connection?.errorCode === "REAUTH";
+}
+
+const AUTH_FAILURE_STATUS_CODES = new Set([401, 403]);
+const REENABLE_STATUS_FIELDS = ["testStatus", "lastError", "errorCode", "lastErrorAt"];
+
+/**
+ * A sign-in or credential rejection that enabling the row cannot fix. The event
+ * an automatic disable recorded (lastErrorAt equal to autoDisabledAt) belongs
+ * to the disabled period; a 401/403 recorded at any other time does not.
+ */
+function hasUnresolvedAuthFailure(connection) {
+  if (isDurableReauthPinned(connection) || connection?.needsReauth === true || connection?.testStatus === "expired") return true;
+  const disableEvent = Boolean(connection?.autoDisabledAt) && connection.lastErrorAt === connection.autoDisabledAt;
+  return !disableEvent && AUTH_FAILURE_STATUS_CODES.has(Number(connection?.errorCode));
+}
+
+/** Deadlines that still gate routing: model locks, quota lockout, legacy rate limit. */
+function hasActiveConnectionCooldown(connection, now) {
+  if (isQuotaLockoutActive(connection, now) || Date.parse(connection?.rateLimitedUntil || "") > now) return true;
+  return Object.entries(connection).some(([key, value]) =>
+    key.startsWith(MODEL_LOCK_PREFIX) && Date.parse(value || "") > now
+  );
+}
+
+/**
+ * Inactive-to-active transition. Port of CLIProxyAPI 42b13fff
+ * reconcileReenabledAuthState (MIT, sdk/cliproxy/auth/conductor_lifecycle.go):
+ * clear disabled-era unavailability, keep unresolved sign-in failures, and
+ * never shorten a cooldown. A patch that sets testStatus describes the new
+ * state itself and is left alone; cooldown deadlines are never touched here.
+ */
+function reconcileReenabledConnection(existing, patch, merged, now = Date.now()) {
+  if (existing?.isActive !== false || patch?.isActive !== true || Object.hasOwn(patch, "testStatus")) return merged;
+  if (hasUnresolvedAuthFailure(existing)) {
+    const restored = { ...merged };
+    for (const field of REENABLE_STATUS_FIELDS) {
+      if (!Object.hasOwn(patch, field)) restored[field] = existing[field];
+    }
+    return restored;
+  }
+  if (merged.testStatus === "unavailable" && !hasActiveConnectionCooldown(merged, now)) {
+    return { ...merged, testStatus: null };
+  }
+  return merged;
 }
 
 

@@ -1,0 +1,90 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "src/shared/constants/providers/audio.ts"
+    ],
+    "registryFields": {
+      "stt": { "id": "speechmatics", "baseUrl": "https://asr.api.speechmatics.com/v2/jobs", "authType": "apikey", "authHeader": "bearer", "async": true, "format": "speechmatics" }
+    },
+    "inventoryRow": "| STT | `speechmatics` | apikey / bearer / speechmatics; endpoint https://asr.api.speechmatics.com/v2/jobs | `open-sse/config/audioRegistry.ts` -> `handlers/audioTranscription.ts` | MISSING (`sttConfig`) |",
+    "reachability": "handleAudioTranscription dispatches providerConfig.format \"speechmatics\" to handleSpeechmaticsTranscription; the entry is enabled (no disabled flag) and the source test tests/unit/speechmatics-transcription-provider.test.ts exercises submit -> poll -> transcript"
+  },
+  "localEquivalence": {
+    "checked": [
+      "git grep -i speechmatics over HEAD and origin/main: only internal/docs inventory and port-report rows; no provider, alias (speechmatics or sm), model row, sttConfig or format handler",
+      "open-sse/handlers/sttCore.js handleSttCore format switch: no speechmatics format; the async job formats there (assemblyai and similar) use other endpoints and envelopes (upload URL + JSON job, not one multipart config + data_file submission)",
+      "open-sse/providers/registry and src/shared/constants: the alias sm is not taken"
+    ],
+    "result": "no Speechmatics path exists today, so this module (provider definition and STT adapter) is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-speechmatics-stt/index.js",
+  "exports": {
+    "speechmaticsSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createSpeechmaticsSttAdapter": "factory; options { fetchImpl, totalTimeoutMs, callTimeoutMs, pollIntervalMs, maxTranscriptBytes, wait, now } for tests",
+    "buildSpeechmaticsTranscriptionRequest": "async (model, formData, { kind }) -> { submission: FormData (config, data_file), config, responseFormat } or a 400 error result with local: true",
+    "speechmaticsJobConfig": "(operatingPoint, language) -> source job config { type: \"transcription\", transcription_config: { language, operating_point } }",
+    "speechmaticsUploadFileName": "source upload file name rule",
+    "speechmaticsAcceptedJob": "(modality, jobState, jobId) accepted-job accounting with unknown cost",
+    "SPEECHMATICS_PROVIDER_DEFINITION": "staged registry entry (id, alias, aliases, display, apikey auth, transport, serviceKinds, sttConfig)",
+    "SPEECHMATICS_STT_MODELS": "transcription models",
+    "SPEECHMATICS_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\"]",
+    "SPEECHMATICS_UNSUPPORTED_FIELDS": "request fields refused before submission (timestamp granularities, diarization flags)"
+  },
+  "provider": {
+    "canonicalId": "speechmatics",
+    "aliases": ["sm"],
+    "uiAlias": "sm",
+    "existingRegistryEntry": null,
+    "serviceKinds": ["stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "validateUrl": null,
+    "formats": { "stt": "speechmatics" }
+  },
+  "models": {
+    "stt": [
+      { "id": "enhanced", "name": "Enhanced", "operatingPoint": "enhanced" }
+    ],
+    "dynamicDiscovery": "none: the pinned source lists the Speechmatics model statically, has no Speechmatics models fetcher and no Speechmatics validation probe"
+  },
+  "endpoints": {
+    "submitJob": { "method": "POST", "url": "https://asr.api.speechmatics.com/v2/jobs", "headers": ["Authorization: Bearer <key>", "Content-Type: multipart/form-data"], "body": "parts in order: config = {\"type\":\"transcription\",\"transcription_config\":{\"language\":<language|auto>,\"operating_point\":<model>}}, data_file = audio", "answer": "{ id }", "billable": true },
+    "jobStatus": { "method": "GET", "url": "https://asr.api.speechmatics.com/v2/jobs/{id}", "headers": ["Authorization: Bearer <key>"], "answer": "{ job: { status: running | done | rejected | deleted | expired, duration? } }" },
+    "transcript": { "method": "GET", "url": "https://asr.api.speechmatics.com/v2/jobs/{id}/transcript?format=txt", "headers": ["Authorization: Bearer <key>", "Accept: text/plain"], "answer": "plain text" }
+  },
+  "bounds": {
+    "sttTotalTimeoutMs": 240000,
+    "sttCallTimeoutMs": 60000,
+    "pollIntervalMs": 2000,
+    "maxSttFileBytes": 104857600,
+    "maxTranscriptBytes": 16777216,
+    "redirects": "refused",
+    "retries": "0 for the job submission; status checks repeat only inside the deadline"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/speechmatics.js",
+      "change": "new entry from SPEECHMATICS_PROVIDER_DEFINITION with model rows from SPEECHMATICS_STT_MODELS (kind stt); check the sm alias is still free; keep sttConfig (translationModels [] so supportsSttTranslation stays false)"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"speechmatics\") return await speechmaticsSttAdapter.transcribe({ model, formData, credentials, kind, signal })`; the existing STT accepted-job recording in src/sse/handlers/stt.js then records result.acceptedJob on the selected connection"
+    },
+    {
+      "file": "src/shared/constants/providers (provider display list)",
+      "change": "add the Speechmatics display entry (name, icon record_voice_over, color #0A2540, text icon SM, website, free tier note); no validation probe exists in the source"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Speechmatics stt kind after registration"
+    }
+  ]
+}

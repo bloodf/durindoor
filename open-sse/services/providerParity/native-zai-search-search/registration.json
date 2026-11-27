@@ -1,0 +1,56 @@
+{
+  "registered": false,
+  "canonicalId": "zai-search",
+  "aliases": ["zai-search"],
+  "localEquivalent": {
+    "providerId": "glm",
+    "file": "open-sse/providers/registry/glm.js",
+    "note": "Upstream 9router 9dbdca0e5e folded the zai-search registry entry into glm.searchConfig (same URL, apikey/bearer, costPerQuery 0, web, 5/50 results, 10s, 5min cache). Its wire is a single stateless JSON-RPC tools/call with an extra `count` argument and no MCP handshake; this staging unit carries the source MCP session contract."
+  },
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": ["open-sse/config/searchRegistry.ts", "open-sse/handlers/search.ts"]
+  },
+  "exports": {
+    "config.js": ["ZAI_SEARCH_ID", "ZAI_SEARCH_ALIASES", "ZAI_SEARCH_CREDENTIAL_PROVIDERS", "ZAI_SEARCH_ORIGIN", "ZAI_SEARCH_MCP_URL", "ZAI_SEARCH_TOOL", "searchConfig", "MCP_CLIENT_INFO", "MCP_PROTOCOL_VERSION", "MCP_SUPPORTED_PROTOCOL_VERSIONS", "ZAI_SEARCH_TOTAL_TIMEOUT_MS", "ZAI_SEARCH_MAX_TIMEOUT_MS", "zaiSearchMetadata"],
+    "adapter.js": ["zaiSearchAdapter", "zaiHeaders", "validateSearchBody", "buildInitializeRequest", "buildInitializedNotification", "buildToolCallRequest", "drainSseEvents", "findResponse", "unwrapZaiContent", "normalizeZaiToolResult", "ZaiSearchInputError", "invalid"],
+    "service.js": ["handleZaiSearchNative"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "credentialProviders": ["glm", "zai"],
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "identity": "selected connection only; a fresh MCP session per call; no session, credential or result cache across connections; no refresh, replay or failover"
+  },
+  "endpoints": {
+    "search": "https://api.z.ai/api/mcp/web_search_prime/mcp",
+    "discovery": null
+  },
+  "envelope": {
+    "transport": "MCP Streamable HTTP: POST initialize (id 0) -> POST notifications/initialized (202) -> POST tools/call (id 1); Accept: application/json, text/event-stream; mcp-session-id and negotiated mcp-protocol-version on later posts",
+    "request": "tools/call { name: 'web_search_prime', arguments: { search_query, search_domain_filter?: includes.join(',') } }",
+    "response": "result.content[type=text].text joined by newline; JSON array of { title, link, content, publish_date, icon, media } or a JSON string encoding that array; sliced to max_results; total_results_available = valid item count"
+  },
+  "integration": {
+    "search": "open-sse/handlers/search/index.js handleSearchCore: for provider 'glm' (and a future 'zai-search' alias) call handleZaiSearchNative({ body: normalizedBody, credentials, signal, providerId: provider.id }) instead of tryDedicatedProvider/buildGlmSearchRequest; on success call onRequestSuccess and return the result unchanged",
+    "route": "src/sse/handlers/search.js: pass request.signal through to handleSearchCore; acceptedJob on a failed result must be recorded like other media accepted jobs and must not trigger account fallback replay",
+    "provider": "existing open-sse/providers/registry/glm.js already has serviceKinds ['llm','webSearch'] and the identical searchConfig; registration only needs the dispatch switch. A 'zai' connection fallback (source SEARCH_CREDENTIAL_FALLBACKS) needs a credential-fallback hook in the search route; none exists locally today",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "web search_type only; max_results 1..50 (clamped to 50, default 5) applied locally because the tool takes no count",
+    "include domain hosts only (up to 20); excluded domains, offset, country, language, time_range, content_options and provider_options are refused before any network call",
+    "fixed origin https://api.z.ai; caller or connection base URL overrides are not honored; redirects refused",
+    "10s per-step (default) and 15s total (default) deadlines, both capped at 60s; 2MiB success and 16KiB error bounds",
+    "no GET SSE listener, session DELETE, resumption or server-initiated requests; only the matching JSON-RPC response is read",
+    "upstream error messages and bodies are never relayed; tool errors and malformed text are failures (the source returns empty results)",
+    "cost stays unknown in accounting; wire usage mirrors source search_cost_usd 0",
+    "no dynamic model discovery: the source has none for search providers"
+  ]
+}

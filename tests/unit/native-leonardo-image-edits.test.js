@@ -1,4 +1,4 @@
-// Leonardo.Ai native reference-image edits, staged and unregistered (#2034).
+// Leonardo.Ai native reference-image edits, registered for /v1/images/edits (#2034).
 // Closed mocks only: every Leonardo request is answered by the global fetch
 // mock below, every storage request by an injected storageFetch, every DNS
 // answer by an injected lookup; an unexpected request fails the test and every
@@ -137,14 +137,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// Staging-only negative. Registration replaces this block with a positive
-// dispatch check; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("is not imported by the public edit entry points", () => {
-    for (const file of ["../../src/sse/handlers/imageEdit.js", "../../open-sse/handlers/imageEditCore.js"]) {
-      expect(readFileSync(new URL(file, import.meta.url), "utf8")).not.toContain("native-leonardo-image-edits");
-    }
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// Isolated registration block: the positive dispatch identity check. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("is the native edit adapter for leonardo and leo, ahead of the passthrough", async () => {
+    const { getImageEditAdapter, getImageEditConfig } = await import("../../open-sse/handlers/imageEditCore.js");
+    const { PROVIDER_MEDIA } = await import("../../open-sse/providers/index.js");
+    for (const id of ["leonardo", "leo"]) expect(getImageEditAdapter(id)).toBe(staged.leonardoImageEditAdapter);
+    expect(PROVIDER_MEDIA.leonardo.imageEditConfig).toBeUndefined();
+    expect(getImageEditConfig(PROVIDER_MEDIA.leonardo)).toBeNull();
   });
 });
 

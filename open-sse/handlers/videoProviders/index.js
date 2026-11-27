@@ -1,3 +1,5 @@
+import falVideo from "../../services/providerParity/native-fal-ai-video/adapter.js";
+import { kieVideoAdapter } from "../../services/providerParity/native-kie-video-image/index.js";
 import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // Synchronous video generation adapters for /v1/video/generations: each one
 // submits a job, polls it within fixed bounds and returns the result once.
@@ -9,8 +11,19 @@ import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
 import { agnesVideoAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
 import vertex from "../../services/providerParity/native-vertex-video/adapter.js";
+import { haiperVideoAdapter } from "../../services/providerParity/native-haiper-video-image/index.js";
+import { leonardoVideoAdapter } from "../../services/providerParity/native-leonardo-video-image/index.js";
+import veoAiFree from "../../services/providerParity/native-veoaifree-web-video/index.js";
+import runwayVideo from "../../services/providerParity/native-runwayml-video/index.js";
+import { deepinfraVideoAdapter } from "../../services/providerParity/native-deepinfra-video/index.js";
+import segmindVideo from "../../services/providerParity/native-segmind-video/adapter.js";
+import { deapiVideoAdapter } from "../../services/providerParity/native-deapi-video-image/index.js";
+import { novitaVideoAdapter } from "../../services/providerParity/native-novita-video/index.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
+  "fal-ai": falVideo,
+  fal: falVideo,
+  kie: kieVideoAdapter,
   alibaba,
   ali: alibaba,
   renderhour,
@@ -22,6 +35,26 @@ export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   // Adobe's native video model through the Firefly Services API only.
   "adobe-firefly-api": adobeFireflyApi,
   "adobe-firefly-web": adobeFireflyWeb,
+  // Haiper Gen 2 and Leonardo Motion jobs on fixed origins; result URLs only.
+  haiper: haiperVideoAdapter,
+  hp: haiperVideoAdapter,
+  leonardo: leonardoVideoAdapter,
+  leo: leonardoVideoAdapter,
+  // Veo AI Free WordPress AJAX: anonymous, or the selected connection's saved
+  // session cookie on its own AJAX calls only. One submit, never replayed.
+  "veoaifree-web": veoAiFree,
+  "veo-free": veoAiFree,
+  // Runway text/image-to-video tasks on the fixed API origin; result URLs only.
+  runwayml: runwayVideo,
+  runway: runwayVideo,
+  // DeepInfra /v1/inference: one synchronous render, result URL only.
+  deepinfra: deepinfraVideoAdapter,
+  // Segmind: one synchronous POST answered with MP4 bytes, returned as b64_json.
+  segmind: segmindVideo,
+  // deAPI /v1/videos job: bounded poll, then the key-gated /content MP4 as b64_json.
+  deapi: deapiVideoAdapter,
+  // Novita /v3/async task on the existing novita connection; result URLs only.
+  novita: novitaVideoAdapter,
 });
 
 /** The adapter for `provider`, or null when it has none. */
@@ -29,5 +62,5 @@ export function getVideoGenerationAdapter(provider) {
   return lookupMediaAdapter(VIDEO_GENERATION_ADAPTERS, provider);
 }
 
-/** Output formats every adapter here can honor: result URLs, never downloaded. */
+/** Default output formats for an adapter that declares none: result URLs, never downloaded. */
 export const VIDEO_GENERATION_RESPONSE_FORMATS = Object.freeze(["url"]);

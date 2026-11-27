@@ -1,0 +1,51 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "provider": "cursor",
+  "source": {
+    "repository": "OmniRoute",
+    "url": "https://github.com/cheaper-inference/OmniRoute",
+    "commit": "b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523",
+    "license": "MIT",
+    "files": [
+      "src/lib/cursor/tokenExtractor.ts",
+      "src/app/api/oauth/cursor/import/route.ts",
+      "src/app/api/oauth/cursor/auto-import/route.ts",
+      "src/lib/oauth/services/persistCursorConnection.ts"
+    ]
+  },
+  "module": "src/lib/oauth/providerParity/cursor/index.js",
+  "webSafe": true,
+  "exports": {
+    "CURSOR_REFRESH_TOKEN_KEYS": "exact state.vscdb keys for the refresh token",
+    "normalizeCursorImportRefreshToken": "(value) -> trimmed token or null; unwraps one JSON string level, rejects whitespace and >16 KiB",
+    "readCursorRefreshTokenFromDb": "(db) -> token or null; exact-key read on an open better-sqlite3 handle, never fuzzy",
+    "findCursorAccountConnection": "(connections, accountId) -> existing cursor oauth connection with matching accountId/userId, or null",
+    "cursorImportConnectionValues": "({ tokenData, identity, refreshToken, now }) -> connection values for create/update",
+    "CURSOR_IMPORT_REFRESH_FIELD": "optional requiredFields entry for GET /api/oauth/cursor/import"
+  },
+  "integrationSlots": [
+    {
+      "file": "src/app/api/oauth/cursor/import/route.js",
+      "slot": "POST: accept optional body.refreshToken; build values with cursorImportConnectionValues; when it is non-null, update findCursorAccountConnection(...) with { replacesCredential: true } instead of creating a duplicate. GET: append CURSOR_IMPORT_REFRESH_FIELD."
+    },
+    {
+      "file": "src/lib/oauth/services/cursorLocalStore.js",
+      "slot": "readCursorLocalAuthSync: add refreshToken via readCursorRefreshTokenFromDb (changes the returned shape; update its callers and regression expectations in the auth batch)."
+    },
+    {
+      "file": "src/app/api/oauth/cursor/auto-import/route.js",
+      "slot": "Return the refresh token only to the dashboard import form, never in logs or error bodies."
+    },
+    {
+      "file": "src/app/(dashboard) Cursor provider modal",
+      "slot": "Optional refresh-token field; a sign-in button driving /api/oauth/cursor/login/start, /poll and /cancel."
+    }
+  ],
+  "unchangedProduction": [
+    "src/app/api/oauth/cursor/login/{start,poll,cancel}/route.js",
+    "open-sse/services/tokenRefresh/cursor.js",
+    "open-sse/services/cursorModels.js",
+    "open-sse/executors/cursor.js"
+  ]
+}

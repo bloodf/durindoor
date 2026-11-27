@@ -1,0 +1,204 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/executors/geminiLiveTranscribe.ts"
+    ],
+    "registryFields": {
+      "stt": {
+        "id": "gemini",
+        "baseUrl": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+        "authType": "apikey",
+        "authHeader": "x-goog-api-key",
+        "format": "gemini-live",
+        "modelScoped": true
+      },
+      "inventoryRowGoogle": {
+        "id": "google",
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+        "authType": "apikey",
+        "authHeader": "x-goog-api-key",
+        "format": "gemini-tts",
+        "map": "AUDIO_SPEECH_PROVIDERS (TTS, credentialProviderId gemini), not AUDIO_TRANSCRIPTION_PROVIDERS",
+        "disposition": "no STT entry exists under `google` in the source; the TTS row already maps to local gemini TTS; the native Google STT contract is the `gemini` Live row above"
+      }
+    },
+    "handlerBranch": "handleAudioTranscription: providerConfig.format === \"gemini-live\" -> handleGeminiLiveTranscription -> geminiLiveTranscribe"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/gemini.js: sttConfig format gemini-stt (models gemini-3.5-transcribe, gemini-2.5-pro, gemini-2.5-flash); gemini-3.5-transcribe-live is a kind \"live\" row only",
+      "open-sse/handlers/sttCore.js transcribeGemini: gemini-3.5-transcribe uses Files upload + Interactions; other models use generateContent; no WebSocket path",
+      "src/sse/handlers/nativeProviderConfig.js gemini \"/live\" + open-sse/handlers/nativeRealtimeRelay.js: raw client-driven Live relay on /v1/realtime/native with ?key= query auth; it does not turn an uploaded file into a transcript",
+      "`git grep -n transcribe-live` (registry row and a relay test only)"
+    ],
+    "result": "same endpoint as the realtime relay but a different contract (gateway-driven setup, header auth, PCM streaming, inputTranscription collection, JSON {text}); no file-mode Live transcription exists, so this module is the delta"
+  },
+  "module": "open-sse/services/providerParity/native-google-stt/index.js",
+  "exports": {
+    "geminiLiveSttAdapter": "default STT adapter instance (16 kHz mono 16-bit PCM WAV only; spawns no process); transcribe({ model, formData, credentials, kind, signal })",
+    "geminiLiveConvertingSttAdapter": "the instance registration wires: the default adapter plus source upload conversion (ffmpeg, pipe-only) before any credential use or socket",
+    "createGeminiLiveSttAdapter": "factory; options { WebSocketImpl, agentFactory, timeoutMs, socketOptions, convertAudio } for tests; no convertAudio keeps the WAV-only contract",
+    "createGeminiLiveConvertingSttAdapter": "factory for the conversion-enabled adapter; options as createGeminiLiveSttAdapter plus { converterOptions }",
+    "createGeminiLiveAudioConverter": "({ spawn, access, timeoutMs, maxInputBytes, maxPcmBytes, reapMs }) -> (bytes, { signal, deadlineAt }) => { wav } | local error result",
+    "sniffGeminiLiveUpload": "(Buffer) -> wav | mp3 | flac | ogg | m4a | webm | aac | null, from magic bytes only",
+    "geminiLiveFfmpegArgs": "(container) -> fixed ffmpeg argv: pipe-only protocol, one forced whitelisted demuxer, s16le mono 16 kHz to stdout",
+    "encodePcm16kWav": "(pcm) -> RIFF/WAVE with exact 44-byte header framing",
+    "GEMINI_LIVE_FFMPEG_CANDIDATES": "fixed absolute ffmpeg locations; no PATH lookup",
+    "GEMINI_LIVE_FFMPEG_ENV": "the whole child environment (no inherited variables, no credentials)",
+    "GEMINI_LIVE_FFMPEG_MISSING_MESSAGE": "local 503 text when no candidate is executable",
+    "GEMINI_LIVE_FFMPEG_TIMEOUT_MS": "60000 (source)",
+    "GEMINI_LIVE_FFMPEG_STDERR_MAX_BYTES": "8192 (source); stderr is drained, never surfaced",
+    "GEMINI_LIVE_FFMPEG_REAP_MS": "wait for a killed child to be reaped before returning",
+    "GEMINI_LIVE_UPLOAD_CONTAINERS": "sniffed container -> the one demuxer allowed for it",
+    "buildGeminiLiveTranscriptionRequest": "async (model, formData, { kind }) -> { plan } or a local 400/413/415 error result",
+    "buildGeminiLiveSetupFrame": "({ model, language, prompt }) -> source setup frame",
+    "geminiLiveAudioFrames": "generator (pcm) -> realtimeInput.audio frames of 3200 bytes",
+    "GEMINI_LIVE_AUDIO_END_FRAME": "{ realtimeInput: { audioStreamEnd: true } }",
+    "extractPcmFrom16kWav": "(Buffer) -> PCM samples of a 16 kHz 16-bit mono PCM WAV, or null",
+    "runGeminiLiveSocket": "socket driver; never rejects; resolves { outcome, sent, setupSent, text, usage? }",
+    "geminiLiveAuthHeaders": "(credentials) -> { x-goog-api-key } | { Authorization: Bearer } | null",
+    "geminiLiveAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "geminiLiveHandshakeRefusal": "(status, { secrets, retryAfter }) upgrade refusal mapping that never quotes the upstream",
+    "GEMINI_PROVIDER_ID": "\"gemini\"",
+    "GEMINI_LIVE_STT_FORMAT": "\"gemini-live-stt\"",
+    "GEMINI_LIVE_SOURCE_FORMAT": "\"gemini-live\"",
+    "GEMINI_LIVE_ORIGIN": "wss://generativelanguage.googleapis.com",
+    "GEMINI_LIVE_WS_URL": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+    "GEMINI_LIVE_STT_CONFIG": "staged sttConfig fragment (fixed URL, format gemini-live-stt, translationModels [])",
+    "GEMINI_LIVE_STT_MODELS": "one source model (kind stt)",
+    "GEMINI_LIVE_RESPONSE_FORMATS": "[\"json\"] (or none named)",
+    "GEMINI_LIVE_REFUSED_FIELDS": "form fields refused before connect",
+    "geminiLiveSttModel": "(id) -> model row or null"
+  },
+  "provider": {
+    "canonicalId": "gemini",
+    "aliases": [
+      "gemini"
+    ],
+    "sourceIds": [
+      "gemini"
+    ],
+    "inventoryAlias": "google (source TTS row; not an STT identity, not added)",
+    "existingRegistryEntry": "open-sse/providers/registry/gemini.js",
+    "existingServiceKinds": [
+      "llm",
+      "embedding",
+      "image",
+      "imageToText",
+      "webSearch",
+      "tts",
+      "stt",
+      "live"
+    ],
+    "addServiceKinds": [],
+    "authModes": [
+      "apikey",
+      "oauth"
+    ],
+    "auth": {
+      "apiKey": {
+        "header": "x-goog-api-key",
+        "scheme": "raw"
+      },
+      "accessToken": {
+        "header": "Authorization",
+        "scheme": "Bearer"
+      },
+      "precedence": "apiKey, then accessToken (source resolveLiveWsUrlAndHeaders)",
+      "queryAuth": false
+    },
+    "connectionBaseUrlHonored": false,
+    "format": "gemini-live-stt"
+  },
+  "models": {
+    "stt": [
+      {
+        "id": "gemini-3.5-transcribe-live",
+        "name": "Gemini 3.5 Transcribe Live"
+      }
+    ],
+    "passthrough": "refused: only the listed id (source modelScoped)",
+    "dynamicDiscovery": "none: the source lists the Live transcription model statically; no models.list filter for Live STT exists in the source"
+  },
+  "endpoints": {
+    "transcription": {
+      "transport": "WebSocket",
+      "url": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+      "upgradeHeaders": [
+        "x-goog-api-key: <key> | Authorization: Bearer <token>"
+      ],
+      "send": [
+        "{ setup: { model: \"models/gemini-3.5-transcribe-live\", generationConfig: { responseModalities: [\"TEXT\"] }, inputAudioTranscription: { languageCodes: [language] | [] }, systemInstruction?: { parts: [{ text: prompt }] } } }",
+        "after setupComplete: { realtimeInput: { audio: { data: <base64 3200-byte PCM>, mimeType: \"audio/pcm;rate=16000\" } } } repeated",
+        "{ realtimeInput: { audioStreamEnd: true } }"
+      ],
+      "receive": "setupComplete; serverContent.inputTranscription.text (concatenated with spaces); turnComplete/generationComplete; usageMetadata; error",
+      "answer": "HTTP 200 application/json { text }"
+    },
+    "translation": "none"
+  },
+  "bounds": {
+    "maxInputBytes": 26214400,
+    "maxAudioSeconds": 600,
+    "totalTimeoutMs": 120000,
+    "handshakeTimeoutMs": 10000,
+    "setupTimeoutMs": 15000,
+    "streamEndGraceMs": 5000,
+    "maxFrameBytes": 1048576,
+    "maxTranscriptBytes": 1048576,
+    "redirects": "refused",
+    "retries": 0,
+    "ffmpegTimeoutMs": 60000
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/gemini.js",
+      "change": "keep the kind \"live\" row for the realtime relay; expose gemini-3.5-transcribe-live to STT (add it to sttConfig.models or an stt-kind listing per the registration convention); keep sttConfig format gemini-stt for the other models; keep apikey and oauth auth"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"gemini\" && model === GEMINI_LIVE_STT_MODEL_ID) return await geminiLiveConvertingSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so transcribeGemini never serves the Live model and non-WAV uploads are converted as in the source"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "none expected: the route already records result.acceptedJob on the selected connection, stops account fallback for it, and returns `local` results (conversion failures, missing ffmpeg) without account penalty; confirm at registration"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Gemini Live file transcription after registration, and document the optional ffmpeg requirement: non-WAV uploads need ffmpeg at /usr/bin, /usr/local/bin or /opt/homebrew/bin (the Docker image installs /usr/bin/ffmpeg); without it those uploads get HTTP 503 while 16 kHz mono 16-bit PCM WAV still works"
+    }
+  ],
+  "conversion": {
+    "source": "geminiLiveTranscribe.ts convertToPcm16k: WAV fast path, else ffmpeg pipe:0 -> s16le mono 16 kHz pipe:1, -protocol_whitelist pipe, 60 s timeout, 8 KiB stderr cap, PCM cap, SIGKILL on timeout/abort/overflow; runs before the socket URL/headers are resolved",
+    "wiredBy": "geminiLiveConvertingSttAdapter (registration); geminiLiveSttAdapter keeps the WAV-only contract",
+    "bypass": "an upload extractPcmFrom16kWav accepts is never converted",
+    "executable": "first executable of /usr/bin/ffmpeg, /usr/local/bin/ffmpeg, /opt/homebrew/bin/ffmpeg; no PATH lookup, no caller value",
+    "containers": {
+      "wav": "wav",
+      "mp3": "mp3",
+      "flac": "flac",
+      "ogg": "ogg",
+      "m4a": "mov",
+      "webm": "matroska",
+      "aac": "aac"
+    },
+    "argv": "fixed array; only the forced demuxer (-f and -format_whitelist) varies, from the container table; filename and content type are ignored",
+    "isolation": "shell false, cwd /, env { LC_ALL: C, AV_LOG_FORCE_NOCOLOR: 1 } only, stdio pipes only, no temp files",
+    "bounds": {
+      "maxInputBytes": 26214400,
+      "maxPcmBytes": 19200000,
+      "timeoutMs": 60000,
+      "sharesTotalDeadlineMs": 120000,
+      "stderrBytes": 8192,
+      "decodedSecondsArg": 601
+    },
+    "failures": "all local (never an account fault, no acceptedJob): 415 unknown container, 400 undecodable or empty, 413 over 600 s or 25 MiB, 504 timeout, 499 abort, 503 ffmpeg missing, 500 malformed converter output",
+    "limitations": "M4A/MP4 whose moov atom follows the media data cannot be read from a pipe (source has the same limit); Windows hosts have no candidate path and get the 503 capability error"
+  }
+}

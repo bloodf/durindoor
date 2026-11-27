@@ -26,9 +26,11 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [OmniRoute current sign-in/provider delta (release/v3.8.55, #2034)](./parity-omni-d3f06-refresh.md)
 - [OmniRoute auth and provider delta (through c71f006, #2034)](./parity-omni-c71f006-refresh.md)
 - [OpenCode Go DeepSeek effort tiers (#2034)](./opencode-go-effort-parity-2034.md)
+- [Anthropic credit and usage-limit cooldown (OmniRoute PR #21440, #2034)](./anthropic-usage-limit-2034.md)
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
+- [Media credential verification (#2034)](./media-credential-verification-2034.md)
 - [NoTrack developer API provider (#2034)](./notrack-2034.md)
 - [Firefly consumer browser contract (#2034)](./firefly-consumer-browser-contract.md)
 - [AI Horde native images on the existing provider (#2034)](./aihorde-images-2034.md)
@@ -53,6 +55,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [chatgpt-web-2034.md](./chatgpt-web-2034.md)
 - [chatgpt-web-codex-2034.md](./chatgpt-web-codex-2034.md)
 - [claude-web-2034.md](./claude-web-2034.md)
+- [Shipped terminal sign-in ownership (#2034)](./cli-oauth-flow-ownership-2034.md)
 - [cline-signin-2034.md](./cline-signin-2034.md)
 - [codebuddy-signin-parity-2034.md](./codebuddy-signin-parity-2034.md)
 - [codex-alpha-search-2034.md](./codex-alpha-search-2034.md)
@@ -118,6 +121,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [zcode-2034.md](./zcode-2034.md)
 - [zcode-v4-compatibility-1252.md](./zcode-v4-compatibility-1252.md)
 - [zed-signin-parity-2034.md](./zed-signin-parity-2034.md)
+- [Zed Hosted credential isolation and error redaction follow-up (#2034)](./zed-hosted-followup-2034.md)
 - [zenmux-free-signin-parity-2034.md](./zenmux-free-signin-parity-2034.md)
 
 ### Provider contracts and implementation notes
@@ -175,6 +179,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 
 ### Issue acceptance and audit records
 
+- [Combo runtime state and planning (#2266)](./combo-runtime-2266.md)
+
 - [2305-dashboard-cleanup.md](./2305-dashboard-cleanup.md)
 - [circuit-1108-audit.md](./circuit-1108-audit.md)
 - [executor-dispatch-2308.md](./executor-dispatch-2308.md)
@@ -193,6 +199,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [v5-protocol-conformance.md](./v5-protocol-conformance.md)
 
 ### Development, testing, and operating references
+
+- [Compression pipeline settings (#2289)](./compression-pipeline-2289.md)
 
 - [1129-operational-metrics-coverage.md](./1129-operational-metrics-coverage.md)
 - [ai-tooling-plan.md](./ai-tooling-plan.md)

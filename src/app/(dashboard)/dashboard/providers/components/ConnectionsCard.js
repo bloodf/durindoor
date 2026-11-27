@@ -237,7 +237,7 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
           body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx))
         });
         const data = await res.json();
-        isValid = !!data.valid;
+        isValid = !!data.valid && !data.skipped;
         setValidationResult(providerValidationOutcome(data));
       } catch {setValidationResult("failed");} finally
       {setValidating(false);}
@@ -283,9 +283,10 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
         }
         {validationResult &&
         <Badge variant={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "default" : "error"}>
-            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
+            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped — unverified" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
           </Badge>
         }
+        {validationResult === "skipped" ? <p role="status" className="text-xs text-dd-muted">You can save this credential without verification.</p> : null}
         <div>
           <label htmlFor="connection-priority" className="text-xs text-dd-muted mb-1 block">Priority</label>
           <input id="connection-priority" type="number" min="1" className="w-full px-3 py-2 text-sm border border-dd-border rounded-lg bg-dd-surface focus:outline-none focus:border-dd-accent" value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value === "" ? "" : Number.parseInt(e.target.value, 10) })} onBlur={() => setFormData((prev) => ({ ...prev, priority: Number.isInteger(prev.priority) && prev.priority > 0 ? prev.priority : 1 }))} />

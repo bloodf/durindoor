@@ -6,10 +6,14 @@
 // open-sse/config/audioRegistry.ts, the two `vertex` entries:
 // - AUDIO_TRANSCRIPTION_PROVIDERS.vertex: baseUrl
 //   https://us-central1-aiplatform.googleapis.com/v1, authType "apikey",
-//   authHeader "bearer", format "vertex-gemini", three models;
+//   authHeader "bearer", format "vertex-gemini", three models, of which
+//   gemini-2.0-flash is dropped here: Google retired it on June 1, 2026
+//   (https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions,
+//   checked 2026-11-27), so requests naming it are refused before any auth;
 // - AUDIO_SPEECH_PROVIDERS.vertex: same baseUrl/auth, format
 //   "vertex-gemini-tts", five models.
-// The model ids and names below are the source's, in its order.
+// The model ids and names below are the source's, in its order, less that
+// retired id.
 
 /** Canonical provider id; `vx` is the existing local alias (providers/registry/vertex.js). */
 export const VERTEX_AUDIO_PROVIDER_ID = "vertex";
@@ -33,7 +37,6 @@ export const VERTEX_TTS_MODELS = Object.freeze([
 export const VERTEX_STT_MODELS = Object.freeze([
   { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Vertex Transcribe)", kind: "stt" },
   { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Vertex Transcribe)", kind: "stt" },
-  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (Vertex Transcribe)", kind: "stt" },
 ].map(Object.freeze));
 
 export const VERTEX_TTS_MODEL_IDS = Object.freeze(VERTEX_TTS_MODELS.map((m) => m.id));

@@ -1,0 +1,180 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts"
+    ],
+    "registryFields": {
+      "tts": {
+        "id": "pollinations",
+        "baseUrl": "https://gen.pollinations.ai/v1/audio/speech",
+        "authType": "apikey",
+        "authHeader": "bearer",
+        "format": "openai"
+      },
+      "stt": {
+        "id": "pollinations",
+        "baseUrl": "https://gen.pollinations.ai/v1/audio/transcriptions",
+        "authType": "apikey",
+        "authHeader": "bearer",
+        "format": "openai"
+      }
+    },
+    "inventoryNote": "the #2034 inventory also lists an STT row with endpoint https://gen.pollinations.ai/v1/audio/speech; the pinned source has no such pairing: the speech URL belongs to the speech entry and handleAudioTranscription only ever posts to the transcription URL, so that row is a duplicate of the speech row and nothing is staged for it"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/pollinations.js: id pollinations, alias pol, free category, noAuth true, apikey mode; chat endpoint only; no ttsConfig or sttConfig or audio model rows (missing serviceKinds defaults to llm)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no pollinations entry); synthesizeViaConfig needs ttsConfig, which pollinations lacks",
+      "open-sse/handlers/sttCore.js handleSttCore (returns \"does not support STT\" without sttConfig)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS.openai and sttCore.js transcribeOpenAICompatible (same wire envelope, but no deadline, follow redirects, quote upstream error text, no accepted-job outcome)"
+    ],
+    "result": "the provider exists for chat only; no TTS or STT path reaches Pollinations today, so this module is the whole audio delta"
+  },
+  "module": "open-sse/services/providerParity/native-pollinations-tts-stt/index.js",
+  "exports": {
+    "pollinationsTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "pollinationsSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createPollinationsTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "createPollinationsSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes } for tests",
+    "buildPollinationsSpeechRequest": "(model, text, options) -> source speech body; throws status 400",
+    "buildPollinationsTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData, responseFormat } or a 400 error result with local: true",
+    "resolvePollinationsContainer": "(requested, gatewayFormat) -> container; throws status 400",
+    "matchesContainer": "(container, bytes) leading-byte check for mp3, opus (Ogg), aac (ADTS/ADIF/M4A ftyp), flac, wav; the original (bytes, container) order is also accepted",
+    "pollinationsAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "pollinationsUploadFileName": "source upload file name rule",
+    "POLLINATIONS_AUDIO_DEFINITION": "audio fields to merge into the existing pollinations registry entry (addServiceKinds, ttsConfig, sttConfig)",
+    "POLLINATIONS_TTS_MODELS": "speech models",
+    "POLLINATIONS_STT_MODELS": "transcription models with per-model response formats",
+    "POLLINATIONS_SPEECH_CONTAINERS": "[\"mp3\", \"opus\", \"aac\", \"flac\", \"wav\"]",
+    "POLLINATIONS_SPEECH_RESPONSE_FORMATS": "containers plus \"ogg\" (alias of opus) and \"json\" (gateway wrapper)",
+    "POLLINATIONS_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\", \"verbose_json\"]",
+    "POLLINATIONS_ALIASES": "canonical and short IDs"
+  },
+  "provider": {
+    "canonicalId": "pollinations",
+    "aliases": [
+      "pollinations",
+      "pol"
+    ],
+    "existingRegistryEntry": "open-sse/providers/registry/pollinations.js",
+    "existingServiceKinds": [
+      "llm"
+    ],
+    "addServiceKinds": [
+      "tts",
+      "stt"
+    ],
+    "authModes": [
+      "apikey"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey",
+        "accessToken"
+      ],
+      "restriction": "Audio requires a real selected API key; noauth, public and sk_durindoor placeholders fail locally without submission. Existing chat keyless behavior is preserved."
+    },
+    "connectionBaseUrlHonored": false,
+    "format": "openai",
+    "noAuth": true
+  },
+  "models": {
+    "tts": [
+      {
+        "id": "default",
+        "name": "Pollinations TTS (Free)"
+      }
+    ],
+    "stt": [
+      {
+        "id": "whisper",
+        "name": "Pollinations Whisper (Free)",
+        "responseFormats": [
+          "json",
+          "text",
+          "verbose_json"
+        ],
+        "timestamps": true
+      }
+    ],
+    "voiceSuffix": "tts model/voice accepted; default voice alloy",
+    "dynamicDiscovery": "No audio discovery in the pinned source: static default/whisper rows only. Existing chat discovery must remain chat-only; do not infer audio support from /v1/models.",
+    "publicIds": {
+      "tts": [
+        "pollinations/default",
+        "pol/default"
+      ],
+      "stt": [
+        "pollinations/whisper",
+        "pol/whisper"
+      ]
+    }
+  },
+  "endpoints": {
+    "speech": {
+      "method": "POST",
+      "url": "https://gen.pollinations.ai/v1/audio/speech",
+      "headers": [
+        "Content-Type: application/json",
+        "Authorization: Bearer <key>"
+      ],
+      "body": "{ model, input, voice, response_format, speed, instructions? }",
+      "answer": "audio bytes in the requested container"
+    },
+    "transcription": {
+      "method": "POST",
+      "url": "https://gen.pollinations.ai/v1/audio/transcriptions",
+      "headers": [
+        "Authorization: Bearer <key>",
+        "Content-Type: multipart/form-data"
+      ],
+      "body": "model, language?, prompt?, response_format?, temperature?, timestamp_granularities[]*, file",
+      "answer": "json / verbose_json object with text, or text/plain"
+    }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "sttTimeoutMs": 300000,
+    "maxAudioBytes": 52428800,
+    "maxTranscriptBytes": 8388608,
+    "maxSttFileBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/pollinations.js",
+      "change": "keep every existing field; set serviceKinds to [\"llm\", \"tts\", \"stt\"]; append model rows from POLLINATIONS_TTS_MODELS / POLLINATIONS_STT_MODELS with kind; add sttConfig from POLLINATIONS_AUDIO_DEFINITION (translationModels [] so supportsSttTranslation stays false); no ttsConfig (the adapter is registered in TTS_ADAPTERS)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { pollinationsTtsAdapter } and add `pollinations: pollinationsTtsAdapter` to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage adds input characters (cost stays unknown: not the official OpenAI origin); register the same instance under pol because lookupMediaAdapter does not resolve aliases"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add pollinations to NAMED_FORMAT_PROVIDERS so a query-string response_format reaches the adapter as requestedResponseFormat; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"pollinations\") return await pollinationsSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so the generic openai branch never serves pollinations; handle both canonical pollinations and alias pol"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "record `result.acceptedJob` once on the selected connection (modality stt, endpoint /v1/audio/transcriptions) and stop account fallback for it; today the STT route has no accepted-job path"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Pollinations tts and stt kinds after registration"
+    }
+  ]
+}

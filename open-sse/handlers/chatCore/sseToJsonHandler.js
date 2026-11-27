@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "../../shared/codexQuotaWindow.js";
 import { invalidClassifierVerdict } from "./classifierVerdict.js";
 import { collectAntigravityGeminiSSE } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
@@ -314,8 +315,12 @@ export function createSSEErrorResult(parsed, credentials = null, sourceFormat = 
   return { ...createFormattedErrorResult(status, message, undefined, undefined, null, credentials, status, sourceFormat), quotaTerminalReason: "stream_error" };
 }
 
-export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null) {
-  const state = { toolNameMap, clientTools, providerBody };
+/**
+ * @param {{accountId: string|null, model: string|null}|null} [accountSignatures] - Antigravity only:
+ *   persist signatures for this account and model family instead of the session store.
+ */
+export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null, accountSignatures = null) {
+  const state = { toolNameMap, clientTools, providerBody, ...(accountSignatures && { accountSignatures }) };
   const chunks = [];
 
   for (const { data, done } of parseSseEvents(rawSSE)) {
@@ -513,6 +518,25 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           maxBytes: MAX_PROVIDER_BODY_BYTES,
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS
         });
+        // Codex billing failures after generated output are terminal even for
+        // JSON clients. Converting them to a generic 502 would replay generation.
+        if (provider === "codex") {
+          let generatedOutput = false;
+          for (const { data, done } of parseSseEvents(rawBody)) {
+            if (done) continue;
+            let event;
+            try { event = JSON.parse(data); } catch { continue; }
+            const code = codexBillingQuotaCode(event);
+            if (code) {
+              const message = "Codex credential quota exhausted";
+              const result = createErrorResult(429, message, undefined, { error: { code, type: "insufficient_quota", message } }, null, credentials, 429);
+              result.upstreamPartialOutput = generatedOutput;
+              return result;
+            }
+            if ((isString(event?.delta) && event.delta) || event?.type === "response.output_item.done" ||
+                (event?.type === "response.output_item.added" && (event.item?.arguments || event.item?.encrypted_content || event.item?.content?.length))) generatedOutput = true;
+          }
+        }
         const jsonDocument = parseJsonDocumentBehindEventStream(rawBody, targetFormat);
         const documentError = jsonDocument ? createSSEErrorResult(jsonDocument.body, credentials, sourceFormat) : null;
         if (documentError) {
@@ -631,6 +655,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         timeoutMs: responseBodyTimeoutMs
       });
       const isGeminiFamily = GEMINI_FAMILY_FORMATS.has(targetFormat);
+      const accountSignatures = targetFormat === FORMATS.ANTIGRAVITY ?
+      { accountId: connectionId || null, model: (finalBody || translatedBody)?.model || model } :
+      null;
       const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat) ?
       targetFormat :
       FORMATS.OPENAI;
@@ -642,7 +669,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }) :
       null;
       let parsed = claudeSSE ? claudeSSE.completion : isGeminiFamily ?
-      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null) :
+      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null, accountSignatures) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody,
@@ -651,7 +678,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       if (!parsed && clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY) {
         const native = collectAntigravityGeminiSSE(sseText, toolNameMap);
         if (native.candidates?.length) {
-          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap);
+          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap, null, accountSignatures);
         }
       }
       // A forced-streaming upstream can answer with one complete JSON response

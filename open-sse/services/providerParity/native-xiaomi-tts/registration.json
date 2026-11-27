@@ -1,0 +1,139 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "tests/unit/audio-speech-handler.test.ts",
+      "tests/unit/xiaomi-mimo-models-fetch-15307.test.ts"
+    ],
+    "registryFields": {
+      "tts": {
+        "id": "xiaomi-mimo",
+        "baseUrl": "https://api.xiaomimimo.com/v1/chat/completions",
+        "authType": "apikey",
+        "authHeader": "bearer",
+        "format": "xiaomi-mimo-tts",
+        "supportedFormats": ["mp3", "wav"],
+        "models": [
+          { "id": "mimo-v2.5-tts", "name": "MiMo V2.5 TTS" },
+          { "id": "mimo-v2.5-tts-voicedesign", "name": "MiMo V2.5 Voice Design" },
+          { "id": "mimo-v2.5-tts-voiceclone", "name": "MiMo V2.5 Voice Clone" }
+        ]
+      }
+    },
+    "handler": "handleXiaomiMimoSpeech: POST { model, messages: [{ role: assistant, content: input }], audio: { format: mp3|wav, voice: voice || providerSpecificData.defaultVoice || mimo_default } } with Content-Type application/json + Authorization Bearer; audio/* answer streamed, JSON answer read from choices[0].message.audio.data (then the getXiaomiMimoAudioData fallbacks), decoded with atob; other response_format refused with 400 before the upstream call"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/xiaomi-mimo.js (chat provider id xiaomi-mimo, aliases [mimo, mimo-desktop, xmd], authModes [oauth, apikey]; chat transports only: no serviceKinds tts, no ttsConfig, no tts model row)",
+      "open-sse/providers/registry/xiaomi-mimo-token-plan.js (separate provider id xiaomi-mimo-token-plan, serviceKinds [llm], no tts rows)",
+      "open-sse/providers/registry/xiaomi-tokenplan.js (separate provider id xiaomi-tokenplan, tp- keys on token-plan-<region>.xiaomimimo.com; lists mimo-v2.5-tts / -voiceclone / -voicedesign with kind tts but has no ttsConfig and no TTS_ADAPTERS entry, so handleTtsCore answers 400 'does not support TTS via this route' before any network call; not the source xiaomi-mimo speech entry and not activated here)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no xiaomi-mimo or alias entry)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS (no xiaomi-mimo-tts format)",
+      "open-sse/executors/xiaomi-mimo.js (chat executor; account-session route on mimo-server-<region> is chat-only)",
+      "src/shared/constants/ttsProviders.js and src/sse/handlers/tts.js (no xiaomi-mimo speech UI config or named-format entry)"
+    ],
+    "result": "no local equivalent: the provider and both connection modes exist, the speech route does not; this module is the speech delta, reusing the existing connection's API key"
+  },
+  "module": "open-sse/services/providerParity/native-xiaomi-tts/index.js",
+  "exports": {
+    "xiaomiMimoTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createXiaomiMimoTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "discoverXiaomiMimoTtsModels": "(credentials, { fetchImpl, signal, timeoutMs }) -> { models, source: api|local_catalog, status? }; never throws",
+    "buildXiaomiMimoSpeechRequest": "(model, text, options, { format, defaultVoice }) -> source body; throws status 400 for any field the source would drop",
+    "normalizeXiaomiMimoRequestFormat": "source format aliases (plus json) -> mp3 | wav | null",
+    "xiaomiMimoAudioData": "source getXiaomiMimoAudioData path order",
+    "isXiaomiMimoTtsModelId": "static row or catalog id matching XIAOMI_MIMO_TTS_MODEL_PATTERN",
+    "xiaomiMimoAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "isMp3": "mp3 magic-byte check",
+    "isWav": "RIFF/WAVE magic-byte check",
+    "XIAOMI_MIMO_TTS_PROVIDER_ADDITIONS": "staged additions to the existing xiaomi-mimo registry entry (serviceKinds, model rows, ttsConfig)",
+    "XIAOMI_MIMO_TTS_CONFIG": "ttsConfig block { baseUrl, authType, authHeader, format, supportedFormats, defaultVoice, models }",
+    "XIAOMI_MIMO_TTS_MODELS": "static speech models",
+    "XIAOMI_MIMO_TTS_MODEL_PATTERN": "speech-model id pattern used to filter the live catalog",
+    "XIAOMI_MIMO_SPEECH_RESPONSE_FORMATS": "named response_format values honored",
+    "XIAOMI_MIMO_SPEECH_CONTAINERS": "[\"mp3\", \"wav\"]",
+    "XIAOMI_MIMO_PROVIDER_ID": "xiaomi-mimo",
+    "XIAOMI_MIMO_ALIASES": "[\"mimo\", \"mimo-desktop\", \"xmd\"]",
+    "XIAOMI_MIMO_AUTH_MODES": "[\"oauth\", \"apikey\"]",
+    "XIAOMI_MIMO_TTS_FORMAT": "xiaomi-mimo-tts",
+    "XIAOMI_MIMO_ORIGIN": "https://api.xiaomimimo.com",
+    "XIAOMI_MIMO_TTS_URL": "https://api.xiaomimimo.com/v1/chat/completions",
+    "XIAOMI_MIMO_MODELS_URL": "https://api.xiaomimimo.com/v1/models",
+    "XIAOMI_MIMO_DEFAULT_TTS_MODEL": "mimo-v2.5-tts",
+    "XIAOMI_MIMO_DEFAULT_VOICE": "mimo_default",
+    "XIAOMI_MIMO_TTS_TIMEOUT_MS": "120000",
+    "XIAOMI_MIMO_DISCOVERY_TIMEOUT_MS": "15000",
+    "XIAOMI_MIMO_MAX_AUDIO_BYTES": "26214400",
+    "XIAOMI_MIMO_MAX_TTS_REQUEST_BYTES": "262144",
+    "XIAOMI_MIMO_MAX_CATALOG_BYTES": "1048576",
+    "xiaomiMimoTtsModel": "(id) -> static model row or null"
+  },
+  "provider": {
+    "canonicalId": "xiaomi-mimo",
+    "aliases": ["mimo", "mimo-desktop", "xmd"],
+    "existingRegistryEntry": "open-sse/providers/registry/xiaomi-mimo.js",
+    "existingServiceKinds": ["llm (implicit)"],
+    "addServiceKinds": ["tts"],
+    "authModes": ["oauth", "apikey"],
+    "speechAuthModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey"] },
+    "accountSessionConnections": "refused with 401 before submit when the connection has no apiKey; accessToken and providerSpecificData.mimoPassToken are never sent to the speech API",
+    "connectionBaseUrlHonored": false,
+    "format": "xiaomi-mimo-tts"
+  },
+  "models": {
+    "tts": [
+      { "id": "mimo-v2.5-tts", "name": "MiMo V2.5 TTS" },
+      { "id": "mimo-v2.5-tts-voicedesign", "name": "MiMo V2.5 Voice Design" },
+      { "id": "mimo-v2.5-tts-voiceclone", "name": "MiMo V2.5 Voice Clone" }
+    ],
+    "voiceSuffix": "refused: the source takes the voice from the voice field (default from providerSpecificData.defaultVoice, then mimo_default)",
+    "dynamicDiscovery": "GET https://api.xiaomimimo.com/v1/models with the connection key; ids matching XIAOMI_MIMO_TTS_MODEL_PATTERN only; static rows on any failure"
+  },
+  "endpoints": {
+    "speech": {
+      "method": "POST",
+      "url": "https://api.xiaomimimo.com/v1/chat/completions",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ model, messages: [{ role: \"assistant\", content: input }], audio: { format: \"mp3\" | \"wav\", voice } }",
+      "answer": "application/json chat-completions envelope with base64 audio, or an audio/* body"
+    },
+    "models": { "method": "GET", "url": "https://api.xiaomimimo.com/v1/models", "headers": ["Authorization: Bearer <key>"], "answer": "{ data: [{ id }] }" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "discoveryTimeoutMs": 15000,
+    "maxAudioBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "maxCatalogBytes": 1048576,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/xiaomi-mimo.js",
+      "change": "merge XIAOMI_MIMO_TTS_PROVIDER_ADDITIONS: serviceKinds [\"llm\", \"tts\"], add the three model rows with kind tts, add ttsConfig XIAOMI_MIMO_TTS_CONFIG; keep id, aliases, display, authModes, regions and chat transports unchanged"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { xiaomiMimoTtsAdapter } and add it to TTS_ADAPTERS under xiaomi-mimo (aliases resolve through the registry), so handleTtsCore uses the adapter before synthesizeViaConfig"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add xiaomi-mimo to NAMED_FORMAT_PROVIDERS so the client's response_format (mp3/wav/json aliases) reaches the adapter and anything else is refused before submit; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "src/app/api/providers/[id]/models/fetchConnectionModels.js",
+      "change": "optional: use discoverXiaomiMimoTtsModels for the tts model selector of xiaomi-mimo API key connections"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Xiaomi MiMo tts kind after registration"
+    }
+  ]
+}

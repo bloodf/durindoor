@@ -36,6 +36,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { refreshCapabilities } from "./tokenRefresh/capabilities.js";
+import { isFunction } from "../../src/shared/utils/typeChecks.js";
 
 // ponytail: `groupTail` below is a process-local in-memory Map keyed by
 // rotation group. The ceiling is single-process: a multi-process deployment
@@ -155,4 +156,55 @@ export async function serializeRefresh(provider, fn, { onLaneAcquired = null } =
     // Garbage-collect the lane when nobody chained after us.
     if (groupTail.get(group) === myTail) groupTail.delete(group);
   }
+}
+
+// Refresh operations whose provider call may already have rotated a single-use
+// refresh token and whose store write has not settled yet. Controlled shutdown
+// waits for them so process exit cannot drop the only copy of a rotated token.
+// Adapted from CLIProxyAPI 32c0c459 (MIT, router-for-me/CLIProxyAPI
+// sdk/cliproxy/auth/conductor_refresh.go StopAutoRefreshContext).
+const pendingRefreshPersistence = new Set();
+
+/**
+ * Register an in-flight refresh-and-persist operation for shutdown draining.
+ * The returned promise is the same operation; rejection handling stays with
+ * the caller.
+ *
+ * @template T
+ * @param {Promise<T>} operation
+ * @returns {Promise<T>}
+ */
+export function trackRefreshPersistence(operation) {
+  if (!isFunction(operation?.then)) return operation;
+  pendingRefreshPersistence.add(operation);
+  const forget = () => pendingRefreshPersistence.delete(operation);
+  operation.then(forget, forget);
+  return operation;
+}
+
+/**
+ * Wait, up to `timeoutMs`, for every tracked refresh persistence to settle,
+ * including operations registered while the drain is running. Never rejects
+ * and never calls back into refresh code, so a caller nested inside a tracked
+ * operation is released by the deadline instead of deadlocking on itself.
+ *
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<{ drained: boolean, pending: number }>}
+ */
+export async function drainRefreshPersistence({ timeoutMs = 5000 } = {}) {
+  const budget = Number.isFinite(timeoutMs) && timeoutMs >= 0 ? timeoutMs : 5000;
+  const deadline = Date.now() + budget;
+  while (pendingRefreshPersistence.size > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    let timer = null;
+    // Not unref'd: the deadline itself must keep the loop alive, or a drain
+    // with nothing else pending would never resolve. It is always cleared.
+    const expired = new Promise((resolve) => {
+      timer = setTimeout(resolve, remaining);
+    });
+    await Promise.race([Promise.allSettled([...pendingRefreshPersistence]), expired]);
+    clearTimeout(timer);
+  }
+  return { drained: pendingRefreshPersistence.size === 0, pending: pendingRefreshPersistence.size };
 }

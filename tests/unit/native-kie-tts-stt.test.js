@@ -1,5 +1,5 @@
-// Kie native speech (TTS) and transcription (STT) adapters, staged and
-// unregistered (#2034). Closed mocks only: every request is answered below, an
+// Kie native speech (TTS) and transcription (STT) adapters, registered on
+// the existing kie provider (#2034). Closed mocks only: every request is answered below, an
 // unexpected request fails the test, and every key is synthetic. Wire shapes
 // follow OmniRoute c71f0065 (audioSpeech.ts handleKieAudioSpeech,
 // audioTranscription.ts handleKieAudioTranscription, executors/kie.ts,
@@ -101,17 +101,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing kie chat entry unchanged", () => {
-    expect(getTtsAdapter("kie")).toBeNull();
-    expect(kieRegistry.serviceKinds).toEqual(["llm"]);
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers speech and transcription and preserves registered KIE chat and media", () => {
+    expect(getTtsAdapter("kie")).toBe(kieTtsAdapter);
+    expect(kieRegistry.serviceKinds).toEqual(["llm", "image", "video", "tts", "stt"]);
     expect(kieRegistry.ttsConfig).toBeUndefined();
-    expect(kieRegistry.sttConfig).toBeUndefined();
+    expect(kieRegistry.sttConfig).toEqual({ baseUrl: ORIGIN, authType: "apikey", authHeader: "bearer", format: "kie-audio" });
+    expect(kieRegistry.models.filter((row) => row.kind === "tts").map((row) => row.id)).toEqual(KIE_TTS_MODELS.map((m) => m.id));
+    expect(kieRegistry.models.filter((row) => row.kind === "stt").map((row) => row.id)).toEqual(KIE_STT_MODELS.map((m) => m.id));
     expect(kieRegistry.authType).toBe("apikey");
     expect(kieRegistry.transport.baseUrl).toBe(`${ORIGIN}/v1/chat/completions`);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
   });
 });
 

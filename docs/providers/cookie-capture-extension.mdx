@@ -3,7 +3,7 @@ title: Browser cookie capture extension
 description: Install and use the opt-in extension to import a supported browser session into DurinDoor.
 ---
 
-The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **ChatGPT Web Codex**, **Claude Web**, **Gemini Web**, **Doubao Web**, **Z.ai Web**, **MaxAI**, **Arena**, **ChatPlayground**, **Perplexity Web**, **Grok Web**, **Muse Spark Web**, **Tencent Yuanbao Web**, **PromptQL**, **Notion AI Web**, **NoTrack Web**, **Tencent AI Studio Web**, **Blackbox Web**, **Conol Web**, **Poe Web**, **v0 Vercel Web**, **Inner.ai Web**, **Venice Web**, **TinyCMS Web** and **DeepSeek Web**. For TinyCMS Web it reads the `app-config-uuid` local storage value instead of a cookie, and for DeepSeek Web the `userToken` local storage value. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
+The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **ChatGPT Web Codex**, **Claude Web**, **Gemini Web**, **Doubao Web**, **Z.ai Web**, **MaxAI**, **Arena**, **ChatPlayground**, **Perplexity Web**, **Grok Web**, **Muse Spark Web**, **Tencent Yuanbao Web**, **PromptQL**, **Notion AI Web**, **NoTrack Web**, **Tencent AI Studio Web**, **Blackbox Web**, **Conol Web**, **Poe Web**, **v0 Vercel Web**, **Inner.ai Web**, **Venice Web**, **Veo AI Free Web**, **TinyCMS Web** and **DeepSeek Web**. For TinyCMS Web it reads the `app-config-uuid` local storage value instead of a cookie, and for DeepSeek Web the `userToken` local storage value. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
 
 A session cookie grants access to your account. Protect your dashboard and restrict access to your gateway; see [API key scoping](../operations/api-key-scoping.mdx).
 
@@ -28,16 +28,17 @@ The command writes a zip and a `.sha256` file under `extensions/provider-cookie-
 
 The pairing secret is shown once, expires after two minutes, and is bound to one provider and target. Create a new pairing after a failed attempt. Cancel discards the pairing and aborts an in-flight request.
 
-### Inner.ai Web and Venice Web
+### Inner.ai Web, Venice Web and Veo AI Free Web
 
 - **Inner.ai Web:** keep `https://app.innerai.com` in the active tab. The extension reads only the `token` cookie (it may be scoped to `.innerai.com`). It never reads your account email. To store one, type it in the optional **Account email** field of the dashboard dialog before you choose **Create pairing**; the server binds it to that pairing and appends it to the stored token. Leave it blank to store the token alone and rely on the provider profile lookup. See [Inner.ai Web](./inner-ai-web.md).
 - **Venice Web:** sign in at `https://venice.ai`, then open `https://clerk.venice.ai` in the active tab and send from there. The credential is the `__client` cookie of that Clerk origin; a `venice.ai` tab is refused. See [Venice Web](./venice-web.md).
+- **Veo AI Free Web:** sign in at `https://veoaifree.com` and keep that tab active. Veo uses one bounded cookie enumeration for the confirmed provider URL and tab store. At most 64 entries are accepted. Names are matched before values are read; exactly one secure, unexpired `wordpress_logged_in_<32 lowercase hex>` member in that store is required. Arbitrary valid md5 hashes are supported. Other providers retain exact-name reads.
 
 ## Privacy and permissions
 
 The extension runs only from its popup; it has no background worker or content script. It requests cookie access (or, for TinyCMS Web and DeepSeek Web, permission to run one read-only script in the provider tab) and access to the provider and paired dashboard hosts only when you send. It removes permissions granted for that run afterwards, leaving any earlier grants alone. Chrome host permissions cover every port on a host while granted.
 
-It reads only the built-in approved cookie names and contiguous chunks from the active tab's cookie store, rather than listing the cookie jar. It sends them once to the paired dashboard's `/api/providers/cookie-import` endpoint. The dashboard must use HTTPS, except for HTTP on `localhost`, `127.0.0.1`, or `[::1]`. The extension has no storage permission, telemetry, logging, or automatic retry; cookie values and the pairing secret remain in memory for the run. The dashboard stores imported cookies encrypted like other connection secrets.
+It reads only the built-in approved cookie names and contiguous chunks from the active tab's cookie store, with the bounded Veo hashed-family exception described above. It sends them once to the paired dashboard's `/api/providers/cookie-import` endpoint. The dashboard must use HTTPS, except for HTTP on `localhost`, `127.0.0.1`, or `[::1]`. The extension has no storage permission, telemetry, logging, or automatic retry; cookie values and the pairing secret remain in memory for the run. The dashboard stores imported cookies encrypted like other connection secrets.
 
 ## Limitations
 

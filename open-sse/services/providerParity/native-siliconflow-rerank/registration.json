@@ -1,0 +1,57 @@
+{
+  "registered": false,
+  "canonicalId": "siliconflow",
+  "aliases": ["siliconflow"],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/rerankRegistry.ts",
+      "open-sse/handlers/rerank.ts",
+      "src/app/api/providers/[id]/models/discovery/providerSets.ts",
+      "src/app/api/providers/[id]/models/discovery/normalizers.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["SILICONFLOW_ID", "SILICONFLOW_ALIASES", "SILICONFLOW_ORIGIN", "SILICONFLOW_RERANK_URL", "SILICONFLOW_MODELS_URL", "rerankModels", "rerankConfig", "siliconflowRerankMetadata"],
+    "adapter.js": ["siliconflowRerankAdapter", "buildRerankBody", "normalizeRerank", "safeModel", "siliconflowHeaders", "invalid"],
+    "service.js": ["handleSiliconflowRerankNative", "discoverSiliconflowModels"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["rerank"],
+  "models": {
+    "rerank": ["Qwen/Qwen3-Reranker-8B", "Qwen/Qwen3-Reranker-4B", "Qwen/Qwen3-Reranker-0.6B", "BAAI/bge-reranker-v2-m3"]
+  },
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay or failover"
+  },
+  "endpoints": {
+    "rerank": "https://api.siliconflow.com/v1/rerank",
+    "discovery": "https://api.siliconflow.com/v1/models"
+  },
+  "envelope": {
+    "request": "{ model, query, documents (string | {text}), top_n: top_n ?? documents.length, return_documents: return_documents !== false }",
+    "response": "{ id, model, results: [{ index, relevance_score, document?: { text } }], usage? } rebuilt from validated upstream results and caller document text"
+  },
+  "integration": {
+    "rerank": "open-sse/handlers/rerankCore.js handleRerankCore: dispatch handleSiliconflowRerankNative for provider 'siliconflow' before generic deriveRerankUrl/passthrough; the generic path already derives the same URL with the same Bearer headers but forwards the body verbatim and relays the raw upstream body",
+    "routeKind": "src/sse/handlers/modelKind.js modelKindError: reranker IDs are unknown to the siliconflow registry entry, so they are currently dispatched untyped (not rejected) unless a custom/synced row declares another kind; registration adds siliconflowRerankMetadata.models and rerankConfig so the catalog claims kind 'rerank'",
+    "provider": "existing open-sse/providers/registry/siliconflow.js: add serviceKinds including 'llm' and 'rerank' (entry currently declares none), the kind:'rerank' models and rerankConfig only; preserve transport, validateUrl, modelsFetcher, passthroughModels and chat models",
+    "discovery": "existing src/app/api/providers/[id]/models/modelsConfig.js and providerModelsConfig.js siliconflow createOpenAIModelsConfig('https://api.siliconflow.com/v1/models') plus registry modelsFetcher are equivalent; staged discovery adds bounded safe-ID validation, no replacement required",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "text documents only (string or {text}); no rank_fields, structured/JSON documents, media, streaming or extra fields (e.g. SiliconFlow instruction, max_chunks_per_doc, overlap_tokens are refused, not forwarded)",
+    "up to 1024 documents, each and query at most 20000 characters; top_n 1..documents.length",
+    "custom safe model IDs allowed; only the four pinned catalog models claim the rerank serviceKind",
+    "30s default/60s maximum total deadline, 8MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed (the source relays them)",
+    "no synthetic billed_units/search_units; unknown cost stays unknown; SiliconFlow meta.tokens receipts are not mapped (only numeric usage fields)",
+    "discovery does not retain pricing/free-tier evidence fields",
+    "no async jobs, polling, artifact URL fetching, browser or WebSocket protocol"
+  ]
+}

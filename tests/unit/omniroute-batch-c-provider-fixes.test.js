@@ -55,10 +55,11 @@ describe("heroku: connection testing + custom inference URL", () => {
 
 describe("haiper: video/image never exposed as chat LLM models", () => {
   it("has no chat/LLM models in the registry", () => {
-    expect(getProviderModels("hp")).toEqual([]);
+    // Only the typed Gen 2 media rows of the native image and video adapters.
+    expect(getProviderModels("hp").map(({ id, kind }) => `${kind}:${id}`)).toEqual(["image:gen2", "video:gen2"]);
   });
 
-  it("serviceKinds excludes llm and hides image/video until adapters exist", () => {
+  it("serviceKinds excludes llm and lists only the native image/video kinds", () => {
     expect(PROVIDERS.haiper.serviceKinds ?? []).not.toContain("llm");
   });
 });

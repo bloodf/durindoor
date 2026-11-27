@@ -61,6 +61,7 @@ export const headroomEngine = {
     return !!enabled && !!url;
   },
   async apply(body, options) {
+    if (options?.config?.headroomApplied === true) return { body, compressed: false, stats: null };
     const cfg = options?.config ?? {};
     const step = options?.stepConfig ?? {};
     const enabled = step.enabled ?? cfg.enabled ?? cfg.headroom?.enabled ?? false;

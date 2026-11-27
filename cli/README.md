@@ -53,3 +53,19 @@ The command uses loopback HTTP and the existing local CLI management token from
 the same `DATA_DIR` as the server. It does not start the gateway, run updates, or
 contact model providers. Remote profiles and credential provisioning remain
 outside this command's scope. Launcher flags such as `--host` are not accepted.
+
+### Provider sign-in in the terminal
+
+The Providers menu supports browser authorization for Claude Code, Codex,
+Gemini CLI, Antigravity and iFlow, and device authorization for GitHub Copilot,
+Qwen Code and Kiro. For browser authorization, paste the complete callback URL,
+including its `code` and `state`. Claude also accepts the `code#state` shown by
+its authorization page. A missing or mismatched state is rejected; start a new
+sign-in instead of reusing an old callback. Raw access tokens are not accepted
+in this wizard.
+
+The CLI retains the server-issued sign-in flow ID through completion. Device
+sign-in follows the provider's polling interval, slows down when requested,
+and stops when the server session expires. Press Esc or Ctrl+C while waiting
+to cancel. If sign-in expires, is declined, or has already been used, restart
+it from Add New Connection. Keep the CLI and server up to date together.

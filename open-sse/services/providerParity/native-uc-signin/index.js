@@ -3,7 +3,7 @@
 // this module; ./registration.json describes the serial wiring step. Source
 // attribution is in ./config.js.
 export * from "./config.js";
-export { clerkErrorCode, clerkResource, parseSetCookies, ucClerkHeaders, ucClerkPost, ucClerkUrl } from "./transport.js";
+export { clerkErrorCode, clerkResource, parseSetCookies, ucClerkForm, ucClerkHeaders, ucClerkPost, ucClerkUrl } from "./transport.js";
 export {
   buildUcConnectionMetadata,
   clampRefreshSkew,
@@ -11,7 +11,7 @@ export {
   expFromSessionJwt,
   mergeCookies,
   mintUcSession,
-  touchUcSession,
+  sessionJwtClaims,
   ucFailure,
 } from "./session.js";
 export { createUcSignInController } from "./signin.js";

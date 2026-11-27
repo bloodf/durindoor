@@ -78,6 +78,7 @@ function makeChrome({ tabUrl = "https://grok.com/", tabId = 7, held = [], reques
       remove: async (q) => { rec("permissions.remove", q); names(q).forEach((n) => state.held.delete(n)); return true; },
     },
     cookies: {
+      getAll: async () => { rec("cookies.getAll", {}); throw new Error("non-hashed provider must never enumerate"); },
       getAllCookieStores: async () => { rec("cookies.getAllCookieStores", {}); return stores ?? [{ id: "other", tabIds: [999] }, { id: "store-1", tabIds: [tabId] }]; },
       get: async (details) => { rec("cookies.get", details); return cookies[details.name] ?? null; },
     },
@@ -157,7 +158,10 @@ describe("manifest and sources", () => {
     }
     const capture = fs.readFileSync(path.join(EXTENSION_DIR, "capture.js"), "utf8");
     expect(capture.match(/\bfetch\(/g)).toHaveLength(1);
-    expect(capture).not.toMatch(/cookies\.getAll\(/);
+    expect(capture.match(/cookies\.getAll\(/g)).toHaveLength(1);
+    for (const [file, text] of sources) {
+      if (file !== "capture.js") expect(text).not.toMatch(/cookies\.getAll\(/);
+    }
     expect(capture).not.toMatch(/cookies\.set|cookies\.remove/);
   });
 });
@@ -873,5 +877,16 @@ describe("Inner.ai Web and Venice Web capture", () => {
     expect(callNames(harness.calls)).toContain("permissions.remove");
     expect([...harness.state.held]).toEqual([]);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("fixed-name provider enumeration isolation", () => {
+  it.each(Object.entries(PROVIDERS).filter(([, def]) => !def.hashedCookiePrefixes?.length && def.cookieNames.length))("%s uses only exact-name reads", async (provider, def) => {
+    const jar = Object.fromEntries(def.cookieNames.map((name) => [name, cookie(name, VALUE, { domain: new URL(def.origin).hostname })]));
+    const { result, calls } = await capture({ p: pairing({ provider, contract: { origin: def.origin, cookieNames: def.cookieNames, cookiePrefixes: def.cookiePrefixes } }), chromeOpts: { tabUrl: def.origin, cookies: jar } });
+    expect(result.ok).toBe(true);
+    expect(callNames(calls)).not.toContain("cookies.getAll");
+    expect(calls.filter((call) => call.name === "cookies.get").every((call) => call.arg.url === def.origin + "/" && call.arg.storeId === "store-1")).toBe(true);
   });
 });

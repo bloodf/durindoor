@@ -1,0 +1,56 @@
+{
+  "registered": false,
+  "canonicalId": "duckduckgo-free",
+  "aliases": ["duckduckgo"],
+  "aliasNotes": "Source SEARCH_PROVIDER_ALIASES maps duckduckgo -> duckduckgo-free. Local duckduckgo-web (DuckDuckGo AI Chat, serviceKinds llm) owns alias 'ddgw' and uiAlias 'ddg'; neither is reused.",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/services/freeWebSearch.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["DDG_FREE_ID", "DDG_FREE_ALIASES", "DDG_LITE_ORIGIN", "DDG_LITE_URL", "DDG_USER_AGENT", "searchConfig", "duckduckgoFreeProviderDefinition"],
+    "adapter.js": ["duckduckgoSearchAdapter", "parseSearchParams", "buildDuckDuckGoRequest", "parseDuckDuckGoLite", "resolveResultUrl", "isAnomalyPage", "normalizeSearch", "MAX_QUERY_CHARS", "MAX_HTML_BYTES", "invalid"],
+    "service.js": ["handleDuckDuckGoFreeSearchNative", "discoverDuckDuckGoFreeModels", "MAX_DEADLINE_MS"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "discovery": "none: the source has no model catalog or discovery endpoint for duckduckgo-free",
+  "auth": {
+    "authType": "none",
+    "authHeader": "none",
+    "noAuth": true,
+    "identity": "selected no-auth connection only selects proxy and accounting scope (connectionId); no credential value is ever sent; no refresh, cache, replay or failover"
+  },
+  "endpoints": {
+    "search": "POST https://lite.duckduckgo.com/lite/"
+  },
+  "envelope": {
+    "request": "Content-Type: application/x-www-form-urlencoded; User-Agent: <source Chrome UA>; Accept: text/html; body q=<sanitized query>",
+    "response": "{ provider: 'duckduckgo-free', query, results: [unified SearchResult], answer: null, usage: { queries_used: 1, search_cost_usd: 0 }, metrics, errors: [] } parsed from lite HTML (result-link anchors + result-snippet cells)"
+  },
+  "integration": {
+    "provider": "new open-sse/providers/registry/duckduckgo-free.js from duckduckgo-free ProviderDefinition (noAuth, serviceKinds webSearch, searchConfig) plus open-sse/providers/registry/index.js entry",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleDuckDuckGoFreeSearchNative for provider 'duckduckgo-free' before tryDedicatedProvider; the generic JSON path (callers.js/normalizers.js) cannot parse HTML and has no builder for this id",
+    "route": "src/sse/handlers/search.js noAuth branch already resolves getNoAuthProviderCredentials and passes the connection; recordSuccess consumes accounting.nativeUnits.operations=1 with costPerQuery 0",
+    "fallbackOnly": "source fallbackOnly auto-selection (no configured provider) is a route policy, not wired at staging; registration decides whether to adopt it",
+    "catalog": "docs/providers/catalog.mdx, public/providers icon and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "search_type 'web' only; country, language, time_range, offset, domain_filter, content_options and provider_options must be absent/null/empty (source silently ignored them)",
+    "query sanitized like local sanitizeQuery and bounded to 2000 characters; max_results integer 1..100 clamped to 25 (default 5)",
+    "10s default/15s maximum total deadline; 1MiB success and 16KiB error body bounds; parser input truncated to 256KiB as in the source",
+    "manual redirects refused; response origin must be https://lite.duckduckgo.com",
+    "result URLs must be http(s), without userinfo, not literal internal/loopback/metadata hosts, at most 2048 characters",
+    "anti-bot anomaly page, 202 and 429 surface as 429 rateLimited instead of the source's empty-success or 502",
+    "upstream bodies and error text are never relayed",
+    "no upstream cost receipt: accounting costStatus unknown with nativeUnits.operations 1",
+    "no streaming, media, async jobs, polling, browser or WebSocket protocol"
+  ]
+}

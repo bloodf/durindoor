@@ -89,11 +89,18 @@ it('sanitizes malformed JSON and network failures without replay', async () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   }
 });
-// Isolated staging block: only these assertions change during serial registration.
-describe('unregistered staging', () => {
-  it('has no production video dispatcher entry', async () => {
+// Isolated registration block: the positive registry identity checks.
+describe('canonical registration (isolated)', () => {
+  it('registers the default adapter on runwayml and runway with every source video model', async () => {
     const { getVideoGenerationAdapter } = await import('../../open-sse/handlers/videoProviders/index.js');
-    expect(getVideoGenerationAdapter('runwayml')).toBeNull();
-    expect(getVideoGenerationAdapter('runway')).toBeNull();
+    const { default: runwayRegistry } = await import('../../open-sse/providers/registry/runwayml.js');
+    expect(getVideoGenerationAdapter('runwayml')).toBe(adapter);
+    expect(getVideoGenerationAdapter('runway')).toBe(adapter);
+    expect(runwayRegistry.id).toBe(config.id);
+    expect(runwayRegistry.aliases).toEqual(config.aliases);
+    expect(runwayRegistry.authType).toBe('apikey');
+    expect(runwayRegistry.serviceKinds).toEqual(['image', 'video']);
+    expect(runwayRegistry.models.filter(m => m.kind === 'video').map(m => m.id).sort()).toEqual([...config.models].sort());
+    expect(runwayRegistry.videoConfig).toBeUndefined();
   });
 });

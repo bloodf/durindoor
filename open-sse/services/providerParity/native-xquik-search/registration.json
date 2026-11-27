@@ -1,0 +1,68 @@
+{
+  "registered": false,
+  "canonicalId": "xquik-search",
+  "aliases": ["xquik", "xquik_search"],
+  "sourceAliases": ["xquik", "xquik_search"],
+  "aliasConflicts": {},
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/handlers/search/xquikSearch.ts",
+      "src/shared/constants/providers/search.ts",
+      "src/lib/providers/validation/searchProviders.ts",
+      "src/lib/search/executeWebSearch.ts",
+      "tests/unit/xquik-search-provider.test.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["XQUIK_SEARCH_ID", "XQUIK_SEARCH_ALIASES", "XQUIK_SEARCH_ORIGIN", "XQUIK_SEARCH_PATH", "XQUIK_SEARCH_URL", "XQUIK_QUERY_TYPES", "XQUIK_TIME_RANGES", "searchConfig", "xquikSearchProviderDefinition", "xquikValidationProbe", "xquikSearchMetadata"],
+    "adapter.js": ["xquikSearchAdapter", "buildXquikSearchParams", "buildXquikSearchUrl", "normalizeXquikSearchResponse", "xquikSearchHeaders", "sanitizeXquikQuery", "resolveXquikSearchProviderId", "invalid"],
+    "service.js": ["handleXquikSearchNative"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "searchTypes": ["x"],
+  "fallbackOnly": true,
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "x-api-key",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "connectionModes": ["apikey"],
+    "connectionSettings": { "providerSpecificData.queryType": ["Latest", "Top"] },
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay, pagination or failover"
+  },
+  "endpoints": {
+    "search": "GET https://xquik.com/api/v1/x/tweets/search?q&queryType&limit[&sinceTime]",
+    "validation": "GET https://xquik.com/api/v1/x/tweets/search?q=test&limit=1 (source validator; billable per returned post; metadata only, never called here)",
+    "discovery": null
+  },
+  "envelope": {
+    "request": "query string { q: trimmed query, queryType: provider_options.queryType | providerSpecificData.queryType | 'Latest', limit: min(max_results ?? 5, 20), sinceTime?: now - time_range }; headers { Accept: application/json, x-api-key }",
+    "response": "{ provider: 'xquik-search', query, results: SearchResult[] (local normalizers.js makeResult shape, metadata.source_type 'x', canonical https://x.com/<handle>/status/<id> or https://x.com/i/status/<id>), answer: null, usage: { queries_used: 1, search_cost_usd: 0.00075 }, metrics, errors: [] } rebuilt from validated tweets[]"
+  },
+  "integration": {
+    "provider": "new open-sse/providers/registry/xquik.js from xquikSearchProviderDefinition (category apikey, serviceKinds ['webSearch'], searchConfig with fallbackOnly) plus aliases 'xquik'/'xquik_search'; no existing provider changes",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleXquikSearchNative for provider 'xquik-search' before tryDedicatedProvider; or add an 'xquik-search' GET builder to handlers/search/callers.js and normalizer to handlers/search/normalizers.js (the generic path would then lose input refusal, row validation and acceptedJob)",
+    "route": "src/sse/handlers/search.js: canonicalize 'xquik'/'xquik_search' to 'xquik-search' and force search_type 'x' for it (source executeWebSearch.ts / v1SearchSchema); enforce key model policy on the resolved id; time_range and provider_options are already forwarded in coreBody",
+    "searchType": "local search handlers and dashboard examples know only 'web'/'news'; registering 'x' needs the search_type select options and combo/auto selection to treat xquik-search as fallback-only (never auto-selected for 'web')",
+    "validation": "src/app/api/providers/validate: add the xquikValidationProbe request (source parity) or a documented no-charge probe; out of scope here",
+    "accounting": "result.accounting stays costStatus unknown with meta.returnedPosts; data.usage.search_cost_usd is the source registry estimate; acceptedJob marks possibly-billed failures",
+    "catalog": "docs/providers/catalog.mdx, public/providers icon and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "search_type 'x' only ('web' canonicalized to 'x' as the source route does; 'news' refused)",
+    "country, language, offset, domain_filter, content_options, cursor, stream and unknown fields or provider_options keys are refused before submission (the source silently ignores them)",
+    "provider_options.queryType must be 'Latest' or 'Top' (the source silently maps anything else to Latest); time_range one of hour/day/week/month/year",
+    "max_results positive integer, clamped to 20; query trimmed, at most 2000 characters, no control characters",
+    "only rows with a numeric id, string text and (when present) a valid X handle are surfaced; citations are rebuilt on x.com, never taken from upstream URLs",
+    "non-object envelope, upstream error field or missing/non-array tweets is a malformed 502 (the source returns zero results)",
+    "15s default and maximum total deadline, 8MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed",
+    "no pagination (next_cursor is not surfaced), no answer synthesis, no streaming, no model discovery"
+  ]
+}

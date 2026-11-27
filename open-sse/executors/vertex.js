@@ -7,6 +7,7 @@ import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "../services/tokenRefresh/dedup.js";
+import { isGeminiTrailingModelTurnRejectingModel } from "../translator/concerns/geminiTrailingModelTurn.js";
 
 // Google serves Gemini 4 Argon only from these locations.
 const ARGON_LOCATIONS = new Set(["global", "us", "eu", "europe-west2", "asia-southeast1"]);
@@ -201,9 +202,7 @@ export class VertexExecutor extends BaseExecutor {
 
     // Gemini 3/4 chat rejects trailing model turns. Preserve image models,
     // older Gemini families, partner requests, and at least one content turn.
-    const baseModel = model.toLowerCase().split("/").pop();
-    if (this.provider === "vertex" && !/(?:^|-)image(?:-|$)/.test(baseModel) &&
-        /^gemini-(?:[34](?:\.\d+)?(?:-[a-z0-9-]+)?|pro-agent)$/.test(baseModel) &&
+    if (this.provider === "vertex" && isGeminiTrailingModelTurnRejectingModel(model) &&
         Array.isArray(transformedBody.contents)) {
       const contents = [...transformedBody.contents];
       while (contents.length > 1 && contents.at(-1)?.role === "model") contents.pop();

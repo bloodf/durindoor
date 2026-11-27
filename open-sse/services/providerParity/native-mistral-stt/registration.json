@@ -1,0 +1,184 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "open-sse/utils/audioResponse.ts"
+    ],
+    "registryFields": {
+      "stt": {
+        "id": "mistral",
+        "baseUrl": "https://api.mistral.ai/v1/audio/transcriptions",
+        "authType": "apikey",
+        "authHeader": "bearer"
+      }
+    },
+    "handlerBranch": "default OpenAI-compatible multipart branch of handleAudioTranscription (the entry has no `format`)"
+  },
+  "vendorContract": {
+    "precedence": "the vendor contract wins over the OmniRoute source where they differ",
+    "retrieved": "2026-11-27",
+    "openapi": {
+      "url": "https://docs.mistral.ai/openapi.yaml",
+      "sha256": "acf0efcbee4617601df77fc40185516ed6aae4369ce090034099317d5866b2db",
+      "operationId": "audio_api_v1_transcriptions_post",
+      "path": "POST /v1/audio/transcriptions",
+      "requestSchema": "AudioTranscriptionRequest (multipart/form-data)",
+      "responseSchema": "TranscriptionResponse (200 application/json; the only response the operation documents)",
+      "streamingOperationId": "audio_api_v1_transcriptions_post_stream (not staged)"
+    },
+    "sdk": {
+      "repository": "mistralai/client-python",
+      "commit": "6e9e31ac6f982c1fdfe177787ded223f458c9f69",
+      "files": [
+        "src/mistralai/client/models/audiotranscriptionrequest.py",
+        "src/mistralai/client/utils/forms.py",
+        "src/mistralai/client/transcriptions.py"
+      ]
+    },
+    "models": {
+      "url": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "sha256": "1f764d4e7755a688d06dc5f1a9e01a1b27af807977884f83e5c1b634fd9e3807",
+      "modelIds": {
+        "Voxtral Mini Transcribe 2": [
+          "voxtral-mini-2602",
+          "voxtral-mini-latest"
+        ],
+        "Voxtral Mini Transcribe 3": [
+          "voxtral-mini-transcribe-3-0",
+          "voxtral-mini-transcribe-3",
+          "voxtral-mini-transcribe-latest"
+        ]
+      },
+      "deprecation": "Voxtral Mini Transcribe 2 (voxtral-mini-2602, voxtral-mini-latest): deprecated 2026-10-31, retirement 2027-04-30"
+    },
+    "fields": {
+      "timestamp_granularities": "array of TimestampGranularity (segment|word); the SDK sends one repeated multipart field named timestamp_granularities, without []",
+      "temperature": "number | null with no minimum or maximum",
+      "language": "string matching ^\\w{2}$ | null",
+      "response_format": "not declared",
+      "prompt": "not declared",
+      "stream": "const false on this operation"
+    },
+    "errors": "no error response or structured pre-processing rejection is documented; the SDK treats every 4XX/5XX as SDKError and retries 429/500/502/503/504 only when retries are configured"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/mistral.js (serviceKinds llm, imageToText, embedding; embeddingConfig only; no sttConfig, no stt model rows, no voxtral ids)",
+      "open-sse/handlers/sttCore.js handleSttCore (no mistral branch; its default transcribeOpenAICompatible sends the same multipart wire but forwards every client field, has no deadline, follows redirects, and returns no acceptedJob)",
+      "src/sse/handlers/stt.js (reads AI_PROVIDERS[provider].sttConfig; mistral has none, so /v1/audio/transcriptions answers \"does not support STT\")",
+      "`git grep -n voxtral` (only the OpenRouter-routed mistralai/voxtral-mini-transcribe row in native-openrouter-stt, a different provider, endpoint and key)"
+    ],
+    "result": "the provider exists but has no transcription path; the wire matches the generic multipart default, but registering mistral with format \"openai\" would forward unsupported fields, enable a translation route the source lacks and lose deadline/accepted-job handling, so this module is the delta"
+  },
+  "module": "open-sse/services/providerParity/native-mistral-stt/index.js",
+  "exports": {
+    "mistralSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createMistralSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes } for tests",
+    "buildMistralTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData } or a 400 error result with local: true",
+    "mistralUploadFileName": "(file) -> multipart file name (source getUploadedFileName: .opus as .ogg, audio.wav when unnamed)",
+    "mistralSttAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "mistralSttRefusal": "(status, { secrets, retryAfter }) refusal mapping that never quotes the upstream",
+    "MISTRAL_PROVIDER_ID": "\"mistral\"",
+    "MISTRAL_STT_FORMAT": "\"mistral-stt\"",
+    "MISTRAL_ORIGIN": "https://api.mistral.ai",
+    "MISTRAL_TRANSCRIPTION_URL": "https://api.mistral.ai/v1/audio/transcriptions",
+    "MISTRAL_STT_CONFIG": "staged sttConfig for the existing mistral registry entry",
+    "MISTRAL_STT_MODELS": "three source transcription models (kind stt)",
+    "MISTRAL_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\"] (or none named)",
+    "MISTRAL_STT_TIMEOUT_MS": "300000",
+    "MISTRAL_MAX_STT_FILE_BYTES": "26214400",
+    "MISTRAL_MAX_TRANSCRIPT_BYTES": "8388608",
+    "mistralSttModel": "(id) -> model row or null",
+    "MISTRAL_GRANULARITY_WIRE_FIELD": "\"timestamp_granularities\" (vendor multipart field name, repeated)"
+  },
+  "provider": {
+    "canonicalId": "mistral",
+    "aliases": [
+      "mistral"
+    ],
+    "existingRegistryEntry": "open-sse/providers/registry/mistral.js",
+    "existingServiceKinds": [
+      "llm",
+      "imageToText",
+      "embedding"
+    ],
+    "addServiceKinds": [
+      "stt"
+    ],
+    "authModes": [
+      "apikey"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey",
+        "accessToken"
+      ]
+    },
+    "connectionBaseUrlHonored": false,
+    "format": "mistral-stt"
+  },
+  "models": {
+    "stt": [
+      {
+        "id": "voxtral-mini-latest",
+        "name": "Voxtral Mini Transcribe 2"
+      },
+      {
+        "id": "voxtral-mini-2602",
+        "name": "Voxtral Mini Transcribe 2"
+      },
+      {
+        "id": "voxtral-mini-transcribe-3",
+        "name": "Voxtral Mini Transcribe 3"
+      }
+    ],
+    "passthrough": "refused: transcription takes only the listed ids",
+    "dynamicDiscovery": "none: the source lists Mistral transcription models statically; the registry's validateUrl (https://api.mistral.ai/v1/models) validates keys and is not an STT model contract"
+  },
+  "endpoints": {
+    "transcription": {
+      "method": "POST",
+      "url": "https://api.mistral.ai/v1/audio/transcriptions",
+      "headers": [
+        "Authorization: Bearer <key>",
+        "Content-Type: multipart/form-data; boundary=<from FormData>"
+      ],
+      "body": "multipart: model, language? (^\\w{2}$), temperature?, timestamp_granularities? (segment|word, repeated), file (name per mistralUploadFileName, part type from the upload or application/octet-stream); response_format=json is accepted from the client and not forwarded",
+      "answer": "JSON object with string text (usage kept; usage.prompt_audio_seconds or duration as audio seconds)"
+    },
+    "translation": "none"
+  },
+  "bounds": {
+    "sttTimeoutMs": 300000,
+    "maxSttFileBytes": 26214400,
+    "maxTranscriptBytes": 8388608,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/mistral.js",
+      "change": "serviceKinds += \"stt\"; add model rows from MISTRAL_STT_MODELS with kind \"stt\"; sttConfig: MISTRAL_STT_CONFIG (format mistral-stt, translationModels [] so supportsSttTranslation stays false); keep every existing kind, config and the apikey auth mode"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"mistral\" && cfg.format === \"mistral-stt\") return await mistralSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so the generic multipart default never serves mistral"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "none expected: the route already records result.acceptedJob on the selected connection and stops account fallback for it; confirm at registration"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Mistral stt kind after registration"
+    }
+  ]
+}

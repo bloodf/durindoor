@@ -1,0 +1,108 @@
+{
+  "registered": false,
+  "canonicalId": "gapgpt",
+  "aliases": [],
+  "sourceAliases": ["gapcode"],
+  "aliasConflicts": {
+    "gapcode": "appears only in the source's provider test table (src/app/api/providers/[id]/test/testUtils.js); the source registry, OAuth table and refresh table all use gapgpt. Not adopted as an id.",
+    "codex": "shares the public client id app_EMoamEEZ73f0CkXaXp7hrann and the loopback redirect http://localhost:1455/auth/callback. The two are separate providers and separate connections; their sign-ins cannot run at the same time because both need port 1455."
+  },
+  "source": {
+    "repository": [
+      {
+        "name": "9router",
+        "pullRequest": "https://github.com/decolua/9router/pull/3350",
+        "commit": "1f45c0e7b29bede1693ca0df613da957d67826bf",
+        "base": "699edac3273e13d4744bc46f6082618f08560702",
+        "license": "MIT",
+        "note": "PR title 'Fix/kiro reasoning text content fields' is stale; the head carries the GapGPT provider. Kiro MITM, tailscale and MITM-manager hunks are owned elsewhere and not touched here.",
+        "files": [
+          "open-sse/providers/registry/gapgpt.js",
+          "src/lib/oauth/providers/gapgpt.js",
+          "src/lib/oauth/providers.js",
+          "src/lib/oauth/constants/oauth.js",
+          "src/lib/oauth/utils/gapgptProxy.js",
+          "src/lib/oauth/utils/server.js",
+          "src/app/api/oauth/[provider]/[action]/route.js",
+          "src/shared/components/OAuthModal.js",
+          "open-sse/services/tokenRefresh.js",
+          "open-sse/services/tokenRefresh/providers.js"
+        ]
+      }
+    ]
+  },
+  "ownership": {
+    "auth": "this unit: provider object, token mapping, owned loopback callback and refresh helper; later the shared dispatch/refresh wiring in register-auth-06",
+    "upstream": "provider registry row, registry index, executor mapping, model catalog, usage service, usage UI, provider test probe and icon. This unit edits none of them."
+  },
+  "exports": {
+    "config.js": [
+      "GAPGPT_CALLBACK_HOST",
+      "GAPGPT_CALLBACK_HOST_HEADERS",
+      "GAPGPT_CALLBACK_PATH",
+      "GAPGPT_CLIENT_ID",
+      "GAPGPT_FIXED_PORT",
+      "GAPGPT_LISTEN_HOST",
+      "GAPGPT_LOOPBACK_REDIRECT_URI",
+      "GAPGPT_OAUTH_CONFIG",
+      "GAPGPT_PROVIDER_ID",
+      "GAPGPT_TOKEN_ORIGIN",
+      "isGapgptProvider"
+    ],
+    "provider.js": [
+      "GapgptOAuthError",
+      "buildGapgptRefreshRequest",
+      "gapgptProvider",
+      "readGapgptCredential",
+      "readSafeGapgptErrorCode",
+      "refreshGapgptCredential",
+      "unwrapGapgptEnvelope"
+    ],
+    "loopback.js": [
+      "GAPGPT_LOOPBACK_MESSAGES",
+      "classifyGapgptListenError",
+      "createGapgptLoopback",
+      "createNodeLoopbackListener",
+      "renderGapgptResultPage"
+    ],
+    "index.js": "public staging exports; no side effects on import, no listener, no timer"
+  },
+  "credential": {
+    "gatewayCredential": "first non-empty string of data.api_key, api_key, data.apiKey, apiKey, data.access_token, access_token; stored as both accessToken and apiKey",
+    "refreshToken": "stored only when the exchange returns a non-empty refresh_token",
+    "expiry": "expiresIn stored only when expires_in is a positive number; otherwise the key is treated as long-lived (expiresAt null)",
+    "providerSpecificData": "authMethod: pkce and credentialField (the field name, never the value)",
+    "identity": "the source exchange returns no account identity; every sign-in creates its own connection unless the flow carries a reconnect connectionId"
+  },
+  "modes": {
+    "authorizationCodePkce": "staged: S256 only, fixed redirect, client id bound into flow meta",
+    "refresh": "staged: refreshGapgptCredential, form-encoded refresh_token grant, used only when sign-in stored a refresh token",
+    "deviceCode": "inapplicable: no device endpoint in the source",
+    "tokenImport": "inapplicable: the source adds no import route or CLI credential reader",
+    "manualCallbackPaste": "inapplicable for this unit: the source modal falls back to manual input when the proxy is not active; the shared exchange route already handles pasted codes once providers.js registers gapgpt",
+    "redirectFallback": "not adopted: the source's Mode B 302 forwards an unregistered callback (and its code) to an app port"
+  },
+  "integration": {
+    "registry": "upstream lane: open-sse/providers/registry/gapgpt.js oauth block must equal GAPGPT_OAUTH_CONFIG; open-sse/providers/registry/index.js adds the row",
+    "oauthConstants": "auth06: src/lib/oauth/constants/oauth.js GAPGPT_CONFIG = { ...PROVIDER_OAUTH.gapgpt }",
+    "providerTable": "auth06: src/lib/oauth/providers.js PROVIDERS.gapgpt = gapgptProvider (config replaced by GAPGPT_CONFIG once the registry row exists)",
+    "redirectUri": "auth06: src/lib/oauth/redirectUri.js buildOAuthRedirectUri returns GAPGPT_LOOPBACK_REDIRECT_URI for gapgpt, before the hosted branch, as Codex does",
+    "fixedPortRoute": "auth06: src/app/api/oauth/[provider]/[action]/route.js startFixedPortProxy, fixedPortStatus and stopFixedPortProxy add gapgpt through one module-level createGapgptLoopback({ listen: createNodeLoopbackListener(http.createServer), complete: exchangeAndSaveAuthorizationCode }); pass flowId, state and ownerId; map reason port_busy to OAUTH_FLOW_CONFLICT; do not call stop() before start() for gapgpt (that would drop other accounts' pending sign-ins)",
+    "portSerialization": "auth06: withFixedProxyOperation must key codex and gapgpt operations on the shared port (1455) so one cannot tear down the other's listener",
+    "dashboardModal": "auth06: src/shared/components/OAuthModal.js treats gapgpt as a fixed-port provider on 1455 (start-proxy, poll-status, stop-proxy) and shows success only on poll status done",
+    "flowCompletion": "no change: src/lib/oauth/flowCompletion.js already accepts an apiKey-only exchange and commits only while the flow claim is active",
+    "tokenRefresh": "auth06: open-sse/services/tokenRefresh.js REFRESH_HANDLERS.gapgpt calls refreshGapgptCredential(c.refreshToken, { proxyOptions }) and skips connections without a refresh token",
+    "providerTest": "upstream lane: src/app/api/providers/[id]/test/testUtils.js GapGPT probe",
+    "usage": "upstream lane: open-sse/services/usage/gapgpt.js, open-sse/services/usage.js, ProviderLimits utils, USAGE_SUPPORTED_PROVIDERS",
+    "executor": "upstream lane: open-sse/executors/index.js maps gapgpt to the Codex executor",
+    "catalog": "ordered registration: shared catalog, registry index, models and storybook surfaces are not edited by this unit"
+  },
+  "restrictions": [
+    "registered: false: GapGPT is not an active public provider until the upstream provider port and register-auth-06 land",
+    "no second auth store or framework: secrets stay in flowStore, completion goes through flowCompletion and the existing connection model",
+    "loopback only: binds 127.0.0.1:1455, accepts Host localhost:1455 or 127.0.0.1:1455, a loopback or absent Origin, GET on /auth/callback",
+    "unknown, replayed, cancelled, expired or mismatched callbacks never reach the exchange",
+    "no raw exchange body, non-JSON body, token or provider error description is returned or logged",
+    "synthetic credentials and mocked transports only; no live account, browser, socket or home store"
+  ]
+}

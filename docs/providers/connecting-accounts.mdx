@@ -41,7 +41,9 @@ OrcaRouter uses an out-of-band code. Sign in through the link and paste the code
 
 GitHub, GitHub Enterprise Copilot, Qwen, [Kiro](./kiro.mdx), Amazon Q, Grok CLI, Qoder, Kimi Coding, Kilo Code, CodeBuddy CN, and Muse Code request a device code from `/api/oauth/[provider]/device-code`. You open the verification URL, enter the user code, and DurinDoor polls until the provider issues tokens.
 
-For GitHub Enterprise Copilot, enter an HTTPS enterprise URL before starting device login. Requests use that enterprise's Copilot host. The model list is seeded rather than discovered live.
+For GitHub Enterprise Copilot, enter an HTTPS enterprise URL before starting device login. Sign-in binds the issuer, OAuth client and selected proxy to the connection. Requests require a scoped session credential that has not expired and go to the trusted API returned by that issuer, or to the issuer itself. Reconnect if the connection reports missing issuer/client evidence, expired credentials or a changed proxy. Stored credentials are not migrated automatically. Private enterprise hosts remain supported under the existing outbound URL policy.
+
+GHE.com deployments that only expose `copilot_internal/user` can reuse OAuth credentials only on the issuer itself. A cross-origin OAuth fallback fails explicitly because the pinned source establishes no safe scoped credential for that peer. An unrelated enterprise API domain is not inferred from a sibling hostname. The request guard refuses unsupported routing before dispatch. Enterprise AI Credits lookup is also refused when a limit is configured: the available usage lookup targets consumer GitHub.
 
 Amazon Q uses AWS Builder ID or IAM Identity Center device login. It does not offer Kiro's API-key, social-login, or token-import methods.
 

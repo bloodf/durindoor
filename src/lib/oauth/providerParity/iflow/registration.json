@@ -1,0 +1,18 @@
+{
+  "status": "staged",
+  "module": "src/lib/oauth/providerParity/iflow/cookie.js",
+  "exports": [
+    "importIflowCookie"
+  ],
+  "integration": [
+    "src/app/api/oauth/iflow/cookie/route.js: replace provider GET/POST and normalization with importIflowCookie; pass request.signal and persist the returned connection with createProviderConnection",
+    "src/app/api/oauth/iflow/cookie/route.js: return generic errors and a secret-free connection response; retain existing authentication and ownership guards"
+  ],
+  "productionGaps": [
+    "src/lib/oauth/providers.js iflow.exchangeToken and iflow.postExchange: error messages embed the upstream response body, which POST /api/oauth/iflow/exchange returns as a 502 body; replace with generic messages",
+    "cli/src/cli/menus/providers.js handleAddOAuthConnection: the exchange body omits flowId, so POST /api/oauth/iflow/exchange rejects it with 400 before any upstream request; carry flowId from the authorize response",
+    "open-sse/executors/iflow.js: no refreshCredentials override, so chat dispatch never refreshes iFlow OAuth tokens; requests use the stored API key",
+    "shared chat dispatch error path (not provider-specific): an upstream 401 body is returned in the client error and stored in lastError for every provider, iFlow included",
+    "src/app/api/oauth/iflow/cookie/route.js: error responses embed upstream bodies until importIflowCookie is registered"
+  ]
+}

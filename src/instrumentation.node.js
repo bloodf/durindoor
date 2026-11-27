@@ -1,3 +1,4 @@
+import { resolveCompressionConfig } from "./shared/utils/compressionConfig.js";
 // Node.js-runtime half of the Next.js startup hook.
 //
 // Why this file exists: Next.js compiles `src/instrumentation.js` once per
@@ -30,11 +31,11 @@ import { runStartupTasks } from "@/lib/startup/startupTasks.js";
  */
 export async function ensureHeadroomProxy() {
   const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
-  const settings = await getSettings();
-  if (!settings?.headroomEnabled) return;
+  const settings = resolveCompressionConfig(await getSettings());
+  if (!settings.headroomEnabled) return;
 
-  const { DEFAULT_HEADROOM_URL, isLoopbackHeadroomUrl } = await import("@/lib/headroom/detect.js");
-  const url = settings.headroomUrl || DEFAULT_HEADROOM_URL;
+  const { isLoopbackHeadroomUrl } = await import("@/lib/headroom/detect.js");
+  const url = settings.headroomUrl;
   // A remote proxy belongs to whoever operates it; we only manage our own.
   if (!isLoopbackHeadroomUrl(url)) return;
 

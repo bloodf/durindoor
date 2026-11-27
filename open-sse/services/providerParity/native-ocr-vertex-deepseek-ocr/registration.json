@@ -1,0 +1,89 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "kind": "ocr-provider-adapter",
+  "provider": "vertex-deepseek-ocr",
+  "foundation": "open-sse/services/providerParity/native-ocr-foundation/index.js",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "license": "MIT",
+    "files": [
+      "open-sse/config/ocrRegistry.ts",
+      "open-sse/handlers/ocr.ts"
+    ],
+    "ported": [
+      "OCR_PROVIDERS[\"vertex-deepseek-ocr\"]: no built-in model, Bearer auth, the caller's deployed model id sent as supplied",
+      "VERTEX_DEEPSEEK_TRANSFORMATION.buildRequest: POST JSON { model, messages: [{ role: \"user\", content: [{ type: \"image_url\", image_url: <document url> }] }] } with Authorization: Bearer <token>",
+      "VERTEX_DEEPSEEK_TRANSFORMATION.parseResponse: choices[0].message.content as a JSON { pages, model?, usage_info? } string or one markdown page at index 0; usage as the fallback usage_info; the answer's model when present",
+      "VERTEX_DEEPSEEK_RETIRED_MODEL_ID (deepseek-ocr-maas) and handleOcr's 400 refusal of it",
+      "resolveVertexOcrBaseUrl: https://aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/endpoints/openapi/chat/completions, region us-central1 by default, providerSpecificData.project before the Service Account project_id",
+      "resolveVertexOcrAccessToken and handleOcr's token choice: an existing accessToken wins, a Service Account JSON mints a token, a raw apiKey is used as an access token"
+    ],
+    "notPorted": [
+      "connection base URLs (credentials.baseUrl, providerSpecificData.baseUrl) for dedicated Model Garden endpoints: the target is only the project/region endpoint on https://aiplatform.googleapis.com, and a configured base URL is refused",
+      "gs:// document URLs: the foundation accepts public https URLs and bounded data URLs only",
+      "inline PDF data URLs: the document travels as an image_url part, so inline documents must be images",
+      "the mistral and azure-document-intelligence registry entries: separate units",
+      "the /v1/ocr route, account selection, rate-limit checks and OmniRoute meta headers: registration and integration work"
+    ]
+  },
+  "supportedSubset": {
+    "endpoint": "POST https://aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/endpoints/openapi/chat/completions",
+    "auth": "Authorization: Bearer <token> from the connection accessToken, a minted Service Account or authorized_user ADC token, or a raw apiKey used as an access token",
+    "project": "providerSpecificData.project or .projectId (must agree), else Service Account project_id, else ADC quota_project_id; Google Cloud project id syntax",
+    "region": "providerSpecificData.region or .location (must agree), default us-central1; regional location id syntax",
+    "models": "any caller-named deployed model id (optionally prefixed vertex-deepseek-ocr/), never deepseek-ocr-maas in any publisher qualification",
+    "documents": "document_url or image_url: a public https URL, or a base64 image data URL (png, jpeg, webp, gif, tiff)",
+    "requestFields": "model and document only",
+    "polling": "none: the endpoint answers synchronously; a status header on the answer is ignored"
+  },
+  "intentionalContractChanges": [
+    "a configured base URL is refused instead of overriding the endpoint, so the key is only sent to the Vertex origin",
+    "project and region must be plain Google Cloud ids (they are built into the URL path) and conflicting source/fork spellings are refused",
+    "a JSON credential that is neither a Service Account nor an authorized_user file is refused, never sent as a raw token; ADC files mint tokens as in this fork's other Vertex paths",
+    "the retired id is refused in any form (bare, provider-prefixed, publisher-qualified), case-insensitively",
+    "the request is validated and the connection resolved before any token is minted; minting is bounded (15 s) and abortable",
+    "an answer without choices or without string content is a lost result (502 with acceptedJob) instead of an empty page",
+    "when the answer names no model the requested deployed id is reported instead of the provider id"
+  ],
+  "module": "open-sse/services/providerParity/native-ocr-vertex-deepseek-ocr/index.js",
+  "exports": {
+    "VERTEX_DEEPSEEK_OCR_PROVIDER_ID": "\"vertex-deepseek-ocr\"",
+    "VERTEX_DEEPSEEK_OCR_LABEL": "\"Vertex DeepSeek-OCR\"",
+    "VERTEX_DEEPSEEK_OCR_ORIGIN": "\"https://aiplatform.googleapis.com\"",
+    "VERTEX_DEEPSEEK_OCR_DEFAULT_REGION": "\"us-central1\"",
+    "VERTEX_DEEPSEEK_OCR_RETIRED_MODEL_ID": "\"deepseek-ocr-maas\"",
+    "VERTEX_DEEPSEEK_OCR_INLINE_MEDIA_TYPES": "image/png, jpeg, webp, gif, tiff",
+    "VERTEX_DEEPSEEK_OCR_TOKEN_TIMEOUT_MS": "15000",
+    "vertexDeepseekOcrPath": "(project, region) -> chat-completions path",
+    "acceptsVertexDeepseekOcrModel": "(id) -> boolean",
+    "isRetiredVertexDeepseekOcrModel": "(id) -> boolean",
+    "buildVertexDeepseekOcrBody": "({ model, document }) -> source chat-completions body",
+    "parseVertexDeepseekOcrResponse": "(raw, { model }) -> { model, pages, usage_info? }; throws on a malformed answer",
+    "createVertexDeepseekOcrAdapter": "({ project, region, token }) -> frozen foundation adapter for one connection",
+    "vertexDeepseekOcrScope": "(credentials) -> { project, region, credential }; throws { status, vertexOcrAuth }",
+    "resolveVertexOcrToken": "(scope, { mintToken?, log?, proxyOptions?, signal?, timeoutMs }) -> Bearer token",
+    "defaultVertexOcrTokenMinter": "({ sa, adc }, { log, proxyOptions }) -> access token via services/tokenRefresh.js",
+    "runVertexDeepseekOcr": "({ body, credentials, signal?, fetchImpl?, sleepImpl?, mintToken?, timeoutMs?, tokenTimeoutMs?, maxResponseBytes?, log? }) -> foundation result"
+  },
+  "failures": {
+    "local": "retired model, invalid request, configuration or credential refusal, mint failure, abort before the send: nothing billable was sent, local: true",
+    "provider": "the foundation's ocrRefusal mapping (401, 402 quotaExhausted, 403, 429 with Retry-After, 5xx as submit-unknown acceptedJob)",
+    "acceptedJob": "any failure after the document was sent; the caller must not replay it on this or another connection"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ocrCore.js (new, foundation registration)",
+      "change": "route provider vertex-deepseek-ocr to runVertexDeepseekOcr with the selected connection; stop account fallback when the result has acceptedJob or local"
+    },
+    {
+      "file": "provider registry and catalog",
+      "change": "declare vertex-deepseek-ocr as an OCR provider (Bearer / Service Account credential, providerSpecificData project and region) and document it with /v1/ocr"
+    },
+    {
+      "file": "tests/unit/native-ocr-foundation.test.js",
+      "change": "its staging test 'is imported by nothing in production' greps open-sse for the foundation directory name; this staged sibling imports the foundation, so registration must narrow that check to production paths"
+    }
+  ]
+}

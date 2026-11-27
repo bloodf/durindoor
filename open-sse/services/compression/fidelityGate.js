@@ -146,6 +146,17 @@ function collectProtected(node, out) {
   return out;
 }
 
+// Result identifiers are protected independently of their compressible text.
+const RESULT_ID_KEYS = new Set(["tool_call_id", "tool_use_id", "call_id"]);
+function resultIds(node, out = new Set()) {
+  if (!node || !isObject(node)) return out;
+  for (const [key, value] of Object.entries(node)) {
+    if (RESULT_ID_KEYS.has(key)) out.add(JSON.stringify([key, value]));
+    else if (value && isObject(value)) resultIds(value, out);
+  }
+  return out;
+}
+
 const protectedSets = () => ({ nodes: new Set(), code: [] });
 
 /**
@@ -165,6 +176,10 @@ export function checkProtectedBlocks(inputBody, outputBody) {
     }
     for (const key of ["system", "instructions", "systemInstruction"]) {
       if (!same(key)) return { passed: false, failedInvariant: "instructions", detail: `${key} changed` };
+    }
+    const outputIds = resultIds(outputBody);
+    for (const id of resultIds(inputBody)) {
+      if (!outputIds.has(id)) return { passed: false, failedInvariant: "tool-result-id", detail: "result identifier changed" };
     }
     const before = collectProtected(inputBody, protectedSets());
     if (before.nodes.size === 0 && before.code.length === 0) return { passed: true };
@@ -273,11 +288,32 @@ export function checkFidelity(inputText, outputText, cfg = {}) {
   }
 }
 
+// Prompt stages may only add text/blocks. Existing fields, order and scalar
+// values must survive, including instructions, tool IDs, thinking and errors.
+function isAdditive(input, output) {
+  if (isString(input)) return isString(output) && output.includes(input);
+  if (Array.isArray(input)) {
+    if (!Array.isArray(output)) return false;
+    let next = 0;
+    return input.every((item) => {
+      while (next < output.length) if (isAdditive(item, output[next++])) return true;
+      return false;
+    });
+  }
+  if (input && isObject(input)) {
+    return output && isObject(output) && Object.entries(input).every(([key, value]) => RESULT_ID_KEYS.has(key) || key === "id" ? value === output[key] : isAdditive(value, output[key]));
+  }
+  return input === output;
+}
+
 /**
  * Per-step gate used by the compression seam. Structural protection always
  * applies; text invariants apply only when `textInvariants` is true.
  */
-export function gateStep(inputBody, outputBody, { textInvariants = false, ...cfg } = {}) {
+export function gateStep(inputBody, outputBody, { textInvariants = false, additive = false, ...cfg } = {}) {
+  if (additive) return isAdditive(inputBody, outputBody)
+    ? { passed: true }
+    : { passed: false, failedInvariant: "additive-prompt", detail: "existing content changed" };
   const structural = checkProtectedBlocks(inputBody, outputBody);
   if (!structural.passed || !textInvariants) return structural;
   return checkFidelity(bodyToText(inputBody), bodyToText(outputBody), cfg);

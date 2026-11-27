@@ -162,6 +162,14 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__client"],
     cookiePrefixes: [],
   },
+  // Optional WordPress session: one bounded URL/store enumeration matches any lowercase md5 family member.
+  "veoaifree-web": {
+    label: "Veo AI Free Web",
+    origin: "https://veoaifree.com",
+    cookieNames: [],
+    cookiePrefixes: [],
+    hashedCookiePrefixes: ["wordpress_logged_in_"],
+  },
   // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
   "tinycms-web": {
     label: "TinyCMS Web",

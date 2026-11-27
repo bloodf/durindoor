@@ -1,0 +1,8 @@
+{
+  "status": "staged",
+  "provider": "kiro",
+  "module": "src/lib/oauth/providerParity/kiro/index.js",
+  "exports": {
+    "buildKiroRegistration": "Optional replacement for the inline registration payload in kiro.requestDeviceCode in src/lib/oauth/providers.js. Preserve validated region/startUrl, selected proxy, existing mapTokens, flowStore state/ownership/PKCE guards and connection persistence. Pass the resolved builder-id or idc method. Current production already omits issuerUrl for IDC; this helper consolidates that contract without new OAuth wiring."
+  }
+}

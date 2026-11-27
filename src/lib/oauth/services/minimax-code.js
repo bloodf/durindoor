@@ -1,7 +1,6 @@
-// MiniMax Code sign-in provider record (staged).
+// MiniMax Code sign-in provider record.
 //
-// Same shape as the device-code entries in src/lib/oauth/providers.js, which the
-// registration batch wires (this unit does not edit that shared file):
+// Registered in the shared OAuth provider table as a device-code provider:
 //
 //   import { minimaxCodeOAuthProvider } from "./services/minimax-code.js";
 //   ... PROVIDERS["minimax-code"] = minimaxCodeOAuthProvider
@@ -17,13 +16,27 @@ import {
   requestMinimaxCodeDeviceCode,
 } from "../../../../open-sse/services/minimaxCodeAuth.js";
 
+const DEVICE_ERRORS = new Set(["authorization_pending", "slow_down", "expired_token", "access_denied", "invalid_grant", "network_error"]);
+
 export const minimaxCodeOAuthProvider = {
   config: MINIMAX_CODE_OAUTH_CONFIG,
   flowType: "device_code",
-  requestDeviceCode: (config, codeChallenge, options = {}, proxyOptions = null) =>
-    requestMinimaxCodeDeviceCode({ region: options?.region, codeChallenge, proxyOptions }),
-  pollToken: (config, deviceCode, codeVerifier, extraData = null, proxyOptions = null) =>
-    pollMinimaxCodeDeviceToken({ deviceCode, codeVerifier, proxyOptions }),
+  async requestDeviceCode(config, codeChallenge, options = {}, proxyOptions = null) {
+    try {
+      return await requestMinimaxCodeDeviceCode({ region: options?.region, codeChallenge, proxyOptions });
+    } catch (error) {
+      // Account response descriptions are untrusted and may contain credentials.
+      if (error?.code === "device_authorization_failed") {
+        error.message = "MiniMax Code device authorization failed.";
+      }
+      throw error;
+    }
+  },
+  async pollToken(config, deviceCode, codeVerifier, extraData = null, proxyOptions = null) {
+    const result = await pollMinimaxCodeDeviceToken({ deviceCode, codeVerifier, proxyOptions });
+    if (result.ok) return result;
+    return { ok: false, data: { error: DEVICE_ERRORS.has(result.data?.error) ? result.data.error : "poll_failed", error_description: "" } };
+  },
   mapTokens: (tokens) => mapMinimaxCodeTokens(tokens),
 };
 

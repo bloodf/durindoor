@@ -6,6 +6,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
+import { DEEPINFRA_ID, handleDeepinfraNative } from "../services/providerParity/native-deepinfra-embedding-rerank/index.js";
 
 function isRecord(value) {
   return value !== null && isObject(value) && !Array.isArray(value);
@@ -50,6 +51,13 @@ export async function handleRerankCore({
   signal
 }) {
   const { provider, model } = modelInfo;
+  // DeepInfra ranks through its native /v1/inference/{model} envelope; the
+  // derived /v1/openai/rerank is not an equivalent endpoint.
+  if (provider === DEEPINFRA_ID) {
+    const result = await handleDeepinfraNative({ kind: "rerank", body, modelInfo: { provider, model }, credentials, signal });
+    if (result.success && onRequestSuccess) await onRequestSuccess();
+    return result;
+  }
   const url = deriveRerankUrl(PROVIDERS[provider], PROVIDER_MEDIA[provider]);
   if (!url) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not expose a derivable /rerank endpoint`);

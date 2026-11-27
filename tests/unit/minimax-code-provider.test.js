@@ -408,7 +408,8 @@ describe("MiniMax Code credential and quota error mapping", () => {
     expect(throttled.response.headers.get("retry-after")).toBe("17");
     const body = await throttled.response.json();
     expect(body.error).toMatchObject({ type: "rate_limit_error", code: "quota_exceeded" });
-    expect(body.error.message).toContain("plan quota reached");
+    // Upstream text is never echoed: the refusal carries a fixed public message.
+    expect(body.error.message).not.toContain("plan quota reached");
 
     await connect("mmc-a", TOKEN_A, REFRESH_A);
     expect((await openai()).status).toBe(429);
@@ -427,7 +428,13 @@ describe("MiniMax Code credential and quota error mapping", () => {
     const failed = await direct(optedIn(TOKEN_A));
     expect(failed.response.status).toBe(429);
     wire.gatewayBody = { type: "error", error: { type: "overloaded_error", message: "busy" } };
-    expect((await direct(optedIn(TOKEN_A))).response.status).toBe(429);
+    // No pinned source guarantees that an overloaded gateway did no work.
+    const overloaded = await direct(optedIn(TOKEN_A));
+    expect(overloaded.response.status).toBe(500);
+    const unknown = (await overloaded.response.json()).error;
+    expect(unknown.code).toBe("upstream_outcome_unknown");
+    expect(unknown.message.length).toBeGreaterThan(0);
+    expect(unknown.message.length).toBeLessThan(400);
     wire.gatewayBody = { type: "error", error: { type: "api_error", message: "internal" } };
     expect((await direct(optedIn(TOKEN_A))).response.status).toBe(500);
     wire.gatewayBody = message("fine");

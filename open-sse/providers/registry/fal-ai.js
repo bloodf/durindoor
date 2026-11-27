@@ -1,3 +1,6 @@
+import { FAL_VIDEO_MODELS } from "../../services/providerParity/native-fal-ai-video/config.js";
+import { FAL_MUSIC_MODELS } from "../../services/providerParity/native-fal-ai-music/config.js";
+
 export default {
   id: "fal-ai",
   priority: 90,
@@ -21,6 +24,8 @@ export default {
   authType: "apikey",
   transport: null,
   models: [
+    ...FAL_VIDEO_MODELS.map(({ id, name }) => ({ id, name, kind: "video" })),
+    ...FAL_MUSIC_MODELS.map(({ id, name }) => ({ id, name, kind: "music" })),
     { id: "fal-ai/flux/schnell", name: "FLUX Schnell", params: ["n","size"], kind: "image" },
     { id: "fal-ai/flux/dev", name: "FLUX Dev", params: ["n","size"], kind: "image" },
     { id: "fal-ai/flux-pro/v1.1", name: "FLUX Pro v1.1", params: ["n","size"], kind: "image" },
@@ -29,6 +34,7 @@ export default {
     { id: "fal-ai/ideogram/v2", name: "Ideogram V2", params: ["n","size","style"], kind: "image" },
     { id: "fal-ai/stable-diffusion-v35-large", name: "SD 3.5 Large", params: ["n","size"], kind: "image" },
   ],
-  serviceKinds: ["image"],
+  serviceKinds: ["image", "video", "music"],
+  musicConfig: { baseUrl: "https://queue.fal.run" },
   imageConfig: { baseUrl: "https://queue.fal.run" },
 };

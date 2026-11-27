@@ -1,0 +1,86 @@
+{
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts",
+      "open-sse/handlers/bedrockEmbeddings.ts",
+      "open-sse/services/bedrock.ts",
+      "open-sse/config/bedrock.ts"
+    ],
+    "registryFields": {
+      "id": "bedrock",
+      "baseUrl": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke",
+      "authType": "apikey",
+      "authHeader": "bearer"
+    }
+  },
+  "exports": {
+    "bedrockEmbeddingAdapter": "index.js",
+    "createBedrockEmbeddingAdapter": "adapter.js",
+    "buildBedrockEmbeddingRequest": "request.js",
+    "normalizeBedrockEmbeddings": "adapter.js",
+    "BEDROCK_EMBEDDING_MODELS": "config.js",
+    "BEDROCK_URL_TEMPLATE": "config.js",
+    "discoverBedrockEmbeddingModels": "discovery.js"
+  },
+  "provider": {
+    "canonicalId": "bedrock",
+    "aliases": [
+      "br"
+    ],
+    "existingServiceKinds": [
+      "llm"
+    ],
+    "addServiceKinds": [
+      "embedding"
+    ],
+    "preserveCredentialModes": [
+      "bearer",
+      "static AWS keys",
+      "profile/SSO"
+    ],
+    "supportedEmbeddingAuth": "Bearer apiKey or accessToken; AWS signing/profile rejected",
+    "existingRegistryEntry": "open-sse/providers/registry/bedrock.js"
+  },
+  "models": {
+    "embedding": [
+      "amazon.titan-embed-text-v2:0",
+      "amazon.titan-embed-text-v1",
+      "amazon.titan-embed-image-v1",
+      "cohere.embed-v4:0",
+      "cohere.embed-english-v3",
+      "cohere.embed-multilingual-v3"
+    ]
+  },
+  "endpoints": {
+    "invoke": "https://bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke",
+    "discovery": [
+      "https://bedrock.{region}.amazonaws.com/foundation-models?byOutputModality=TEXT",
+      "https://bedrock.{region}.amazonaws.com/inference-profiles?maxResults=100&typeEquals=SYSTEM_DEFINED"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey",
+        "accessToken"
+      ]
+    }
+  },
+  "integration": {
+    "registry": "open-sse/handlers/embeddingProviders/index.js: EMBEDDING_ADAPTERS bedrock + br identity",
+    "core": "open-sse/handlers/embeddingsCore.js must call embed with selected credentials, signal; preserve acceptedJob/accounting and connection quota scope",
+    "catalog": "merge embedding models and serviceKinds without replacing chat or AWS credential metadata",
+    "discovery": "provider models route may call discoverBedrockEmbeddingModels; never automatically activate discovered models"
+  },
+  "restrictions": [
+    "text only; no images/URLs/token arrays/stream",
+    "known exact model IDs only; no inference profile execution",
+    "96 inputs, 20000 characters each, 60 second total invoke deadline",
+    "discovery 30 seconds, 10 pages; errors fail closed rather than source unbounded pagination/fallback",
+    "no production imports"
+  ]
+}

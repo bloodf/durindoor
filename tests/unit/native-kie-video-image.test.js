@@ -92,13 +92,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing kie chat entry unchanged", () => {
-    expect(getImageAdapter("kie")).toBeNull();
-    expect(getVideoGenerationAdapter("kie")).toBeNull();
-    expect(kieRegistry.serviceKinds).toEqual(["llm"]);
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers native media and preserves the existing kie chat entry", () => {
+    expect(getImageAdapter("kie")).toBe(staged.kieImageAdapter);
+    expect(getVideoGenerationAdapter("kie")).toBe(staged.kieVideoAdapter);
+    expect(kieRegistry.serviceKinds).toEqual(["llm", "image", "video", "tts", "stt"]);
     expect(kieRegistry.authType).toBe("apikey");
     expect(kieRegistry.transport.baseUrl).toBe(`${ORIGIN}/v1/chat/completions`);
   });

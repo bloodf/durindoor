@@ -1,3 +1,4 @@
+import { kiroUpstreamError } from "../kiroRefreshFailure.js";
 import { buildKiroIdentityHeaders } from "../../../../open-sse/shared/kiroHeaders.js";
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { buildKiroProfileEndpoint, regionFromProfileArn } from "../../../../open-sse/config/kiroRegions.js";
@@ -16,33 +17,60 @@ import { isString } from "../../../shared/utils/typeChecks.js";
 const KIRO_AUTH_SERVICE = "https://prod.us-east-1.auth.desktop.kiro.dev";
 const KIRO_SOCIAL_CLIENT_ID = "kiro-cli";
 
+function socialProvider(provider) {
+  if (!["google", "github"].includes(provider)) throw new Error("Unsupported Kiro social provider");
+  return provider === "google" ? "Google" : "Github";
+}
+
+function requireAccessToken(data, field = "accessToken") {
+  if (!isString(data?.[field]) || !data[field].trim()) throw new Error("Invalid Kiro token response");
+}
+
+async function kiroJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("Invalid Kiro response");
+  }
+}
+
+/** Bound provider calls and keep transport errors free of credentials. No automatic retries. */
+async function kiroFetch(url, options) {
+  try {
+    return await fetch(url, { ...options, redirect: "error", signal: options.signal ?? AbortSignal.timeout(30_000) });
+  } catch {
+    throw new Error("Kiro request failed");
+  }
+}
+
 export class KiroService {
   /** Start social device authorization; retain the device code server-side. */
   async startSocialDevice(provider, proxyOptions = null) {
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/device/authorization`, {
+    const response = await kiroFetch(`${KIRO_AUTH_SERVICE}/oauth/device/authorization`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: KIRO_SOCIAL_CLIENT_ID, loginProvider: provider === "google" ? "Google" : "Github" }),
+      body: JSON.stringify({ clientId: KIRO_SOCIAL_CLIENT_ID, loginProvider: socialProvider(provider) }),
       proxyOptions
     });
     if (!response.ok) throw new Error("Social device authorization failed");
-    const data = await response.json();
+    const data = await kiroJson(response);
     if (!data.deviceCode || !data.verificationUriComplete) throw new Error("Invalid social device authorization response");
     return data;
   }
 
   /** Poll a server-bound social device code, preserving pending and slow_down. */
   async pollSocialDevice(deviceCode, proxyOptions = null) {
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/device/poll`, {
+    const response = await kiroFetch(`${KIRO_AUTH_SERVICE}/oauth/device/poll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deviceCode, clientId: KIRO_SOCIAL_CLIENT_ID }),
       proxyOptions
     });
-    const data = await response.json();
+    const data = await kiroJson(response);
     const progress = data.error ?? data.status;
     if (progress === "authorization_pending" || progress === "slow_down") return { pending: true, error: progress };
-    if (!response.ok || data.error || (!data.accessToken && !data.refreshToken)) throw new Error("Social device authorization failed");
+    if (!response.ok || data.error || !data.accessToken) throw new Error("Social device authorization failed");
+    requireAccessToken(data);
     return { ...data, pending: false };
   }
   /**
@@ -53,7 +81,7 @@ export class KiroService {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/client/register`;
 
-    const response = await fetch(endpoint, {
+    const response = await kiroFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -69,11 +97,10 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to register client: ${error}`);
+      throw await kiroUpstreamError("Failed to register client", response);
     }
 
-    const data = await response.json();
+    const data = await kiroJson(response);
     return {
       clientId: data.clientId,
       clientSecret: data.clientSecret,
@@ -88,7 +115,7 @@ export class KiroService {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/device_authorization`;
 
-    const response = await fetch(endpoint, {
+    const response = await kiroFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -102,11 +129,10 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to start device authorization: ${error}`);
+      throw await kiroUpstreamError("Failed to start device authorization", response);
     }
 
-    const data = await response.json();
+    const data = await kiroJson(response);
     return {
       deviceCode: data.deviceCode,
       userCode: data.userCode,
@@ -124,7 +150,7 @@ export class KiroService {
     assertValidAwsRegion(region);
     const endpoint = `https://oidc.${region}.amazonaws.com/token`;
 
-    const response = await fetch(endpoint, {
+    const response = await kiroFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -138,18 +164,19 @@ export class KiroService {
       proxyOptions
     });
 
-    const data = await response.json();
+    const data = await kiroJson(response);
 
     // Handle pending/slow_down/errors
     if (!response.ok || data.error) {
       return {
         success: false,
-        error: data.error,
-        errorDescription: data.error_description,
+        error: ["authorization_pending", "slow_down", "expired_token", "access_denied"].includes(data.error) ? data.error : "authorization_failed",
+        errorDescription: "Kiro device authorization failed",
         pending: data.error === "authorization_pending" || data.error === "slow_down"
       };
     }
 
+    requireAccessToken(data);
     return {
       success: true,
       tokens: {
@@ -167,7 +194,7 @@ export class KiroService {
    * Uses kiro:// custom protocol as required by AWS Cognito whitelist
    */
   buildSocialLoginUrl(provider, codeChallenge, state) {
-    const idp = provider === "google" ? "Google" : "Github";
+    const idp = socialProvider(provider);
     // AWS Cognito only whitelists kiro:// protocol, not localhost
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
     return `${KIRO_AUTH_SERVICE}/login?idp=${idp}&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${state}&prompt=select_account`;
@@ -181,7 +208,7 @@ export class KiroService {
     // Must match the redirect_uri used in buildSocialLoginUrl
     const redirectUri = "kiro://kiro.kiroAgent/authenticate-success";
 
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
+    const response = await kiroFetch(`${KIRO_AUTH_SERVICE}/oauth/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -195,11 +222,11 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Token exchange failed: ${error}`);
+      throw await kiroUpstreamError("Token exchange failed", response);
     }
 
-    const data = await response.json();
+    const data = await kiroJson(response);
+    requireAccessToken(data);
     return {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
@@ -213,6 +240,13 @@ export class KiroService {
    */
   async refreshToken(refreshToken, providerSpecificData = {}, proxyOptions = null) {
     const { authMethod, clientId, clientSecret, region } = providerSpecificData;
+    if (authMethod && !["builder-id", "idc", "social", "google", "github", "imported", "external_idp"].includes(authMethod)) {
+      throw new Error("Unsupported Kiro refresh method");
+    }
+    if (!isString(refreshToken) || !refreshToken.trim()) throw new Error("Kiro refresh token is required");
+    if (["builder-id", "idc"].includes(authMethod) && (!clientId || !clientSecret)) {
+      throw new Error("Kiro OIDC client registration is required");
+    }
 
     // Microsoft Entra ID (external_idp) refresh — ported from 9router PR
     // #2615. Must run before the AWS SSO OIDC branch: external_idp tokens
@@ -220,7 +254,7 @@ export class KiroService {
     if (authMethod === "external_idp") {
       const refreshRequest = buildExternalIdpRefreshParams(refreshToken, providerSpecificData);
 
-      const response = await fetch(refreshRequest.tokenEndpoint, {
+      const response = await kiroFetch(refreshRequest.tokenEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -231,11 +265,10 @@ export class KiroService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Token refresh failed for external_idp: ${errorText}`);
+        throw await kiroUpstreamError("Token refresh failed for external_idp", response);
       }
 
-      const data = await response.json();
+      const data = await kiroJson(response);
       if (!data || !isString(data.access_token) || !data.access_token) {
         throw new Error("Token refresh failed for external_idp: response missing access_token");
       }
@@ -260,7 +293,7 @@ export class KiroService {
       assertValidAwsRegion(safeRegion);
       const endpoint = `https://oidc.${safeRegion}.amazonaws.com/token`;
 
-      const response = await fetch(endpoint, {
+      const response = await kiroFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -275,11 +308,11 @@ export class KiroService {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token refresh failed: ${error}`);
+        throw await kiroUpstreamError("Token refresh failed", response);
       }
 
-      const data = await response.json();
+      const data = await kiroJson(response);
+      requireAccessToken(data);
       return {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken || refreshToken,
@@ -289,7 +322,7 @@ export class KiroService {
     }
 
     // Social auth refresh (Google/GitHub)
-    const response = await fetch(`${KIRO_AUTH_SERVICE}/refreshToken`, {
+    const response = await kiroFetch(`${KIRO_AUTH_SERVICE}/refreshToken`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -301,11 +334,11 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Token refresh failed: ${error}`);
+      throw await kiroUpstreamError("Token refresh failed", response);
     }
 
-    const data = await response.json();
+    const data = await kiroJson(response);
+    requireAccessToken(data);
     return {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken || refreshToken,
@@ -319,7 +352,7 @@ export class KiroService {
    */
   async validateImportToken(refreshToken, proxyOptions = null) {
     // Validate token format
-    if (!refreshToken.startsWith("aorAAAAAG")) {
+    if (!isString(refreshToken) || !refreshToken.startsWith("aorAAAAAG")) {
       throw new Error("Invalid token format. Token should start with aorAAAAAG...");
     }
 
@@ -360,7 +393,7 @@ export class KiroService {
     let lastError = null;
     for (const r of candidates) {
       try {
-        const response = await fetch(buildKiroProfileEndpoint(r), {
+        const response = await kiroFetch(buildKiroProfileEndpoint(r), {
           method: "POST",
           headers: {
             "Content-Type": "application/x-amz-json-1.0",
@@ -375,10 +408,10 @@ export class KiroService {
           ...(isApiKey ? { signal: AbortSignal.timeout(10000) } : null)
         });
         if (!response.ok) {
-          lastError = new Error(`ListAvailableProfiles ${r} failed: ${await response.text()}`);
+          lastError = new Error("Kiro profile discovery failed");
           continue;
         }
-        const data = await response.json();
+        const data = await kiroJson(response);
         const profiles = Array.isArray(data?.profiles) ? data.profiles : [];
         if (profiles.length === 0) continue;
         const arnOf = (p) => p?.arn || p?.profileArn || null;
@@ -397,7 +430,7 @@ export class KiroService {
    * Validate API keys on the Amazon Q model surface; profile discovery is
    * optional because valid keys can be denied ListAvailableProfiles.
    */
-  async validateApiKey(apiKey, region = "auto") {
+  async validateApiKey(apiKey, region = "auto", proxyOptions = null) {
     if (!apiKey || !isString(apiKey) || !apiKey.trim()) {
       throw new Error("API key is required");
     }
@@ -412,7 +445,7 @@ export class KiroService {
     for (const candidate of candidates) {
       let response;
       try {
-        response = await fetch(`https://q.${candidate}.amazonaws.com/ListAvailableModels?origin=AI_EDITOR`, {
+        response = await kiroFetch(`https://q.${candidate}.amazonaws.com/ListAvailableModels?origin=AI_EDITOR`, {
           method: "GET",
           headers: {
             ...buildKiroIdentityHeaders({ accessToken: trimmed }),
@@ -420,7 +453,8 @@ export class KiroService {
             tokentype: "API_KEY",
             Accept: "application/json"
           },
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(10000),
+          proxyOptions
         });
       } catch {
         continue;
@@ -431,7 +465,7 @@ export class KiroService {
     if (!selectedRegion) throw new Error("API key validation failed: Amazon Q rejected the key or was unavailable");
 
     let profileArn = null;
-    try { profileArn = await this.listAvailableProfiles(trimmed, selectedRegion, null, true); } catch { /* optional */ }
+    try { profileArn = await this.listAvailableProfiles(trimmed, selectedRegion, proxyOptions, true); } catch { /* optional */ }
     if (profileArn && regionFromProfileArn(profileArn) !== selectedRegion) profileArn = null;
 
     return {
@@ -446,11 +480,11 @@ export class KiroService {
   /**
    * List available models from CodeWhisperer API
    */
-  async listAvailableModels(accessToken, profileArn) {
+  async listAvailableModels(accessToken, profileArn, proxyOptions = null) {
     const endpoint = "https://codewhisperer.us-east-1.amazonaws.com";
     const target = "AmazonCodeWhispererService.ListAvailableModels";
 
-    const response = await fetch(endpoint, {
+    const response = await kiroFetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-amz-json-1.0",
@@ -462,15 +496,15 @@ export class KiroService {
       body: JSON.stringify({
         origin: "AI_EDITOR",
         profileArn
-      })
+      }),
+      proxyOptions
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to list models: ${error}`);
+      throw await kiroUpstreamError("Failed to list models", response);
     }
 
-    const data = await response.json();
+    const data = await kiroJson(response);
     return (data.models || []).map((m) => ({
       id: m.modelId,
       name: m.modelName || m.modelId,

@@ -10,6 +10,8 @@ import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
 import { transcribeVertex } from "../services/providerParity/native-vertex-tts-stt/transcription.js";
+import { kieSttAdapter } from "../services/providerParity/native-kie-tts-stt/index.js";
+import { deapiSttAdapter } from "../services/providerParity/native-deapi-tts-stt/index.js";
 
 // OpenAI-compatible transcription path appended to a user-supplied origin. The
 // resolver deliberately returns only the origin, so the route stays fixed and a
@@ -470,6 +472,18 @@ export async function handleSttCore({ provider, model, formData, credentials, st
   if (provider === "codex" && cfg.format === "codex-transcribe") {
     if (kind === "translation") return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Codex transcription does not support audio translations");
     return transcribeCodex({ formData, credentials, signal });
+  }
+
+  // Kie transcription is a createTask job on a fixed origin. The adapter owns
+  // its auth, refuses translations itself and marks billable outcomes.
+  if (cfg.format === "kie-audio") {
+    return kieSttAdapter.transcribe({ model, formData, credentials, kind, signal, log });
+  }
+
+  // deAPI transcription: one bounded multipart POST on the fixed origin. The
+  // adapter checks every field, refuses translations and marks billable outcomes.
+  if (provider === "deapi") {
+    return deapiSttAdapter.transcribe({ model, formData, credentials, kind, signal, log });
   }
 
   const translate = kind === "translation";

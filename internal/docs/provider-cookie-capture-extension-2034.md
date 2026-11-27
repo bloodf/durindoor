@@ -25,7 +25,7 @@ No code is ported. The extension is an original implementation against DurinDoor
 - **Dashboard host permission.** The import route sends no CORS headers, so an extension page needs host permission for the dashboard origin. Its address is not known at build time, hence the optional `https://*/*` and loopback patterns. Only the paired host is ever requested and it is removed afterwards. Chrome host patterns ignore ports, so the grant covers the host. Adding CORS to the route was rejected: it would widen a public leaf for every site.
 - **No background context.** No service worker, so no background collection and nothing that can be triggered by another extension or page.
 - **No retry.** The secret is spent as soon as the server accepts the request for processing, so a retry would fail anyway and could hide a failure. A denied prompt is also final until the user clicks again.
-- **Per-name `cookies.get`.** `cookies.getAll` would load unrelated cookies into memory. Chunks are probed `.0`, `.1`… until the first gap, at most 16 cookies, matching the server.
+- **Per-name `cookies.get`.** Veo uses one bounded cookie enumeration for the confirmed provider URL and tab store. At most 64 entries are accepted. Names are matched before values are read; exactly one secure, unexpired `wordpress_logged_in_<32 lowercase hex>` member in that store is required. Arbitrary valid md5 hashes are supported. Other providers retain exact-name reads. Chunks are probed `.0`, `.1`… until the first gap, at most 16 cookies, matching the server.
 - **Fixed messages.** Results map HTTP status to static text; server bodies are never displayed.
 - **STORE zip.** Compression output depends on the zlib version; STORE keeps the package byte-identical across machines.
 
@@ -40,7 +40,7 @@ Tests: `tests/unit/provider-cookie-capture-extension.test.js` (Inner.ai Web and 
 
 ## Rejected alternatives
 
-`chrome.storage` for the pairing or last result (persists credentials); `cookies.getAll` with client-side filtering; permanent `host_permissions`; a background sync loop; native messaging; reading the dashboard session; auto-capture on page load.
+`chrome.storage` for the pairing or last result (persists credentials); unbounded cookie enumeration; permanent `host_permissions`; a background sync loop; native messaging; reading the dashboard session; auto-capture on page load.
 
 ## Verification and limits
 
@@ -49,3 +49,5 @@ Covered with mocked `chrome.*` and `fetch`: manifest shape, table/contract parit
 Not verified: real Chrome behavior (permission prompt text, whether `http://[::1]/*` is accepted as an optional pattern, activeTab visibility after navigation), a live dashboard, and any provider. The pairing store is per server process.
 
 Tests: `tests/unit/provider-cookie-capture-extension.test.js`. Public instructions: [Web cookie providers](../../docs/providers/web-cookie.mdx#import-from-a-browser-extension). Extension reference: [`extensions/provider-cookie-capture/README.md`](../../extensions/provider-cookie-capture/README.md).
+
+Decision18: Veo uses one bounded cookie enumeration for the confirmed provider URL and tab store. At most 64 entries are accepted. Names are matched before values are read; exactly one secure, unexpired `wordpress_logged_in_<32 lowercase hex>` member in that store is required. Arbitrary valid md5 hashes are supported. Other providers retain exact-name reads. Tab origin is checked immediately before and after enumeration; navigation, cancellation and API rejection send nothing.

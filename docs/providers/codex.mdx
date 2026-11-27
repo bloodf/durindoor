@@ -109,3 +109,8 @@ When the plan offers rate-limit reset credits, the limits view can read and spen
 Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).
 
 After login or import, send a short request using a `cx/` ID from the catalog. Confirm the selected account on **Usage**. A successful login does not guarantee entitlement to every listed model. For `reauth_required`, sign in again on that connection; ordinary retries do not release the quarantine.
+
+Each browser Connect asks for a fresh login so you can add a second account.
+Browser and device exchanges use OpenAI's `/oauth/token` endpoint. Device
+failures show a status-only message; provider response bodies are not displayed.
+Refresh uses a form grant on the same endpoint and retains the selected proxy.

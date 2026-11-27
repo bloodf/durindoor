@@ -1,0 +1,11 @@
+{
+  "status": "staged",
+  "module": "./state.js",
+  "exports": [
+    "codebuddyStateBody",
+    "codebuddyStateFailure",
+    "codebuddyPollFailure",
+    "codebuddyUsageFailure"
+  ],
+  "integration": "In src/lib/oauth/providers.js codebuddy-cn.requestDeviceCode, use codebuddyStateBody for the POST body and codebuddyStateFailure for non-OK and invalid state envelopes. In codebuddy-cn.pollToken, use codebuddyPollFailure for non-pending failures rather than data.msg. Preserve the existing flow ownership, state, and proxy handling in the OAuth route. This module is not registered in production. In open-sse/services/usage/codebuddy-cn.js use codebuddyUsageFailure for nonzero provider envelopes and caught transport failures; keep the existing fixed HTTP status responses."
+}

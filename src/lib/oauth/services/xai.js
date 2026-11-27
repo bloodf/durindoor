@@ -9,7 +9,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
 /**
  * xAI (Grok) OAuth Service
  *
- * Source of truth: router-for-me/CLIProxyAPI internal/auth/xai/xai.go
+ * Legacy browser PKCE flow. CLIProxyAPI dbe641f uses device authorization.
  *
  * Flow:
  *  1. Discover endpoints from `${XAI_ISSUER}/.well-known/openid-configuration`
@@ -18,11 +18,14 @@ import { spinner as createSpinner } from "../utils/ui.js";
  *  4. Exchange code with form-urlencoded body
  *  5. id_token email decode (no signature verify, mirrors Go)
  */
-import { isString } from "../../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { oauthFailureMessage } from "../providerParity/xai-grok-cli/oauthError.js";
+import { sanitizeErrorMessage } from "../../../../open-sse/utils/error.js";
 
 const BASE64_BLOCK_SIZE = 4;
 
 let cachedDiscovery = null;
+const proxyDiscovery = new WeakMap();
 
 export function validateOAuthEndpoint(rawUrl, field) {
   const value = String(rawUrl || "").trim();
@@ -48,10 +51,13 @@ export function validateOAuthEndpoint(rawUrl, field) {
 }
 
 /**
- * Discover authorization + token endpoints. Cached process-wide.
+ * Cache successful discovery separately for each proxy selection. Transient failures
+ * use static endpoints for this request and are retried on the next call.
  */
 export async function discoverEndpoints(proxyOptions = null) {
-  if (cachedDiscovery) return cachedDiscovery;
+  const useProxyCache = proxyOptions && isObject(proxyOptions);
+  const cached = useProxyCache ? proxyDiscovery.get(proxyOptions) : cachedDiscovery;
+  if (cached) return cached;
 
   try {
     const res = await fetch(XAI_CONFIG.discoveryUrl, {
@@ -60,21 +66,22 @@ export async function discoverEndpoints(proxyOptions = null) {
     });
     if (res.ok) {
       const data = await res.json();
-      cachedDiscovery = {
+      const discovered = {
         authorizeUrl: validateOAuthEndpoint(data.authorization_endpoint, "authorization_endpoint"),
         tokenUrl: validateOAuthEndpoint(data.token_endpoint, "token_endpoint")
       };
-      return cachedDiscovery;
+      if (useProxyCache) proxyDiscovery.set(proxyOptions, discovered);
+      else cachedDiscovery = discovered;
+      return discovered;
     }
   } catch {
 
     // fall through to static fallback
   }
-  cachedDiscovery = {
+  return {
     authorizeUrl: XAI_CONFIG.authorizeUrl,
     tokenUrl: XAI_CONFIG.tokenUrl
   };
-  return cachedDiscovery;
 }
 
 /**
@@ -146,8 +153,10 @@ export class XaiService extends OAuthService {
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`xAI token exchange failed: ${err}`);
+      // Interactive CLI flow: keep the upstream reason (pinned by
+      // tests/unit/oauth-callback-cleanup.test.js) but redact credential shapes.
+      const detail = await res.text().catch(() => "");
+      throw new Error(`xAI token exchange failed: ${detail ? sanitizeErrorMessage(detail) : `HTTP ${res.status}`}`);
     }
     const tokens = await res.json();
     if (!isString(tokens.access_token) || !tokens.access_token.trim()) {
@@ -175,8 +184,8 @@ export class XaiService extends OAuthService {
       proxyOptions
     });
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`xAI token refresh failed: ${err}`);
+      // Keep the OAuth error code so refreshXaiToken can classify invalid_grant.
+      throw new Error(await oauthFailureMessage("xAI token refresh failed", res));
     }
     const tokens = await res.json();
     if (!isString(tokens.access_token) || !tokens.access_token.trim()) {

@@ -1,4 +1,4 @@
-// Novita native video adapter, staged and unregistered (#2034). Closed mocks
+// Novita native video adapter, registered on novita (#2034). Closed mocks
 // only: every request is answered below, an unexpected request fails the test,
 // and every key is synthetic. Wire shapes follow OmniRoute c71f0065
 // (videoRegistry.ts `novita`, videoGeneration.ts format dispatch,
@@ -83,14 +83,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing novita entry unchanged", () => {
-    expect(getVideoGenerationAdapter("novita")).toBeNull();
-    expect(novitaRegistry.serviceKinds).toBeUndefined();
-    expect(novitaRegistry.models.some((m) => m.kind === "video")).toBe(false);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers the adapter on the existing novita entry with chat kept and no video job config", () => {
+    expect(getVideoGenerationAdapter("novita")).toBe(novitaVideoAdapter);
+    expect(novitaRegistry.serviceKinds).toEqual(REGISTRATION.provider.addServiceKinds);
+    expect(novitaRegistry.models.filter((m) => m.kind === "video")).toEqual(NOVITA_VIDEO_MODELS.map(({ id, name }) => ({ id, name, kind: "video" })));
+    expect(novitaRegistry.models.some((m) => m.kind === undefined)).toBe(true);
+    expect(novitaRegistry.videoConfig).toBeUndefined();
   });
 });
 

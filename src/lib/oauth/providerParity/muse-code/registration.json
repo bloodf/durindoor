@@ -1,0 +1,11 @@
+{
+  "status": "staged",
+  "module": "./device.js",
+  "exports": [
+    "normalizeMuseDeviceResponse",
+    "normalizeMusePollResponse",
+    "assertMuseOAuthAction",
+    "postMuseDeviceForm"
+  ],
+  "integration": "In src/lib/oauth/museCodeProvider.js, validate successful requestDeviceCode data with normalizeMuseDeviceResponse and normalize pollToken data with normalizeMusePollResponse, setting ok false for invalid_response. Use postMuseDeviceForm for auth requests, passing the existing proxy and cancellation signal; map network_error to a fixed message. Keep device ownership, polling deadlines, proxy context and storage in the existing OAuth flow and route. In src/app/api/oauth/[provider]/[action]/route.js, invoke assertMuseOAuthAction before OAuth dispatch for muse-code, mapping rejection to OAUTH_VALIDATION_FAILED; leave separately managed Model API key connections alone."
+}

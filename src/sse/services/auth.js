@@ -8,6 +8,7 @@ import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/con
 import { formatRetryAfter, getActiveModelLockUntil, isModelLockActive, countEligibleAccounts, isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
 import { AI_PROVIDERS, resolveProviderId, resolveProviderRpm } from "@/shared/constants/providers.js";
 import { PROVIDERS } from "open-sse/providers/index.js";
+import { getAzureDeploymentPool } from "open-sse/providers/azureDeployment.js";
 import * as log from "../utils/logger.js";
 import { buildQuotaResourceKeys, canDeferQuotaRefresh, evaluateProviderQuotaPreflight, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { refreshProviderQuota } from "@/shared/services/providerQuotaTracker";
@@ -490,9 +491,19 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       log.warn("AUTH", `No credentials for ${provider}`);
       return null;
     }
+    // decolua/9router#5901: route Azure requests to deployment pools advertising the
+    // requested model while keeping legacy fixed-deployment connections for unlisted models.
+    const isAzureDeployment = providerId === "azure" && Boolean(model);
+    const azurePoolOwnsModel = isAzureDeployment && connections.some((conn) =>
+      getAzureDeploymentPool(conn.providerSpecificData).includes(model));
     // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
     const eligibleBeforeRpm = connections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
+      if (isAzureDeployment) {
+        const data = c.providerSpecificData;
+        if (data?.deploymentMode === "pool" && !getAzureDeploymentPool(data).includes(model)) return false;
+        if (data?.deploymentMode !== "pool" && azurePoolOwnsModel && data?.deployment !== model) return false;
+      }
       if (isQuotaLockoutActive(c, selectionNow)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;

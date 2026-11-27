@@ -11,6 +11,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { PROVIDERS } from "open-sse/config/providers.js";
+import { getAzureDeploymentPool } from "open-sse/providers/azureDeployment.js";
 import { isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
@@ -521,7 +522,16 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         staticAlias).
         trim();
         const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
-        const enabledModels = resolveEnabledModels(providerId, conn);
+        let enabledModels = resolveEnabledModels(providerId, conn);
+        if (providerId === "azure") {
+          // port(upstream): decolua/9router#5901 — publish deployments from every active Azure pool.
+          const pooledModels = connections
+            .filter((connection) => connection.provider === providerId && (!scopedConnectionIds || scopedConnectionIds.has(connection.id)))
+            .flatMap((connection) => getAzureDeploymentPool(connection.providerSpecificData));
+          if (pooledModels.length > 0) {
+            enabledModels = Array.from(new Set([...enabledModels, ...pooledModels]));
+          }
+        }
         const hasExplicitEnabledModels = enabledModels.length > 0;
         const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);

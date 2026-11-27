@@ -75,12 +75,15 @@ Tests cover real request and response translation for both gateway formats. Clau
 
 - **Opt-in.** Every request answers 403 `uc_disabled` unless `DURINDOOR_UC_CONSUMER_SIGNIN=1`. The connection's metadata must also come from the staged sign-in module: an accepted `ucAuthSource` and a valid ISO `ucSignedInAt`. Otherwise the answer is 401 `uc_unconfigured` and nothing goes on the network.
 - **Fail closed on auth.**
-  - A Clerk challenge returns 403 `uc_auth_challenge`.
-  - A revoked session returns 401.
+  - A Clerk token mint answered with 401 or 403 returns 401 `uc_auth_error`, whatever the body says, including a captcha or second-factor code. The source treats a mint 401/403 as an invalid durable login that needs a re-login (`uc/clerkAuth.ts:85-87`, `uc.ts:198-203`). No socket opens.
+  - A revoked session returns 401 `uc_auth_error`.
   - A JWT for another account returns 401 `uc_identity`.
-  - A socket 401 or 403, or an `unauthorized` or `forbidden` frame, returns 401 and drops the cached JWT.
+  - A socket upgrade answered with 401 or 403, or an `unauthorized` or `forbidden` frame, returns 401 `uc_auth_error` and drops only that account's cached JWT. The source `ws.ts` keeps no handshake status, and its `classifyTurnError` maps both words to 401 (`uc.ts:163-164`). A refused upgrade carries no `acceptedTurn`, because no frame left.
+  - A session-controller result of kind `needs_operator` (a sign-in challenge or MFA) returns 403 `uc_auth_challenge` before any socket opens. This is fork-only: the token mint never produces it.
 
   Nothing retries these.
+
+  The first version of this module answered a mint 403 with 403 `uc_auth_challenge`. That predated the source alignment of the staged sign-in controller (`c8d758aa79`), which maps mint 401/403 to `reauth`. Two expectations in `tests/unit/native-uc-chat.test.js` changed to match the source: the mint 403 case now expects 401 `uc_auth_error`, and the mint URL carries only `_clerk_js_version` (`uc/clerkAuth.ts:95`).
 - **No replay.**
   - The source's code-style retry after a refusal is not run, because it was a second quota-bearing turn. A refusal is returned as the answer.
   - The executor never retries a turn.
@@ -108,10 +111,10 @@ Tests cover real request and response translation for both gateway formats. Clau
 ## Evidence
 
 ```bash
-cd tests && node node_modules/vitest/vitest.mjs run unit/native-uc-chat.test.js --maxWorkers=2
+cd tests && node node_modules/vitest/vitest.mjs run unit/uc-chat-reauth-contract.test.js unit/native-uc-chat.test.js unit/uc-signin-source-contract.test.js --maxWorkers=2
 ```
 
-The suite has 59 tests and uses synthetic Clerk transports and synthetic sockets only. No live account, browser, mailbox or socket is involved, so passing says nothing about the live service.
+`native-uc-chat.test.js` has 59 tests. `uc-chat-reauth-contract.test.js` adds 22 for the auth contract: mint 401/403 bodies, the `needs_operator` challenge and MFA cases, socket 401/403 denial, per-account JWT invalidation, redaction, and no early 200 on a stream. Both use synthetic Clerk transports and synthetic sockets only. No live account, browser, mailbox or socket is involved, so passing says nothing about the live service.
 
 ## Registration (not done here)
 

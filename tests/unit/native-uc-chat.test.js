@@ -363,7 +363,8 @@ describe("wire contract", () => {
     const result = await run(executor(), { body: userBody("hello", { max_tokens: 64, temperature: 0.2, reasoning_effort: "high" }) });
     expect(result.response.status).toBe(200);
     expect(clerkCalls).toHaveLength(1);
-    expect(clerkCalls[0].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens?__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1`);
+    // Source clerkAuth.ts:95: the mint query carries only _clerk_js_version.
+    expect(clerkCalls[0].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens?_clerk_js_version=5.127.1`);
     expect(clerkCalls[0].init.headers.Cookie).toBe(`__client=${A.client}; __cf_bm=${A.cf}`);
     expect(clerkCalls[0].init.headers.Authorization).toBeUndefined();
     const [socket] = sockets;
@@ -662,12 +663,14 @@ describe("opt-in and credential guards", () => {
 });
 
 describe("auth failures fail closed", () => {
-  it("maps a Clerk challenge to 403 without opening a socket", async () => {
+  // Source clerkAuth.ts:85-87 and uc.ts:198: a mint 403, whatever its body,
+  // means the durable login is invalid and maps to 401 uc_auth_error (re-login).
+  it("maps a Clerk mint 403 challenge to a 401 re-login without opening a socket", async () => {
     mints[A.sid] = () => reply(403, { errors: [{ code: "captcha_required", message: `challenge ${A.client}` }] });
     const result = await run(executor());
-    expect(result.response.status).toBe(403);
+    expect(result.response.status).toBe(401);
     await expectNoLeak(result);
-    expect((await result.response.json()).error.code).toBe("uc_auth_challenge");
+    expect((await result.response.json()).error.code).toBe("uc_auth_error");
     expect(sockets).toEqual([]);
   });
 

@@ -9,6 +9,7 @@ import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { OPENAI_RESPONSES_FAMILY } from "./openaiResponsesFamily.js";
 
 export { PROVIDER_MODELS };
 
@@ -86,7 +87,6 @@ const OPENCODE_GO_UNLISTED_RESPONSES_MODELS = new Set(["gpt-5.6-luna", "grok-4.6
 
 // OpenAI rejects function tools with reasoning_effort on Chat Completions for the
 // GPT-6 and GPT-5.6+ families, so ids newer than the catalog use Responses (OmniRoute #21279).
-const OPENAI_RESPONSES_FAMILY = /^gpt-(?:[6-9]|5\.[6-9])/i;
 
 export function getModelTargetFormat(aliasOrId, modelId) {
   if (DOTHOOSH_PROVIDERS.has(aliasOrId)) return dothooshFamilyFormats(modelId)?.targetFormat || null;

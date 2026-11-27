@@ -197,6 +197,16 @@ export function getThinkingLevels(provider, model) {
 }
 
 /**
+ * True when reasoning is known but its effort enum is not. The unlisted OpenAI
+ * Responses fallback sets `thinkingLevelsUnknown`; custom, synced or shared
+ * capabilities merge over it, so a declared `thinkingEfforts` array wins.
+ * @param {object} caps
+ */
+export function hasUnknownThinkingLevels(caps) {
+  return caps?.thinkingLevelsUnknown === true && (!Array.isArray(caps.thinkingEfforts) || caps.thinkingEfforts.length === 0);
+}
+
+/**
  * Derive selectable thinking levels from an already-resolved capability object.
  * @param {object} caps
  * @param {string} [provider] - provider id, used for provider-specific filtering
@@ -204,6 +214,7 @@ export function getThinkingLevels(provider, model) {
  */
 export function getThinkingLevelsFromCapabilities(caps, provider = null, model = null) {
   if (!caps || !caps.reasoning) return null;
+  if (hasUnknownThinkingLevels(caps)) return null;
   const modelId = model || "";
   const hit = PATTERN_THINKING.find((p) =>
     (!p.provider || p.provider === provider) && matchPattern(p.pattern, modelId));

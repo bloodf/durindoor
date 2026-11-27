@@ -5,6 +5,7 @@ import { createErrorResult, readBoundedResponseText } from '../../../utils/error
 import { mediaAccounting } from '../../../handlers/mediaAccounting.js';
 import { sleep } from '../../../handlers/imageProviders/_base.js';
 import { resolveCredentialProxyOptions } from '../../oauthCredentialManager.js';
+import { isString, isRecord } from '../../../../src/shared/utils/typeChecks.js';
 import { isBlockedHost } from '../../../../src/shared/utils/ssrfGuard.js';
 
 export const config = Object.freeze({
@@ -16,11 +17,11 @@ export const config = Object.freeze({
 const bad = () => { throw new Error('Unsupported Runway video input'); };
 function publicUrl(value) {
   const url = new URL(value);
-  if (typeof value !== 'string' || value.length > 4096 || url.protocol !== 'https:' || url.username || url.password || isBlockedHost(url.hostname)) throw new Error('Unsafe Runway media URL');
+  if (!isString(value) || value.length > 4096 || url.protocol !== 'https:' || url.username || url.password || isBlockedHost(url.hostname)) throw new Error('Unsafe Runway media URL');
   return url.href;
 }
 export function buildRequest(model, body) {
-  if (!config.models.includes(model) || !body || typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 10000) bad();
+  if (!config.models.includes(model) || !body || !isString(body.prompt) || !body.prompt.trim() || body.prompt.length > 10000) bad();
   const allowed = new Set(['prompt', 'model', 'n', 'stream', 'response_format', 'promptImage', 'prompt_image', 'image', 'image_url', 'imageUrl', 'aspect_ratio', 'aspectRatio', 'size', 'duration', 'frames', 'fps', 'seed']);
   if (Object.keys(body).some(k => !allowed.has(k)) || (body.n !== undefined && body.n !== 1) || (body.stream !== undefined && body.stream !== false) || (body.response_format !== undefined && body.response_format !== 'url')) bad();
   const refs = ['promptImage', 'prompt_image', 'image', 'image_url', 'imageUrl'].filter(k => body[k] !== undefined);
@@ -59,7 +60,7 @@ export function createRunwayVideoAdapter({ timeoutMs = 300000, requestTimeoutMs 
       let built;
       try { built = buildRequest(model, body); } catch { return createErrorResult(400, 'Unsupported Runway video input'); }
       const key = credentials?.apiKey || credentials?.accessToken;
-      if (typeof key !== 'string' || !key.trim() || /[\r\n]/.test(key)) return createErrorResult(401, 'Runway credentials required');
+      if (!isString(key) || !key.trim() || /[\r\n]/.test(key)) return createErrorResult(401, 'Runway credentials required');
       if (signal?.aborted) return createErrorResult(499, 'Runway request aborted');
       const total = new AbortController();
       const timer = setTimeout(() => total.abort(), Math.min(300000, Math.max(1, timeoutMs)));
@@ -78,7 +79,9 @@ export function createRunwayVideoAdapter({ timeoutMs = 300000, requestTimeoutMs 
           if (callSignal.aborted) onAbort();
         });
         const work = (async () => {
-          const response = await fetch(config.baseUrl + path, { method: request ? 'POST' : 'GET', headers, redirect: 'manual', signal: callSignal, ...resolveCredentialProxyOptions(credentials), ...(request ? { body: JSON.stringify(request) } : {}) });
+          const options = { method: request ? 'POST' : 'GET', headers, redirect: 'manual', signal: callSignal, ...resolveCredentialProxyOptions(credentials) };
+          if (request) options.body = JSON.stringify(request);
+          const response = await fetch(config.baseUrl + path, options);
           if (callSignal.aborted) { await response.body?.cancel(); throw new Error('Interrupted'); }
           if (response.redirected || (response.url && response.url !== config.baseUrl + path) || response.status >= 300 && response.status < 400) { await response.body?.cancel(); throw new Error('Redirect refused'); }
           if (!response.ok) {
@@ -88,7 +91,7 @@ export function createRunwayVideoAdapter({ timeoutMs = 300000, requestTimeoutMs 
           }
           const text = await readBoundedResponseText(response, { signal: callSignal, timeoutMs: requestTimeoutMs, maxBytes: 262144, throwOnTimeout: true });
           const data = JSON.parse(text);
-          if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Malformed response');
+          if (!isRecord(data)) throw new Error('Malformed response');
           return data;
         })();
         try { return await Promise.race([work, interrupted]); }
@@ -98,14 +101,14 @@ export function createRunwayVideoAdapter({ timeoutMs = 300000, requestTimeoutMs 
         if (combined.aborted) throw new Error('Interrupted');
         mayBill = true;
         const submitted = await call(built.path, built.request);
-        if (typeof submitted.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(submitted.id)) throw new Error('Malformed task');
+        if (!isString(submitted.id) || !/^[A-Za-z0-9_-]{1,128}$/.test(submitted.id)) throw new Error('Malformed task');
         while (!combined.aborted) {
           const task = await call(`/tasks/${encodeURIComponent(submitted.id)}`);
-          const status = typeof task.status === 'string' ? task.status.toUpperCase() : '';
+          const status = isString(task.status) ? task.status.toUpperCase() : '';
           if (status === 'SUCCEEDED') {
             const output = task.output ?? task.result;
             if (!Array.isArray(output) || !output.length || output.length > 16) throw new Error('Malformed output');
-            const data = output.map(entry => ({ url: publicUrl(typeof entry === 'string' ? entry : entry?.url ?? entry?.uri ?? entry?.videoUrl ?? entry?.video_url), format: 'mp4' }));
+            const data = output.map(entry => ({ url: publicUrl(isString(entry) ? entry : entry?.url ?? entry?.uri ?? entry?.videoUrl ?? entry?.video_url), format: 'mp4' }));
             const usage = accounting();
             usage.nativeUnits = { videos: data.length };
             usage.meta.nativeUnitsSource = 'returned-videos';

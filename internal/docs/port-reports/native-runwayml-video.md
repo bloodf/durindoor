@@ -53,3 +53,8 @@ artifact normalization, validation, HTTP refusal/quota, unsafe/malformed results
 jobs, redirect refusal, uncertain acceptance/no replay, hung submit, polling deadline,
 and cancellation. Only a separate staging describe block asserts non-registration.
 No live calls, browser, full suite, or production activation performed.
+
+Gate follow-up: replaced raw runtime type checks with repository isString/isRecord
+boundary helpers and built optional request bodies by explicit assignment. Scoped
+ESLint/Oxlint and all 32 focused tests pass; the repository anti-slop gate reports
+zero diagnostics across 3255 files. No lint rules or baselines were weakened.

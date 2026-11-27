@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(import.meta.url);
@@ -27,6 +27,16 @@ function limitDependencyConcurrency(vitest) {
       waiting.shift()?.();
     }
   };
+}
+
+// Playwright specs and their helpers live under website/tests/ and are run by
+// the browser suite, not Vitest. A change made only of those files can
+// legitimately select zero related unit tests.
+const browserTestDir = join(root, "website", "tests");
+
+function isBrowserTestFile(file) {
+  const path = relative(browserTestDir, resolve(root, file));
+  return Boolean(path) && !path.startsWith("..") && !isAbsolute(path);
 }
 
 function run(label, args, env) {
@@ -55,9 +65,13 @@ async function discover(changedList, output) {
     limitDependencyConcurrency(vitest);
     const specs = await vitest.getRelevantTestSpecifications();
     const files = [...new Set(specs.map(({ moduleId }) => relative(testDir, moduleId)))].sort();
-    if (!files.length) throw new Error("Vitest selected zero related test files");
+    if (!files.length && !changed.every(isBrowserTestFile)) {
+      throw new Error("Vitest selected zero related test files");
+    }
     writeFileSync(output, JSON.stringify(files));
-    console.log(`Vitest selected ${files.length} related test files`);
+    console.log(files.length
+      ? `Vitest selected ${files.length} related test files`
+      : `Vitest selected zero related test files; every changed file is a browser test under website/tests/, which the browser suite covers`);
   } finally {
     await vitest.close();
   }

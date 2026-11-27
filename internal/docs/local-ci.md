@@ -140,5 +140,10 @@ checkout. Use a private, disk-backed `TMPDIR` and run lint separately. The
 runner resolves Vitest's transitive test dependencies once, then runs all
 selected files in batches of 50 with four isolated fork workers. Discovery
 and each batch have an independent five-minute ceiling, including termination
-grace. An empty selection or a failed batch fails the check. The full
-inventory checkpoint remains required for merges.
+grace. A discovery error or a failed batch fails the check. An empty
+selection also fails, with one exception: when every changed file is under
+`website/tests/` (Playwright specs and browser helpers), Vitest can correctly
+select nothing, so the runner logs that and exits 0. Any other changed file,
+including other `website/` paths, keeps the empty-selection failure. Those
+browser files are covered by the website browser shards in exact-head local
+CI, and the full inventory checkpoint remains required for merges.

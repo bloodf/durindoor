@@ -162,12 +162,24 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__client"],
     cookiePrefixes: [],
   },
-  // Optional WordPress sign-in for an otherwise anonymous video provider: the one logged-in cookie of this site.
+  // Optional WordPress sign-in for an otherwise anonymous video provider: the one
+  // `wordpress_logged_in_<COOKIEHASH>` cookie of this site. WordPress core sets COOKIEHASH to
+  // md5(siteurl option) (wp-includes/default-constants.php); the option is site config the origin
+  // does not reveal. The dashboard accepts any md5 member. This extension reads by exact name only,
+  // so it tries the md5 of each siteurl that can serve this origin: https/http, apex/www, in that
+  // order. A site with another siteurl or a custom COOKIEHASH needs the dashboard Cookie/cURL/HAR import.
   "veoaifree-web": {
     label: "Veo AI Free Web",
     origin: "https://veoaifree.com",
-    cookieNames: ["wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b"],
+    cookieNames: [],
     cookiePrefixes: [],
+    hashedCookiePrefixes: ["wordpress_logged_in_"],
+    hashedCookieCandidates: [
+      "wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b", // md5("https://veoaifree.com")
+      "wordpress_logged_in_77a56418528ca2de949e000403796177", // md5("http://veoaifree.com")
+      "wordpress_logged_in_589ff048430e3785164b4c9e0059108f", // md5("https://www.veoaifree.com")
+      "wordpress_logged_in_79e1be91b3f3d1a8a8b664e043f05475", // md5("http://www.veoaifree.com")
+    ],
   },
   // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
   "tinycms-web": {

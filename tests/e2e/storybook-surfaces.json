@@ -25788,7 +25788,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js#CookieImportModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js",
       "symbol": "CookieImportModal",
-      "sourceSha256": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
+      "sourceSha256": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -25810,7 +25810,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -25823,7 +25823,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -25836,7 +25836,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."

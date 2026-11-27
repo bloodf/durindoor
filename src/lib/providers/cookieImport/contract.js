@@ -24,6 +24,8 @@ import {
   isValidCookieValue,
   cookieDomainAllowed,
   validateImportedLocalStorage,
+  contractUsesCookies,
+  hashedCookiePrefixOf,
 } from "@/shared/utils/cookieImportContract";
 
 export const MAX_COOKIES = MAX_IMPORT_COOKIES;
@@ -61,6 +63,7 @@ export function describeCookieImportContract(contract) {
     cookieNames: [...contract.cookieNames],
     cookiePrefixes: [...contract.cookiePrefixes],
   };
+  if (contract.hashedCookiePrefixes?.length) description.hashedCookiePrefixes = [...contract.hashedCookiePrefixes];
   if (contract.localStorageKeys?.length) description.localStorageKeys = [...contract.localStorageKeys];
   if (!contract.extensionCapture) description.extensionCapture = false;
   return description;
@@ -74,7 +77,7 @@ export function describeCookieImportContract(contract) {
  */
 export function buildImportedCookieHeader(contract, cookies, now = Date.now()) {
   // A localStorage-only contract (no cookie names) carries no cookie at all.
-  if (contract.cookieNames.length === 0) {
+  if (!contractUsesCookies(contract)) {
     return cookies === undefined || (Array.isArray(cookies) && cookies.length === 0)
       ? { ok: true, header: "" }
       : { ok: false, error: "Cookie name is not approved for this provider" };
@@ -92,9 +95,17 @@ export function buildImportedCookieHeader(contract, cookies, now = Date.now()) {
     if (jar.has(cookie.name)) return { ok: false, error: "Duplicate cookie name" };
     jar.set(cookie.name, { name: cookie.name, value: cookie.value, domain: contract.host, path: "/", hostOnly: true });
   }
+  // Each hashed family needs exactly one member; the matched name then counts as a required cookie.
+  const hashedNames = [];
+  for (const prefix of contract.hashedCookiePrefixes ?? []) {
+    const members = [...jar.keys()].filter((name) => hashedCookiePrefixOf(contract, name) === prefix);
+    if (members.length !== 1) return { ok: false, error: "Required session cookie is missing or ambiguous" };
+    hashedNames.push(members[0]);
+  }
+  const config = hashedNames.length ? { ...contract.config, cookieNames: [...contract.cookieNames, ...hashedNames] } : contract.config;
   // Same required-cookie and chunk-continuity rules, and the same header
   // composition, as the dashboard sign-in capture.
-  const session = { config: contract.config, origin: contract.origin, jar: new Map([...jar.values()].map((c) => [`${c.name}|${c.domain}|${c.path}`, c])) };
+  const session = { config, origin: contract.origin, jar: new Map([...jar.values()].map((c) => [`${c.name}|${c.domain}|${c.path}`, c])) };
   if (!hasRequiredCookies(session)) return { ok: false, error: "Required session cookie is missing or incomplete" };
   return { ok: true, header: composeCookieHeader(session) };
 }

@@ -21,15 +21,18 @@ export default {
     noAuth: true,
   },
   videoConfig: { baseUrl: "https://veoaifree.com/wp-admin/admin-ajax.php" },
-  // Optional saved WordPress sign-in. Requests stay anonymous without one. The
-  // name is WordPress's logged-in cookie for this site: the fixed prefix plus
-  // the site hash (md5 of https://veoaifree.com). Import and extension capture
-  // accept exactly this name on exactly this origin.
+  // Optional saved WordPress sign-in. Requests stay anonymous without one.
+  // WordPress core names the signed-in cookie `wordpress_logged_in_` + COOKIEHASH,
+  // and COOKIEHASH is md5 of the site's configured siteurl option, which the
+  // public origin does not reveal (scheme, www, moved install). Import and
+  // extension capture therefore accept exactly one `wordpress_logged_in_<md5>`
+  // cookie, on exactly this origin; no other `wordpress_*` cookie is kept.
   cookieImport: {
     optionalSession: true,
     origin: "https://veoaifree.com",
-    cookieNames: ["wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b"],
+    cookieNames: [],
     cookiePrefixes: [],
+    hashedCookiePrefixes: ["wordpress_logged_in_"],
   },
   models: [
     { id: "veo", name: "VEO 3.1", kind: "video" },

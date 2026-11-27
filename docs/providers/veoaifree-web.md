@@ -42,11 +42,18 @@ applies.
    [Cookie Capture extension](./cookie-capture-extension.mdx).
 
 Only one cookie is accepted: WordPress's signed-in cookie for this site,
-`wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b`, from
-`https://veoaifree.com` itself. It must be a secure, unexpired cookie. Every
-other cookie in the input is dropped, and input for another site is refused.
-If your browser holds a `wordpress_logged_in_…` cookie with a different
-suffix, the import is refused.
+`wordpress_logged_in_<hash>`, from `https://veoaifree.com` itself. WordPress
+builds the hash from the site's address setting, so DurinDoor accepts any
+32-character lowercase hexadecimal hash after `wordpress_logged_in_`. It must
+be a secure, unexpired cookie. Every other cookie in the input is dropped,
+including other `wordpress_*` cookies, and input for another site is refused.
+If the input holds two `wordpress_logged_in_…` cookies with different hashes,
+the import is refused; keep only the session you want.
+
+The Cookie Capture extension reads cookies by exact name only. It finds the
+signed-in cookie when the site's address setting is `https` or `http`, with or
+without `www`. If it reports that no session cookie was found while you are
+signed in, use the Cookie, cURL or HAR import instead.
 
 Each import becomes a session connection under the provider. While at least
 one session exists, requests use a saved session. Send

@@ -10,10 +10,10 @@ four native media kinds:
 | Transcription (Gemini) | `POST /v1/audio/transcriptions` | `vx/gemini-2.5-flash`, `vx/gemini-2.5-pro`, `vx/gemini-2.0-flash` |
 | Music (Lyria 2) | `POST /v1/music/generations` | `vx/lyria-002` |
 
-The lists are static, and `/v1/models/{kind}` shows them. `vx/gemini-2.5-flash`
-is also a chat model, so the typed transcription listing omits it, but
-transcription requests accept it. Vertex Partner (`vertex-partner`) gets none
-of these kinds.
+The lists are static, and `/v1/models/{kind}` shows them. `/v1/models/stt`
+includes `vx/gemini-2.5-flash` as transcription, while `/v1/models` keeps its
+existing chat row. Mixed chat/transcription catalogs also keep the chat row
+for this shared ID. Vertex Partner (`vertex-partner`) gets none of these kinds.
 
 ## Connection
 

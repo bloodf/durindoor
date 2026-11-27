@@ -9,6 +9,7 @@ import { FORMATS } from "../formats.js";
 import { GLM_ANTHROPIC_PROVIDERS, LEVEL_TO_BUDGET, budgetToLevel, effortToBudget, effortToThinkingLevel } from "./thinking.js";
 import { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 
 export { parseSuffix, stripThinkingSuffix } from "./thinkingSuffix.js";
 
@@ -107,12 +108,22 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
   ];
   const caps = modelCapabilities || getCapabilitiesForModel(provider, model || "");
   const nativeGeminiLevels = caps?.thinkingFormat === "gemini-level";
+  // First explicit level this lane does not recognize: an unknown native
+  // Gemini string, or a non-string value. Normally skipped (passthrough lets
+  // the upstream judge it); a none-only model refuses it below (#2648).
+  let unrecognizedLevel = null;
   for (const candidate of explicitLevels) {
-    if (!isString(candidate) || !candidate.trim()) continue;
+    if (candidate === undefined || candidate === null || candidate === false) continue;
+    if (!isString(candidate)) {
+      unrecognizedLevel ??= JSON.stringify(candidate) ?? String(candidate);
+      continue;
+    }
+    if (!candidate.trim()) continue;
     const trimmed = candidate.trim();
     if (nativeGeminiLevels) {
       const level = trimmed.toLowerCase();
       if (["minimal", "low", "medium", "high"].includes(level)) return { mode: "level", level };
+      if (level !== "none" && level !== "off") unrecognizedLevel ??= level;
       continue;
     }
     return { mode: "level", level: trimmed.toLowerCase() };
@@ -132,6 +143,12 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
       return { mode: "budget", budget: tbSnake };
     }
     }
+  }
+  // A model declaring no reasoning tier must see an explicit but unrecognized
+  // level as a reasoning request, so applyThinking answers with a local 400
+  // instead of forwarding it unchanged. Other models keep native passthrough.
+  if (unrecognizedLevel !== null && declaresNoReasoningTier(caps, provider, model)) {
+    return { mode: "level", level: unrecognizedLevel };
   }
 
   // Qwen shape
@@ -391,13 +408,78 @@ function isAstraMinimalFloorModel(provider, model) {
 // the highest supported tier. Same rule the upstream registry-tier clamp uses.
 const EFFORT_TIER_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
+function hasReasoningTier(levels) {
+  return levels.some((tier) => tier !== "none");
+}
+
+/** True when a reasoning model's declared efforts cannot enable reasoning (`["none"]`, or `[]` after thinkingCanDisable). */
+function declaresNoReasoningTier(caps, provider = null, model = null) {
+  if (!caps?.reasoning) return false;
+  const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
+  return Array.isArray(declared) && !hasReasoningTier(declared);
+}
+
+/**
+ * HTTP 400 for an explicit reasoning request on a model whose declared efforts
+ * cannot enable reasoning (only `none`, or nothing once `none` is filtered out
+ * by `thinkingCanDisable: false`). Folding the request onto `none` would turn
+ * reasoning off without telling the caller; forwarding it would send a tier the
+ * model does not declare. Same `statusCode` convention as invalid tool schemas,
+ * which chatCore returns to the client as a local 400.
+ * @param {string} level - requested effort
+ * @param {string[]} supported - declared efforts
+ * @param {string|null} model
+ */
+export function unsupportedReasoningEffortError(level, supported, model = null) {
+  const declared = supported.length ? supported.join(", ") : "no efforts";
+  const remedy = supported.includes("none") ? 'omit the reasoning effort or send "none"' : "omit the reasoning effort";
+  const error = new Error(
+    `Reasoning effort "${level}" is not supported by model "${model || "(unknown)"}": ` +
+    `it declares ${declared}, which cannot enable reasoning; ${remedy}`
+  );
+  error.statusCode = HTTP_STATUS.BAD_REQUEST;
+  error.unsupportedReasoningEffort = true;
+  return error;
+}
+
+/**
+ * Refuse a thinking intent the model's declared efforts cannot carry, before
+ * any provider-specific rendering. Runs for every thinking format (OpenAI,
+ * Responses, DeepSeek, Claude adaptive/budget, Gemini, Qwen, ...), so no lane
+ * can fold the request onto `none` or forward an undeclared tier.
+ *
+ * Only a declared set with no reasoning tier triggers it: `["none"]`, or `[]`
+ * once `thinkingCanDisable: false` removes `none`. A level, `auto` or budget
+ * request is refused; `none` is refused only when the model cannot disable.
+ * @param {object|null} cfg - unified thinking intent
+ * @param {object} caps - resolved capabilities
+ * @param {string|null} provider
+ * @param {string|null} model
+ */
+export function assertDeclaredEffortsCanReason(cfg, caps, provider = null, model = null) {
+  if (!cfg || !declaresNoReasoningTier(caps, provider, model)) return;
+  const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
+  if (cfg.mode === "none" && caps.thinkingCanDisable !== false) return;
+  const level = cfg.mode === "level" ? cfg.level
+    : cfg.mode === "budget" ? `budget ${cfg.budget}`
+      : cfg.mode === "none" ? "none" : "auto";
+  // Report what the operator declared, before thinkingCanDisable filtering.
+  const reported = Array.isArray(caps.thinkingEfforts) ? caps.thinkingEfforts : declared;
+  throw unsupportedReasoningEffortError(level, caps.thinkingCanDisable === false ? [] : reported, model);
+}
+
 /**
  * Clamp one effort tier onto a model's declared tier set.
+ *
+ * A reasoning request (any tier other than `none`, including unknown tiers) is
+ * never folded onto `none`. When the declared set has no reasoning tier at all
+ * (`["none"]`), the request throws {@link unsupportedReasoningEffortError}.
  * @param {string} level
  * @param {string[]} supported
+ * @param {string|null} [model] - only used in the error message
  * @returns {string} the requested tier when supported, else the nearest rung
  */
-export function clampTierToSupported(level, supported) {
+export function clampTierToSupported(level, supported, model = null) {
   if (!Array.isArray(supported) || !supported.length) return level;
   if (supported.includes(level)) return level;
   const ranked = supported
@@ -406,7 +488,10 @@ export function clampTierToSupported(level, supported) {
     .sort((a, b) => a.rank - b.rank);
   if (!ranked.length) return level;
   const eligible = level === "none" ? ranked : ranked.filter((entry) => entry.tier !== "none");
-  if (!eligible.length) return level;
+  if (!eligible.length) {
+    if (level !== "none" && !hasReasoningTier(supported)) throw unsupportedReasoningEffortError(level, supported, model);
+    return level;
+  }
   const rank = EFFORT_TIER_ORDER.indexOf(level);
   const requestedRank = rank < 0 ? EFFORT_TIER_ORDER.indexOf("high") : rank;
   const nearest = eligible.find((entry) => entry.rank >= requestedRank);
@@ -453,14 +538,18 @@ export function resolveOpenAiEffort(level, provider, model, caps = null) {
     // Explicit tiers override an unknown fallback; clamp by rank instead of
     // falling through to a possible disable tier at the start of the list.
     if (Array.isArray(caps?.thinkingEfforts)) {
-      return clampTierToSupported(level, allowed);
+      return clampTierToSupported(level, allowed, model);
     }
     if (allowed.includes(level)) return level;
+    // Declared efforts that cannot enable reasoning: refuse instead of sending
+    // "none" (silently disabling) or the undeclared tier.
+    if (level !== "none" && !hasReasoningTier(allowed)) throw unsupportedReasoningEffortError(level, allowed, model);
     if (["minimal", "none"].includes(level) && allowed.includes("low")) return "low";
     if (level === "ultra" && allowed.includes("max")) return "max";
     if (["ultra", "max"].includes(level) && allowed.includes("xhigh")) return "xhigh";
     if (allowed.includes("high")) return "high";
-    return allowed[0] || level;
+    // Never fold a reasoning request onto "none".
+    return (level === "none" ? allowed[0] : allowed.find((tier) => tier !== "none")) || level;
   }
   if (level === "ultra" || level === "max") return "xhigh";
   if ((level === "minimal" || level === "none") &&
@@ -497,7 +586,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         const declaredLevels = none && canDisable && caps.thinkingLevelsUnknown === true ?
           getThinkingLevelsFromCapabilities(caps, provider, model) : null;
         if (none && canDisable && !declaredLevels?.length) {delete body.reasoning;break;}
-        const level = declaredLevels?.length ? clampTierToSupported("none", declaredLevels) : toLevel(eff);
+        const level = declaredLevels?.length ? clampTierToSupported("none", declaredLevels, model) : toLevel(eff);
         if (level) {
           const current = isObject(body.reasoning) ? body.reasoning : {};
           body.reasoning = { ...current, effort: declaredLevels?.length ? level : resolveOpenAiEffort(level, provider, model, caps) };
@@ -653,7 +742,7 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
         const goTiers = getOpencodeGoEffortTiers(provider, model);
         if (goTiers) {
           const requested = eff.mode === "none" ? "none" : (toLevel(eff) || "high");
-          const tier = clampTierToSupported(requested === "auto" ? "high" : requested, goTiers);
+          const tier = clampTierToSupported(requested === "auto" ? "high" : requested, goTiers, model);
           body.reasoning_effort = tier;
           body.thinking = { type: tier === "none" ? "disabled" : "enabled" };
           break;
@@ -724,6 +813,13 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
 export function applyThinking(targetFormat, model, body, provider = null, intent = undefined, modelCapabilities = null) {
   if (!body || !isObject(body)) return body;
 
+  const { cleanModel, override } = parseSuffix(model);
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
+  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
+  // Declared efforts that cannot enable reasoning refuse a reasoning request
+  // here, before any early return or format-specific rendering (#2648).
+  assertDeclaredEffortsCanReason(cfg, caps, provider, cleanModel);
+
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
   // or a capability flag if a second native-claude provider lands.
   // Explicit custom thinking-related overrides (customKeys marker) must not be
@@ -755,8 +851,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
-  const { cleanModel, override } = parseSuffix(model);
-
   // Grok Build (grok-cli) rejects reasoning.effort but still accepts summary/
   // encrypted-content continuity. Let the executor own the wire normalization so
   // a caller-supplied summary is not stripped by the reasoning:false capability.
@@ -764,9 +858,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   if (provider === "grok-cli" && cleanModel === "grok-build") {
     return body;
   }
-
-  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
-  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
 
   // OpenCode Go publishes model-scoped DeepSeek effort tiers (the same rows the
   // catalog advertises). Fold the requested tier onto the declared set once,

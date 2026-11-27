@@ -3,7 +3,8 @@ import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapabi
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { errorResponse } from "open-sse/utils/error.js";
-import { LOCAL_REQUEST_ERROR } from "open-sse/services/combo.js";
+import { enforceApiKeyModelPolicy } from "../../../services/apiKeyPolicy.js";
+import { LOCAL_REQUEST_ERROR, comboPolicyRejection } from "open-sse/services/combo.js";
 import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { terminal, proceed } from "./context.js";
@@ -68,6 +69,13 @@ export async function resolveModel(ctx) {
   }
 
   if (modelInfo?.errorType === "model_not_found") {
+    // Preserve policy precedence for unresolved names without resolving aliases
+    // through exposure lists or selecting credentials. Resolved aliases still
+    // use their underlying provider/model identity in admission.
+    const policyError = await enforceApiKeyModelPolicy(request, modelStr, ctx.apiKey, { limits: false });
+    if (policyError) {
+      return terminal(ctx.reportComboPolicyRejections && policyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError);
+    }
     return terminal(unknownBareModelResponse(modelStr, modelInfo.errorMessage));
   }
 

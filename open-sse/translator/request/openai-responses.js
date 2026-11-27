@@ -9,7 +9,7 @@ import { register } from "../registry.js";
 import { FORMATS } from "../formats.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
-  normalizeResponsesInput,
+  normalizeResponsesInputForChat,
   clampResponsesCallId,
   MAX_RESPONSES_CALL_ID_LEN,
   coerceResponsesArguments,
@@ -490,7 +490,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials,
   // strip below: pairing an id-less function_call_output with the oldest
   // unanswered function_call keeps a legitimate tool result instead of the
   // strip pass discarding it as an orphan.
-  let repairedItems = repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInput(body.input)));
+  let repairedItems = repairMissingResponsesCallIds(lowerCustomToolHistory(normalizeResponsesInputForChat(body.input)));
   if (translationContext?.targetFormat === FORMATS.CLAUDE && Array.isArray(repairedItems)) {
     const known = collectKnownCallIds(repairedItems);
     repairedItems = repairedItems.map((item) => {

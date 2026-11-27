@@ -276,7 +276,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           body: JSON.stringify({ provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() })
         });
         const data = await res.json();
-        isValid = !!data.valid;
+        isValid = !!data.valid && !data.skipped;
         setValidationResult(providerValidationOutcome(data));
       } catch {
         setValidationResult("failed");
@@ -531,9 +531,10 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           }
         {validationResult &&
           <Badge tone={validationResult === "success" ? "success" : validationResult === "skipped" || validationResult === "unavailable" ? "neutral" : "danger"}>
-            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
+            {validationResult === "success" ? "Valid" : validationResult === "skipped" ? "Skipped — unverified" : validationResult === "unavailable" ? "Unavailable" : "Invalid"}
           </Badge>
           }
+        {validationResult === "skipped" ? <p role="status" className="text-xs text-dd-muted">You can save this credential without verification.</p> : null}
         {error &&
           <p className="text-xs text-dd-danger break-words" role="alert">{error}</p>
           }

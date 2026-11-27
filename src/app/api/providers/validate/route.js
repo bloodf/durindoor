@@ -142,42 +142,47 @@ async function probeWebProvider(provider, apiKey, providerSpecificData = {}) {
   return res.ok || provider === "parallel" && res.status === 422;
 }
 
-// Probe a media provider (tts/embedding/stt/image/video) using *Config.
-// Returns true if API key is accepted; null to skip (let default handler decide).
-async function probeMediaProvider(provider, apiKey) {
+// Media configuration describes inference, never credential verification. Only
+// documented authenticated read checks may run here; unsupported checks fail open
+// for storage, without claiming the credential was verified.
+async function probeMediaProvider(provider, apiKey, signal) {
   const p = AI_PROVIDERS[provider];
   if (!p) return null;
-  const MEDIA_KINDS = new Set(["tts", "embedding", "stt", "image", "video", "music", "imageToText"]);
-  const kinds = p.serviceKinds || ["llm"];
-  const isMediaOnly = kinds.every((k) => MEDIA_KINDS.has(k));
-  if (!isMediaOnly) return null;
-  const cfg = p.ttsConfig || p.sttConfig || p.embeddingConfig || p.imageConfig || p.videoConfig || p.musicConfig;
-  // No probe config → best-effort accept (validate at usage time)
-  if (!cfg) return true;
-  if (p.noAuth || cfg.authType === "none") return true;
-  // Skip auth schemes that need provider-specific data
-  if (cfg.authHeader === "playht" || cfg.authHeader === "aws-sigv4") return true;
-
-  const headers = { "Content-Type": "application/json", ...(cfg.extraHeaders || {}) };
-
-  switch (cfg.authHeader) {
-    case "bearer":headers["Authorization"] = `Bearer ${apiKey}`;break;
-    case "key":headers["Authorization"] = `Key ${apiKey}`;break;
-    case "x-api-key":headers["x-api-key"] = apiKey;break;
-    case "x-key":headers["x-key"] = apiKey;break;
-    case "xi-api-key":headers["xi-api-key"] = apiKey;break;
-    case "token":headers["Authorization"] = `Token ${apiKey}`;break;
-    case "basic":headers["Authorization"] = `Basic ${apiKey}`;break;
-    default:return null;
+  const mediaKinds = new Set(["tts", "embedding", "stt", "image", "video", "music", "imageToText"]);
+  if (!(p.serviceKinds || ["llm"]).every((kind) => mediaKinds.has(kind))) return null;
+  // AssemblyAI already has a provider-specific read-only check below.
+  if (provider === "assemblyai") return null;
+  // Authenticated account reads, documented in each provider's API reference.
+  const checks = {
+    deapi: ["https://api.deapi.ai/api/v2/key", { Authorization: `Bearer ${apiKey}` }],
+    deepgram: ["https://api.deepgram.com/v1/projects", { Authorization: `Token ${apiKey}` }],
+    elevenlabs: ["https://api.elevenlabs.io/v1/user", { "xi-api-key": apiKey }],
+  };
+  const check = checks[provider];
+  if (!check) {
+    return { valid: false, skipped: true, error: null,
+      note: "Credential verification is unsupported. You can save this key unverified; no media request was submitted." };
   }
 
-  const method = cfg.method || "POST";
-  const res = await fetchValidationProbe(cfg.baseUrl, {
-    method,
-    headers,
-    body: method === "GET" ? undefined : JSON.stringify({ input: "ping", text: "ping", prompt: "ping", model: getDefaultModel(provider) || "test" }),
-  });
-  return res.status !== 401 && res.status !== 403;
+  // Sources: docs.deapi.ai/api/v2/keys/get-current-key (both roles),
+  // developers.deepgram.com/reference/manage/projects/list,
+  // elevenlabs.io/docs/api-reference/user/get and api-reference/authentication.
+  // Do not use a public catalog, balance requiring ADMIN, or an inference URL.
+  try {
+    const res = await fetchValidationProbe(check[0], {
+      method: "GET",
+      headers: { ...check[1], Accept: "application/json" },
+      redirect: "manual",
+      signal,
+    });
+    // The identity body is unnecessary and may contain private account details.
+    void res.body?.cancel().catch(() => {});
+    if (res.ok) return { valid: true, error: null };
+    if (res.status === 401 || res.status === 403) return { valid: false, error: "Invalid API key" };
+    return { valid: false, unavailable: true, error: "Credential check unavailable - try again later" };
+  } catch {
+    return { valid: false, unavailable: true, error: "Credential check unavailable - try again later" };
+  }
 }
 
 async function exchangeGigaChatApiKey(apiKey) {
@@ -645,6 +650,8 @@ async function validateProviderKey(request) {
       if (provider === "huggingface") {
         const res = await fetchValidationProbe("https://huggingface.co/api/whoami-v2", {
           headers: { Authorization: `Bearer ${apiKey}` },
+          redirect: "manual",
+          signal: request.signal,
         }).catch(() => null);
         if (!res) return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
         if (res.ok) return NextResponse.json({ valid: true, error: null });
@@ -654,31 +661,22 @@ async function validateProviderKey(request) {
         return NextResponse.json({ valid: false, unavailable: true, error: "HuggingFace token check unavailable" });
       }
 
-      // Generic probe for tts/embedding providers (config-driven)
-      const mediaResult = await probeMediaProvider(provider, apiKey);
-      if (mediaResult !== null) {
-        return NextResponse.json({
-          valid: mediaResult,
-          error: mediaResult ? null : "Invalid API key"
+      // Keep provider-specific reads reachable before the media-only fallback.
+      if (provider === "fal-ai") {
+        const res = await fetchValidationProbe("https://api.fal.ai/v1/models?limit=1", {
+          headers: { Authorization: `Key ${apiKey}` },
+          redirect: "manual",
+          signal: request.signal,
         });
+        isValid = res.ok;
+        return NextResponse.json({ valid: isValid, error: isValid ? null :
+          res.status === 401 || res.status === 403 ? "Invalid API key" :
+          `Unable to verify API key (Fal returned ${res.status})` });
       }
+      const mediaResult = await probeMediaProvider(provider, apiKey, request.signal);
+      if (mediaResult !== null) return NextResponse.json(mediaResult);
 
       switch (provider) {
-        case "fal-ai": {
-          // Match saved-connection tests: check auth without queueing a paid image.
-          const res = await fetchValidationProbe("https://api.fal.ai/v1/models?limit=1", {
-            headers: { Authorization: `Key ${apiKey}` },
-            signal: AbortSignal.timeout(8000),
-          });
-          isValid = res.ok;
-          if (!isValid) {
-            error = res.status === 401 || res.status === 403
-              ? "Invalid API key"
-              : `Unable to verify API key (Fal returned ${res.status})`;
-          }
-          break;
-        }
-
         case "openai":
           const openaiRes = await fetchValidationProbe("https://api.openai.com/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` }

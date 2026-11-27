@@ -65,11 +65,11 @@ describe("DB Concurrency — atomic safety", () => {
     }
     await Promise.all(promises);
 
-    // Wait for any timer-based flush
-    await new Promise((r) => setTimeout(r, 6000));
-
-    const list = await db.getRequestDetails({ provider: "openai", pageSize: 500 });
-    expect(list.pagination.totalItems).toBeGreaterThanOrEqual(N);
+    // The batch flush runs asynchronously; wait until its rows are visible.
+    await expect.poll(async () => {
+      const list = await db.getRequestDetails({ provider: "openai", pageSize: 500 });
+      return list.pagination.totalItems;
+    }, { timeout: 10000 }).toBeGreaterThanOrEqual(N);
   }, 15000);
 
   it("mixed concurrent: usage + details + connections + aliases", async () => {

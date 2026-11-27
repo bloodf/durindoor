@@ -7,7 +7,7 @@ Issue: #2034 (Decision15 delta: the inventory listed `vertex` TTS and STT as mis
 OmniRoute at `c71f0065a7efe9230ec23b96a12253b050c4d7ad` (MIT). The read-only checkout's `git rev-parse HEAD` matched before the port.
 
 - `open-sse/config/audioRegistry.ts` has two `vertex` entries:
-  - `AUDIO_TRANSCRIPTION_PROVIDERS.vertex`: `baseUrl` `https://us-central1-aiplatform.googleapis.com/v1`, `authType: "apikey"`, `authHeader: "bearer"`, `format: "vertex-gemini"`, and the models `gemini-2.5-flash`, `gemini-2.5-pro` and `gemini-2.0-flash`.
+  - `AUDIO_TRANSCRIPTION_PROVIDERS.vertex`: `baseUrl` `https://us-central1-aiplatform.googleapis.com/v1`, `authType: "apikey"`, `authHeader: "bearer"`, `format: "vertex-gemini"`, and the models `gemini-2.5-flash`, `gemini-2.5-pro` and `gemini-2.0-flash`. The port keeps only the first two; see [Retired source model](#retired-source-model).
   - `AUDIO_SPEECH_PROVIDERS.vertex`: the same base URL and auth settings, `format: "vertex-gemini-tts"`, and the models `gemini-3.1-flash-tts-preview`, `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts`, `gemini-3.8-flash-tts` and `gemini-3.8-flash-lite-tts`.
 - `open-sse/handlers/audioSpeech.ts` has the `vertex-gemini-tts` branch and `googleSpeechStyleOptions`.
 - `open-sse/handlers/audioTranscription.ts` has the `vertex-gemini` branch.
@@ -39,7 +39,7 @@ Everything is under `open-sse/services/providerParity/native-vertex-tts-stt/`. N
 | `speech.js` | A `TTS_ADAPTERS`-shaped adapter (`synthesize`), plus voice discovery. |
 | `transcription.js` | A `handleSttCore`-shaped transcriber (`transcribeVertex`). |
 | `registration.json` | Exports, ids, aliases, models, service kinds, endpoints, auth modes and integration points. |
-| `tests/unit/native-vertex-tts-stt.test.js` | 59 tests over a closed network. |
+| `tests/unit/native-vertex-tts-stt.test.js` | 60 tests over a closed network. |
 
 ## Supported subset
 
@@ -80,6 +80,10 @@ The location comes from `providerSpecificData.location`, the same field the chat
 
   Nothing is ever replayed.
 
+## Retired source model
+
+Google's [model versions and lifecycle](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions) page lists `gemini-2.0-flash` as retired on June 1, 2026 (checked 2026-11-27). The source still lists it for transcription, so the port drops it from `VERTEX_STT_MODELS`, `registration.json` (`services.stt.models`, with a `retiredModels` record) and `providers/registry/vertex.js` `sttConfig`. A request naming it gets `400` from `buildVertexTranscriptionRequest` before any token mint or HTTP call; it is not rewritten to another model. `gemini-2.5-flash` and `gemini-2.5-pro` stay, and the existing chat models, transports and aliases are unchanged. `tests/unit/vertex-retired-transcription.test.js` covers the public route, `handleSttCore`, the private transcriber and typed discovery over a closed network. Before the change the transcriber minted a token and posted to `…/models/gemini-2.0-flash:generateContent`. No live acceptance has been checked. No other advertised Vertex audio ID was dropped: none has explicit retirement evidence on that page.
+
 ## Refused before any billable request
 
 These requests are refused before anything billable is sent. Each refusal is a deviation from the source, which drops or forwards them.
@@ -91,6 +95,7 @@ These requests are refused before anything billable is sent. Each refusal is a d
   - Unknown models or voices, and a voice conflict between `model/voice` and `voice`.
   - A `speed` out of range, a non-string style field, empty input, and input over 32,000 characters.
 - **STT:**
+  - The retired `gemini-2.0-flash` (see above) and any other model outside `VERTEX_STT_MODEL_IDS`.
   - Translations, and any other form field (`temperature`, `timestamp_granularities[]`, `include[]`, `stream`, …).
   - `verbose_json`, `srt` and `vtt`.
   - `prompt` together with `language`. The source silently drops `language`.
@@ -135,7 +140,17 @@ The test file's isolated "staging (unregistered state)" block asserts the curren
 ```
 cd tests && node node_modules/vitest/vitest.mjs run unit/native-vertex-tts-stt.test.js --maxWorkers=2
  Test Files  1 passed (1)
-      Tests  59 passed (59)
+      Tests  60 passed (60)
 ```
+
+Retired-model check (#2034), closed mocks only:
+
+```
+cd tests && node node_modules/vitest/vitest.mjs run unit/vertex-retired-transcription.test.js unit/native-vertex-tts-stt.test.js unit/register-native-01.test.js unit/vertex-media-model-kinds.test.js --maxWorkers=2
+ Test Files  4 passed (4)
+      Tests  164 passed (164)
+```
+
+Before the config change, `vertex-retired-transcription.test.js` failed 7 of 15: the retired-id cases on the route, the core and the transcriber got 502 from the closed network instead of 400, and the catalog and typed-discovery cases still listed `gemini-2.0-flash`.
 
 ESLint reports nothing for the staged directory or the test file. Two spot mutations were each caught: dropping the TTS `language` refusal, and dropping the `acceptedJob` on a mid-flight abort.

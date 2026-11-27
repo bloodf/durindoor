@@ -7,13 +7,20 @@ four native media kinds:
 | --- | --- | --- |
 | Video (Veo) | `POST /v1/video/generations` | `vx/veo-3.1-generate-001`, `vx/veo-3.1-fast-generate-001` |
 | Speech (Gemini TTS) | `POST /v1/audio/speech` | `vx/gemini-3.1-flash-tts-preview`, `vx/gemini-2.5-flash-preview-tts`, `vx/gemini-2.5-pro-preview-tts`, `vx/gemini-3.8-flash-tts`, `vx/gemini-3.8-flash-lite-tts` |
-| Transcription (Gemini) | `POST /v1/audio/transcriptions` | `vx/gemini-2.5-flash`, `vx/gemini-2.5-pro`, `vx/gemini-2.0-flash` |
+| Transcription (Gemini) | `POST /v1/audio/transcriptions` | `vx/gemini-2.5-flash`, `vx/gemini-2.5-pro` |
 | Music (Lyria 2) | `POST /v1/music/generations` | `vx/lyria-002` |
 
 The lists are static, and `/v1/models/{kind}` shows them. `/v1/models/stt`
 includes `vx/gemini-2.5-flash` as transcription, while `/v1/models` keeps its
 existing chat row. Mixed chat/transcription catalogs also keep the chat row
 for this shared ID. Vertex Partner (`vertex-partner`) gets none of these kinds.
+
+Google retired `gemini-2.0-flash` on June 1, 2026, according to its
+[model versions and lifecycle](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions)
+page (checked 2026-11-27). Transcription does not list it, and a request for
+`vx/gemini-2.0-flash` on `/v1/audio/transcriptions` gets `400` before any
+token is minted or anything is sent. DurinDoor does not substitute another
+model; pick `vx/gemini-2.5-flash` or `vx/gemini-2.5-pro` instead.
 
 ## Connection
 

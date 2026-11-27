@@ -56,7 +56,16 @@
       "format": "vertex-gemini",
       "config": "VERTEX_STT_CONFIG",
       "transcriber": "transcribeVertex (createVertexSttTranscriber())",
-      "models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
+      "retiredModels": [
+        {
+          "id": "gemini-2.0-flash",
+          "retired": "2026-06-01",
+          "evidence": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+          "checked": "2026-11-27",
+          "handling": "dropped from the source list; requests naming it get 400 before any token mint or HTTP call"
+        }
+      ],
       "responseFormats": ["json", "text"],
       "formFields": ["file", "model", "language", "prompt", "response_format"],
       "translations": false,

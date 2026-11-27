@@ -3,9 +3,11 @@
  * outside route.js lets unit tests exercise the translation surface without
  * adding non-route exports to the Next.js app route module.
  */
-import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
+import { isObject, isRecord, isString } from "../../../../../shared/utils/typeChecks.js";
 import { encodeDataUri } from "open-sse/translator/concerns/image.js";
 import { buildGeminiUsageMetadata } from "open-sse/translator/response/geminiUsageMetadata.js";
+import { groupGeminiFunctionResponses } from "open-sse/translator/formats/gemini.js";
+import { formatGoogleRpcStreamError } from "open-sse/utils/antigravityGeminiNative.js";
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -27,8 +29,9 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
   }
 
   if (geminiBody.contents) {
-    const toolCallIdState = { serialByName: new Map(), queueByName: new Map() };
-    for (const content of geminiBody.contents) {
+    const toolCallIdState = { serialByName: new Map(), queueByName: new Map(), callOrder: [] };
+    // Regroup split parallel replies in call order before ids are paired.
+    for (const content of groupGeminiFunctionResponses(geminiBody.contents)) {
       const converted = convertGeminiContentToInternal(content, toolCallIdState);
       if (Array.isArray(converted)) messages.push(...converted);else
       if (converted) messages.push(converted);
@@ -106,15 +109,30 @@ export function normalizeGeminiSchemaTypes(schema) {
   return normalized;
 }
 
-function convertGeminiContentToInternal(content, toolCallIdState = { serialByName: new Map(), queueByName: new Map() }) {
+// Gemini accepts snake_case function_call/function_response parts too.
+function withCamelFunctionParts(part) {
+  if (!isRecord(part)) return {};
+  const { function_call: snakeCall, function_response: snakeResponse, ...rest } = part;
+  if (snakeCall === undefined && snakeResponse === undefined) return part;
+  return { ...rest, functionCall: part.functionCall ?? snakeCall, functionResponse: part.functionResponse ?? snakeResponse };
+}
+
+function convertGeminiContentToInternal(content, toolCallIdState = { serialByName: new Map(), queueByName: new Map(), callOrder: [] }) {
   const parts = Array.isArray(content?.parts) ? content.parts : [];
   if (parts.length === 0) return null;
 
   const messages = [];
   const remainingParts = [];
-  const { serialByName, queueByName } = toolCallIdState;
+  const { serialByName, queueByName, callOrder } = toolCallIdState;
+  // Each pending call is one entry, shared by its name queue and the turn order.
+  const claim = (entries) => {
+    const entry = entries?.find((candidate) => !candidate.used);
+    if (entry) entry.used = true;
+    return entry?.id;
+  };
 
-  for (const part of parts) {
+  for (const rawPart of parts) {
+    const part = withCamelFunctionParts(rawPart);
     if (part.functionResponse) {
       const response = part.functionResponse.response || {};
       const payload = Object.prototype.hasOwnProperty.call(response, "result") ?
@@ -122,14 +140,9 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       response;
       const name = part.functionResponse.name || "";
       let toolCallId = part.functionResponse.id;
-      if (!toolCallId) {
-        let queue = queueByName.get(name);
-        if (!queue) {
-          queue = [];
-          queueByName.set(name, queue);
-        }
-        toolCallId = queue.shift();
-      }
+      // A nameless reply takes the next unanswered call by position, as
+      // CLIProxyAPI backfills empty functionResponse names.
+      if (!toolCallId) toolCallId = claim(name ? queueByName.get(name) : callOrder);
       if (!toolCallId && name) {
         toolCallId = `call_${name}`;
       }
@@ -159,6 +172,7 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
   // A reply pairs with the calls of the turn just before it: each model turn with calls starts a fresh pairing queue (the serial stays global so ids are unique across the history).
   if (remainingParts.some((part) => part.functionCall)) {
     queueByName.clear();
+    callOrder.length = 0;
   }
   const toolCalls = remainingParts.
   filter((part) => part.functionCall).
@@ -170,9 +184,11 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       serialByName.set(name, serial);
       id = `call_${name}_${serial}`;
     }
+    const entry = { id, used: false };
     const queue = queueByName.get(name) || [];
-    queue.push(id);
+    queue.push(entry);
     queueByName.set(name, queue);
+    callOrder.push(entry);
     return {
       id,
       type: "function",
@@ -290,6 +306,15 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
   const encoder = new TextEncoder();
   let buffer = "";
   const toolCallState = {};
+  let failed = false;
+  // A committed stream cannot change its HTTP status: an in-stream error ends
+  // it with one Google RPC error frame and nothing is replayed after it.
+  const forwardError = (parsed, controller) => {
+    if (!isRecord(parsed?.error)) return false;
+    if (!failed) controller.enqueue(encoder.encode(formatGoogleRpcStreamError(parsed.error)));
+    failed = true;
+    return true;
+  };
 
   const transformStream = new TransformStream({
     transform(chunk, controller) {
@@ -298,7 +323,7 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
       buffer = lines.pop() || "";
 
       for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
+        if (failed || !line.startsWith("data:")) continue;
 
         const data = line.slice(5).trim();
         if (!data || data === "[DONE]") continue;
@@ -309,6 +334,7 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
         } catch {
           continue;
         }
+        if (forwardError(parsed, controller)) continue;
 
         const geminiChunk = openAIChunkToGeminiChunk(parsed, model, toolCallState);
         if (!geminiChunk) continue;
@@ -320,11 +346,12 @@ export function transformOpenAISSEToGeminiSSE(upstreamResponse, model) {
     },
     flush(controller) {
       const remaining = buffer.trim();
-      if (!remaining.startsWith("data:")) return;
+      if (failed || !remaining.startsWith("data:")) return;
       const data = remaining.slice(5).trim();
       if (!data || data === "[DONE]") return;
       try {
         const parsed = JSON.parse(data);
+        if (forwardError(parsed, controller)) return;
         const geminiChunk = openAIChunkToGeminiChunk(parsed, model, toolCallState);
         if (geminiChunk) {
           controller.enqueue(

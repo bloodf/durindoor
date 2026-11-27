@@ -1,4 +1,4 @@
-import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
+import { antigravityGeminiResponse, formatGoogleRpcStreamError } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
@@ -1480,7 +1480,10 @@ export function createSSEStream(options = {}) {
         if (terminalError) {
           streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(terminalError, nativeGemini ? FORMATS.GEMINI : sourceFormat, errorSecrets, targetFormat);
+          // Native Google endpoints end a committed stream with a Google RPC error frame.
+          const output = nativeGemini ?
+          formatGoogleRpcStreamError(terminalError) :
+          formatTranslatedStreamError(terminalError, sourceFormat, errorSecrets, targetFormat);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -2003,10 +2006,12 @@ export function createSSEStream(options = {}) {
           // client-facing translation or formatted error terminal.
           streamErrorPayload ??= extractStreamErrorPayload(tail);
           sanitizePublicErrorEnvelope(tail, errorSecrets);
-          const tailError = translatedTerminalError(tail, sourceFormat, currentOpenAIResponsesEvent || currentUpstreamEvent);
+          const tailError = translatedTerminalError(tail, nativeGemini ? FORMATS.GEMINI : sourceFormat, currentOpenAIResponsesEvent || currentUpstreamEvent);
           if (tailError) {
             streamErrorPayload ??= extractStreamErrorPayload({ error: tailError });
-            const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets, targetFormat);
+            const output = nativeGemini ?
+            formatGoogleRpcStreamError(tailError) :
+            formatTranslatedStreamError(tailError, sourceFormat, errorSecrets, targetFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             upstreamErrorForwarded = true;

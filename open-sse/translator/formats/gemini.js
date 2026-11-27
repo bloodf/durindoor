@@ -18,7 +18,7 @@ function remoteImageMimeType(url) {
 }
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
-import { isBoolean, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isObject, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
 // Basic constraints (not supported by Gemini API)
 "minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum",
@@ -448,9 +448,12 @@ function liftNonStringEnum(obj) {
 }
 
 // Apply the numeric/boolean enum contract in place to a schema that is not otherwise
-// cleaned (the direct Claude -> Gemini route). String enums and everything else are untouched.
+// cleaned (the direct Claude -> Gemini route). Valid string enum values and every
+// other keyword are untouched; only empty enum members are dropped.
 export function liftGeminiNonStringEnums(schema, isPropertiesMap = false) {
   if (!schema || !isObject(schema)) return schema;
+  // Gemini rejects empty enum members on this route too; drop them first.
+  if (!isPropertiesMap) dropEmptyEnumValues(schema);
   if (!isPropertiesMap && Array.isArray(schema.enum)) liftNonStringEnum(schema);
   for (const [key, value] of Object.entries(schema)) {
     if (value && isObject(value)) liftGeminiNonStringEnums(value, !isPropertiesMap && key === "properties");
@@ -459,12 +462,13 @@ export function liftGeminiNonStringEnums(schema, isPropertiesMap = false) {
 }
 
 // Gemini answers 400 "cannot be empty" for an empty enum list or enum value.
-// Drop empty and null values, and the whole keyword when nothing usable is left.
+// Drop null, empty and whitespace-only values (CLIProxyAPI 54ed2ba), and the
+// whole keyword when nothing usable is left. Other values keep their spelling.
+const isEmptyEnumValue = (v) => v === null || v === undefined || isString(v) && v.trim() === "";
+
 function dropEmptyEnumValues(obj) {
   if (obj.enum === undefined) return;
-  const values = Array.isArray(obj.enum) ?
-  obj.enum.filter((v) => v !== null && v !== undefined && v !== "") :
-  [];
+  const values = Array.isArray(obj.enum) ? obj.enum.filter((v) => !isEmptyEnumValue(v)) : [];
   if (values.length > 0) {
     obj.enum = values;
     return;
@@ -1019,4 +1023,132 @@ export function applyGemini4RequestRules(request, model) {
     ...(request.generationConfig && { generationConfig }),
     ...(Array.isArray(request.contents) && { contents: request.contents.map(moveFunctionResponsesLast) })
   };
+}
+
+// ── Split functionResponse turns (CLIProxyAPI 13e0642 gemini_gemini_request.go, MIT) ──
+// Clients may split parallel functionResponse parts across consecutive user or
+// function turns, sometimes out of order. Gemini pairs them positionally with
+// the preceding model turn's functionCall parts, so they are grouped back into
+// one user turn in call order. Incomplete, excess and unmatched responses are
+// kept so the provider still rejects genuinely corrupt histories.
+const geminiFunctionCallOf = (part) => part?.functionCall ?? part?.function_call;
+const geminiFunctionResponseOf = (part) => part?.functionResponse ?? part?.function_response;
+const trimmedName = (value) => (isString(value) ? value.trim() : "");
+const plainId = (value) => (isString(value) ? value : "");
+
+function pendingGeminiCalls(parts) {
+  if (!Array.isArray(parts)) return [];
+  return parts.flatMap((part) => {
+    const call = geminiFunctionCallOf(part);
+    return isRecord(call) ? [{ id: plainId(call.id), name: isString(call.name) ? call.name : "" }] : [];
+  });
+}
+
+// A response turn must be a non-empty parts array without calls; anything else
+// is a boundary the pairing validator has to see where the client put it.
+function isGeminiResponseBoundary(parts) {
+  return !Array.isArray(parts) || parts.length === 0 || parts.some((part) => isRecord(geminiFunctionCallOf(part)));
+}
+
+function geminiResponsesNeedReordering(responses, calls) {
+  if (responses.length !== calls.length || responses.length <= 1) return false;
+  return responses.some((part, index) => {
+    const response = geminiFunctionResponseOf(part);
+    const { id, name } = calls[index];
+    if (id && plainId(response.id) !== id) return true;
+    const responseName = trimmedName(response.name);
+    return Boolean(name && responseName && responseName !== name);
+  });
+}
+
+function geminiFunctionResponsesNeedGrouping(contents) {
+  let calls = [];
+  let responseTurns = 0;
+  let deferredOther = false;
+  for (const content of contents) {
+    if (!isRecord(content)) { calls = []; continue; }
+    if (content.role === "model") {
+      calls = pendingGeminiCalls(content.parts);
+      responseTurns = 0;
+      deferredOther = false;
+      continue;
+    }
+    if (calls.length === 0) continue;
+    if (isGeminiResponseBoundary(content.parts)) { calls = []; continue; }
+    const responses = content.parts.filter((part) => isRecord(geminiFunctionResponseOf(part)));
+    if (responses.length === 0) { deferredOther = true; continue; }
+    responseTurns += 1;
+    if (responseTurns > 1 || deferredOther || responses.length < content.parts.length) return true;
+    if (geminiResponsesNeedReordering(responses, calls)) return true;
+  }
+  return false;
+}
+
+// Exact id+name first (parallel calls may share a placeholder id), then id,
+// then name, then nameless responses, then whatever is left in client order.
+function orderGeminiFunctionResponses(collected, calls) {
+  const used = new Array(collected.length).fill(false);
+  const slots = new Array(calls.length).fill(null);
+  const take = (slot, predicate) => {
+    const index = collected.findIndex((part, i) => !used[i] && predicate(geminiFunctionResponseOf(part)));
+    if (index < 0) return;
+    used[index] = true;
+    slots[slot] = collected[index];
+  };
+  const passes = [
+    ({ id, name }) => id && name ? (response) => plainId(response.id) === id && trimmedName(response.name) === name : null,
+    ({ id }) => id ? (response) => plainId(response.id) === id : null,
+    ({ name }) => name ? (response) => trimmedName(response.name) === name : null,
+    ({ name }) => name ? (response) => trimmedName(response.name) === "" : null,
+    () => () => true,
+  ];
+  for (const pass of passes) {
+    calls.forEach((call, slot) => {
+      const predicate = slots[slot] === null ? pass(call) : null;
+      if (predicate) take(slot, predicate);
+    });
+  }
+  return [...slots.filter(Boolean), ...collected.filter((_, index) => !used[index])];
+}
+
+/**
+ * Group split consecutive functionResponse turns into one user turn ordered
+ * like the preceding model turn's functionCall parts. Accepts camelCase and
+ * snake_case parts. Returns the input array unchanged when nothing needs it.
+ * Run before tool-name sanitization and signature handling.
+ *
+ * @param {unknown[]} contents Gemini `contents` array.
+ * @returns {unknown[]}
+ */
+export function groupGeminiFunctionResponses(contents) {
+  if (!Array.isArray(contents) || !geminiFunctionResponsesNeedGrouping(contents)) return contents;
+  const out = [];
+  let calls = [];
+  let collected = [];
+  let deferred = [];
+  const flush = () => {
+    if (collected.length > 0) out.push({ role: "user", parts: orderGeminiFunctionResponses(collected, calls) });
+    out.push(...deferred);
+    calls = [];
+    collected = [];
+    deferred = [];
+  };
+  for (const content of contents) {
+    if (!isRecord(content)) { flush(); out.push(content); continue; }
+    if (content.role === "model") {
+      flush();
+      out.push(content);
+      calls = pendingGeminiCalls(content.parts);
+      continue;
+    }
+    if (calls.length === 0) { out.push(content); continue; }
+    if (isGeminiResponseBoundary(content.parts)) { flush(); out.push(content); continue; }
+    const responses = content.parts.filter((part) => isRecord(geminiFunctionResponseOf(part)));
+    if (responses.length === 0) { deferred.push(content); continue; }
+    collected.push(...responses);
+    const others = content.parts.filter((part) => !isRecord(geminiFunctionResponseOf(part)));
+    if (others.length > 0) deferred.push({ ...content, role: "user", parts: others });
+  }
+  flush();
+  return out;
 }

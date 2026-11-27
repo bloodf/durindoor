@@ -1,0 +1,109 @@
+{
+  "registered": false,
+  "canonicalId": "kimi-coding",
+  "aliases": ["kimi-coding", "kimi-ai"],
+  "sourceAliases": ["kimi", "kimi-ai", "kimi.ai", "kimi.com"],
+  "aliasConflicts": {
+    "kimi": "local canonical Moonshot platform API-key provider (open-sse/providers/registry/kimi.js, api.moonshot.ai); it is not a Kimi Coding device credential and must not be remapped",
+    "kimi-web": "local Kimi consumer web session (open-sse/providers/registry/kimi-web.js, www.kimi.com / www.kimi.ai); its access/refresh pair is a browser session, not an OAuth device grant",
+    "kimi-coding-apikey": "local Kimi Code API key (open-sse/providers/registry/kimi-coding-apikey.js); it authenticates with a static key and never runs the device flow"
+  },
+  "source": {
+    "repository": [
+      {
+        "name": "CLIProxyAPI",
+        "commit": "dbe641f286a489ecb39e3c041c554371e6add864",
+        "license": "MIT",
+        "files": [
+          "internal/auth/kimi/kimi.go",
+          "internal/auth/kimi/token.go",
+          "sdk/auth/kimi.go",
+          "internal/runtime/executor/kimi_executor.go",
+          "internal/runtime/executor/helps/kimi_responses.go"
+        ]
+      },
+      {
+        "name": "EasyCLIProxyAPI",
+        "commit": "29567ead8164a00724dfdc2087f02a23895636ee",
+        "license": "MIT",
+        "files": [
+          "src/services/oauth.ts",
+          "src-tauri/src/management_api.rs",
+          "src-tauri/src/agents/configuration.rs"
+        ],
+        "note": "desktop console around a separately versioned CLIProxyAPI core; it owns the Kimi Code CLI launch configuration (config.toml with base_url and api_key) and delegates every Kimi sign-in contract to that core, so it contributes no independent Kimi OAuth wire contract"
+      },
+      {
+        "name": "OmniRoute",
+        "commit": "b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523",
+        "license": "MIT",
+        "files": [
+          "src/lib/oauth/providers/kimi-coding.ts",
+          "open-sse/config/providers/registry/kimi/coding/runtime.ts",
+          "open-sse/config/providers/registry/kimi/coding/index.ts",
+          "open-sse/utils/kimiDevice.ts",
+          "open-sse/services/tokenRefresh/providers/kimiCoding.ts",
+          "open-sse/utils/kimiCodingEffortVariant.ts",
+          "open-sse/handlers/chatCore/kimiCodingEffortVariant.ts",
+          "src/lib/kimi/tokenRefresh.ts",
+          "open-sse/executors/kimi-web.ts"
+        ]
+      }
+    ]
+  },
+  "exports": {
+    "config.js": [
+      "KIMI_CODING_CLIENT_ID",
+      "KIMI_CODING_CLIENT_ID_ENV",
+      "KIMI_CODING_PROVIDER_IDS",
+      "KIMI_DEVICE_PENDING_ERRORS",
+      "KIMI_DEVICE_POLL_INTERVAL_FLOOR_SECONDS",
+      "KIMI_DEVICE_POLL_MAX_SECONDS",
+      "KIMI_DEVICE_TERMINAL_ERRORS",
+      "KIMI_OAUTH_GRANT_DEVICE",
+      "KIMI_OAUTH_GRANT_REFRESH",
+      "KIMI_OAUTH_REGIONS",
+      "isKimiCodingProvider",
+      "resolveKimiOAuthRegion"
+    ],
+    "identity.js": [
+      "buildKimiDeviceIdentityHeaders",
+      "deriveKimiDeviceIdFromRefreshToken",
+      "getKimiDeviceFacts",
+      "normalizeKimiDeviceId",
+      "resolveKimiDeviceId",
+      "sanitizeKimiHeaderValue"
+    ],
+    "index.js": "public staging exports (config.js and identity.js); no side effects on import"
+  },
+  "stagedDelta": {
+    "id": "kimi-device-identity",
+    "summary": "Kimi Coding requests and refreshes always present a stable, UUID-shaped device identity, and carry the device name and OS version headers both upstreams send.",
+    "productionNow": [
+      "open-sse/config/appConstants.js buildKimiDeviceHeaders sends X-Msh-Platform, X-Msh-Version, X-Msh-Device-Model and X-Msh-Device-Id only; X-Msh-Device-Name and X-Msh-Os-Version are missing",
+      "open-sse/services/tokenRefresh/providers.js refreshKimiToken falls back to buildKimiHeaders() when a connection has no stored device id, which sends X-Msh-Device-Id: kimi-<timestamp> — a new identity on every refresh",
+      "open-sse/executors/default.js HEADER_HOOKS.kimiHeaders falls back to the same buildKimiHeaders() when no device id is stored"
+    ],
+    "upstreamNow": [
+      "CLIProxyAPI internal/auth/kimi/kimi.go commonHeaders sends platform, version, device name, device model and device id on the device, poll and refresh requests",
+      "OmniRoute open-sse/config/providers/registry/kimi/coding/runtime.ts buildKimiCodeIdentityHeaders sends the same five plus X-Msh-Os-Version",
+      "OmniRoute open-sse/services/tokenRefresh/providers/kimiCoding.ts derives a deterministic device id from the refresh token when no device id was stored"
+    ],
+    "stagedHelper": "src/lib/oauth/providerParity/kimi/identity.js — buildKimiDeviceIdentityHeaders and resolveKimiDeviceId"
+  },
+  "integration": {
+    "sharedOAuth": "src/lib/oauth/providers.js kimiDeviceProvider.requestDeviceCode and .pollToken — replace buildKimiDeviceHeaders(deviceId) with buildKimiDeviceIdentityHeaders({ platform, version, deviceId: resolveKimiDeviceId({ deviceId }) }) and keep the flow-owned device id in extraData._deviceId",
+    "headerConfig": "open-sse/config/appConstants.js buildKimiHeaders and buildKimiDeviceHeaders — add X-Msh-Device-Name and X-Msh-Os-Version; keep the legacy X-Msh-Platform: 9router value for the shared 9router-shaped callers and the DurinDoor value for the device flow",
+    "refresh": "open-sse/services/tokenRefresh/providers.js refreshKimiToken — replace the buildKimiHeaders() fallback with resolveKimiDeviceId({ deviceId: providerSpecificData?.deviceId, refreshToken }) so a legacy connection keeps one device across rotations",
+    "requestHooks": "open-sse/executors/default.js HEADER_HOOKS.kimiHeaders and HEADER_HOOKS.kimiDeviceHeaders — build the identity headers from the stored device id, falling back to the stored refresh token",
+    "registry": "open-sse/providers/registry/kimi-coding.js and open-sse/providers/registry/kimi-ai.js — the client id, device code URL, token URL and refresh URL rows already match the pinned upstream; no change queued",
+    "batch": "the shared OAuth wiring above belongs to the ordered auth batches, not to this unit; this unit only stages the helper and its contracts"
+  },
+  "restrictions": [
+    "registered: false — the helper is not wired into production; the parity test keeps its staging assertions in one isolated block",
+    "Kimi Coding device credentials, the Moonshot platform API key, the Kimi Code API key and the Kimi consumer web session are four separate identities and must never share a token, a device id or a refresh path",
+    "the Kimi consumer web session refreshes through its own RPC endpoint; the OmniRoute web refresh path is not adopted here",
+    "synthetic tokens only; no live account, browser, Docker or provider traffic",
+    "no new auth gateway, framework or credential store; the existing OAuth provider object, connection model, flow store and storage are reused"
+  ]
+}

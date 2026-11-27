@@ -4,7 +4,7 @@ import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } 
 import { openaiToClaudeRequestForAntigravity } from "./openai-to-claude.js";
 import { usesClaudeRequestFormat } from "../validate.js";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
-import { getGeminiThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
+import { getGeminiThoughtSignatureSync, getProvenThoughtSignatureSync } from "../../services/thoughtSignatureStore.js";
 function generateUUID() {
   return crypto.randomUUID();
 }
@@ -145,7 +145,7 @@ function wrapFunctionResult(value) {
  * @param {string|null} [sessionId] - Client session id used to namespace the thoughtSignature store lookup.
  * @returns {object} Gemini-shaped generateContent request.
  */
-function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG_SIGNATURE, sessionId = null) {
+function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG_SIGNATURE, sessionId = null, signatureScope = null) {
   const { alias: sanitizeToolName, aliases: toolNameMap } = createGeminiToolNameAliaser();
 
   const isGemma4 = isString(model) && /gemma-4/i.test(model);
@@ -279,7 +279,7 @@ function openaiToGeminiBase(model, body, stream, signature = DEFAULT_THINKING_AG
             const decoded = decodeToolCallId(tc.id);
             // Session-namespaced store replay (upstream c08efdbe): a signature
             // persisted for this exact call id wins over the synthetic default.
-            const cachedSig = decoded.id ? getGeminiThoughtSignatureSync(decoded.id, sessionId, model) : null;
+            const cachedSig = decoded.id ? (signatureScope ? getProvenThoughtSignatureSync(decoded.id, signatureScope) : getGeminiThoughtSignatureSync(decoded.id, sessionId, model)) : null;
             // Disambiguate a call id reused across turns (decolua/9router#4274):
             // Gemini requires strict 1:1 functionCall/functionResponse pairing,
             // so repeated ids reuse the collision-free allocation made above.
@@ -434,8 +434,8 @@ function omitGemma4ThinkingConfig(model, body) {
 openaiToGeminiRequest.finalize = omitGemma4ThinkingConfig;
 
 // OpenAI -> Gemini CLI (Cloud Code Assist)
-export function openaiToGeminiCLIRequest(model, body, stream, credentials = null) {
-  const gemini = openaiToGeminiBase(model, body, stream, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE, credentials?._clientSessionId);
+export function openaiToGeminiCLIRequest(model, body, stream, credentials = null, signatureScope = null) {
+  const gemini = openaiToGeminiBase(model, body, stream, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE, credentials?._clientSessionId, signatureScope);
   // Thinking is normalized centrally by applyThinking (thinkingUnified.js) after translation.
 
   // Clean schema for tools
@@ -571,7 +571,7 @@ function wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials = nu
           } else if (block.type === CLAUDE_BLOCK.TOOL_USE) {
             const decoded = decodeToolCallId(block.id);
             const rawId = decoded.id;
-            const cachedSig = rawId ? getGeminiThoughtSignatureSync(rawId, credentials?._clientSessionId, model) : null;
+            const cachedSig = rawId ? getProvenThoughtSignatureSync(rawId, { accountId: credentials?._signatureNamespace || credentials?.connectionId, sessionId: credentials?._clientSessionId, model }) : null;
             const callSig = decoded.signature || cachedSig || (!firstToolUseSeen ? signature : undefined);
             firstToolUseSeen = true;
 
@@ -727,7 +727,11 @@ export function openaiToAntigravityRequest(model, body, stream, credentials = nu
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
     envelope = wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
   } else {
-    const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
+    // Antigravity must never attach a global legacy alias before executor validation.
+    const geminiCLI = openaiToGeminiCLIRequest(model, body, stream, credentials, {
+      accountId: credentials?._signatureNamespace || credentials?.connectionId,
+      sessionId: credentials?._clientSessionId, model,
+    });
     // Promote a lone system message only for the Antigravity boundary.
     if (body.messages?.length === 1 && (body.messages[0]?.role === ROLE.SYSTEM || body.messages[0]?.role === ROLE.DEVELOPER)) {
       geminiCLI.systemInstruction = { role: GEMINI_ROLE.USER, parts: geminiCLI.contents[0]?.parts || [] };

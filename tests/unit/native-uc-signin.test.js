@@ -25,6 +25,8 @@ const REGISTRATION = JSON.parse(readFileSync(new URL(
 
 const CLERK = "https://clerk.uncensored.com";
 const QUERY = "?__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1";
+// The token mint carries only the JS version (clerkAuth.ts:95).
+const MINT_QUERY = "?_clerk_js_version=5.127.1";
 const ENV = Object.freeze({ DURINDOOR_UC_CONSUMER_SIGNIN: "1" });
 const EMAIL = "synthetic.user@example.test";
 const CODE = "424242";
@@ -64,7 +66,8 @@ const signInRoutes = (account, overrides = {}) => ({
   }, [`__client=${account.client}; Path=/; Domain=.uncensored.com; HttpOnly; Secure`, "__client_uat=0; Path=/; Domain=uncensored.com"]),
   [`POST /v1/client/sign_ins/${account.sia}/prepare_first_factor`]: () => reply(200, { response: { id: account.sia, status: "needs_first_factor", first_factor_verification: { status: "unverified", strategy: "email_code" } } }),
   [`POST /v1/client/sign_ins/${account.sia}/attempt_first_factor`]: ({ form }) => form.code === CODE
-    ? reply(200, { response: { id: account.sia, status: "complete", created_session_id: account.sid }, client: { sessions: [{ id: account.sid, user: { id: "user_SYNTH", public_metadata: { uid: account.uid } } }] } }, ["__client_uat=1800000000; Path=/; Domain=uncensored.com"])
+    // Source success shape (emailLogin.ts:23-28, 260-303): uid is the session's user.id, __client is in Set-Cookie.
+    ? reply(200, { response: { id: account.sia, status: "complete", created_session_id: account.sid }, client: { sessions: [{ id: account.sid, user: { id: account.uid } }] } }, [`__client=${account.client}; Path=/; Domain=.uncensored.com; HttpOnly; Secure`, "__client_uat=1800000000; Path=/; Domain=uncensored.com"])
     : reply(422, { errors: [{ code: "form_code_incorrect", message: `bad code ${form.code}` }] }),
   [`POST /v1/client/sessions/${account.sid}/tokens`]: () => reply(200, { object: "token", jwt: jwtAt(account) }),
   ...overrides,
@@ -128,7 +131,7 @@ describe("email-code sign-in", () => {
       `${CLERK}/v1/client/sign_ins/${A.sia}/prepare_first_factor${QUERY}`,
     ]);
     const [create, prepare] = t.calls;
-    expect(create.form).toEqual({ identifier: EMAIL });
+    expect(create.form).toEqual({ locale: "en-CA", identifier: EMAIL });
     expect(create.init).toMatchObject({ method: "POST", redirect: "manual" });
     expect(create.init.headers).toEqual({ Origin: "https://uncensored.com", Referer: "https://uncensored.com/", "Content-Type": "application/x-www-form-urlencoded" });
     expect(prepare.form).toEqual({ strategy: "email_code", email_address_id: A.idn });
@@ -155,7 +158,7 @@ describe("email-code sign-in", () => {
     const attempt = t.calls[2];
     expect(attempt.form).toEqual({ strategy: "email_code", code: CODE });
     expect(attempt.init.headers.Cookie).toContain(`__client=${A.client}`);
-    expect(t.calls[3].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens${QUERY}`);
+    expect(t.calls[3].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens${MINT_QUERY}`);
     expect(controller.pending).toBe(0);
     expect(JSON.stringify(done)).not.toContain(EMAIL);
     expect(JSON.stringify(done)).not.toContain(A.sia);
@@ -239,7 +242,6 @@ describe("email-code sign-in", () => {
       [() => { throw new Error(`connect ECONNREFUSED ${EMAIL}`); }, { kind: "network" }],
       [() => new Response("{not json", { status: 200 }), { kind: "malformed" }],
       [() => reply(200, { response: { id: "not-a-sia", status: "needs_first_factor" } }, [`__client=${A.client}`]), { kind: "malformed" }],
-      [() => reply(200, { response: { id: A.sia, status: "needs_first_factor", supported_first_factors: [{ strategy: "email_code", email_address_id: A.idn }] } }), { kind: "malformed" }],
     ];
     for (const [answer, expected] of cases) {
       const t = transport(signInRoutes(A, { "POST /v1/client/sign_ins": answer }));
@@ -263,16 +265,21 @@ describe("email-code sign-in", () => {
   it("never saves a malformed success", async () => {
     const attemptPath = `POST /v1/client/sign_ins/${A.sia}/attempt_first_factor`;
     const mintPath = `POST /v1/client/sessions/${A.sid}/tokens`;
-    const complete = (extra = {}) => () => reply(200, { response: { id: A.sia, status: "complete", created_session_id: A.sid, ...extra } });
+    const complete = (extra = {}, sessions = [{ id: A.sid, user: { id: A.uid } }]) => () =>
+      reply(200, { response: { id: A.sia, status: "complete", created_session_id: A.sid, ...extra }, client: { sessions } }, [`__client=${A.client}; Domain=.uncensored.com`]);
     const cases = [
       { [attemptPath]: complete({ created_session_id: null }) },
       { [attemptPath]: complete({ created_session_id: "sess_bad;id" }) },
-      { [attemptPath]: () => reply(200, { response: { id: A.sia, status: "complete", created_session_id: A.sid } }, ["__client=; Max-Age=0; Domain=uncensored.com"]) },
+      { [attemptPath]: () => reply(200, { response: { id: A.sia, status: "complete", created_session_id: A.sid }, client: { sessions: [{ id: A.sid, user: { id: A.uid } }] } }, ["__client=; Max-Age=0; Domain=uncensored.com"]) },
       { [attemptPath]: complete(), [mintPath]: () => reply(200, { jwt: "not a jwt" }) },
-      { [attemptPath]: complete(), [mintPath]: () => reply(200, { jwt: jwtFor({ sid: A.sid, exp: 9_999_999_999 }) }) },
+      // Only the created session's user names the uid; no sessions[0] fallback, no unsafe uid.
+      { [attemptPath]: complete({}, [{ id: B.sid, user: { id: B.uid } }]) },
+      { [attemptPath]: complete({}, [{ id: A.sid, user: { id: "bad uid!" } }]) },
+      { [attemptPath]: complete({}, []) },
+      // The minted JWT names another account or session.
       { [mintPath]: () => reply(200, { jwt: jwtAt(B) }) },
       { [attemptPath]: complete(), [mintPath]: () => reply(200, { jwt: jwtFor({ uid: "bad uid!", exp: 9_999_999_999 }) }) },
-      { [mintPath]: () => reply(200, { jwt: jwtAt(A) }, ["__client=bad;value; Domain=uncensored.com", `useruid=${B.uid}; Domain=uncensored.com`]) },
+      { [mintPath]: () => reply(200, { jwt: jwtFor({ uid: A.uid, sid: B.sid, exp: 9_999_999_999 }) }) },
       { [attemptPath]: () => reply(200, { response: { id: A.sia, status: "abandoned" } }) },
     ];
     const kinds = [];
@@ -287,7 +294,7 @@ describe("email-code sign-in", () => {
       expect(controller.pending).toBe(0);
       expectNoSecrets(result, A);
     }
-    expect(kinds).toEqual(["malformed", "malformed", "malformed", "malformed", "malformed", "malformed", "malformed", "malformed", "needs_operator"]);
+    expect(kinds).toEqual(["malformed", "malformed", "malformed", "malformed", "malformed", "malformed", "malformed", "identity", "identity", "identity", "needs_operator"]);
   });
 
   it("accepts no sign-in state from the caller body", async () => {
@@ -395,7 +402,6 @@ describe("email-code sign-in", () => {
 describe("scoped session controller", () => {
   const sessionRoutes = (account, mint = () => reply(200, { jwt: jwtAt(account) })) => ({
     [`POST /v1/client/sessions/${account.sid}/tokens`]: mint,
-    [`POST /v1/client/sessions/${account.sid}/touch`]: () => reply(200, { response: { id: account.sid, status: "active", expire_at: clock + 86_400_000 } }),
   });
   const sessions = (t, extra = {}) => createUcSessionController({ fetchImpl: t.fetchImpl, env: ENV, now, ...extra });
 
@@ -404,7 +410,7 @@ describe("scoped session controller", () => {
     const controller = sessions(t, { refreshSkewMs: 10_000 });
     const first = await controller.getSessionToken(credsFor(A));
     expect(first).toEqual({ ok: true, jwt: jwtAt(A), expiresAt: clock + 60_000, cached: false, rotated: null });
-    expect(t.calls[0].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens${QUERY}`);
+    expect(t.calls[0].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/tokens${MINT_QUERY}`);
     expect(t.calls[0].init.headers.Cookie).toBe(`__client=${A.client}; __cf_bm=SYNTHETIC-cf-a`);
     expect(t.calls[0].init.body).toBe("");
     clock += 49_000;
@@ -417,7 +423,8 @@ describe("scoped session controller", () => {
   it("clamps the refresh skew and the cached lifetime", async () => {
     expect(clampRefreshSkew(0)).toBe(1_000);
     expect(clampRefreshSkew(3_600_000)).toBe(30_000);
-    expect(clampRefreshSkew(Number.NaN)).toBe(10_000);
+    // Source default UC_TOKEN_REFRESH_SKEW_S = 8 (constants.ts:36).
+    expect(clampRefreshSkew(Number.NaN)).toBe(8_000);
     const t = transport(sessionRoutes(A, () => reply(200, { jwt: jwtAt(A, 86_400) })));
     const controller = sessions(t, { refreshSkewMs: 3_600_000 });
     expect(await controller.getSessionToken(credsFor(A))).toMatchObject({ expiresAt: clock + 120_000 });
@@ -464,27 +471,19 @@ describe("scoped session controller", () => {
     clock += 55_000;
     expect(await controller.getSessionToken(credsFor(A))).toMatchObject({ ok: false, kind: "reauth", httpStatus: 401 });
     expect(controller.cachedAccounts).toBe(0);
-    for (const answer of [() => reply(404, {}), () => reply(400, { errors: [{ code: "session_not_found" }] })]) {
+    // clerkAuth.ts:85-87: a 401/403 means the durable login is invalid.
+    for (const answer of [() => reply(403, {}), () => reply(404, {}), () => reply(400, { errors: [{ code: "session_not_found" }] })]) {
       const other = transport(sessionRoutes(A, answer));
       expect(await sessions(other).getSessionToken(credsFor(A))).toMatchObject({ kind: "reauth" });
     }
   });
 
-  it("touches the session and maps an ended session to reauth", async () => {
+  it("makes no session touch call (the pinned source has none)", async () => {
     const t = transport(sessionRoutes(A));
     const controller = sessions(t);
+    expect(controller).not.toHaveProperty("touch");
     await controller.getSessionToken(credsFor(A));
-    expect(await controller.touch(credsFor(A))).toEqual({ ok: true, status: "active", expireAt: clock + 86_400_000, rotated: null });
-    expect(t.calls[1].url).toBe(`${CLERK}/v1/client/sessions/${A.sid}/touch${QUERY}`);
-    for (const status of ["revoked", "ended", "expired", "removed", "abandoned"]) {
-      const ended = transport({ ...sessionRoutes(A), [`POST /v1/client/sessions/${A.sid}/touch`]: () => reply(200, { response: { id: A.sid, status } }) });
-      const c = sessions(ended);
-      await c.getSessionToken(credsFor(A));
-      expect(await c.touch(credsFor(A))).toMatchObject({ kind: "reauth" });
-      expect(c.cachedAccounts).toBe(0);
-    }
-    const wrong = transport({ [`POST /v1/client/sessions/${A.sid}/touch`]: () => reply(200, { response: { id: B.sid, status: "active" } }) });
-    expect(await sessions(wrong).touch(credsFor(A))).toMatchObject({ kind: "malformed" });
+    expect(t.calls.map((c) => c.path)).toEqual([`/v1/client/sessions/${A.sid}/tokens`]);
   });
 
   it("hands back a rotated __client as that connection's patch only", async () => {
@@ -543,7 +542,8 @@ describe("cookie import", () => {
   it("never saves cookies that do not prove the named uid", async () => {
     for (const [routes, kind] of [
       [mint(A, jwtAt(B)), "identity"],
-      [mint(A, jwtFor({ exp: 9_999_999_999 })), "identity"],
+      [mint(A, jwtFor({ uid: A.uid, sid: B.sid, exp: 9_999_999_999 })), "identity"],
+      [mint(A, jwtFor({ sid: B.sid, exp: 9_999_999_999 })), "identity"],
       [{ [`POST /v1/client/sessions/${A.sid}/tokens`]: () => reply(401, {}) }, "reauth"],
     ]) {
       const t = transport(routes);

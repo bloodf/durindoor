@@ -44,6 +44,7 @@
     "conol-web",
     "local-router-providers",
     "claude-code",
+    "gemini-cli",
     "codex",
     "codex-app-server",
     "devin-cli-agentic",

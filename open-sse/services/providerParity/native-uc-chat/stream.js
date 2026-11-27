@@ -85,7 +85,10 @@ export class UcFrameParser {
   feed(raw) {
     const events = [];
     if (this.finished || !isString(raw) || !raw) return events;
-    const carried = this.carry;
+    // A non-object keepalive cannot be the prefix of a UC JSON object.
+    // Drop it as soon as the next object starts, even if that object is partial.
+    const carried = !this.carry.trimStart().startsWith("{") && raw.trimStart().startsWith("{")
+      ? "" : this.carry;
     this.carry = "";
     const lines = (carried + raw).split("\n");
     const last = lines.length - 1;

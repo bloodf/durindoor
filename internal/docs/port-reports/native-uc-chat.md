@@ -231,3 +231,43 @@ cases, including both reported defects.
 
 Validation uses private HOME/DATA_DIR and a credential-free environment with closed
 synthetic transports. No live-provider equivalence or full local-CI receipt is claimed.
+
+## Delimiter-free keepalive recovery (#2034)
+
+Fork correction to OmniRoute `c71f0065` `open-sse/executors/uc/stream.ts`
+and `open-sse/executors/uc/ws.ts`: a non-object carried keepalive is discarded
+when the next message starts a JSON object, before attempting to parse that
+possibly incomplete object. Previously recovery worked only when the next
+message already contained a complete frame. Retained JSON remains untrimmed
+and byte bounded; the existing final-answer trimming contract is unchanged.
+
+The installed `ws` 8.21.3 `lib/receiver.js` (`dataMessage`) assembles WebSocket
+protocol fragments before delivery and validates UTF-8 for text messages.
+Binary messages (opcode 2) have no UTF-8 validation or character-boundary
+requirement. Distinct binary messages can therefore split a multibyte character,
+even though protocol fragmentation alone cannot split a delivered text message.
+The driver now uses one streaming TextDecoder per turn across binary messages;
+a text message flushes pending binary bytes before its already-decoded string.
+Buffer arrays are concatenated before decoding, and typed-array view offsets are
+respected. Cancellation discards pending state with the turn, without replay.
+
+`tests/unit/uc-keepalive-fragments.test.js` covers every JSON string split after
+keepalives with no delimiter, LF, CRLF and CR; repeated keepalives; character-wise
+JSON delivery; whitespace, escapes and Unicode; carry caps; byte-wise binary
+messages in all four supported byte representations, with and without keepalives;
+and cancellation while a JSON fragment is pending. The initial implementation
+failed seven of the initial eleven cases. All existing UC tests are unchanged.
+
+Validation used a credential-free environment with private HOME, DATA_DIR and
+cache, mocked sockets only, and a 300-second ceiling per command:
+
+```sh
+cd tests && node node_modules/vitest/vitest.mjs run unit/uc-keepalive-fragments.test.js --maxWorkers=2
+```
+
+All 15 new tests pass. The related command adding `unit/native-uc-chat.test.js`,
+`unit/uc-chat-stream-integrity.test.js`, `unit/uc-chat-attachments.test.js` and
+`unit/uc-chat-reauth-contract.test.js` passes all 175 tests. Scoped ESLint on
+`stream.js`, `ws.js` and the new suite, plus `git diff --check`, passes.
+No baseline changes, shared registration changes or live-provider validation.
+Full local CI and independent merge review remain outstanding.

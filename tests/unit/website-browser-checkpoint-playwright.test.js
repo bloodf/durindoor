@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:net";
@@ -20,12 +20,16 @@ describe("browser checkpoint follow-ups", () => {
       writeFileSync(file, "");
       expect(() => findOwnedProcesses("a".repeat(32), { procRoot: file })).toThrow(/enumerate/);
       // A readable procfs with an enumeration error must also fail closed.
-      const result = await cleanupShardServer({ owner: "a".repeat(32), port: 4000, procRoot: "/proc", readDirectory: () => { throw new Error("enumeration denied"); },
+      // A private fake procfs keeps this host-independent (macOS has no /proc).
+      const fakeProc = path.join(dir, "proc");
+      mkdirSync(path.join(fakeProc, "self"), { recursive: true });
+      writeFileSync(path.join(fakeProc, "self", "stat"), "");
+      const result = await cleanupShardServer({ owner: "a".repeat(32), port: 4000, procRoot: fakeProc, readDirectory: () => { throw new Error("enumeration denied"); },
         probe: async () => false, selfExitMs: 0 });
       expect(result.ok).toBe(false);
       expect(result.reason).toMatch(/enumeration denied/);
       const absent = await cleanupShardServer({ owner: "a".repeat(32), port: 4000,
-        procRoot: path.join(dir, "missing"), platform: "linux", probe: async () => false });
+        procRoot: path.join(dir, "missing"), probe: async () => false });
       expect(absent.ok).toBe(false);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

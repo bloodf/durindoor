@@ -322,12 +322,14 @@ function toClaudeUsage(usage) {
   ].find((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
   const cacheReadTokens = reportedCacheReadTokens ?? 0;
   // Cache-write accepts the same aliases as the shared normalizer: the
-  // canonical top-level field, the top-level `cache_write_tokens` alias and
+  // canonical top-level field, the top-level `cache_write_tokens` / `cache_creation_tokens` aliases and
   // both nested spellings. Canonical fields win over aliases and an explicitly
   // reported zero is kept as "nothing was written" rather than being read as
   // an omission. A present-but-non-numeric value counts as no cache write,
   // matching how the canonical field is treated elsewhere in this path.
-  const cacheWriteRaw = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
+    Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
+  const cacheWriteRaw = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
     usage.prompt_tokens_details?.cache_creation_tokens ?? usage.prompt_tokens_details?.cache_write_tokens ??
     usage.input_tokens_details?.cache_creation_tokens ?? usage.input_tokens_details?.cache_write_tokens;
   const cacheCreateTokens = isNumber(cacheWriteRaw) ? cacheWriteRaw : 0;

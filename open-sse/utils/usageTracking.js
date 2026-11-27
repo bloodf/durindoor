@@ -193,7 +193,10 @@ export function normalizeUsage(usage) {
   assignNumber("total_tokens", usage?.total_tokens);
   assignNumber("cache_read_input_tokens", usage?.cache_read_input_tokens);
   const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
-  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+  // #5904's top-level alias is an inclusive subset, with typed nonnegative counters.
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
+    Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
     details?.cache_creation_tokens ?? details?.cache_write_tokens;
   assignNumber("cache_creation_input_tokens", cacheWrite);
   assignNumber("cache_creation_1h_input_tokens", oneHourCacheWrite(usage));
@@ -564,6 +567,7 @@ export function extractUsage(chunk) {
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
       cache_write_tokens: chunk.usage.cache_write_tokens,
+      cache_creation_tokens: chunk.usage.cache_creation_tokens,
       input_tokens_details: chunk.usage.input_tokens_details,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
       completion_tokens_details: chunk.usage.completion_tokens_details,

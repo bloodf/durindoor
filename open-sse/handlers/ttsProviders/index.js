@@ -8,6 +8,7 @@ import openai from "./openai.js";
 import openrouter from "./openrouter.js";
 import gemini, { fetchGeminiVoices } from "./gemini.js";
 import renderhour from "./renderhour.js";
+import vertex, { listVertexTtsVoices } from "../../services/providerParity/native-vertex-tts-stt/speech.js";
 import { FORMAT_HANDLERS } from "./genericFormats.js";
 import { parseModelVoice } from "./_base.js";
 
@@ -22,6 +23,9 @@ export const TTS_ADAPTERS = createMediaRegistry({
   gemini,
   // Submit-and-poll speech job; RenderHour picks the voice and container.
   renderhour,
+  // Vertex Gemini speech through generateContent on the existing connection.
+  vertex,
+  vx: vertex,
 });
 
 export function getTtsAdapter(provider) {
@@ -53,6 +57,8 @@ export const VOICE_FETCHERS = {
   "local-device": fetchLocalDeviceVoices,
   elevenlabs: fetchElevenLabsVoices,
   gemini: fetchGeminiVoices,
+  // Vertex Gemini speech serves the same prebuilt voices.
+  vertex: listVertexTtsVoices,
 };
 
 // Re-export for backward compat

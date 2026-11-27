@@ -1,0 +1,64 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "registrationBatch": "batch03",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/handlers/imageGeneration/providers/leonardo.ts (uploadLeonardoInitImage lines 58-85, handleLeonardoImageGeneration initImage lines 88-123)",
+      "src/app/api/v1/images/edits/route.ts (leonardo-image branch: one reference image, body { prompt, size })"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-leonardo-image-edits/index.js",
+  "dependsOn": "open-sse/services/providerParity/native-leonardo-video-image (model ids, size rules, transport helpers and runLeonardoJob, reused read-only)",
+  "exports": {
+    "leonardoImageEditAdapter": "default instance; edit({ model, formData, jsonBody, credentials, signal, log })",
+    "createLeonardoImageEditAdapter": "factory; options { timeoutMs, initTimeoutMs, storageTimeoutMs, dnsTimeoutMs, storageFetch, lookup, baseConnect, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "parseLeonardoEditRequest": "({ model, formData | jsonBody }) -> { generation, reference }; throws status 400/413 before any network call",
+    "buildLeonardoEditGeneration": "(generation, initImageId) -> generation + { init_image_id, init_strength: 0.3 }",
+    "parseLeonardoUploadTicket": "init-image answer -> { id, url, fields }; fields is the source JSON string",
+    "uploadLeonardoInitImage": "pinned, token-free storage POST of the pre-encoded form"
+  },
+  "provider": {
+    "canonicalId": "leonardo",
+    "aliases": ["leo"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"], "sentTo": ["https://cloud.leonardo.ai"] },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "refused for edits: the storage upload is pinned and socket-checked and cannot be carried by a proxy"
+  },
+  "edit": {
+    "references": { "count": 1, "formats": ["image/png", "image/jpeg", "image/webp"], "maxBytes": 10485760, "inputs": ["multipart file", "base64 data: URI"] },
+    "unsupported": ["mask", "more than one reference", "remote reference URL", "file_id", "n > 1", "streaming", "response_format b64_json", "width / height fields"],
+    "initStrength": 0.3,
+    "models": "same as native-leonardo-video-image image models (phoenix, sdxl, or a platform-model UUID)",
+    "size": "OpenAI WxH size, else 1024x1024; 32..1536, multiple of 8",
+    "responseFormats": ["url"]
+  },
+  "endpoints": {
+    "initImage": { "method": "POST", "url": "https://cloud.leonardo.ai/api/rest/v1/init-image", "body": "{ extension }", "answer": "uploadInitImage.{ id, url, fields }", "billable": false },
+    "storageUpload": { "method": "POST", "url": "uploadInitImage.url (validated public https, pinned DNS, peer-checked socket)", "headers": ["Content-Type"], "leonardoKey": false, "billable": false },
+    "generation": { "method": "POST", "url": "https://cloud.leonardo.ai/api/rest/v1/generations", "extraFields": ["init_image_id", "init_strength"], "billable": true },
+    "status": { "method": "GET", "url": "https://cloud.leonardo.ai/api/rest/v1/generations/{generationId}" }
+  },
+  "accounting": {
+    "success": "one returned image (nativeUnits.images = 1); cost unknown",
+    "acceptedJob": "generation phase only, when the submit outcome is unknown or an accepted job was not seen to fail; never resent",
+    "initAndStorageFailures": "no acceptedJob; the result carries phase init-image or storage"
+  },
+  "integrationPoints": [
+    {
+      "file": "src/sse/handlers/imageEdit.js",
+      "change": "for provider leonardo / leo, call leonardoImageEditAdapter.edit({ model, formData, jsonBody, credentials, signal, log }) instead of handleImageEditCore; record usage once on success and keep acceptedJob on errors; pass multipart and JSON bodies unchanged"
+    },
+    {
+      "file": "open-sse/handlers/imageEditCore.js",
+      "change": "alternatively, a native-adapter map consulted before getImageEditConfig so the OpenAI multipart passthrough never sees Leonardo"
+    },
+    {
+      "file": "open-sse/providers/registry/leonardo.js",
+      "change": "after the native-leonardo-video-image registration, advertise image edits for the image models; no imageEditConfig (the passthrough must not be used)"
+    }
+  ]
+}

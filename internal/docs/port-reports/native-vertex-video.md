@@ -25,7 +25,7 @@ The `vertex` connection shares the provider id and credential, but it uses a dif
 
 | File | Role |
 | --- | --- |
-| `open-sse/services/providerParity/native-vertex-video/config.js` | Provider id, alias, format, the five models with per-model durations, and catalog metadata. |
+| `open-sse/services/providerParity/native-vertex-video/config.js` | Provider id, alias, format, the two active Veo 3.1 models with per-model durations, and catalog metadata. |
 | `.../request.js` | Builds the `:predictLongRunning` body and refuses unsupported input before any credential use. |
 | `.../auth.js` | Credential scope (project, location, mode), a bounded token mint, and action URLs and headers. |
 | `.../job.js` | Bounded submit, bounded poll, result validation, and `acceptedJob` accounting. |
@@ -50,7 +50,7 @@ Public contract:
 - **Accepted fields:**
   - `prompt` (required)
   - `aspect_ratio`, `aspectRatio`, or `size`: `16:9` or `9:16` only
-  - `duration` or `durationSeconds`, an integer: Veo 3 and 3.1 accept 4, 6, or 8; Veo 2 accepts 5 to 8
+  - `duration` or `durationSeconds`, an integer: Veo 3.1 and 3.1 Fast accept 4, 6, or 8
   - `negative_prompt`
   - `n`, `sampleCount`, or `sample_count`: 1 only
 - **Response:** `{ created, data: [{ b64_json, format: "mp4" }] }`. The only response format is `b64_json`. The core refuses `url` before anything is sent.
@@ -84,7 +84,22 @@ Public contract:
 
 ## Dynamic discovery
 
-The source has no Vertex video model discovery; its model list is static. None is ported, and the five source ids are the whole list.
+The source has no Vertex video model discovery; its model list is static. None is ported. Of the five source ids, only the two active Veo 3.1 ids are kept (see Retired models).
+
+## Retired models
+
+Primary source: the retired-models table at https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions, checked 2026-11-27. It lists `veo-3.0-generate-001`, `veo-3.0-fast-generate-001`, and `veo-2.0-generate-001` as retired on 2026-06-30. `veo-3.1-generate-001` and `veo-3.1-fast-generate-001` retire on 2027-05-04 or later.
+
+The source registry at `c71f0065` still lists all five. Before this fix the provider catalog (`open-sse/providers/registry/vertex.js`) advertised only the two Veo 3.1 ids, but the private config still accepted all five, so an explicit retired id on `POST /v1/video/generations` minted a token and submitted a billable job.
+
+Now:
+
+- `config.js` and `registration.json` list only the two Veo 3.1 ids. The Veo 2 duration list (5 to 8 s) is gone; the Veo 3.1 limits (4, 6, or 8 s; 16:9 or 9:16) are unchanged.
+- `registration.json` records the retired ids, date, and source under `retiredModels`.
+- A retired id is refused locally with 400 (`Unsupported Vertex video model`) by `buildVertexVideoRequest`, before any token mint or request, on every credential mode. It is never aliased or silently replaced with a current model.
+- Provider id, `vx` alias, source alias, and auth handling are unchanged. The registration state is unchanged.
+
+Tests: `tests/unit/vertex-retired-video-models.test.js` runs every retired id through the public route (`vx/` and `vertex/` prefixes), the core, the registered adapter, and the private factory, with a Service Account JSON (injected counting minter), a preset access token, and an Express key. Each credential completes a job for the active models in the same file, so the zero-network refusal is not caused by bad auth. A successful job is queued for each retired-id request, so a dispatch would succeed. With `config.js` and `registration.json` reverted to their previous state, 39 of the file's tests fail, and the public route returns 200 for every retired id (`expected 200 to be 400`). `tests/unit/native-vertex-video.test.js` replaces its retired-id positive coverage with refusal tests, keeps the per-model duration checks for the active models, and runs the two-account isolation test with `veo-3.1-fast-generate-001` instead of Veo 2.
 
 ## Remaining restrictions
 
@@ -102,10 +117,14 @@ The source has no Vertex video model discovery; its model list is static. None i
 See `registration.json`:
 
 1. Add `vertex: vertexVideoAdapter` to `VIDEO_GENERATION_ADAPTERS`. `lookupMediaAdapter` does not resolve aliases, so either confirm the route canonicalizes `vx` first, or register `vx` too.
-2. Add `"video"` and the five models to `open-sse/providers/registry/vertex.js`.
+2. Add `"video"` and the two active Veo 3.1 models to `open-sse/providers/registry/vertex.js`.
 3. Add a catalog row for Vertex video.
 4. In the test file, replace the staging block with positive registry assertions.
 
 ## Evidence
+
+Retired-model fix (2026-11-27): `cd tests && node node_modules/vitest/vitest.mjs run unit/vertex-retired-video-models.test.js unit/native-vertex-video.test.js unit/register-native-01.test.js --maxWorkers=2` reports 3 files and 206 tests passed. These are closed mocks only.
+
+Original staging:
 
 `cd tests && node node_modules/vitest/vitest.mjs run unit/native-vertex-video.test.js --maxWorkers=2` reports 67 passed. `npx eslint` over the new files is clean. These are closed mocks only: no live account, provider call, or browser was used, and passing says nothing about the live service.

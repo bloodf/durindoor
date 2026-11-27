@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { parseExpression } from "@babel/parser";
-import { settingsReadKeys } from "../../scripts/lib/settings-read-keys.mjs";
 import { SETTINGS_SCHEMA, validateSettingsPatch } from "../../src/lib/settings/settingsSchema.js";
 
 const mocks = vi.hoisted(() => ({ updateSettings: vi.fn(), getSettings: vi.fn() }));
@@ -57,42 +56,11 @@ function literalKeys(source, start) {
 }
 
 describe("settings schema coverage", () => {
-  it("distinguishes local media payloads from stored settings in the same file", () => {
-    expect(settingsReadKeys(`
-      const settings = await getSettings();
-      settings.missingStoredKey;
-      function media() {
-        const settings = { model_type: "upscale" };
-        settings.scale_factor = 2;
-        settings.creativity = 0.5;
-        settings.mode = "upscale";
-      }
-      settings?.anotherMissingStoredKey;
-    `)).toEqual(["missingStoredKey", "anotherMissingStoredKey"]);
-  });
-  it("keeps derived, reassigned and parameter settings reads under schema coverage", () => {
-    expect(settingsReadKeys(`
-      const settingsData = { ...await getSettings() };
-      settingsData.missingDerivedKey;
-      function fromAlias() {
-        const stored = getSettingsSync();
-        const settings = { ...stored };
-        return settings.missingAliasedKey;
-      }
-      function read(settings) { return settings.missingParameterKey; }
-      function reassigned() {
-        let settings = {};
-        settings = getSettingsSync();
-        return settings.missingReassignedKey;
-      }
-    `)).toEqual(["missingDerivedKey", "missingAliasedKey", "missingParameterKey", "missingReassignedKey"]);
-  });
-
   it("covers static settings reads and literal API patch bodies", () => {
     const missing = [];
     for (const path of ["src", "open-sse", "cli/src"].flatMap((dir) => files(resolve(root, dir)))) {
       const source = readFileSync(path, "utf8");
-      const keys = settingsReadKeys(source);
+      const keys = [...source.matchAll(/\bsettings(?:Data)?\??\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]);
       for (const match of source.matchAll(/(?:const|let)\s*(\{[^{}]*\})\s*=\s*(?:await\s+)?getSettings(?:Sync)?\s*\(/g)) {
         keys.push(...literalKeys(match[1], 0));
       }

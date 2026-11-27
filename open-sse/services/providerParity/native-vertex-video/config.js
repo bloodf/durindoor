@@ -6,7 +6,8 @@
 // Ported from OmniRoute at c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT):
 // open-sse/config/videoRegistry.ts, the `vertex` entry (base
 // https://us-central1-aiplatform.googleapis.com/v1, authType "apikey",
-// authHeader "bearer", format "vertex-veo", five Veo `-001` model ids), and
+// authHeader "bearer", format "vertex-veo", five Veo `-001` model ids, three of
+// them since retired; see below), and
 // open-sse/executors/vertexMedia.ts (vertexGenerateVideo: predictLongRunning,
 // fetchPredictOperation, 10 s poll interval, 5 min wait).
 //
@@ -14,7 +15,14 @@
 // `providerSpecificData.location` (the chat executor's field) instead of the
 // source's `providerSpecificData.region`, and the project from the same fields
 // the chat executor reads. Duration and aspect ratio are checked per model
-// before submit instead of being forwarded raw.
+// before submit instead of being forwarded raw. Only the two Veo 3.1 models
+// are accepted: Google retired veo-3.0-generate-001, veo-3.0-fast-generate-001
+// and veo-2.0-generate-001 on 2026-06-30 (retired-models table at
+// https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions,
+// checked 2026-11-27; Veo 3.1 and 3.1 Fast retire no earlier than 2027-05-04).
+// The source still lists all five. A retired id is refused locally with 400 by
+// buildVertexVideoRequest, before any token mint or request, and is never
+// aliased or silently replaced with a current model.
 
 /** The canonical provider id this adapter serves: the existing chat connection. */
 export const VERTEX_VIDEO_PROVIDER_ID = "vertex";
@@ -26,18 +34,14 @@ export const VERTEX_VIDEO_FORMAT = "vertex-veo";
 /** The source's default region (videoRegistry.ts base URL, vertexMedia.ts DEFAULT_REGION). */
 export const VERTEX_VIDEO_DEFAULT_LOCATION = "us-central1";
 
-// Veo 2 takes 5 to 8 seconds; Veo 3 and 3.1 take 4, 6 or 8. Both take 16:9 and 9:16.
-const VEO2_SECONDS = Object.freeze([5, 6, 7, 8]);
+// Veo 3.1 and 3.1 Fast take 4, 6 or 8 seconds, at 16:9 or 9:16.
 const VEO3_SECONDS = Object.freeze([4, 6, 8]);
 export const VERTEX_VIDEO_ASPECT_RATIOS = Object.freeze(["16:9", "9:16"]);
 
-/** The five models of the source's `vertex` video entry, in source order. */
+/** The active Veo 3.1 models of the source's `vertex` video entry, in source order. */
 export const VERTEX_VIDEO_MODELS = Object.freeze([
   Object.freeze({ id: "veo-3.1-generate-001", name: "Veo 3.1 (Vertex)", durations: VEO3_SECONDS }),
   Object.freeze({ id: "veo-3.1-fast-generate-001", name: "Veo 3.1 Fast (Vertex)", durations: VEO3_SECONDS }),
-  Object.freeze({ id: "veo-3.0-generate-001", name: "Veo 3.0 (Vertex)", durations: VEO3_SECONDS }),
-  Object.freeze({ id: "veo-3.0-fast-generate-001", name: "Veo 3.0 Fast (Vertex)", durations: VEO3_SECONDS }),
-  Object.freeze({ id: "veo-2.0-generate-001", name: "Veo 2.0 (Vertex)", durations: VEO2_SECONDS }),
 ]);
 export const VERTEX_VIDEO_MODEL_IDS = Object.freeze(VERTEX_VIDEO_MODELS.map((model) => model.id));
 

@@ -532,11 +532,11 @@ describe("staging (unregistered state)", () => {
   it("the existing vertex provider has no audio config yet and no TTS adapter is registered", async () => {
     const { default: vertex } = await import("../../open-sse/providers/registry/vertex.js");
     expect(vertex.id).toBe("vertex");
-    expect(vertex.ttsConfig).toBeUndefined();
-    expect(vertex.sttConfig).toBeUndefined();
-    expect(vertex.serviceKinds).not.toContain("tts");
-    expect(vertex.serviceKinds).not.toContain("stt");
+    expect(vertex.ttsConfig).toMatchObject({ format: "vertex-gemini-tts", models: VERTEX_TTS_CONFIG.models.map(({ id, name }) => ({ id, name })) });
+    expect(vertex.sttConfig).toMatchObject({ format: "vertex-gemini", models: VERTEX_STT_CONFIG.models.map(({ id, name }) => ({ id, name })) });
+    expect(vertex.serviceKinds).toContain("tts");
+    expect(vertex.serviceKinds).toContain("stt");
     const { getTtsAdapter } = await import("../../open-sse/handlers/ttsProviders/index.js");
-    expect(getTtsAdapter("vertex")).toBeFalsy();
+    expect(getTtsAdapter("vertex")).toBe((await import("../../open-sse/services/providerParity/native-vertex-tts-stt/speech.js")).default);
   });
 });

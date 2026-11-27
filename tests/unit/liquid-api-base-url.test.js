@@ -17,7 +17,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 describe("Liquid API offline contract", () => {
   it("uses the upstream chat models and removes the obsolete free offer", () => {
     expect(liquid.transport).toMatchObject({ baseUrl: `${base}/chat/completions`, validateUrl: `${base}/models`, authHeader: "bearer" });
-    expect(liquid.models.map((m) => m.id)).toEqual(["lfm3-1.7b", "lfm3-vl-2b", "lfm2.5-24b-a2b"]);
+    expect(liquid.models.filter((m) => m.kind !== "systemone").map((m) => m.id)).toEqual(["lfm3-1.7b", "lfm3-vl-2b", "lfm2.5-24b-a2b"]);
     expect(FREE_MODEL_BUDGETS.filter((m) => m.provider === "liquid")).toEqual([]);
   });
   it("routes chat completions to the /openai/v1 prefix with bearer auth", () => {

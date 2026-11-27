@@ -673,6 +673,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
               }
+              if (isCompatibleProvider && enrichExistingOnly) {
+                const prefixKey = `${outputAlias}/`;
+                for (const m of live.models) {
+                  if (!isRecord(m) || !isString(m.id) || !isRecord(m.capabilities)) continue;
+                  if (m.id.startsWith(prefixKey) && servedIds.has(m.id.slice(prefixKey.length))) {
+                    liveCapabilitiesById.set(m.id, m.capabilities);
+                  }
+                }
+              }
             }
           } catch {
             // Live discovery is optional metadata; static catalog remains authoritative fallback.
@@ -777,7 +786,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
             ...(customCapabilitiesById.get(modelId) || {})
           };
-          const liveCaps = liveCapabilitiesById.get(modelId) || null;
+          const liveCaps = liveCapabilitiesById.get(modelId) || (isCompatibleProvider ? liveCapabilitiesById.get(`${outputAlias}/${modelId}`) : null) || null;
           const explicitCaps = { ...(liveCaps || {}), ...customCaps };
           /**
            * Compatible providers reuse proven static family limits even when

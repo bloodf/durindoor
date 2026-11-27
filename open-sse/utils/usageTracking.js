@@ -316,8 +316,10 @@ export function canonicalizeUsage(usage) {
   inputDetails?.cache_creation_tokens === undefined);
   // Exclusive flat counters override stale nested inclusive details. Resolve only
   // top-level creation aliases here; nested fallback belongs to inclusive usage.
+  // Match translator aliasCount: cache_write_tokens must be a nonnegative integer.
+  const writeAlias = Number.isInteger(usage.cache_write_tokens) && usage.cache_write_tokens >= 0 ? usage.cache_write_tokens : undefined;
   const cacheCreation = hasExclusiveCache ?
-  num(usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias) :
+  num(usage.cache_creation_input_tokens ?? writeAlias ?? creationAlias) :
   num(cacheWrite);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);

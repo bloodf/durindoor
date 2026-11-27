@@ -19,11 +19,12 @@ describe("sourced recurring offers", () => {
       expect(row).toMatchObject({ poolKey: pool, monthlyTokens: allowance, creditTokens: 0, freeType: "recurring-daily" });
       expect(isFreeModel(provider, { id: row.modelId })).toBe(true);
     }
+    expect(new Set(offer.map((row) => row.poolKey))).toEqual(new Set([pool]));
     const pools = new Map(offer.map((row) => [row.poolKey, row.monthlyTokens]));
     expect([...pools.values()].reduce((sum, value) => sum + value, 0)).toBe(allowance);
   });
 
-  it("keeps Aion's allowance behind card verification", () => {
+  it("records Aion's card verification requirement as catalog metadata", () => {
     expect(rows("aion").every((row) => row.gates?.includes("card"))).toBe(true);
   });
 

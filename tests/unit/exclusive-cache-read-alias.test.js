@@ -74,3 +74,31 @@ it("ignores stale nested creation alongside exclusive reads", () => {
   })).toEqual({ prompt_tokens: 110, completion_tokens: 50, total_tokens: 160,
     cached_tokens: 10, cache_creation_input_tokens: 0 });
 });
+
+// cache_write_tokens follows the translator aliasCount contract, even when
+// an exclusive read selects flat creation accounting.
+describe.each(paths.slice(0, 2))("exclusive cache-write validation: %s", (_name, read) => {
+  it.each([-1, "30", 2.5, NaN, Infinity])("rejects malformed write %s and permits valid fallback", (alias) => {
+    expect(read({ ...exclusive, cache_write_tokens: alias })).toEqual({
+      prompt_tokens: 120, completion_tokens: 5, total_tokens: 125, cached_tokens: 20, cache_creation_input_tokens: 0,
+    });
+    expect(read({ ...exclusive, cache_write_tokens: alias, cache_creation_tokens: 30 })).toEqual({
+      prompt_tokens: 150, completion_tokens: 5, total_tokens: 155, cached_tokens: 20, cache_creation_input_tokens: 30,
+    });
+  });
+  it.each([0, 7])("preserves valid write %s and canonical priority", (count) => {
+    expect(read({ ...exclusive, cache_write_tokens: count, cache_creation_tokens: 30 })).toEqual({
+      prompt_tokens: count === 0 ? 120 : 127, completion_tokens: 5, total_tokens: count === 0 ? 125 : 132,
+      cached_tokens: 20, cache_creation_input_tokens: count,
+    });
+    expect(read({ ...exclusive, cache_creation_input_tokens: count, cache_write_tokens: 30 })).toEqual({
+      prompt_tokens: count === 0 ? 120 : 127, completion_tokens: 5, total_tokens: count === 0 ? 125 : 132,
+      cached_tokens: 20, cache_creation_input_tokens: count,
+    });
+  });
+  it("folds once and remains idempotent", () => {
+    const result = read({ ...exclusive, cache_write_tokens: 30, total_tokens: 105 });
+    expect(result).toEqual({ prompt_tokens: 150, completion_tokens: 5, total_tokens: 155, cached_tokens: 20, cache_creation_input_tokens: 30 });
+    expect(canonicalizeUsage(result)).toEqual(result);
+  });
+});

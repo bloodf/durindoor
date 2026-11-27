@@ -2,13 +2,14 @@ import { keepAbortChain } from "@/shared/utils/abortChain.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import { clearAccountError } from "../services/auth.js";
-import { handleImageEditCore, isImageSource } from "open-sse/handlers/imageEditCore.js";
+import { getImageEditAdapter, handleImageEditCore, isImageSource } from "open-sse/handlers/imageEditCore.js";
+import { ACCEPTED_JOB_HEADER } from "open-sse/services/combo.js";
 import { runWithModelFallback } from "open-sse/services/modelFallback.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
-import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { resolveImageModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 import { MAX_IMAGE_BYTES } from "open-sse/config/mediaConfig.js";
 const MAX_UPLOAD_OVERHEAD_BYTES = 1024 * 1024;
@@ -94,18 +95,52 @@ function routeImageEdit(request, modelStr, formData, jsonBody, { settings, apiKe
   if (!formData.get("image")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: image");
   if (!formData.get("prompt")) return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
 
+  // A generation the provider accepted may still bill, so no fallback model
+  // receives the same edit: every later fallback step answers that response.
+  let accepted = null;
+  const replay = () => new Response(accepted.body, { status: accepted.status, statusText: accepted.statusText, headers: accepted.headers });
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelImageEdit(m, formData, jsonBody, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch),
+    async (m) => {
+      if (accepted) return replay();
+      const response = await handleSingleModelImageEdit(m, formData, jsonBody, request, apiKey, apiKeyAuth.apiKeyId, billingEpoch);
+      if (!response.headers.get(ACCEPTED_JOB_HEADER)) return response;
+      accepted = { body: await response.arrayBuffer(), status: response.status, statusText: response.statusText, headers: new Headers(response.headers) };
+      return replay();
+    },
     log
   );
+}
+
+/** Record a submitted, possibly billed edit once on the account that sent it. */
+async function recordAcceptedEdit(apiKey, result, request, { provider, model, connectionId, billingEpoch, apiKeyId }) {
+  try {
+    await recordAcceptedJobUsage(apiKey, {
+      ...result.acceptedJob,
+      billingEpoch,
+      usageEventId: JSON.stringify([getRequestId(request), "image-edit", provider, model, connectionId]),
+      provider, model, connectionId, endpoint: "/v1/images/edits", modality: "image",
+      apiKeyId,
+    });
+  } catch {
+    // The request already ended without a result; a ledger failure never replaces that outcome.
+    log.warn("IMAGE_EDIT", `[${provider}/${model}] accepted edit could not be recorded`);
+  }
+  const response = result.response || errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image edit failed");
+  const headers = new Headers(response.headers);
+  headers.set(ACCEPTED_JOB_HEADER, "1");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request, apiKey, apiKeyId, billingEpoch) {
   const { provider, model, error } = await resolveImageModel(request, modelStr, jsonBody || {}, apiKey);
   if (error) return error;
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
+  const native = getImageEditAdapter(provider) !== null;
+  const accepted = (result, credentials) => recordAcceptedEdit(apiKey, result, request, {
+    provider, model, connectionId: credentials.connectionId ?? null, billingEpoch, apiKeyId,
+  });
 
   return runMediaAccounts({
     provider,
@@ -152,10 +187,17 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
           // The stable id of the admitted key travels with the usage.
           apiKeyId,
         });
+        if (native) await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         return { response };
       }
+      // A native adapter refused the input before any network call: not an account fault.
+      if (native && result.phase === "request") return { response: result.response };
+      // Client abort: no account cooldown and no other account.
+      if (request.signal?.aborted && result.acceptedJob) return { response: await accepted(result, credentials) };
       return { result, dispatch };
     },
+    // An accepted generation stops here, after account health, and is never resubmitted.
+    onAccountFailure: (result, credentials) => (result.acceptedJob ? accepted(result, credentials) : null),
     buildFailureResponse: (result) => result.response || errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image edit failed"),
   });
 }

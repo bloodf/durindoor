@@ -41,6 +41,10 @@ const localStorageProfiles = [
   ["tinycms-web", "https://site.tinycms.xyz", ["app-config-uuid"]],
   ["deepseek-web", "https://chat.deepseek.com", ["userToken"]],
 ];
+// Optional sign-in sessions of anonymous (no-auth) providers: exact origin and exact cookie name.
+const optionalSessionProfiles = [
+  ["veoaifree-web", "https://veoaifree.com", ["wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b"]],
+];
 const manual = [
   "copilot-web", "copilot-m365-web", "huggingchat", "kimi-web",
   "suno", "t3-web", "udio", "zenmux-free",
@@ -51,7 +55,7 @@ describe("web cookie import profiles", () => {
     expect(REGISTRY.filter((entry) => entry.category === "webCookie").map((entry) => entry.id).sort())
       .toEqual([...profiles.map(([id]) => id), ...manual].sort());
     expect(Object.keys(EXTENSION_PROVIDERS).sort())
-      .toEqual([...profiles.filter(([, , , capture]) => capture).map(([id]) => id), ...localStorageProfiles.map(([id]) => id)].sort());
+      .toEqual([...profiles.filter(([, , , capture]) => capture).map(([id]) => id), ...localStorageProfiles.map(([id]) => id), ...optionalSessionProfiles.map(([id]) => id)].sort());
   });
 
   it.each(profiles)("filters credentials for %s", (id, origin, cookieNames, extensionCapture, cookiePrefixes = []) => {

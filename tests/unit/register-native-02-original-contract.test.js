@@ -329,7 +329,7 @@ describe("registration identity", () => {
   });
 
   it("keeps kie auth, chat transport and chat models, and lists only the servable media rows", () => {
-    expect(kieRegistry).toMatchObject({ id: "kie", alias: "kie", authType: "apikey", serviceKinds: ["llm", "image", "video"] });
+    expect(kieRegistry).toMatchObject({ id: "kie", alias: "kie", authType: "apikey", serviceKinds: ["llm", "image", "video", "tts", "stt"] });
     expect(kieRegistry.transport).toEqual({ baseUrl: `${KIE}/v1/chat/completions`, validateUrl: `${KIE}/v1/models`, authHeader: "bearer" });
     expect(kieRegistry.models.filter((row) => !row.kind).map((row) => row.id)).toEqual([
       "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5", "gpt-5-5", "gpt-5-4", "gpt-5-2",

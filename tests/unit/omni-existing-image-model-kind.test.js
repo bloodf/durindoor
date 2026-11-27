@@ -18,16 +18,19 @@ const EXPECTED = {
   leonardo: { alias: "leo", models: ["phoenix", "sdxl"] },
   ideogram: { alias: "ideo", models: ["V_3", "V_2A"] },
 };
+// Leonardo now has native image and video adapters; its video rows are the only addition.
+const VIDEO_ROWS = { leonardo: ["motion-2.0", "motion-2.0-fast"] };
 const entry = (id) => REGISTRY.find((e) => e.id === id);
 
 describe("registry rows for existing Leonardo and Ideogram models", () => {
   for (const [id, { alias, models }] of Object.entries(EXPECTED)) {
     it(`${id}: every registered model is declared kind "image" and nothing else was added`, () => {
       const row = entry(id);
+      const video = VIDEO_ROWS[id] ?? [];
       expect(row.alias).toBe(alias);
-      expect(row.models.map((m) => m.id)).toEqual(models);
-      for (const m of row.models) expect(m.kind).toBe("image");
-      expect(getProviderModels(alias).map((m) => m.id)).toEqual(models);
+      expect(row.models.map((m) => m.id)).toEqual([...models, ...video]);
+      for (const m of row.models) expect(m.kind).toBe(video.includes(m.id) ? "video" : "image");
+      expect(getProviderModels(alias).map((m) => m.id)).toEqual([...models, ...video]);
       for (const m of models) expect(getModelType(alias, m)).toBe("image");
     });
   }
@@ -59,7 +62,8 @@ describe("chat selection classification", () => {
     const wrong = [];
     for (const e of REGISTRY) {
       for (const m of e.models || []) {
-        const declaredImage = (m.kind ?? m.type) === "image";
+        // An id is image-only when every row with that id is an image row (Haiper gen2 is also video).
+        const declaredImage = (e.models || []).filter((x) => x.id === m.id).every((x) => (x.kind ?? x.type) === "image");
         if (isImageOnlyModel(e.id, m.id) !== declaredImage) wrong.push(`${e.id}/${m.id}`);
       }
     }
@@ -81,7 +85,13 @@ describe("chat selection classification", () => {
 
 describe("image operation and media errors are preserved", () => {
   it("keeps both providers hidden from image provider pickers without an adapter", () => {
-    for (const id of Object.keys(EXPECTED)) {
+    // Leonardo has a native image adapter now and is listed for image and video.
+    expect(AI_PROVIDERS.leonardo.hiddenKinds).toBeUndefined();
+    expect(AI_PROVIDERS.leonardo.serviceKinds).toEqual(["image", "video"]);
+    expect(getProvidersByKind("image").map((p) => p.id)).toContain("leonardo");
+    expect(isImageProvider("leonardo")).toBe(true);
+    expect(getImageAdapter("leonardo")).not.toBeNull();
+    for (const id of Object.keys(EXPECTED).filter((id) => id !== "leonardo")) {
       expect(AI_PROVIDERS[id].hiddenKinds).toEqual(["image"]);
       expect(AI_PROVIDERS[id].serviceKinds).toEqual([]);
       expect(getProvidersByKind("image").map((p) => p.id)).not.toContain(id);
@@ -91,7 +101,16 @@ describe("image operation and media errors are preserved", () => {
   });
 
   it("answers image generation with the precise unsupported-provider error", async () => {
-    for (const [id, { models }] of Object.entries(EXPECTED)) {
+    // Leonardo reaches its native adapter, which refuses unsupported input before any network call.
+    const leonardo = await handleImageGenerationCore({
+      body: { prompt: "a gate in a forest", style: "vivid" },
+      modelInfo: { provider: "leonardo", model: "phoenix" },
+      credentials: { apiKey: "not-a-real-key" },
+    });
+    expect(leonardo.success).toBe(false);
+    expect(leonardo.status).toBe(400);
+    expect(leonardo.error).toBe("Leonardo image generation does not support style");
+    for (const [id, { models }] of Object.entries(EXPECTED).filter(([id]) => id !== "leonardo")) {
       const result = await handleImageGenerationCore({
         body: { prompt: "a gate in a forest" },
         modelInfo: { provider: id, model: models[0] },

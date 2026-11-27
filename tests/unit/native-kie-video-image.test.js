@@ -98,7 +98,7 @@ describe("canonical registration (isolated)", () => {
   it("registers native media and preserves the existing kie chat entry", () => {
     expect(getImageAdapter("kie")).toBe(staged.kieImageAdapter);
     expect(getVideoGenerationAdapter("kie")).toBe(staged.kieVideoAdapter);
-    expect(kieRegistry.serviceKinds).toEqual(["llm", "image", "video"]);
+    expect(kieRegistry.serviceKinds).toEqual(["llm", "image", "video", "tts", "stt"]);
     expect(kieRegistry.authType).toBe("apikey");
     expect(kieRegistry.transport.baseUrl).toBe(`${ORIGIN}/v1/chat/completions`);
   });

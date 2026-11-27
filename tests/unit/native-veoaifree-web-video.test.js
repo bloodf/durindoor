@@ -108,10 +108,11 @@ it("aborts hanging response bodies within the per-call deadline", async () => {
   expect(result.acceptedJob).toBeUndefined();
   expect(cancelled).toBe(true);
 });
-// Isolated staging block: registration may replace only these assertions.
-describe("staging registration boundary", () => {
-  it("has no registered private adapter for either identity", () => {
-    expect(getVideoGenerationAdapter("veoaifree-web")).toBeNull();
-    expect(getVideoGenerationAdapter("veo-free")).toBeNull();
+// Isolated registration block: the positive registry identity check.
+describe("canonical registration", () => {
+  it("registers the default adapter for the canonical id and the veo-free alias", async () => {
+    const { default: adapter } = await import("../../open-sse/services/providerParity/native-veoaifree-web-video/index.js");
+    expect(getVideoGenerationAdapter("veoaifree-web")).toBe(adapter);
+    expect(getVideoGenerationAdapter("veo-free")).toBe(adapter);
   });
 });

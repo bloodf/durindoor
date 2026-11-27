@@ -3,7 +3,7 @@ title: Browser cookie capture extension
 description: Install and use the opt-in extension to import a supported browser session into DurinDoor.
 ---
 
-The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **ChatGPT Web Codex**, **Claude Web**, **Gemini Web**, **Doubao Web**, **Z.ai Web**, **MaxAI**, **Arena**, **ChatPlayground**, **Perplexity Web**, **Grok Web**, **Muse Spark Web**, **Tencent Yuanbao Web**, **PromptQL**, **Notion AI Web**, **NoTrack Web**, **Tencent AI Studio Web**, **Blackbox Web**, **Conol Web**, **Poe Web**, **v0 Vercel Web**, **Inner.ai Web**, **Venice Web**, **TinyCMS Web** and **DeepSeek Web**. For TinyCMS Web it reads the `app-config-uuid` local storage value instead of a cookie, and for DeepSeek Web the `userToken` local storage value. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
+The DurinDoor Cookie Capture extension sends approved cookies from a signed-in browser tab to your own dashboard after you review and confirm the transfer. It supports **ChatGPT Web**, **ChatGPT Web Codex**, **Claude Web**, **Gemini Web**, **Doubao Web**, **Z.ai Web**, **MaxAI**, **Arena**, **ChatPlayground**, **Perplexity Web**, **Grok Web**, **Muse Spark Web**, **Tencent Yuanbao Web**, **PromptQL**, **Notion AI Web**, **NoTrack Web**, **Tencent AI Studio Web**, **Blackbox Web**, **Conol Web**, **Poe Web**, **v0 Vercel Web**, **Inner.ai Web**, **Venice Web**, **Veo AI Free Web**, **TinyCMS Web** and **DeepSeek Web**. For TinyCMS Web it reads the `app-config-uuid` local storage value instead of a cookie, and for DeepSeek Web the `userToken` local storage value. Other providers, including HuggingChat, are not supported by the extension. Importing a session does not add a missing provider executor; Muse Spark Web chat requests currently return `provider_port_pending`.
 
 A session cookie grants access to your account. Protect your dashboard and restrict access to your gateway; see [API key scoping](../operations/api-key-scoping.mdx).
 
@@ -28,10 +28,11 @@ The command writes a zip and a `.sha256` file under `extensions/provider-cookie-
 
 The pairing secret is shown once, expires after two minutes, and is bound to one provider and target. Create a new pairing after a failed attempt. Cancel discards the pairing and aborts an in-flight request.
 
-### Inner.ai Web and Venice Web
+### Inner.ai Web, Venice Web and Veo AI Free Web
 
 - **Inner.ai Web:** keep `https://app.innerai.com` in the active tab. The extension reads only the `token` cookie (it may be scoped to `.innerai.com`). It never reads your account email. To store one, type it in the optional **Account email** field of the dashboard dialog before you choose **Create pairing**; the server binds it to that pairing and appends it to the stored token. Leave it blank to store the token alone and rely on the provider profile lookup. See [Inner.ai Web](./inner-ai-web.md).
 - **Venice Web:** sign in at `https://venice.ai`, then open `https://clerk.venice.ai` in the active tab and send from there. The credential is the `__client` cookie of that Clerk origin; a `venice.ai` tab is refused. See [Venice Web](./venice-web.md).
+- **Veo AI Free Web:** sign in at `https://veoaifree.com` and keep that tab active. The extension reads only the WordPress signed-in cookie `wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b` of that site. The provider works anonymously without it; a captured session is optional. See [Veo AI Free Web](./veoaifree-web.md).
 
 ## Privacy and permissions
 

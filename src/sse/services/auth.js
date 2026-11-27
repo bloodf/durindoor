@@ -37,6 +37,11 @@ const NO_AUTH_STORED_DATA_PROVIDERS = new Set(["mimocode", "devin-cli-agentic"])
 // With an active row, the handler no-auth path takes normal connection
 // selection, the same as a scoped key, so the row's credentials are sent.
 const NO_AUTH_CONNECTION_HOST_PROVIDERS = new Set(["local-whisper", "firecrawl_custom"]);
+// Anonymous providers that also accept an optional saved web session (Veo AI
+// Free's imported WordPress sign-in cookie). Zero rows keep the anonymous
+// handler path; once a row exists, handler no-auth paths take normal selection
+// so the selected row's session is sent and never silently dropped.
+const NO_AUTH_OPTIONAL_SESSION_PROVIDERS = new Set(["veoaifree-web"]);
 
 // ─── ollama-local node routing (#2024) ───────────────────────────────────────
 // Several Ollama nodes can run side by side, each stored as its own connection
@@ -410,7 +415,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     throwIfAborted(signal);
 
     const isNoAuthProvider = AI_PROVIDERS[providerId]?.noAuth === true || options?.noAuthPath === true;
-    const hasSavedHost = NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) && connections.length > 0;
+    const hasSavedHost = (NO_AUTH_CONNECTION_HOST_PROVIDERS.has(providerId) || NO_AUTH_OPTIONAL_SESSION_PROVIDERS.has(providerId)) && connections.length > 0;
     // A saved host row that is gated or rate-limited must surface that state,
     // never fall back to a credential that calls the default host.
     const publicFallbackAllowed = !hasSavedHost && !scopeRestricted && scopedHasOverlap && (options?.noAuthPath === true || providerAllowsPublicNoAuthFallback(providerId)) && !excludeSet.has("noauth");

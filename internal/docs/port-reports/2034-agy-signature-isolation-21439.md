@@ -108,7 +108,7 @@ Antigravity. That is a translator change outside this unit.
 
 ## Contracts
 
-`tests/unit/antigravity-signature-isolation-2034.test.js` has 15 cases. It uses the
+`tests/unit/antigravity-signature-isolation-completion.test.js` has 15 cases. It uses the
 real `handleChatCore`, translators and `AntigravityExecutor`, with only the
 outbound transport mocked. The scenarios use two synthetic accounts, client
 sessions, the same tool ID, the same model family, warm and cold caches, and a

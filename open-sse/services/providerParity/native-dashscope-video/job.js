@@ -35,9 +35,14 @@ import {
   ALIBABA_VIDEO_TIMEOUT_MS,
   alibabaVideoResultUrl,
 } from "../../alibabaVideo/job.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { resolveDashscopeConnectionRegion } from "../native-dashscope-image/regions.js";
 import {
   DASHSCOPE_VIDEO_ACCEPTED_REGIONS,
+  DASHSCOPE_VIDEO_MAX_CALLER_POLL_INTERVAL_MS,
+  DASHSCOPE_VIDEO_MAX_CALLER_TIMEOUT_MS,
+  DASHSCOPE_VIDEO_MIN_CALLER_POLL_INTERVAL_MS,
+  dashscopeVideoEndpoint,
   dashscopeVideoIdentity,
   dashscopeVideoSubmitUrl,
   dashscopeVideoTaskUrl,
@@ -88,6 +93,49 @@ export function dashscopeVariantConnectionMismatch(credentials) {
   return null;
 }
 
+// A whole number of milliseconds >= 1 (source pollBounds.ts positiveWholeMs),
+// as a number or a digit string; anything else present is refused, not dropped.
+function callerMs(body, field) {
+  const value = body?.[field];
+  if (value === undefined || value === null) return null;
+  const numeric = isNumber(value) || (isString(value) && /^\s*\d+(\.\d+)?\s*$/.test(value));
+  const n = numeric ? Number(value) : Number.NaN;
+  if (!Number.isFinite(n) || Math.floor(n) < 1) {
+    throw Object.assign(new Error(`DashScope video ${field} must be a positive number of milliseconds`), { status: HTTP_STATUS.BAD_REQUEST });
+  }
+  return Math.floor(n);
+}
+
+/**
+ * The caller's polling options, honored within the source's ceilings
+ * (pollBounds.ts: timeout_ms up to 600 s, poll_interval_ms up to 120 s; a
+ * default above a ceiling stays reachable) and the gateway's 1 s interval
+ * floor. Refused with 400 before any submit: a non-numeric or non-positive
+ * value, `poll_timeout_ms` (the source's DashScope handler does not read it),
+ * and an interval that leaves no poll inside the deadline (the task would be
+ * created and billed but never checked).
+ *
+ * @returns {{ timeoutMs: number, pollIntervalMs: number, requested: object }}
+ */
+export function resolveDashscopeVideoPolling(body, { timeoutMs = DASHSCOPE_VIDEO_TIMEOUT_MS, pollIntervalMs = DASHSCOPE_VIDEO_POLL_INTERVAL_MS } = {}) {
+  if (body?.poll_timeout_ms !== undefined && body?.poll_timeout_ms !== null) {
+    throw Object.assign(new Error("DashScope video takes timeout_ms, not poll_timeout_ms"), { status: HTTP_STATUS.BAD_REQUEST });
+  }
+  const timeout = callerMs(body, "timeout_ms");
+  const interval = callerMs(body, "poll_interval_ms");
+  const resolved = {
+    timeoutMs: timeout === null ? timeoutMs : Math.min(timeout, Math.max(DASHSCOPE_VIDEO_MAX_CALLER_TIMEOUT_MS, timeoutMs)),
+    pollIntervalMs: interval === null
+      ? pollIntervalMs
+      : Math.max(DASHSCOPE_VIDEO_MIN_CALLER_POLL_INTERVAL_MS, Math.min(interval, Math.max(DASHSCOPE_VIDEO_MAX_CALLER_POLL_INTERVAL_MS, pollIntervalMs))),
+    requested: { timeout_ms: timeout, poll_interval_ms: interval },
+  };
+  if ((timeout !== null || interval !== null) && resolved.pollIntervalMs >= resolved.timeoutMs) {
+    throw Object.assign(new Error("DashScope video poll_interval_ms must be shorter than timeout_ms"), { status: HTTP_STATUS.BAD_REQUEST });
+  }
+  return resolved;
+}
+
 /**
  * Submit one video-synthesis task for the selected connection of `providerId`
  * and follow it to its video URL.
@@ -107,6 +155,7 @@ export async function runDashscopeVariantVideoJob({
   pollIntervalMs = DASHSCOPE_VIDEO_POLL_INTERVAL_MS,
   wait = sleep,
   now = Date.now,
+  regional = false,
 }) {
   const identity = dashscopeVideoIdentity(providerId);
   if (!identity) return createErrorResult(500, "DashScope video provider is not a staged identity");
@@ -120,9 +169,19 @@ export async function runDashscopeVariantVideoJob({
   if (!isString(token) || !token.trim() || /[\r\n]/.test(token)) {
     return createErrorResult(401, `${label} API key is required`);
   }
-  const mismatch = dashscopeVariantConnectionMismatch(credentials);
-  if (mismatch) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `${label} video uses only ${identity.origin}; this connection's ${mismatch} is not supported`);
+  // The identity's own fixed endpoints: pinned, or looked up by (identity, region).
+  let endpoint = identity;
+  let region = "global-sg";
+  if (regional) {
+    const bound = resolveDashscopeConnectionRegion(providerId, credentials);
+    if (bound.error) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `${label} video connection ${bound.error}`);
+    endpoint = dashscopeVideoEndpoint(providerId, bound.region);
+    region = bound.region;
+  } else {
+    const mismatch = dashscopeVariantConnectionMismatch(credentials);
+    if (mismatch) {
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, `${label} video uses only ${identity.origin}; this connection's ${mismatch} is not supported`);
+    }
   }
   if (signal?.aborted) return abortedResult();
   const secrets = { apiKey: credentials?.apiKey, accessToken: credentials?.accessToken };
@@ -177,7 +236,7 @@ export async function runDashscopeVariantVideoJob({
       stopWaiting = () => rejectWait(timedOut ? timeoutError() : fetchSignal.reason);
       fetchSignal.addEventListener("abort", stopWaiting, { once: true });
     });
-    const pending = fetch(dashscopeVideoSubmitUrl(identity), { ...init, signal: fetchSignal });
+    const pending = fetch(dashscopeVideoSubmitUrl(endpoint), { ...init, signal: fetchSignal });
     let delivered = null;
     try {
       delivered = await Promise.race([pending, bound]);
@@ -226,7 +285,7 @@ export async function runDashscopeVariantVideoJob({
 
   async function awaitTask(id) {
     const budget = () => Math.max(1, Math.min(requestTimeoutMs, deadline - now()));
-    const url = dashscopeVideoTaskUrl(identity, id);
+    const url = dashscopeVideoTaskUrl(endpoint, id);
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
     let delay = pollIntervalMs;
     let retries = 0;
@@ -309,13 +368,13 @@ export async function runDashscopeVariantVideoJob({
     log?.debug?.("DASHSCOPE_VIDEO", `${providerId} video submit redirect refused`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${label} video submit redirect refused`);
   }
-  let answeredBy = identity.origin;
+  let answeredBy = endpoint.origin;
   try {
     if (response.url) answeredBy = new URL(response.url).origin;
   } catch {
     answeredBy = null;
   }
-  if (response.redirected || answeredBy !== identity.origin) {
+  if (response.redirected || answeredBy !== endpoint.origin) {
     discard(response);
     return withAcceptedJob(createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${label} video submit was redirected`), "submit-unknown");
   }
@@ -327,7 +386,7 @@ export async function runDashscopeVariantVideoJob({
     id = isRecord(accepted.output) ? accepted.output.task_id : null;
     if (!isString(id) || !TASK_ID_RE.test(id)) throw unknownOutcome("did not return a usable video task id");
     const url = await awaitTask(id);
-    return { success: true, url, taskId: id, accounting: mediaAccounting(null, providerId, "video") };
+    return { success: true, url, taskId: id, region, accounting: mediaAccounting(null, providerId, "video") };
   } catch (error) {
     if (signal?.aborted || error?.name === "AbortError") return withAcceptedJob(abortedResult(), "accepted");
     const status = Number(error?.status);

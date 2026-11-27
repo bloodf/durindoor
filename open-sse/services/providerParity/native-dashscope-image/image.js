@@ -19,8 +19,10 @@
 // included); input images for a text-only model; a size that is not WxH/W*H;
 // n, seed, booleans or color_palette of the wrong shape; response_format other
 // than url; streaming; a model prefixed with another identity's id or alias; a
-// connection whose region is not global-sg (the china-beijing hosts and custom
-// base URLs are not ported: each key goes only to its fixed origin). After the
+// connection whose region is not global-sg on the default (pinned) adapters;
+// the regional adapters (`regional: true`) serve both source regions from the
+// finite map in ./regions.js and refuse unknown regions and custom base URLs.
+// Either way each key goes only to its identity's fixed host. After the
 // send: redirects are refused; the submit is time bounded and follows the
 // caller's signal; error text never quotes the upstream body or the key (only
 // a vendor code of a safe shape); result URLs must be public https and are
@@ -36,9 +38,10 @@ import {
   DASHSCOPE_BOOLEAN_PARAMETERS, DASHSCOPE_IMAGE_ERROR_MAX_BYTES, DASHSCOPE_IMAGE_IDENTITIES, DASHSCOPE_IMAGE_MAX_INPUT_IMAGES,
   DASHSCOPE_IMAGE_MAX_N, DASHSCOPE_IMAGE_MAX_PALETTE, DASHSCOPE_IMAGE_MAX_PROMPT_CHARS, DASHSCOPE_IMAGE_MAX_RESULTS,
   DASHSCOPE_IMAGE_MAX_SIDE, DASHSCOPE_IMAGE_MIN_SIDE, DASHSCOPE_IMAGE_RESPONSE_MAX_BYTES, DASHSCOPE_IMAGE_SUBMIT_TIMEOUT_MS,
-  DASHSCOPE_IMAGE_TOTAL_TIMEOUT_MS,
+  DASHSCOPE_IMAGE_PATH, DASHSCOPE_IMAGE_TOTAL_TIMEOUT_MS,
 } from "./config.js";
 import { boundedFetch, discard, isRedirect, offOrigin, provenUnsent, readText } from "./http.js";
+import { DASHSCOPE_REGIONS, dashscopeMediaOrigin, resolveDashscopeConnectionRegion } from "./regions.js";
 
 const MODALITY = "image";
 const SIZE_RE = /^(\d{2,5})\s*[x*]\s*(\d{2,5})$/i;
@@ -57,6 +60,12 @@ const reject = (message) => Object.assign(new Error(message), { status: HTTP_STA
 const present = (value) => value !== undefined && value !== null;
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const vendorCode = (value) => (isString(value) && CODE_RE.test(value) ? value : null);
+
+/** The fixed image URL of an identity in a canonical region (./regions.js), or null. */
+export function dashscopeImageUrl(providerId, region) {
+  const origin = dashscopeMediaOrigin(providerId, region);
+  return origin ? `${origin}${DASHSCOPE_IMAGE_PATH}` : null;
+}
 
 /** The identity record for a provider id, or null. */
 export const dashscopeImageIdentity = (providerId) =>
@@ -273,7 +282,9 @@ async function refusedAnswer(identity, response, { signal, timeoutMs, secrets })
 
 /**
  * @param {string} providerId - one of DASHSCOPE_IMAGE_PROVIDER_IDS
- * @param {object} [options] - test seams and bounds: { fetchImpl, submitTimeoutMs, timeoutMs, now }
+ * @param {object} [options] - test seams and bounds: { fetchImpl, submitTimeoutMs, timeoutMs, now },
+ *   and `regional`: true resolves the connection's region (./regions.js) to that
+ *   identity's fixed regional host instead of accepting global-sg only
  */
 export function createDashscopeImageAdapter(providerId, options = {}) {
   const identity = requireIdentity(providerId);
@@ -282,6 +293,7 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
     submitTimeoutMs = DASHSCOPE_IMAGE_SUBMIT_TIMEOUT_MS,
     timeoutMs = DASHSCOPE_IMAGE_TOTAL_TIMEOUT_MS,
     now = Date.now,
+    regional = false,
   } = options;
   const label = identity.id;
   const aborted = () => createErrorResult(499, `${label} image request aborted`);
@@ -295,6 +307,7 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
     models: identity.models,
     supportedSizes: identity.supportedSizes,
     responseFormats: Object.freeze(["url"]),
+    regions: Object.freeze(regional ? [...DASHSCOPE_REGIONS] : ["global-sg"]),
     /**
      * Generate images on this identity's connection.
      *
@@ -311,7 +324,12 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
       }
       const key = resolveDashscopeImageCredential(credentials);
       if (!key) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, `${label} API key is required`);
-      if (!isDashscopeImageRegionSupported(credentials)) {
+      let target = { region: "global-sg", origin: identity.origin, url: identity.url };
+      if (regional) {
+        const bound = resolveDashscopeConnectionRegion(label, credentials);
+        if (bound.error) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `${label} image connection ${bound.error}`);
+        target = { region: bound.region, origin: bound.origin, url: dashscopeImageUrl(label, bound.region) };
+      } else if (!isDashscopeImageRegionSupported(credentials)) {
         return createErrorResult(HTTP_STATUS.BAD_REQUEST, `${label} image generation is staged for the global-sg region only`);
       }
       if (signal?.aborted) return aborted();
@@ -324,11 +342,11 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
         redirect: "manual",
         proxyOptions: resolveCredentialProxyOptions(credentials),
       };
-      log?.info?.("IMAGE", `${label}/${request.model} (${identity.format})`);
+      log?.info?.("IMAGE", `${label}/${request.model} (${identity.format}, ${target.region})`);
 
       let response;
       try {
-        response = await boundedFetch(fetchImpl, identity.url, init, { signal, timeoutMs: Math.min(submitTimeoutMs, timeoutMs) });
+        response = await boundedFetch(fetchImpl, target.url, init, { signal, timeoutMs: Math.min(submitTimeoutMs, timeoutMs) });
       } catch (error) {
         const unsent = provenUnsent(error);
         if (signal?.aborted || error?.name === "AbortError") return unsent ? aborted() : acceptedJob(aborted(), "submit-unknown");
@@ -344,7 +362,7 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
         discard(response);
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${label} image request redirect refused`);
       }
-      if (offOrigin(response, identity.origin)) {
+      if (offOrigin(response, target.origin)) {
         discard(response);
         return acceptedJob(createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${label} image request was answered by another origin`), "submit-unknown");
       }
@@ -365,9 +383,11 @@ export function createDashscopeImageAdapter(providerId, options = {}) {
         return acceptedJob(createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${label} image generation returned ${unsafe ? "no safe" : "no"} images`), "accepted");
       }
       const payload = { created: Math.floor(now() / 1000), data: items };
+      const accounting = dashscopeImageAccounting(label, answer, payload);
+      if (regional) accounting.meta.region = target.region;
       return {
         success: true,
-        accounting: dashscopeImageAccounting(label, answer, payload),
+        accounting,
         response: new Response(JSON.stringify(payload), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         }),

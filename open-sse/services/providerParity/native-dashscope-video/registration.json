@@ -8,7 +8,8 @@
       "open-sse/config/videoRegistry.ts",
       "open-sse/handlers/videoGeneration.ts",
       "open-sse/handlers/videoGeneration/dashscopeHandler.ts",
-      "src/shared/constants/alibabaProviderRegions.ts"
+      "src/shared/constants/alibabaProviderRegions.ts",
+      "open-sse/utils/pollBounds.ts"
     ]
   },
   "localEquivalentBeforeStaging": {
@@ -25,91 +26,263 @@
     "qwenCloudVideoAdapter": "default adapter for qwen-cloud (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
     "qwenCloudTokenPlanVideoAdapter": "default adapter for qwen-cloud-token-plan",
     "bailianCodingPlanVideoAdapter": "default adapter for bailian-coding-plan",
-    "createDashscopeVariantVideoAdapter": "factory (providerId, { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now })",
+    "createDashscopeVariantVideoAdapter": "factory (providerId, { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now, regional })",
     "buildDashscopeVariantVideoRequest": "(providerId, model, body) -> { model, input, parameters }; throws status 400",
     "isDashscopeVariantVideoModel": "(providerId, model) -> boolean, that identity's source list only",
     "runDashscopeVariantVideoJob": "submit + bounded poll; { success, url, taskId, accounting } or error result with acceptedJob",
     "dashscopeVariantAcceptedJob": "(providerId, jobState) accepted-job accounting with unknown cost",
-    "dashscopeVariantConnectionMismatch": "(credentials) -> 'region' | 'baseUrl' | null",
+    "dashscopeVariantConnectionMismatch": "pinned instances only: (credentials) -> 'region' | 'baseUrl' | null",
     "DASHSCOPE_VIDEO_IDENTITIES": "frozen source registry entries per canonical id",
-    "DASHSCOPE_VIDEO_FORMAT": "dashscope-video"
+    "DASHSCOPE_VIDEO_FORMAT": "dashscope-video",
+    "dashscopeRegionalVideoAdapters": "region-parity instances keyed by canonical id (createDashscopeVariantVideoAdapter(id, { regional: true })); the instances registration wires",
+    "dashscopeVideoEndpoint": "(providerId, region) -> { origin, baseUrl, statusUrl } or null",
+    "resolveDashscopeVideoPolling": "(body, defaults) -> { timeoutMs, pollIntervalMs }; caller timeout_ms / poll_interval_ms within the source ceilings, throws status 400 for unusable values",
+    "DASHSCOPE_VIDEO_MAX_CALLER_TIMEOUT_MS": "600000 (source MAX_CALLER_POLL_TIMEOUT_MS)",
+    "DASHSCOPE_VIDEO_MAX_CALLER_POLL_INTERVAL_MS": "120000 (source MAX_CALLER_VIDEO_POLL_INTERVAL_MS)",
+    "DASHSCOPE_VIDEO_MIN_CALLER_POLL_INTERVAL_MS": "1000 (gateway floor)"
   },
   "providers": [
     {
       "canonicalId": "qwen-cloud",
-      "aliases": ["qwc"],
+      "aliases": [
+        "qwc"
+      ],
       "existingRegistryEntry": "open-sse/providers/registry/qwen-cloud.js",
-      "addServiceKinds": ["video"],
-      "authModes": ["apikey"],
-      "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+      "addServiceKinds": [
+        "video"
+      ],
+      "authModes": [
+        "apikey"
+      ],
+      "auth": {
+        "header": "Authorization",
+        "scheme": "Bearer",
+        "credentialFields": [
+          "apiKey",
+          "accessToken"
+        ]
+      },
       "connectionBaseUrlHonored": false,
-      "acceptedRegions": ["global-sg", "unset"],
+      "acceptedRegions": [
+        "global-sg",
+        "unset"
+      ],
       "endpoints": {
-        "submit": { "method": "POST", "url": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis", "headers": { "X-DashScope-Async": "enable" } },
-        "status": { "method": "GET", "url": "https://dashscope-intl.aliyuncs.com/api/v1/tasks/{task_id}" }
+        "submit": {
+          "method": "POST",
+          "url": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "headers": {
+            "X-DashScope-Async": "enable"
+          }
+        },
+        "status": {
+          "method": "GET",
+          "url": "https://dashscope-intl.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
       },
       "models": [
-        { "id": "happyhorse-1.1-i2v", "name": "HappyHorse 1.1 I2V" },
-        { "id": "happyhorse-1.1-t2v", "name": "HappyHorse 1.1 T2V" },
-        { "id": "happyhorse-1.1-r2v", "name": "HappyHorse 1.1 R2V" },
-        { "id": "happyhorse-1.0-video-edit", "name": "HappyHorse 1.0 Video Edit" },
-        { "id": "wan2.7-t2v", "name": "Wan 2.7 T2V" },
-        { "id": "wan2.7-i2v", "name": "Wan 2.7 I2V" },
-        { "id": "wan2.7-r2v-2026-06-12", "name": "Wan 2.7 R2V (2026-06-12)" },
-        { "id": "wan2.7-videoedit", "name": "Wan 2.7 Video Edit" }
+        {
+          "id": "happyhorse-1.1-i2v",
+          "name": "HappyHorse 1.1 I2V"
+        },
+        {
+          "id": "happyhorse-1.1-t2v",
+          "name": "HappyHorse 1.1 T2V"
+        },
+        {
+          "id": "happyhorse-1.1-r2v",
+          "name": "HappyHorse 1.1 R2V"
+        },
+        {
+          "id": "happyhorse-1.0-video-edit",
+          "name": "HappyHorse 1.0 Video Edit"
+        },
+        {
+          "id": "wan2.7-t2v",
+          "name": "Wan 2.7 T2V"
+        },
+        {
+          "id": "wan2.7-i2v",
+          "name": "Wan 2.7 I2V"
+        },
+        {
+          "id": "wan2.7-r2v-2026-06-12",
+          "name": "Wan 2.7 R2V (2026-06-12)"
+        },
+        {
+          "id": "wan2.7-videoedit",
+          "name": "Wan 2.7 Video Edit"
+        }
+      ],
+      "regionalEndpoints": {
+        "global-sg": {
+          "submit": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://dashscope-intl.aliyuncs.com/api/v1/tasks/{task_id}"
+        },
+        "china-beijing": {
+          "submit": "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
+      },
+      "regionalAcceptedRegions": [
+        "global-sg",
+        "china-beijing",
+        "unset"
       ]
     },
     {
       "canonicalId": "qwen-cloud-token-plan",
-      "aliases": ["qct"],
+      "aliases": [
+        "qct"
+      ],
       "existingRegistryEntry": "open-sse/providers/registry/qwen-cloud-token-plan.js",
-      "addServiceKinds": ["video"],
-      "authModes": ["apikey"],
-      "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+      "addServiceKinds": [
+        "video"
+      ],
+      "authModes": [
+        "apikey"
+      ],
+      "auth": {
+        "header": "Authorization",
+        "scheme": "Bearer",
+        "credentialFields": [
+          "apiKey",
+          "accessToken"
+        ]
+      },
       "connectionBaseUrlHonored": false,
-      "acceptedRegions": ["global-sg", "unset"],
+      "acceptedRegions": [
+        "global-sg",
+        "unset"
+      ],
       "endpoints": {
-        "submit": { "method": "POST", "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis", "headers": { "X-DashScope-Async": "enable" } },
-        "status": { "method": "GET", "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/tasks/{task_id}" }
+        "submit": {
+          "method": "POST",
+          "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "headers": {
+            "X-DashScope-Async": "enable"
+          }
+        },
+        "status": {
+          "method": "GET",
+          "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
       },
       "models": [
-        { "id": "happyhorse-1.1-i2v", "name": "HappyHorse 1.1 I2V" },
-        { "id": "happyhorse-1.1-t2v", "name": "HappyHorse 1.1 T2V" },
-        { "id": "happyhorse-1.1-r2v", "name": "HappyHorse 1.1 R2V" }
+        {
+          "id": "happyhorse-1.1-i2v",
+          "name": "HappyHorse 1.1 I2V"
+        },
+        {
+          "id": "happyhorse-1.1-t2v",
+          "name": "HappyHorse 1.1 T2V"
+        },
+        {
+          "id": "happyhorse-1.1-r2v",
+          "name": "HappyHorse 1.1 R2V"
+        }
+      ],
+      "regionalEndpoints": {
+        "global-sg": {
+          "submit": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/tasks/{task_id}"
+        },
+        "china-beijing": {
+          "submit": "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
+      },
+      "regionalAcceptedRegions": [
+        "global-sg",
+        "china-beijing",
+        "unset"
       ]
     },
     {
       "canonicalId": "bailian-coding-plan",
-      "aliases": ["bcp"],
+      "aliases": [
+        "bcp"
+      ],
       "existingRegistryEntry": "open-sse/providers/registry/bailian-coding-plan.js",
-      "addServiceKinds": ["video"],
-      "authModes": ["apikey"],
-      "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+      "addServiceKinds": [
+        "video"
+      ],
+      "authModes": [
+        "apikey"
+      ],
+      "auth": {
+        "header": "Authorization",
+        "scheme": "Bearer",
+        "credentialFields": [
+          "apiKey",
+          "accessToken"
+        ]
+      },
       "connectionBaseUrlHonored": false,
-      "acceptedRegions": ["global-sg", "unset"],
+      "acceptedRegions": [
+        "global-sg",
+        "unset"
+      ],
       "endpoints": {
-        "submit": { "method": "POST", "url": "https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis", "headers": { "X-DashScope-Async": "enable" } },
-        "status": { "method": "GET", "url": "https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks/{task_id}" }
+        "submit": {
+          "method": "POST",
+          "url": "https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "headers": {
+            "X-DashScope-Async": "enable"
+          }
+        },
+        "status": {
+          "method": "GET",
+          "url": "https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
       },
       "models": [
-        { "id": "happyhorse-1.1-i2v", "name": "HappyHorse 1.1 I2V" },
-        { "id": "happyhorse-1.1-t2v", "name": "HappyHorse 1.1 T2V" },
-        { "id": "happyhorse-1.1-r2v", "name": "HappyHorse 1.1 R2V" }
+        {
+          "id": "happyhorse-1.1-i2v",
+          "name": "HappyHorse 1.1 I2V"
+        },
+        {
+          "id": "happyhorse-1.1-t2v",
+          "name": "HappyHorse 1.1 T2V"
+        },
+        {
+          "id": "happyhorse-1.1-r2v",
+          "name": "HappyHorse 1.1 R2V"
+        }
+      ],
+      "regionalEndpoints": {
+        "global-sg": {
+          "submit": "https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://coding-intl.dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+        },
+        "china-beijing": {
+          "submit": "https://coding.dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+          "status": "https://coding.dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+        }
+      },
+      "regionalAcceptedRegions": [
+        "global-sg",
+        "china-beijing",
+        "unset"
       ]
     }
   ],
-  "responseFormats": { "video": ["url"] },
+  "responseFormats": {
+    "video": [
+      "url"
+    ]
+  },
   "notCovered": [
-    "china-beijing regional hosts (dashscope.aliyuncs.com, token-plan.cn-beijing.maas.aliyuncs.com, coding.dashscope.aliyuncs.com): refused, not substituted",
-    "custom connection base URLs",
-    "caller timeout_ms / poll_interval_ms (fixed source defaults used)",
+    "custom connection base URLs (refused before submit; a saved source preset counts as unset on the regional instances)",
+    "unrecognized region values (refused, not defaulted)",
+    "poll_timeout_ms (refused: the source DashScope handler reads timeout_ms)",
     "task cancellation (the source never cancels)",
-    "DashScope image multimodal-generation and SpeechSynthesizer audio: no pinned registry entry for these identities in this unit"
+    "DashScope image multimodal-generation and SpeechSynthesizer audio: see native-dashscope-image and native-dashscope-tts"
   ],
   "integrationPoints": [
     {
       "file": "open-sse/handlers/videoProviders/index.js",
-      "change": "import the three default adapters and add `qwen-cloud`/`qwc`, `qwen-cloud-token-plan`/`qct`, `bailian-coding-plan`/`bcp` to VIDEO_GENERATION_ADAPTERS; alibaba/ali stays unchanged"
+      "change": "add `qwen-cloud`/`qwc`, `qwen-cloud-token-plan`/`qct`, `bailian-coding-plan`/`bcp` to VIDEO_GENERATION_ADAPTERS mapped to dashscopeRegionalVideoAdapters[id]; alibaba/ali stays unchanged"
     },
     {
       "file": "open-sse/providers/registry/qwen-cloud.js, qwen-cloud-token-plan.js, bailian-coding-plan.js",
@@ -119,5 +292,35 @@
       "file": "docs/providers/catalog.mdx",
       "change": "list /v1/video/generations for the three identities after registration"
     }
-  ]
+  ],
+  "polling": {
+    "source": "dashscopeHandler.ts clampPollTimeoutMs(body.timeout_ms, 300000) and clampVideoPollIntervalMs(body.poll_interval_ms, 2500)",
+    "timeout_ms": "whole ms >= 1 (number or digit string), capped at 600000; total job deadline including submit",
+    "poll_interval_ms": "whole ms >= 1, raised to 1000 and capped at 120000",
+    "refusedBeforeSubmit": [
+      "non-numeric, NaN or < 1 values",
+      "poll_timeout_ms",
+      "an interval not shorter than the timeout"
+    ],
+    "appliesTo": "pinned and regional instances",
+    "accounting": "regional success accounting.meta records pollTimeoutMs and pollIntervalMs"
+  },
+  "regionParity": {
+    "adapters": "dashscopeRegionalVideoAdapters",
+    "map": "open-sse/services/providerParity/native-dashscope-image/regions.js DASHSCOPE_MEDIA_ORIGINS: finite (identity, region) -> literal origin, ported from alibabaProviderRegions.ts media roots",
+    "regions": [
+      "global-sg",
+      "china-beijing"
+    ],
+    "default": "global-sg when providerSpecificData.region is unset or blank (source getDefaultAlibabaProviderRegion)",
+    "spellings": "global-sg: global, international, singapore, ap-southeast-1; china-beijing: china, cn, beijing, cn-beijing (case-insensitive, trimmed)",
+    "refusedBeforeSend": [
+      "an unrecognized or non-string region (the source silently falls back to global-sg)",
+      "a non-preset providerSpecificData.baseUrl (the source sends the key to it)",
+      "an identity outside the map (alibaba-cn and other Alibaba-family ids)"
+    ],
+    "presetBaseUrl": "a saved source chat preset of the same identity (current or retired) is treated as unset, as in the source isFamilyPresetUrl; the region still decides",
+    "isolation": "the origin comes from the adapter's own identity and the selected connection's region only; the key is never sent to another identity's or region's host, redirects are refused, an answer naming another origin is an unknown outcome",
+    "accounting": "success accounting.meta.region records the region served"
+  }
 }

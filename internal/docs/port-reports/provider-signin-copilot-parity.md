@@ -89,12 +89,12 @@ Each connection is bound to its enterprise origin, client id and proxy through `
   - On direct egress, connection-time DNS answers are validated by the shared guarded dispatcher.
   - When a connection proxy is selected, the proxy resolves the target.
 - **Response filtering:** device responses and user profiles are reduced to the fields the flow uses.
-- **Session token:** a session token that is already expired is dropped.
+- **Session token:** a stated nonfinite or already-past expiry is dropped; an absent expiry (historical exchanges) is accepted and the token is replaced on the next refresh. Modern records bind the session digest, issuing client, issuer, API origin and credential kind to the connection.
 - **Endpoints:** `endpoints.api` and `endpoints.proxy` are stored only when trusted.
 
 **`open-sse/executors/ghe-copilot.js`** (requests and request-path refresh):
 
-- **Endpoint resolution:** when a `gheUrl` is stored, `endpointUrl` ignores an untrusted stored `copilotApiUrl` or `copilotProxyUrl` and falls back to the enterprise host.
+- **Endpoint resolution:** the legacy URL helper remains available for compatibility diagnostics. Actual inference preflights the stored issuer, selected proxy, valid session credential and API origin before any network work. A bound (modern) row with a stated untrusted API fails with `untrusted_api`; a row with no trusted API uses its own issuer, never a token-supplied host. Historical rows with an untrusted stored API also fall back to their issuer, which the protected suite pins.
 - **Refresh:** `refreshCredentials` uses `refreshBoundGheCopilotCredentials`:
   - It is bound to the connection's origin, proxy and client.
   - Redirects are refused.
@@ -104,7 +104,7 @@ Each connection is bound to its enterprise origin, client id and proxy through `
 - **Inference:** inference keeps the shared executor's `redirect: "error"`.
 - **Token counting:** the enterprise registry entry has no `countTokensUrl`, so the Claude count-tokens preflight never sends an enterprise token to the public host.
 
-**Trusted endpoints.** An endpoint is trusted when it uses `https` with no credentials, port, query or fragment, and its host is one of:
+**Trusted endpoints.** An endpoint is trusted when it uses `https` with no credentials, port, non-root path, query or fragment, and its host is one of:
 
 - The enterprise host itself.
 - A subdomain of the enterprise host, such as `copilot-api.tenant.ghe.com`.
@@ -157,10 +157,10 @@ Production parity is complete only after that batch wires these callsites.
 
 ## Not supported, and why
 
-- **OmniRoute's GHE.com `/copilot_internal/user` fallback.** It sends the long-lived GitHub OAuth token as an inference bearer to a token-supplied host and invents a one-hour expiry. DurinDoor requires a real session token from `/api/v3/copilot_internal/v2/token`. A tenant that only exposes the `user` endpoint cannot connect.
-- **Sibling API hosts.** An enterprise whose Copilot API host is neither the enterprise host, nor its subdomain, nor a GitHub-operated host (for example `github.acme.com` paired with `copilot-api.acme.com`) falls back to the enterprise host for requests. No source defines such a pairing, and no operator override exists.
-- **Rows without a stored `gheUrl`.** These are not produced by the current sign-in. They keep the previous unbound endpoint resolution in the executor, and they cannot refresh.
-- **Missing session expiry at sign-in.** An enterprise session token with no `expires_at` is still stored at sign-in, as before. Refresh requires a future `expires_at`.
+- **GHE.com cross-origin OAuth fallback.** OmniRoute's `resolveGheCopilotToken` reads `/api/v3/copilot_internal/user` and labels the OAuth token as a one-hour session. This implementation reads that source path but permits the OAuth credential only at the issuer itself. A peer fails with `unsupported_ghe_oauth_peer`, before inference: neither pin supplies a short-lived/session exchange for this mode. The one-hour reuse ceiling on an issuer-only fallback is local policy, not upstream OAuth expiry.
+- **Unproven sibling domains.** Neither pinned source establishes `github.acme.com` → `copilot-api.acme.com`. These fail actual inference rather than being silently redirected to the web host. The existing provider has no explicit operator-approved API-origin field; this change adds no caller override or global allowlist. A real session may reach one of CPA's four exact GitHub-operated API peers on another domain. Enterprise-host/subdomain trust is the pre-existing provider-specific namespace policy, not evidence of an arbitrary sibling pairing or a new wildcard for GitHub user-content domains.
+- **Legacy origin/client evidence.** `providerSpecificData.gheUrl` is the historical issuer field written by this provider and OmniRoute. An API/proxy URL alone is not an issuer. A distinct session token that is not stated as expired, with that historical issuer, may continue under the existing namespace/four-host policy. Refresh uses a stored `oauthClientId` or else the configured provider client (the one this provider and OmniRoute issue with) and sends OAuth only to the issuer; an empty client raises `reauthentication_needed`. Rows with neither `gheUrl` nor `gheBinding` (operator-stored API URL only) keep their prior dispatch, which the protected precedence suite pins; they cannot refresh and raise `reauthentication_needed` from the bound helpers. No credential is rewritten or migrated. Missing issuer, expired/missing session, or incompatible modern provenance requires reauthentication.
+- **Enterprise AI Credits lookup.** The inherited usage helper calls the consumer GitHub API. A configured enterprise credit limit now fails with `unsupported_ghe_usage` before that lookup; no source-supported enterprise usage contract was found. Response token usage and streaming retain their existing handling.
 - **No CLI enterprise sign-in.** The CLI service supports only github.com.
 - **CLIProxyAPI's public `TrustedAPI` check for github.com connections.** This unit did not compare or change it. The check would belong in the shared GitHub executor and model discovery, which are outside this unit.
 
@@ -205,3 +205,15 @@ Production parity is complete only after that batch wires these callsites.
 - `copilot-refresh-proxy-1472.test.js`
 - `copilot-m365-signin.test.js`
 - `outbound-url-guard-dns-pinning.test.js`
+
+## Origin guard completion evidence (#2034)
+
+Exact retained read-only source cache: `.orq/orders/upstream-source-cache-2034` in the parent checkout. Verified HEADs: cli `dbe641f286a489ecb39e3c041c554371e6add864`, easy `29567ead8164a00724dfdc2087f02a23895636ee`, omni `b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523`. CLIProxyAPI's `internal/auth/copilot/client.go`, SDK forwarding wrapper and executor implement public GitHub only; its fixed github.com issuer and four-host inference policy do not establish GHE host/token support. Easy's wrapper provides no independent GHE exchange. GHE attribution belongs to OmniRoute's `src/lib/oauth/providers/ghe-copilot.ts`, including its OAuth fallback. No sibling-domain credential contract was inferred.
+
+Device extraData keeps only `_gheUrl`; the poll attaches its issuer/client/proxy to the token object in process, and postExchange refuses a changed issuer or proxy. Modern stored `gheBinding` retains issuer/client/proxy and `gheSession` retains issuer/client/API/kind/token digest. Refresh uses that issuing client even if the process default changes. The four auth02 integration slots remain staged in `registration.json`; model/background/probe production wiring remains with that lane. It must pass the full trusted connection context, surface reauthentication errors and merge refreshed provenance with the existing connection metadata.
+
+All original 19 cases and every other existing suite remain byte-identical to base; the implementation satisfies them unchanged. No failure baseline changes. Additional bottom-transport tests exercise two issuers/clients/proxies, the exact GitHub-operated different-domain peer, forged metadata and credential provenance, OAuth nonforwarding, GHE.com issuer-only fallback and cross-origin refusal, legacy continuation/reauthentication, rotation, private enterprise routing, alternate request routes, redirects, response usage and streams. Existing cancellation checks retain their coverage. Focused validation uses private env-i HOME/DATA/TMP/XDG/npm/pnpm paths and at most two workers; no live provider, installation or full suite.
+
+Validation: the existing scoped files listed above plus `ghe-origin-completion-2034.test.js` passed 170 tests (19 preserved candidate cases, 129 existing regression tests, 22 additional cases). Focused ESLint passed without warnings. Root/full CI was not run, as requested. Final helper validation was repeated after the last issuer/client preflight adjustment.
+
+A shared dependency-link change interrupted one rerun (missing ws/chalk/undici). Final validation used private dependency links to the retained package files, without installation, and a fresh private DATA_DIR. Final 13-file result: 170/170 passed. Commitlint CLI was absent from the retained dependencies; the Conventional Commit message was checked against the repository rules without installing it.

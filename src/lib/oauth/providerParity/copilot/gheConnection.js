@@ -18,6 +18,8 @@
  *   goes through the provider outbound guard with a metadata-block floor and
  *   refuses redirects; device responses are reduced to the fields the flow uses.
  */
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { GITHUB_COPILOT } from "../../../../../open-sse/config/appConstants.js";
 import {
   gheCopilotTokenUrl,
@@ -73,6 +75,7 @@ export function isTrustedGheEndpoint(binding, value) {
   if (!binding || !isString(value) || !normalizeGheUrl(value)) return false;
   const url = new URL(value.trim());
   if (url.search || url.hash || url.port) return false;
+  if (url.pathname !== "/") return false;
   const host = url.hostname;
   return host === binding.host || host.endsWith(`.${binding.host}`) ||
     GITHUB_COPILOT_PUBLIC_API_HOSTS.includes(host);
@@ -107,6 +110,62 @@ export function resolveBoundGheApiBase(providerSpecificData) {
   });
 }
 
+/** Resolve identity from durable connection metadata, never the current process client. */
+export function storedGheBinding(credentials, proxyOptions = null, { refresh = false } = {}) {
+  const data = credentials?.providerSpecificData || {};
+  const identity = data.gheBinding;
+  // gheUrl is the historical field written by this provider and OmniRoute.
+  // API/proxy URLs alone cannot establish an OAuth issuer.
+  const issuer = identity?.issuer || data.gheUrl;
+  if (!normalizeGheUrl(issuer)) throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: OAuth issuer is missing");
+  if (identity && normalizeGheUrl(data.gheUrl) !== identity.issuer) {
+    throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: issuer binding mismatch");
+  }
+  // Rows written before the binding existed were issued by the configured
+  // provider client (OmniRoute and this provider use the same configured id).
+  const clientId = identity ? identity.clientId : (data.oauthClientId || gheCopilotClientId());
+  if ((refresh || identity) && (!isString(clientId) || !clientId.trim())) throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: issuing OAuth client is unknown");
+  const selectedProxy = identity ? identity.proxyOptions : proxyOptions;
+  if (identity && !isDeepStrictEqual(selectedProxy || null, proxyOptions || null)) {
+    throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: selected proxy differs from sign-in");
+  }
+  return bindGheConnection({ gheUrl: issuer, clientId: clientId || null, proxyOptions: selectedProxy });
+}
+
+/** Credential digest binds provenance without storing a second credential. */
+export const gheTokenHash = (token) => createHash("sha256").update(token).digest("hex");
+
+/** Preflight all inference routes before any quota lookup or provider transport. */
+export function gheRequestContext(credentials, proxyOptions = null, nowMs = Date.now()) {
+  const binding = storedGheBinding(credentials, proxyOptions);
+  const data = credentials.providerSpecificData;
+  const token = credentials.copilotToken || data.copilotToken;
+  const expiry = credentials.copilotTokenExpiresAt ?? data.copilotTokenExpiresAt;
+  // Historical rows may lack an expiry; a stated one must still be in the future.
+  if (!isString(token) || !token || (expiry != null && (!Number.isFinite(expiry) || expiry <= nowMs / 1000))) {
+    throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: a valid session credential is required");
+  }
+  const stated = data.copilotApiUrl;
+  const trusted = Boolean(stated) && isTrustedGheEndpoint(binding, stated);
+  // A bound row never had untrusted metadata written by sign-in; a mismatch is forgery.
+  if (data.gheBinding && stated && !trusted) {
+    throw new GheConnectionError("untrusted_api", "GitHub Enterprise API endpoint is untrusted; refusing host substitution");
+  }
+  // Without a trusted API endpoint the enterprise issuer itself serves the API.
+  const base = trusted ? resolveGheCopilotApiBase({ copilotApiUrl: stated }) : resolveBoundGheApiBase({ gheUrl: binding.gheUrl });
+  const api = new URL(base).origin;
+  const provenance = data.gheSession;
+  if (data.gheBinding && (!provenance || !["session", "issuer-oauth"].includes(provenance.kind) || provenance.issuer !== binding.gheUrl || provenance.clientId !== binding.clientId || provenance.apiOrigin !== api || provenance.tokenHash !== gheTokenHash(token))) {
+    throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: session provenance mismatch");
+  }
+  if (token === credentials.accessToken && !(provenance?.kind === "issuer-oauth" && api === binding.gheUrl)) {
+    throw new GheConnectionError("oauth_forwarding_refused", "Refusing to forward GitHub Enterprise OAuth credentials to an API peer");
+  }
+  const policy = getProviderValidationGuard();
+  assertOutboundUrlAllowed(base, policy === "none" ? "block-metadata" : policy);
+  return { binding, token, base };
+}
+
 const guardedDispatchers = new Map();
 function guardedDispatcher(guard) {
   if (!guardedDispatchers.has(guard)) guardedDispatchers.set(guard, createGuardedProbeDispatcher(guard));
@@ -139,7 +198,7 @@ export async function gheBoundFetch(binding, url, init = {}, { transport = proxy
   const policy = getProviderValidationGuard();
   const guard = policy === "none" ? "block-metadata" : policy;
   assertOutboundUrlAllowed(target, guard);
-  const request = { ...init, redirect: "manual" };
+  const request = { ...init, redirect: init.redirect === "error" ? "error" : "manual" };
   let response;
   try {
     response = await transport(target, { ...request, dispatcher: guardedDispatcher(guard) }, binding.proxyOptions);
@@ -172,17 +231,18 @@ export const pickGheDeviceResponse = (data) => pick(data, DEVICE_STRING_FIELDS, 
 export const pickGheUserInfo = (data) => pick(data, USER_STRING_FIELDS, ["id"]);
 
 /**
- * Decode a Copilot session exchange. Missing or already-expired session tokens
+ * Decode a Copilot session exchange. Missing tokens and stated-but-past expiries
  * are rejected (CLIProxyAPI `Exchange`); endpoints are filtered for trust.
  * @returns {{token: string, expiresAt: number, apiUrl?: string, proxyUrl?: string}|null}
  */
 export function decodeGheSessionToken(binding, data, nowMs = Date.now()) {
   if (!isRecord(data) || !isString(data.token) || !data.token) return null;
-  if (!isNumber(data.expires_at) || !Number.isFinite(data.expires_at) || data.expires_at <= nowMs / 1000) return null;
+  // Absent expiry is accepted (historical exchanges); a stated one must be a future number.
+  if (data.expires_at != null && (!isNumber(data.expires_at) || !Number.isFinite(data.expires_at) || data.expires_at <= nowMs / 1000)) return null;
   const endpoints = trustedGheEndpoints(binding, data.endpoints);
   return {
     token: data.token,
-    expiresAt: data.expires_at,
+    ...(data.expires_at != null ? { expiresAt: data.expires_at } : null),
     ...(endpoints.api ? { apiUrl: endpoints.api } : null),
     ...(endpoints.proxy ? { proxyUrl: endpoints.proxy } : null)
   };
@@ -208,11 +268,26 @@ export async function mintBoundGheSession(binding, oauthToken, { signal, transpo
   if (!oauthToken) return null;
   const response = await gheBoundFetch(binding, gheCopilotTokenUrl(binding.gheUrl),
     { headers: sessionHeaders(oauthToken), signal }, { transport });
+  if (response.status === 404 && binding.host.endsWith(".ghe.com")) {
+    await drain(response);
+    const fallback = await gheBoundFetch(binding, `${binding.gheUrl}/api/v3/copilot_internal/user`,
+      { headers: sessionHeaders(oauthToken), signal }, { transport });
+    if (!fallback.ok) { await drain(fallback); return null; }
+    const data = await readJson(fallback);
+    const api = trustedGheEndpoints(binding, data?.endpoints).api;
+    if (!api || new URL(api).origin !== binding.gheUrl) {
+      throw new GheConnectionError("unsupported_ghe_oauth_peer", "GHE.com returned no session credential: cross-origin OAuth fallback is unsupported; no safe peer credential contract in pinned sources");
+    }
+    // Local reuse ceiling, not a claim that the OAuth credential expires here.
+    return { token: oauthToken, expiresAt: Math.floor(now() / 1000) + 3600, apiUrl: api, kind: "issuer-oauth" };
+  }
   if (!response.ok) {
     await drain(response);
     return null;
   }
-  return decodeGheSessionToken(binding, await readJson(response), now());
+  const session = decodeGheSessionToken(binding, await readJson(response), now());
+  if (session?.token === oauthToken) throw new GheConnectionError("oauth_forwarding_refused", "Session exchange returned the OAuth credential instead of a scoped token");
+  return session;
 }
 
 /** Refresh the GHE OAuth token with the bound client id. */
@@ -256,22 +331,38 @@ function sessionFields(session) {
 export async function refreshBoundGheCopilotCredentials(credentials, log, proxyOptions = null, options = {}) {
   let binding;
   try {
-    binding = bindGheConnection({ gheUrl: credentials?.providerSpecificData?.gheUrl, proxyOptions });
-  } catch {
-    log?.warn?.("TOKEN", "GHE Copilot connection has no valid gheUrl; reconnect it");
-    return null;
+    binding = storedGheBinding(credentials, proxyOptions, { refresh: true });
+  } catch (error) {
+    if (error instanceof GheConnectionError) throw error;
+    throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed");
   }
   try {
     const direct = await mintBoundGheSession(binding, credentials.accessToken, options);
+    const fields = (session) => {
+      const result = sessionFields(session);
+      if (credentials.providerSpecificData?.gheBinding) {
+        result.providerSpecificData = {
+          ...result.providerSpecificData,
+          gheSession: {
+            issuer: binding.gheUrl, clientId: binding.clientId,
+            apiOrigin: new URL(session.apiUrl || binding.gheUrl).origin,
+            kind: session.kind || "session", tokenHash: gheTokenHash(session.token)
+          },
+          copilotToken: session.token, copilotTokenExpiresAt: session.expiresAt,
+          copilotApiUrl: session.apiUrl || null
+        };
+      }
+      return result;
+    };
     if (direct) {
-      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, ...sessionFields(direct) };
+      return { accessToken: credentials.accessToken, refreshToken: credentials.refreshToken, ...fields(direct) };
     }
     const oauth = await refreshBoundGheOAuth(binding, credentials?.refreshToken, options);
     if (!oauth) return null;
     const minted = await mintBoundGheSession(binding, oauth.accessToken, options);
-    return minted ? { ...oauth, ...sessionFields(minted) } : oauth;
+    return minted ? { ...oauth, ...fields(minted) } : oauth;
   } catch (error) {
-    if (options.signal?.aborted) throw error;
+    if (options.signal?.aborted || error?.code === "unsupported_ghe_oauth_peer" || error?.code === "oauth_forwarding_refused") throw error;
     log?.error?.("TOKEN", error instanceof GheConnectionError ? error.message : "GHE Copilot refresh request failed");
     return null;
   }

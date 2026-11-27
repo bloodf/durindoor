@@ -286,6 +286,10 @@ export class GithubExecutor extends BaseExecutor {
     return this.copilotEndpointRoute(model, credentials) === "responses";
   }
 
+  fetchProviderRequest(url, init, proxyOptions, _credentials) {
+    return proxyAwareFetch(url, init, proxyOptions);
+  }
+
   async execute(options) {
     const { model, log } = options;
     const body = Array.isArray(options.body?.tools) && options.body.tools.length > 128
@@ -521,13 +525,13 @@ export class GithubExecutor extends BaseExecutor {
       try {
         const timeoutSignal = AbortSignal.timeout(this.config.countTokensTimeoutMs);
         const countSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-        const countResponse = await proxyAwareFetch(this.config.countTokensUrl, {
+        const countResponse = await this.fetchProviderRequest(this.config.countTokensUrl, {
           method: "POST",
           headers: this.buildHeaders(credentials, false, requestContext),
           body: JSON.stringify(transformedBody),
           redirect: "error",
           signal: countSignal
-        }, proxyOptions);
+        }, proxyOptions, credentials);
         if (countResponse.ok) {
           const inputTokens = Number((await countResponse.json())?.input_tokens);
           if (Number.isFinite(inputTokens) && inputTokens > GITHUB_CLAUDE_MAX_PROMPT_TOKENS) {
@@ -608,18 +612,18 @@ export class GithubExecutor extends BaseExecutor {
       const mergedSignal = signal ? AbortSignal.any([signal, connectCtrl.signal]) : connectCtrl.signal;
 
       try {
-        response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+        response = await runQuotaBearingProviderRequest(() => this.fetchProviderRequest(url, {
           method: "POST",
           headers,
           body: JSON.stringify(transformedBody),
           redirect: "error",
           signal: mergedSignal
-        }, proxyOptions));
+        }, proxyOptions, credentials));
       } catch (error) {
         clearTimeout(connectTimer);
         // Quota-dispatch failures are local capacity failures, not provider
         // evidence; rethrow immediately so chatCore can fail over.
-        if (isQuotaDispatchUnavailable(error)) throw error;
+        if (isQuotaDispatchUnavailable(error) || this.isTerminalRequestError?.(error)) throw error;
         // Caller-initiated abort (NOT our connect timer) must propagate unretried.
         if (!connectTimedOut && (error?.name === "AbortError" || signal?.aborted)) throw error;
         /**
@@ -866,13 +870,13 @@ export class GithubExecutor extends BaseExecutor {
 
     log?.debug("GITHUB", "Sending translated request to /responses");
 
-    const response = await runQuotaBearingProviderRequest(() => proxyAwareFetch(url, {
+    const response = await runQuotaBearingProviderRequest(() => this.fetchProviderRequest(url, {
       method: "POST",
       headers,
       body: JSON.stringify(transformedBody),
       redirect: "error",
       signal
-    }, proxyOptions));
+    }, proxyOptions, credentials));
 
     if (!response.ok) {
       return { response, url, headers, transformedBody, attemptStartedAt: getCurrentProviderAttemptTimestamp() };

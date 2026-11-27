@@ -12,9 +12,10 @@
  * provider outbound guard applies, and token-supplied endpoints are kept only
  * when the enterprise connection trusts them.
  */
+import { isDeepStrictEqual } from "node:util";
 import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 import { GITHUB_COPILOT } from "../../../open-sse/config/appConstants.js";
-import { gheCopilotTokenUrl, gheOAuthTokenUrl } from "../../../open-sse/config/gheCopilot.js";
+import { gheCopilotTokenUrl, gheOAuthTokenUrl, normalizeGheUrl } from "../../../open-sse/config/gheCopilot.js";
 import { decodeCopilotPollResponse } from "./providerParity/copilot/index.js";
 import {
   GheConnectionError,
@@ -23,12 +24,16 @@ import {
   globalFetchTransport,
   pickGheDeviceResponse,
   pickGheUserInfo,
-  trustedGheEndpoints
+  trustedGheEndpoints,
+  gheTokenHash,
+  decodeGheSessionToken
 } from "./providerParity/copilot/gheConnection.js";
 import { gheCopilotClientId } from "../../../open-sse/services/gheCopilotAuth.js";
-import { isNumber, isRecord, isString } from "../../shared/utils/typeChecks.js";
+import { isRecord } from "../../shared/utils/typeChecks.js";
 
 const GHE_OAUTH = PROVIDER_OAUTH["ghe-copilot"] || {};
+/** Non-enumerable, in-process carrier of the poll's issuer/client/proxy. */
+const GHE_SIGNIN_BINDING = Symbol("gheSignInBinding");
 const transport = { transport: globalFetchTransport };
 
 function bind(gheUrl, config, proxyOptions) {
@@ -59,17 +64,12 @@ async function getJson(binding, url, accessToken) {
 
 /** Keep the session token and trusted endpoints; drop a token that is already expired. */
 function sessionFromExchange(binding, data) {
-  if (!isString(data.token) || !data.token) return {};
-  if (isNumber(data.expires_at) && data.expires_at <= Date.now() / 1000) return {};
-  const endpoints = trustedGheEndpoints(binding, data.endpoints);
-  return {
-    token: data.token,
-    ...(isNumber(data.expires_at) ? { expires_at: data.expires_at } : null),
-    ...(Object.keys(endpoints).length ? { endpoints } : null)
-  };
+  const session = decodeGheSessionToken(binding, data);
+  if (!session) return {};
+  return { token: session.token, expires_at: session.expiresAt, endpoints: trustedGheEndpoints(binding, data.endpoints) };
 }
 
-export default {
+const gheCopilot = {
   config: { ...GHE_OAUTH, get clientId() {return gheCopilotClientId();} },
   flowType: "device_code",
   requestDeviceCode: async (config, _codeChallenge, options = {}, proxyOptions) => {
@@ -101,15 +101,49 @@ export default {
       if (error instanceof GheConnectionError) return { ok: false, data: { error: "invalid_response" } };
       throw error;
     }
-    return { ok: response.ok, data: decodeCopilotPollResponse(await response.text()) };
+    const data = decodeCopilotPollResponse(await response.text());
+    // The issuing identity rides with this token, in process only, to postExchange.
+    if (isRecord(data) && data.access_token) {
+      Object.defineProperty(data, GHE_SIGNIN_BINDING, {
+        value: Object.freeze({ issuer: binding.gheUrl, clientId: binding.clientId, proxyOptions: binding.proxyOptions ? { ...binding.proxyOptions } : null })
+      });
+    }
+    return { ok: response.ok, data };
   },
   postExchange: async (tokens, proxyOptions, extraData) => {
-    const binding = bind(extraData?._gheUrl, null, proxyOptions);
+    const saved = tokens?.[GHE_SIGNIN_BINDING];
+    if (saved && (saved.issuer !== normalizeGheUrl(extraData?._gheUrl) || !isDeepStrictEqual(saved.proxyOptions || null, proxyOptions || null))) {
+      throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise sign-in identity or proxy changed; restart sign-in");
+    }
+    const binding = bind(extraData?._gheUrl, saved, proxyOptions);
     const [copilotToken, userInfo] = await Promise.all([
     getJson(binding, gheCopilotTokenUrl(binding.gheUrl), tokens.access_token),
     getJson(binding, `${binding.gheUrl}/api/v3/user`, tokens.access_token)]
     );
-    return { gheUrl: binding.gheUrl, copilotToken: sessionFromExchange(binding, copilotToken), userInfo: pickGheUserInfo(userInfo) };
+    let session = sessionFromExchange(binding, copilotToken);
+    let kind = "session";
+    if (!session.token && !copilotToken.token && !copilotToken.endpoints?.api && binding.host.endsWith(".ghe.com")) {
+      // OmniRoute's GHE.com fallback uses OAuth, not a minted session token.
+      // Only its issuer may receive that credential; no sibling-domain guess.
+      const user = await getJson(binding, `${binding.gheUrl}/api/v3/copilot_internal/user`, tokens.access_token);
+      const api = user.endpoints?.api;
+      if (!trustedGheEndpoints(binding, { api }).api || new URL(api).origin !== binding.gheUrl) {
+        throw new GheConnectionError("unsupported_ghe_oauth_peer", "GHE.com returned no session credential: cross-origin OAuth fallback is unsupported; no safe peer credential contract in pinned sources");
+      }
+      session = { token: tokens.access_token, expires_at: Math.floor(Date.now() / 1000) + Math.min(Number(tokens.expires_in) || 3600, 3600), endpoints: { api } };
+      kind = "issuer-oauth";
+    }
+    if (!session.token) throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: exchange returned no valid unexpired scoped credential");
+    if (kind === "session" && session.token === tokens.access_token) throw new GheConnectionError("oauth_forwarding_refused", "Session exchange returned the OAuth credential instead of a scoped token");
+    return {
+      gheUrl: binding.gheUrl, gheBinding: saved ? { ...saved } : undefined,
+      gheSession: session.token ? {
+        issuer: binding.gheUrl, clientId: binding.clientId,
+        apiOrigin: new URL(session.endpoints?.api || binding.gheUrl).origin,
+        kind, tokenHash: gheTokenHash(session.token)
+      } : undefined,
+      copilotToken: session, userInfo: pickGheUserInfo(userInfo)
+    };
   },
   mapTokens: (tokens, extra) => {
     const endpoints = extra?.copilotToken?.endpoints || {};
@@ -122,6 +156,7 @@ export default {
       email: extra?.userInfo?.email || null,
       providerSpecificData: {
         gheUrl: extra?.gheUrl,
+        ...(extra?.gheBinding ? { gheBinding: extra.gheBinding, gheSession: extra.gheSession } : null),
         copilotApiUrl: endpoints.api,
         copilotProxyUrl: endpoints.proxy,
         copilotToken: extra?.copilotToken?.token,
@@ -134,3 +169,5 @@ export default {
     };
   }
 };
+
+export default gheCopilot;

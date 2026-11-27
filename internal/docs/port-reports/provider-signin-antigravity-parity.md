@@ -40,9 +40,9 @@ The DurinDoor dashboard flow already matches or is stricter than CLIProxyAPI eve
 - `completeOnboarding` fails on a settled operation error (status 401/403/429 mapping), fails when no project is returned, and no longer sleeps after the last poll.
 - A state mismatch is reported as such; a browser launch failure no longer aborts the sign-in.
 
-Left as is: the CLI `onboardUser` body still sends `tierId` (camelCase). CLIProxyAPI and the dashboard send `tier_id`. `port9r-141-antigravity-onboarding-mode.test.js` pins the current shape, and regression files stay unchanged.
+Correction: the legacy CLI service sends `tier_id` on the wire, matching [CLIProxyAPI `internal/auth/antigravity/auth.go` at `dbe641f286a489ecb39e3c041c554371e6add864`](https://github.com/router-for-me/CLIProxyAPI/blob/dbe641f286a489ecb39e3c041c554371e6add864/internal/auth/antigravity/auth.go) (MIT) and the active dashboard flow. Internal arguments remain `tierId`; metadata and mode remain unchanged. The CLI service retains its ten-attempt polling bound and has no abort signal; dashboard polling supports cancellation.
 
-Dead path: `saveTokens` imports `../config/index.js`, which does not exist in this checkout. No production module imports `AntigravityService`, and the `cli/` package does not use it. `connect()` can complete only when `saveTokens` is supplied by the caller (the test spies it). The supported user path is the dashboard.
+Dead path: `saveTokens` imports `../config/index.js`, which does not exist in this checkout. The service is re-exported by `src/lib/oauth/services/index.js`, but no production caller of that export was found in the checkout, and the `cli/` package does not use it. `connect()` can complete only when `saveTokens` is supplied by the caller (the test spies it). The supported user path is the dashboard.
 
 ## Evidence
 

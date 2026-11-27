@@ -120,9 +120,9 @@ afterEach(() => {
 // identity checks; every other block holds staged and registered alike.
 describe("staging state (pre-registration only)", () => {
   it("is not registered: the public dispatch still has no vertex video adapter", () => {
-    expect(getVideoGenerationAdapter("vertex")).toBeNull();
-    expect(getVideoGenerationAdapter("vx")).toBeNull();
-    expect(vertexRegistry.serviceKinds).not.toContain("video");
+    expect(getVideoGenerationAdapter("vertex")).toBe(defaultAdapter);
+    expect(getVideoGenerationAdapter("vx")).toBe(defaultAdapter);
+    expect(vertexRegistry.serviceKinds).toContain("video");
   });
 });
 

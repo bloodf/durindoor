@@ -23,6 +23,7 @@ import renderhour from "./renderhour.js";
 import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
 import aihorde from "./aihorde.js";
+import { agnesImageAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
@@ -70,6 +71,9 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   // priced. Chat stays on the registry's OpenAI facade transport.
   aihorde,
   horde: aihorde,
+  // Native Agnes image generation on the existing `agnes` chat connection:
+  // the selected key goes only to apihub.agnes-ai.com; `size` is required.
+  agnes,
 });
 
 export function getImageAdapter(provider) {

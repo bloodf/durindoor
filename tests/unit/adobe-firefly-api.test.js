@@ -22,7 +22,7 @@ import provider, {
   ADOBE_IMS_TOKEN_URL,
 } from "../../open-sse/providers/private/adobe-firefly-api.js";
 import defaultAdapter, { createAdobeFireflyApiImageAdapter } from "../../open-sse/handlers/imageProviders/adobe-firefly-api.js";
-import { createAdobeFireflyRefresher, createAdobeTokenCache, defaultAdobeTokenCache } from "../../open-sse/services/adobeFireflyApi/auth.js";
+import { createAdobeTokenCache, defaultAdobeTokenCache } from "../../open-sse/services/adobeFireflyApi/auth.js";
 import * as job from "../../open-sse/services/adobeFireflyApi/job.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
@@ -210,6 +210,10 @@ describe("adobe-firefly-api success", () => {
       prompt: "bears dancing in a forest", numVariations: 2, size: { width: 2048, height: 2048 }, contentClass: "art", negativePrompt: "rain",
     });
     expect(submit.init.body).not.toContain(TOKEN_A1);
+    // The submit refuses redirects itself and carries a composed, cancellable signal.
+    expect(submit.init).toMatchObject({ method: "POST", redirect: "manual" });
+    expect(submit.init.signal).toBeInstanceOf(AbortSignal);
+    expect(submit.init.signal.aborted).toBe(false);
     expect(poll.init).toMatchObject({ method: "GET", redirect: "error" });
     expect(poll.init.headers).toEqual({ Authorization: `Bearer ${TOKEN_A1}`, "x-api-key": CLIENT_A, Accept: "application/json" });
     expect(virtual.waits).toEqual([2_000, 2_000]);
@@ -456,7 +460,6 @@ describe("adobe-firefly-api IMS errors", () => {
 
 describe("adobe-firefly-api submit errors", () => {
   it.each([
-    [401, {}],
     [403, { "x-access-error": "quota_exhausted" }],
     [403, { "x-access-error": "user_non_entitled" }],
     [429, { "retry-after": "60", "x-access-rate-limit-level": "org" }],
@@ -473,24 +476,54 @@ describe("adobe-firefly-api submit errors", () => {
     expectNoSecrets(result);
   });
 
-  it("re-mints once through the injected refresher after a submit 401, without persisting the token", async () => {
+  it("drops the rejected token after a submit 401, re-mints once and resends the refused submit, persisting nothing", async () => {
     const credentials = s2s();
+    const onCredentialsRefreshed = vi.fn();
     serve(ims(TOKEN_A1), json({}, 401), ims(TOKEN_A2), accepted(), succeeded());
-    const refreshCredentials = createAdobeFireflyRefresher(credentials, { cache, now: virtual.now });
-    const result = await run({ credentials, refreshCredentials });
+    const result = await run({ credentials, onCredentialsRefreshed });
     expect(result.success).toBe(true);
     expect(submits().map((call) => call.init.headers.Authorization)).toEqual([`Bearer ${TOKEN_A1}`, `Bearer ${TOKEN_A2}`]);
     expect(mints()).toHaveLength(2);
+    expect(credentials).toEqual(s2s());
+    expect(onCredentialsRefreshed).not.toHaveBeenCalled();
+    // The fresh token is cached for the next request; the rejected one is gone.
+    serve(accepted(), succeeded());
+    expect((await run({ credentials })).success).toBe(true);
+    expect(calls.at(-2).init.headers.Authorization).toBe(`Bearer ${TOKEN_A2}`);
   });
 
-  it("does not refresh a pasted token: the refresher returns nothing and the 401 stands", async () => {
+  it("stops after a second submit 401: two submits, two mints, no accepted job, and the second token is dropped too", async () => {
+    serve(ims(TOKEN_A1), json({}, 401), ims(TOKEN_A2), json({}, 401));
+    const result = await run();
+    expect(result).toMatchObject({ success: false, status: 401 });
+    expect(result.acceptedJob).toBeUndefined();
+    expect(submits()).toHaveLength(2);
+    expect(mints()).toHaveLength(2);
+    expect(cache.size).toBe(0);
+    expectNoSecrets(result);
+  });
+
+  it("keeps the submit 401 and sends nothing more when the re-mint fails", async () => {
+    serve(ims(TOKEN_A1), json({}, 401), json({ error: "invalid_client" }, 401));
+    const result = await run();
+    expect(result).toMatchObject({ success: false, status: 401 });
+    expect(result.acceptedJob).toBeUndefined();
+    expect(submits()).toHaveLength(1);
+    expect(cache.size).toBe(0);
+  });
+
+  it("does not refresh a pasted token: the 401 stands, nothing is minted and the connection is untouched", async () => {
     const credentials = pasted();
+    const refreshCredentials = vi.fn(async () => ({ accessToken: "synthetic-injected-token-0001" }));
     serve(json({}, 401));
-    const result = await run({ credentials, refreshCredentials: createAdobeFireflyRefresher(credentials, { cache, now: virtual.now }) });
+    const result = await run({ credentials, refreshCredentials });
     expect(result).toMatchObject({ success: false, status: 401 });
     expect(calls).toHaveLength(1);
+    expect(refreshCredentials).not.toHaveBeenCalled();
+    expect(credentials).toEqual(pasted());
   });
 
+  // Defense in depth: the submit uses manual redirects, so a real fetch never answers redirected.
   it("treats a redirected submit as an unknown outcome and drops the token it carried", async () => {
     const redirected = accepted();
     Object.defineProperty(redirected, "redirected", { value: true });

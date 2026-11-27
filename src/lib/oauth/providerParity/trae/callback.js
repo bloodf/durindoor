@@ -88,11 +88,6 @@ export async function refreshTraeCallbackCredentials(credentials, { fetchImpl = 
   }
 }
 
-/** Replace provider-controlled error text at the response boundary. */
-export function traeRequestFailure() {
-  return "Trae request failed";
-}
-
 /** The generic OAuth entry points do not implement Trae's callback protocol. */
 export function requireTraeImportMode(action) {
   if (action !== "import-token") throw new Error("Trae requires session import");

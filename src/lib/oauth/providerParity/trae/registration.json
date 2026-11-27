@@ -1,6 +1,12 @@
 {
   "status": "staged",
   "module": "./callback.js",
-  "exports": ["parseTraeApiHost", "parseTraeCallback", "refreshTraeCallbackCredentials", "traeRequestFailure", "requireTraeImportMode"],
-  "integration": "Before initiating generic authorize, device, exchange, poll, or CLI modes, call requireTraeImportMode until the dedicated callback is integrated. The ordered auth batch must issue a state through createOAuthFlow with the existing owner intent, claim it by provider and loginTraceID before parsing, verify the claim remains active and consume it before createProviderConnection, and use the existing authenticated loopback callback and connection storage. Route callback-only refresh through refreshTraeCallbackCredentials with the connection-bound proxy transport and signal. Replace provider-controlled create-session and stream error messages at the Trae executor response boundary with traeRequestFailure. Do not enable callback until all slots and tests are integrated."
+  "exports": [
+    "parseTraeApiHost",
+    "parseTraeCallback",
+    "refreshTraeCallbackCredentials",
+    "requireTraeImportMode"
+  ],
+  "integration": "Before initiating generic authorize, device, exchange, poll, or CLI modes, call requireTraeImportMode until the dedicated callback is integrated. The ordered auth batch must issue a state through createOAuthFlow with the existing owner intent, claim it by provider and loginTraceID before parsing, verify the claim remains active and consume it before createProviderConnection, and use the existing authenticated loopback callback and connection storage. Route callback-only refresh through refreshTraeCallbackCredentials with the connection-bound proxy transport and signal. Do not enable callback until all slots and tests are integrated.",
+  "production": "open-sse/executors/trae.js already returns fixed, typed (401/403/429, else 502) error text; no executor slot remains staged."
 }

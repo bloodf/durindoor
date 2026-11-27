@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import "../translator/registerAll.js";
 
 // Closed transport: the production executor performs both request steps.
 vi.mock("open-sse/utils/proxyFetch.js", () => ({}));
@@ -7,6 +8,9 @@ vi.mock("next/server", () => ({ NextResponse: { json: (body, init) => Response.j
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn() }));
 vi.mock("@/lib/localDb", () => ({ createProviderConnection: mocks.create, getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProxyPoolById: vi.fn() }));
 vi.mock("open", () => ({ default: vi.fn() }));
+vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => ({})) }));
+vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
+vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 
 
 afterEach(() => vi.unstubAllGlobals());
@@ -111,5 +115,104 @@ describe("staged Trae callback integration", () => {
     const abort = new AbortController(); abort.abort();
     await expect(refreshTraeCallbackCredentials(accounts[0], { fetchImpl, signal: abort.signal })).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Request/stream error contract of the production executor and gateway. No
+// staging dependency: these exercise open-sse/executors/trae.js directly.
+const SECRET = "synthetic-upstream-secret";
+const sse = (frames) => new Response(frames.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+const session = () => Response.json({ code: 0, data: { chat_session_id: "s", message_id: "m" } });
+function traeTransport(create, events = () => sse([["done", {}]])) {
+  const calls = [];
+  vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
+    calls.push(String(url));
+    if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
+    return String(url).endsWith("/chat_sessions") ? create() : events();
+  }));
+  return calls;
+}
+const run = async (stream, signal) => {
+  const { TraeExecutor } = await import("../../open-sse/executors/trae.js");
+  return new TraeExecutor().execute({ model: "auto", stream, signal, body: { messages: [{ role: "user", content: "hi" }] }, credentials: { accessToken: "synthetic-jwt" } });
+};
+
+describe("Trae request error exposure", () => {
+  it.each([
+    [401, 401, /re-import/],
+    [403, 403, /re-import/],
+    [429, 429, /rate limit or quota/],
+    [500, 502, /^Trae request failed$/]
+  ])("keeps create-session HTTP %i typed as %i without upstream text", async (upstream, status, message) => {
+    const calls = traeTransport(() => new Response(`${SECRET} synthetic-jwt`, { status: upstream, headers: { "Retry-After": "7" } }));
+    const { response } = await run(false);
+    expect(response.status).toBe(status);
+    if (status === 429) expect(response.headers.get("retry-after")).toBe("7");
+    const text = await response.text();
+    expect(JSON.parse(text).error.message).toMatch(message);
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain("synthetic-jwt");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("hides rejected create payloads and provider error events in both response modes", async () => {
+    traeTransport(() => Response.json({ code: 1001, message: SECRET }));
+    const rejected = await run(false);
+    expect(rejected.response.status).toBe(502);
+    expect(await rejected.response.text()).not.toContain(SECRET);
+
+    traeTransport(session, () => sse([["error", { code: 4001, message: SECRET }]]));
+    const json = await run(false);
+    const jsonText = await json.response.text();
+    expect(json.response.status).toBe(502);
+    expect(JSON.parse(jsonText).error.message).toBe("Trae request failed (code 4001)");
+    expect(jsonText).not.toContain(SECRET);
+
+    traeTransport(session, () => sse([["error", { code: `${SECRET} x`, message: SECRET }]]));
+    const streamed = await (await run(true)).response.text();
+    expect(streamed).toContain('"message":"Trae request failed"');
+    expect(streamed).not.toContain(SECRET);
+    expect(streamed.trim().endsWith("data: [DONE]")).toBe(true);
+  });
+
+  it("types an events-stream rejection and never echoes its body", async () => {
+    const calls = traeTransport(session, () => new Response(SECRET, { status: 401 }));
+    const json = await run(false);
+    expect(json.response.status).toBe(401);
+    expect(await json.response.text()).not.toContain(SECRET);
+    traeTransport(session, () => new Response(SECRET, { status: 429 }));
+    const streamed = await (await run(true)).response.text();
+    expect(streamed).toContain('"code":"429"');
+    expect(streamed).not.toContain(SECRET);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("propagates a caller abort before any session is submitted", async () => {
+    const calls = traeTransport(session);
+    const abort = new AbortController();
+    abort.abort();
+    await expect(run(false, abort.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it("serves success and typed auth failures through the real chat gateway", async () => {
+    const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
+    const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const call = (stream) => {
+      const body = { model: "trae/auto", messages: [{ role: "user", content: "hi" }], stream };
+      return handleChatCore({ body, modelInfo: { provider: "trae", model: "auto" }, credentials: { id: "trae-a", accessToken: "synthetic-jwt", authType: "oauth", providerSpecificData: {} }, clientRawRequest: { endpoint: "/v1/chat/completions", body, headers: {} }, connectionId: "trae-a", log, rtkEnabled: false, headroomEnabled: false, compressionEnabled: false });
+    };
+    traeTransport(session, () => sse([["plan_item", { id: "p", thought: "Hello" }], ["done", {}]]));
+    for (const stream of [false, true]) {
+      const ok = await call(stream);
+      expect(ok.response.status).toBe(200);
+      expect(await ok.response.text()).toContain("Hello");
+    }
+    traeTransport(() => new Response(`${SECRET} synthetic-jwt`, { status: 401 }));
+    const denied = await call(false);
+    expect(denied.response.status).toBe(401);
+    const deniedText = await denied.response.text();
+    expect(deniedText).not.toContain(SECRET);
+    expect(deniedText).not.toContain("synthetic-jwt");
   });
 });

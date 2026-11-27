@@ -61,8 +61,49 @@ function flattenQuery(messages = []) {
   return JSON.stringify([{ type: "text", data: { content: parts.join("\n\n") } }]);
 }
 
-function safeErrorMessage(value) {
-  return String(value || "Trae request failed").replace(/\s+at\s+.*$/gs, "").slice(0, 800);
+// Upstream response bodies and event messages are provider-controlled and may
+// echo the session token or account data, so only fixed text leaves here.
+// Auth and quota statuses stay typed so account cooldown and re-import logic
+// can still classify the failure; every other upstream failure becomes 502.
+const TRAE_FAILURE = "Trae request failed";
+const TRAE_STATUS_MESSAGES = {
+  401: "Trae rejected the session; re-import a fresh Cloud-IDE-JWT",
+  403: "Trae rejected the session; re-import a fresh Cloud-IDE-JWT",
+  429: "Trae rate limit or quota reached"
+};
+
+class TraeUpstreamError extends Error {
+  constructor(status, retryAfter = null) {
+    const typed = status in TRAE_STATUS_MESSAGES ? status : 502;
+    super(TRAE_STATUS_MESSAGES[typed] || TRAE_FAILURE);
+    this.name = "TraeUpstreamError";
+    this.status = typed;
+    this.retryAfter = retryAfter;
+  }
+}
+
+function retryAfterOf(response) {
+  const value = response?.headers?.get?.("retry-after");
+  return isString(value) && /^\d{1,6}$/.test(value.trim()) ? value.trim() : null;
+}
+
+function isAbortLike(error, signal) {
+  return Boolean(signal?.aborted) || error?.name === "AbortError";
+}
+
+/** Event codes are kept only when they look like an opaque identifier. */
+function eventFailureMessage(event) {
+  const code = event?.code;
+  const safe = (isString(code) || Number.isInteger(code)) && /^[A-Za-z0-9_.-]{1,64}$/.test(String(code));
+  return safe ? `${TRAE_FAILURE} (code ${code})` : TRAE_FAILURE;
+}
+
+function traeErrorResponse(error) {
+  const status = error instanceof TraeUpstreamError ? error.status : 502;
+  const headers = { "Content-Type": "application/json" };
+  if (error?.retryAfter) headers["Retry-After"] = error.retryAfter;
+  const message = error instanceof TraeUpstreamError ? error.message : TRAE_FAILURE;
+  return new Response(JSON.stringify({ error: { message, type: "api_error", code: "" } }), { status, headers });
 }
 
 export class TraeExecutor extends BaseExecutor {
@@ -148,10 +189,18 @@ export class TraeExecutor extends BaseExecutor {
       signal: signal || undefined
     }, proxyOptions);
     try {
-      const text = await response.text();
-      if (!response.ok) throw new Error(`[${response.status}] ${text}`);
-      const json = JSON.parse(text);
-      if (json?.code !== 0) throw new Error(`Trae create_session: ${JSON.stringify(json)}`);
+      if (!response.ok) {
+        await response.body?.cancel?.().catch(() => {});
+        throw new TraeUpstreamError(response.status, retryAfterOf(response));
+      }
+      let json;
+      try {
+        json = JSON.parse(await response.text());
+      } catch (error) {
+        if (isAbortLike(error, signal)) throw error;
+        throw new TraeUpstreamError(502);
+      }
+      if (json?.code !== 0 || !json?.data?.chat_session_id) throw new TraeUpstreamError(502);
       return { sessionId: json.data.chat_session_id, messageId: json.data.message_id, response };
     } catch (error) {
       await settleProviderAttemptDispatch(response, { reason: signal?.aborted ? "abort" : "upstream_error" });
@@ -172,7 +221,10 @@ export class TraeExecutor extends BaseExecutor {
         headers,
         signal: controller.signal
       }, proxyOptions, { quotaBearing: false });
-      if (!response.ok || !response.body) throw new Error(`[${response.status}] events stream failed`);
+      if (!response.ok || !response.body) {
+        await response.body?.cancel?.().catch(() => {});
+        throw new TraeUpstreamError(response.ok ? 502 : response.status, retryAfterOf(response));
+      }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -221,12 +273,11 @@ export class TraeExecutor extends BaseExecutor {
     try {
       session = await this.createSession(headers, query, model, providerData, signal, proxyOptions, sender);
     } catch (error) {
-      if (isQuotaDispatchUnavailable(error)) throw error;
+      // Aborts, local quota gates and fork-classified transport failures keep
+      // their own provenance; an upstream answer becomes a typed, fixed error.
+      if (isQuotaDispatchUnavailable(error) || isAbortLike(error, signal) || error?.errorKind) throw error;
       return {
-        response: new Response(JSON.stringify({ error: { message: safeErrorMessage(error.message), type: "api_error", code: "" } }), {
-          status: 502,
-          headers: { "Content-Type": "application/json" }
-        }),
+        response: traeErrorResponse(error),
         url: this.base(),
         headers,
         transformedBody: body
@@ -273,11 +324,12 @@ export class TraeExecutor extends BaseExecutor {
               }
               return eventName === "done";
             }, signal, proxyOptions, sender);
-            if (errorEvent) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [], error: { message: `trae ${errorEvent.code}: ${errorEvent.message}`, type: "api_error" } });else
+            if (errorEvent) emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [], error: { message: eventFailureMessage(errorEvent), type: "api_error" } });else
             emit({ id: responseId, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage });
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
           } catch (error) {
-            emit({ error: { message: safeErrorMessage(error.message), type: "api_error" } });
+            const message = error instanceof TraeUpstreamError ? error.message : TRAE_FAILURE;
+            emit({ error: { message, type: "api_error", ...(error instanceof TraeUpstreamError ? { code: String(error.status) } : null) } });
             controller.enqueue(enc.encode("data: [DONE]\n\n"));
           } finally {
             controller.close();
@@ -298,12 +350,17 @@ export class TraeExecutor extends BaseExecutor {
         return eventName === "done";
       }, signal, proxyOptions, sender);
     } catch (error) {
-      await settleProviderAttemptDispatch(session.response, { reason: signal?.aborted ? "abort" : "upstream_error" });
-      throw error;
+      if (isAbortLike(error, signal) || error?.errorKind || !(error instanceof TraeUpstreamError)) {
+        await settleProviderAttemptDispatch(session.response, { reason: signal?.aborted ? "abort" : "upstream_error" });
+        if (isAbortLike(error, signal) || error?.errorKind) throw error;
+        throw new Error(TRAE_FAILURE);
+      }
+      // The events request answered: keep its auth/quota status for the caller.
+      return result(traeErrorResponse(error));
     }
 
     if (errorEvent) {
-      return result(new Response(JSON.stringify({ error: { message: safeErrorMessage(`trae ${errorEvent.code}: ${errorEvent.message}`), type: "api_error", code: "" } }), {
+      return result(new Response(JSON.stringify({ error: { message: eventFailureMessage(errorEvent), type: "api_error", code: "" } }), {
         status: 502,
         headers: { "Content-Type": "application/json" }
       }));

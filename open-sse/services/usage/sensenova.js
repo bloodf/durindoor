@@ -1,5 +1,9 @@
 /**
  * SenseNova Token Plan usage (port of OmniRoute #20403).
+ * Based on cheaper-inference/OmniRoute (MIT), sensenovaQuotaFetcher.ts at
+ * cb67bb6521980b8a2c1d5a28fa2bbd0e5667fca0; see LICENSE and the port report.
+ * Copyright (c) 2026 Cheaper Inference - Created by Diego Souza
+ * https://github.com/diegosouzapw
  *
  * The balance lives behind the console gateway, which rejects the inference API
  * key. It accepts only a console session JWT (3h TTL), obtained by exchanging a
@@ -147,9 +151,18 @@ async function exchange(refreshToken, proxyOptions) {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: body.toString(),
+    // A rotating credential must neither follow a redirect nor be replayed by
+    // proxy fallback after an ambiguous transport failure.
+    redirect: "error",
+    noTransportReplay: true,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   }, proxyOptions);
-  if (!res?.ok) return { failure: res && (res.status >= 500 || res.status === 408 || res.status === 429) ? "transient" : "auth" };
+  if (!res?.ok) {
+    // Permission, client configuration and missing endpoints do not prove that
+    // the refresh token is invalid. Even OAuth 400 needs explicit invalid_grant.
+    const error = res?.status === 400 ? await res.json().catch(() => null) : null;
+    return { failure: res?.status === 401 || error?.error === "invalid_grant" ? "auth" : "transient" };
+  }
   const data = await res.json().catch(() => null);
   if (!str(data?.access_token)) return { failure: "transient" };
   const ttl = num(data.expires_in) > 0 ? num(data.expires_in) : DEFAULT_ACCESS_TTL_SECONDS;
@@ -237,6 +250,7 @@ async function readPool(accessToken, proxyOptions) {
   const res = await deps.fetch(SENSENOVA_POOL_USAGE_URL, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json", Referer: "https://platform.sensenova.cn/console" },
+    redirect: "error",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   }, proxyOptions);
   if (res?.ok) return { payload: await res.json().catch(() => null) };

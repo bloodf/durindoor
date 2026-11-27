@@ -46,6 +46,10 @@ import {
 import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
 import { discoverCloudflareModels } from "open-sse/services/cloudflareModels.js";
 import { chatPlaygroundCatalog } from "open-sse/executors/chatplayground.js";
+import { discoverInnerAiWebModels } from "open-sse/executors/inner-ai-web.js";
+import { discoverVeniceWebModels } from "open-sse/executors/venice-web.js";
+import { discoverPoeWebModels } from "open-sse/providers/registry/poe-web.js";
+import { discoverV0Models } from "open-sse/providers/registry/v0-vercel-web.js";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";
 import { CODEX_CLI_USER_AGENT, CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import { meetsMinimalCodexClientVersion } from "open-sse/config/codexClientVersion.js";
@@ -432,7 +436,32 @@ export async function persistCopilotEndpointContract(connection, rows) {
   return contract;
 }
 
+/**
+ * Account-scoped discovery for a web-session executor: only the selected
+ * connection's stored cookie is read, through its own proxy route. The executor
+ * errors carry gateway-authored messages, never upstream text.
+ */
+function webSessionDiscovery(discover, label) {
+  return async (connection, proxyOptions = null) => {
+    if (!connection.apiKey) return { error: "No valid token found", status: 401 };
+    try {
+      return { models: await discover({ credentials: { apiKey: connection.apiKey }, proxyOptions }) };
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 502;
+      return { error: sanitizeErrorMessage(error?.message || `${label} model discovery failed`), status };
+    }
+  };
+}
+
 export const PROVIDER_MODELS_CONFIG = {
+  // Web sessions registered for #2034 (1127). Inner.ai Web reads the account's own
+  // catalog; Venice Web checks the session with one read-only Clerk GET and answers
+  // its pinned list. Poe Web and v0 Web publish no list endpoint for the session, so
+  // their pinned static lists answer without sending the cookie anywhere.
+  "inner-ai-web": { customResolver: webSessionDiscovery(discoverInnerAiWebModels, "Inner.ai Web") },
+  "venice-web": { customResolver: webSessionDiscovery(discoverVeniceWebModels, "Venice Web") },
+  "poe-web": { customResolver: () => ({ models: discoverPoeWebModels(), source: "local_catalog" }) },
+  "v0-vercel-web": { customResolver: () => ({ models: discoverV0Models(), source: "local_catalog" }) },
   "cloudflare-ai": {
     customResolver: (connection, proxyOptions = null) => discoverCloudflareModels(connection, {
       fetchImpl: (url, init) => proxyAwareFetch(url, init, proxyOptions),

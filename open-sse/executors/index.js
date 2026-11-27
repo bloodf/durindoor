@@ -84,6 +84,10 @@ import { CopilotM365WebExecutor } from "./copilot-m365-web.js";
 import { VeoAIFreeWebExecutor } from "./veoaifree-web.js";
 import { YuanbaoWebExecutor } from "./yuanbao-web.js";
 import { ZenmuxFreeExecutor } from "./zenmux-free.js";
+import { InnerAiWebExecutor } from "./inner-ai-web.js";
+import { PoeWebExecutor } from "./poe-web.js";
+import { VeniceWebExecutor } from "./venice-web.js";
+import { V0VercelWebExecutor } from "./v0-vercel-web.js";
 import {
   UnsupportedOmniRouteWebSessionExecutor,
   BLOCKED_OMNIROUTE_PROVIDERS,
@@ -113,6 +117,13 @@ const tencentAIStudioWebExecutor = new TencentAIStudioWebExecutor();
 const tinyCmsExecutor = new TinyCmsExecutor();
 const blackboxWebExecutor = new BlackboxWebExecutor();
 const conolWebExecutor = new ConolWebExecutor();
+// Web sessions registered for #2034 (1127). Each identity keeps one instance, so the
+// per-account discovery and session caches never cross identities. They are separate
+// from the inner-ai, poe, venice and v0-vercel API-key providers.
+const innerAiWebExecutor = new InnerAiWebExecutor();
+const poeWebExecutor = new PoeWebExecutor();
+const veniceWebExecutor = new VeniceWebExecutor();
+const v0VercelWebExecutor = new V0VercelWebExecutor();
 // One instance per identity: the per-key session cache (cursor-api) and the
 // per-connection state (minimax-code, zed-hosted, freebuff) live on the instance.
 const cursorApiExecutor = new CursorApiExecutor();
@@ -208,6 +219,13 @@ const executors = {
   "bb-web": blackboxWebExecutor,
   "conol-web": conolWebExecutor,
   cnl: conolWebExecutor,
+  "inner-ai-web": innerAiWebExecutor,
+  inaw: innerAiWebExecutor,
+  "poe-web": poeWebExecutor,
+  poew: poeWebExecutor,
+  "venice-web": veniceWebExecutor,
+  venw: veniceWebExecutor,
+  "v0-vercel-web": v0VercelWebExecutor,
   chatplayground: chatPlaygroundExecutor,
   cpl: chatPlaygroundExecutor,
   "cloudflare-playground": cloudflarePlaygroundExecutor,

@@ -257,15 +257,39 @@ describe("CLIProxyAPI in-band backend errors after output", () => {
     expect(last.error).toMatchObject({ message: "synthetic permission denied", code: "403" });
   }, 60000);
 
-  // CLIProxyAPI surfaces this bare (non-`data:`) JSON body as a 503 with the backend
-  // message. DurinDoor's shared SSE parser ignores non-field lines, so the client
-  // gets the generic incomplete-stream error. Pinned: never a successful terminal.
-  it.each([["OpenAI", openai], ["Anthropic", anthropic]])("never completes %s successfully on a trailing bare JSON error", async (_name, call) => {
-    reply = () => sse(TRAILING_BACKEND_ERROR);
-    const response = await call("antigravity/gemini-3.7-flash-high", true);
+  // CPA trailing JSON preserves the backend error across both real client routes.
+  it.each(["antigravity", "agy"].flatMap((provider) => [true, false].flatMap((stream) =>
+    [["OpenAI", openai], ["Anthropic", anthropic]].flatMap(([name, call]) => [false, true].map((split) => [provider, stream, name, call, split])))))(
+    "%s stream=%s preserves the trailing backend error for %s", async (provider, stream, _name, call, split) => {
+      reply = () => split ? new Response(new ReadableStream({ start(controller) {
+        for (const byte of new TextEncoder().encode(TRAILING_BACKEND_ERROR)) controller.enqueue(new Uint8Array([byte]));
+        controller.close();
+      } }), { headers: { "content-type": "text/event-stream" } }) : sse(TRAILING_BACKEND_ERROR);
+      const response = await call(`${provider}/gemini-3.7-flash-high`, stream);
+      const text = await response.text();
+      if (stream) {
+        notSuccessful(text);
+        expect(dataFrames(text).at(-1).error).toMatchObject({ message: "backend capacity exhausted", code: "503" });
+      } else {
+        expect(response.status).toBe(503);
+        expect(JSON.parse(text).error.message).toContain("backend capacity exhausted");
+      }
+      expect(text).not.toContain("incomplete_upstream_stream");
+      expect(sent).toHaveLength(1);
+      expect(sent[0].account).toBe(provider === "agy" ? "B" : "A");
+      expect(sent[0].body.project).toBe(provider === "agy" ? "project-b" : "project-a");
+    }, 60000);
+
+});
+
+describe("trailing error credential redaction", () => {
+  it.each([true, false])("redacts selected credentials stream=%s", async (stream) => {
+    reply = () => sse(TRAILING_BACKEND_ERROR.replace("backend capacity exhausted", `backend capacity exhausted ${TOKEN_B}`));
+    const response = await openai("agy/gemini-3.7-flash-high", stream);
     const text = await response.text();
-    notSuccessful(text);
-    expect(dataFrames(text).at(-1).error).toBeTruthy();
+    expect(text).toContain("backend capacity exhausted");
+    expect(text).not.toContain(TOKEN_B);
+    expect(sent).toHaveLength(1);
   }, 60000);
 });
 

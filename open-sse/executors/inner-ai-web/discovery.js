@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { cancelDiscardedResponse, isRefusedRedirect } from "../sendRequest.js";
-import { INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_ORIGIN, INNER_AI_WEB_PROFILE_URL } from "../../providers/private/inner-ai-web.js";
+import { INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_ORIGIN, INNER_AI_WEB_PROFILE_URL } from "../../providers/registry/inner-ai-web.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 import { headerSafeEmail } from "./credential.js";
 import { InnerAiWebError, expiredSession, httpFailure, isSessionRejection, malformedReply } from "./errors.js";

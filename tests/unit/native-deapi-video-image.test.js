@@ -1,4 +1,4 @@
-// deAPI native image and video adapters, staged and unregistered (#2034).
+// deAPI native image and video adapters, registered on deapi (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (config/imageRegistryData.ts, config/videoRegistry.ts,
@@ -104,16 +104,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered: no adapter, registry entry or media config for deapi", () => {
-    expect(getImageAdapter("deapi")).toBeNull();
-    expect(getVideoGenerationAdapter("deapi")).toBeNull();
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers both adapters and the new deapi registry entry, without a chat transport or video job config", async () => {
+    expect(getImageAdapter("deapi")).toBe(deapiImageAdapter);
+    expect(getVideoGenerationAdapter("deapi")).toBe(deapiVideoAdapter);
     expect(PROVIDERS.deapi).toBeUndefined();
-    expect(PROVIDER_MEDIA.deapi).toBeUndefined();
-    expect(existsSync(new URL("../../open-sse/providers/registry/deapi.js", import.meta.url))).toBe(false);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+    expect(PROVIDER_MEDIA.deapi.serviceKinds).toEqual(expect.arrayContaining(DEAPI_PROVIDER_DEFINITION.serviceKinds));
+    expect(PROVIDER_MEDIA.deapi.videoConfig).toBeUndefined();
+    expect(existsSync(new URL("../../open-sse/providers/registry/deapi.js", import.meta.url))).toBe(true);
+    const { default: deapiRegistry } = await import("../../open-sse/providers/registry/deapi.js");
+    expect(deapiRegistry).toMatchObject({
+      id: DEAPI_PROVIDER_DEFINITION.id, alias: DEAPI_PROVIDER_DEFINITION.alias, category: "apikey", authType: "apikey", transport: null,
+      display: { name: DEAPI_PROVIDER_DEFINITION.display.name, website: DEAPI_PROVIDER_DEFINITION.display.website },
+    });
+    expect(deapiRegistry.models).toEqual(expect.arrayContaining(DEAPI_PROVIDER_DEFINITION.models.map(({ id, name, kind }) => ({ id, name, kind }))));
+    expect(deapiRegistry.oauth).toBeUndefined();
   });
 });
 

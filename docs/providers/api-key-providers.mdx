@@ -223,3 +223,29 @@ The same provider-qualified model works on `POST /v1/chat/completions` with one 
 See the [Google Interactions overview](https://aistudio.google.com/docs/interactions-overview) and [streaming guide](https://aistudio.google.com/docs/streaming).
 
 Mistral Chat requests map `seed` to `random_seed` and `max_completion_tokens` to `max_tokens`, remove unsupported OpenAI-only fields, and cap temperature at 1.5. Explicit Mistral field values take precedence. Unsupported `service_tier` values are normalized or omitted; Responses requests retain their own schema. When an HTTP 400 names `top_k`, as some Mistral models do, DurinDoor retries without it. Model discovery skips Mistral models whose `deprecation` date has passed.
+
+## Native media providers
+
+These providers run their media routes through native adapters with bounded deadlines on fixed provider hosts:
+
+- [deAPI](./deapi.md): image, video, speech, transcription and embeddings on a new API-key provider.
+- [Novita AI video](./novita-video.md): text-to-video on the existing Novita AI connection.
+- [Haiper](./haiper.md), [Leonardo.Ai](./leonardo.md) and [Veo AI Free Web](./veoaifree-web.md).
+- [Runway ML](./runwayml.md), [DeepInfra](./deepinfra.md) (video, embeddings and rerank) and [Segmind](./segmind.md).
+- [Kie.ai speech and transcription](./kie-audio.md).
+
+### Native fal.ai and KIE media
+
+Add or edit **Fal.ai** in Dashboard → Providers, paste an API key from https://fal.ai/dashboard/keys, and save the connection. The existing image connection also serves video and music; `fal` aliases `fal-ai`. Use your DurinDoor caller key for the public routes.
+
+- `POST /v1/video/generations`: `fal/veo3.1/lite`, `fal/google/gemini-omni-flash`, or `fal/xai/grok-imagine-video/text-to-video`. Veo accepts text only, 4/6/8 seconds and 720p/1080p. Gemini accepts 3–10 whole seconds and at most one image; Grok selects text/image/reference mode from the image count. Public HTTPS image URLs or bounded base64 image data URIs are accepted where supported. Additional video endpoint IDs use per-request OpenAPI discovery and schema validation, including `fal_input`.
+- `POST /v1/music/generations`: `fal/ace-step`, with `prompt` or matching `tags`, optional lyrics and duration 5–240 seconds. Returns completed tracks with `audio_url`, `url` and `format`. `fal_input` triggers schema discovery; other music endpoints are unsupported.
+
+Add or edit **Kie.ai**, paste your KIE API key and save. The existing chat connection also serves 35 image models and 10 text-to-video models, listed through `/v1/models/image` and `/v1/models/video` under KIE. The selected key is sent as Bearer auth only to `api.kie.ai`; chat transport settings remain in effect for chat. The same connection serves ElevenLabs speech and transcription; see [Kie.ai speech and transcription](./kie-audio.md).
+
+- `POST /v1/images/generations`: for example `kie/gpt4o-image`, `kie/flux/kontext`, or a listed Market model. Use `size` 1:1, 16:9, 9:16, 4:3 or 3:4 (or mapped OpenAI pixel sizes). Market and Kontext accept at most one public HTTPS image URL; the direct 4o route accepts no image input. Only 4o accepts `n` 2 or 4.
+- `POST /v1/video/generations`: for example `kie/veo/veo-3-1`, text only, duration 1–60 whole seconds, `aspect_ratio` and boolean `sound`. Image-to-video models are excluded because the supported source request does not carry images.
+
+These native routes submit and poll within bounded deadlines and return hosted URLs; they do not download the artifacts. Set `response_format: "url"` and `n: 1` unless noted above. Streaming, binary/base64 output and file uploads are unsupported. Use `/v1/video/generations` for these providers; `/v1/videos` job polling is unavailable. An accepted or uncertain submission is never retried on another account and records unknown-cost usage once. Cancellation stops local waiting, without promising upstream job cancellation. Refused credentials or quota errors apply to the selected connection; correct its key or quota before retrying.
+
+Google Flow (`googleflow`/`flow`) is unavailable and is not advertised. The pinned source marks this transport unsupported and returns 501 before network. Its comments report retired endpoints and stored OAuth bearer rejection; these are source findings, not current live observations. Existing Google OAuth connections are unchanged.

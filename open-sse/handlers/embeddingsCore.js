@@ -76,6 +76,13 @@ export async function handleEmbeddingsCore({
       `Provider '${provider}' does not support embeddings.`
     );
   }
+  // Native adapters own one bounded call: no shared fetch, refresh retry or
+  // upstream error relay. An uncertain send carries acceptedJob for the route.
+  if (isFunction(adapter.embed)) {
+    const result = await adapter.embed({ model, body, credentials, signal, log });
+    if (result.success && onRequestSuccess) await onRequestSuccess();
+    return result;
+  }
 
   const ctx = { input };
   const alias = PROVIDER_ID_TO_ALIAS[provider] || provider;

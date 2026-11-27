@@ -1,4 +1,4 @@
-// deAPI native embeddings adapter, staged and unregistered (#2034).
+// deAPI native embeddings adapter, registered on deapi (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (embeddingRegistry.ts `deapi`, handlers/embeddings.ts). Passing
@@ -74,14 +74,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered: no deapi embedding adapter is reachable", () => {
-    expect(getEmbeddingAdapter("deapi")).toBeNull();
-    expect(Object.keys(EMBEDDING_ADAPTERS)).not.toContain("deapi");
-    expect(REGISTRATION.status).toBe("staged-unregistered");
-    expect(REGISTRATION.provider.existingRegistryEntry).toBeNull();
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers the embedding adapter and the new deapi registry entry", async () => {
+    expect(getEmbeddingAdapter("deapi")).toBe(deapiEmbeddingAdapter);
+    expect(Object.keys(EMBEDDING_ADAPTERS)).toContain("deapi");
+    const { default: deapiRegistry } = await import("../../open-sse/providers/registry/deapi.js");
+    expect(deapiRegistry).toMatchObject({ id: staged.DEAPI_PROVIDER.id, alias: staged.DEAPI_PROVIDER.alias, authType: staged.DEAPI_PROVIDER.authType });
+    expect(deapiRegistry.serviceKinds).toEqual(expect.arrayContaining(staged.DEAPI_PROVIDER.serviceKinds));
+    expect(deapiRegistry.models).toEqual(expect.arrayContaining(DEAPI_EMBEDDING_MODELS.map(({ id, name, dimensions }) => ({ id, name, kind: "embedding", dimensions }))));
+    // No generic embeddingConfig: embeddingsCore calls the adapter's bounded embed.
+    expect(deapiRegistry.embeddingConfig).toBeUndefined();
   });
 });
 

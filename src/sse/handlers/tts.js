@@ -32,8 +32,8 @@ const REFRESHED_BEFORE_DISPATCH = new Set(["renderhour"]);
 // Adapters that refuse a response_format they cannot produce: they need the
 // format the client named, not the route's mp3 default. Vertex mints its own
 // Google token per request, so it is not in the refresh set above. Kie returns
-// mp3 or json only and refuses any other named container before submit.
-const NAMED_FORMAT_PROVIDERS = new Set(["renderhour", "vertex", "kie"]);
+// mp3 or json only and refuses any other named container before submit, as does deAPI.
+const NAMED_FORMAT_PROVIDERS = new Set(["renderhour", "vertex", "kie", "deapi"]);
 
 async function handleTtsHandler(request) {
   await captureRequestBillingEpoch(request);

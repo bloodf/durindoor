@@ -8,6 +8,7 @@ import github from "./github.js";
 import openaiCompatNode from "./openaiCompatNode.js";
 import ollamaLocal from "./ollama-local.js";
 import { deepinfraEmbeddingAdapter } from "../../services/providerParity/native-deepinfra-embedding-rerank/index.js";
+import { deapiEmbeddingAdapter } from "../../services/providerParity/native-deapi-embedding/index.js";
 
 const OPENAI_COMPAT_PROVIDERS = [
   "paraloncloud", "morph",
@@ -27,6 +28,8 @@ export const EMBEDDING_ADAPTERS = createMediaRegistry({
   // Marks DeepInfra as an embedding transport. embeddingsCore sends DeepInfra
   // through the bounded native service, never through the generic fetch below.
   deepinfra: deepinfraEmbeddingAdapter,
+  // deAPI: embeddingsCore calls its bounded `embed`, never the generic fetch.
+  deapi: deapiEmbeddingAdapter,
 });
 
 export function getEmbeddingAdapter(provider) {

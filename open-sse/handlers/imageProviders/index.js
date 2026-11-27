@@ -27,6 +27,7 @@ import aihorde from "./aihorde.js";
 import { agnesImageAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
 import { haiperImageAdapter } from "../../services/providerParity/native-haiper-video-image/index.js";
 import { leonardoImageAdapter } from "../../services/providerParity/native-leonardo-video-image/index.js";
+import { deapiImageAdapter } from "../../services/providerParity/native-deapi-video-image/index.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
@@ -84,6 +85,9 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   hp: haiperImageAdapter,
   leonardo: leonardoImageAdapter,
   leo: leonardoImageAdapter,
+  // deAPI: one bounded OpenAI-shaped call on https://oai.deapi.ai with the
+  // selected key; public https result URLs or b64_json, no edits.
+  deapi: deapiImageAdapter,
 });
 
 export function getImageAdapter(provider) {

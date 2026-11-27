@@ -1,4 +1,4 @@
-// Venice Web, staged. Closed mocks only: every send is answered below, an
+// Venice Web, registered. Closed mocks only: every send is answered below, an
 // unknown URL fails the test, and every cookie and token is synthetic. Passing
 // here says nothing about the live service.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,8 @@ import "../translator/registerAll.js";
 
 const staged = vi.hoisted(() => ({ executor: null }));
 
-// While staged, the executor map does not know this provider, so the gateway tests substitute that one lookup.
+// The executor map registers this provider (asserted below); the gateway tests swap in a fresh
+// instance per test so the per-account discovery and session caches never cross tests.
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, getExecutor: (id) => (id === "venice-web" ? staged.executor : actual.getExecutor(id)) };
@@ -15,12 +16,14 @@ vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: 
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 
-import provider, { VENICE_WEB_CHAT_URL, VENICE_WEB_CLIENT_URL, VENICE_WEB_MODELS, veniceWebCookieProfile, veniceWebTokenUrl } from "../../open-sse/providers/private/venice-web.js";
+import provider, { VENICE_WEB_CHAT_URL, VENICE_WEB_CLIENT_URL, VENICE_WEB_MODELS, veniceWebCookieProfile, veniceWebTokenUrl } from "../../open-sse/providers/registry/venice-web.js";
 import { VeniceWebExecutor, discoverVeniceWebModels, validateVeniceWebSession } from "../../open-sse/executors/venice-web.js";
 import { readVeniceWebCredential } from "../../open-sse/executors/venice-web/credential.js";
 import { createVeniceSessions } from "../../open-sse/executors/venice-web/session.js";
 import { cookieDomainAllowed, cookieImportConfig, isApprovedCookieName, resolveCookieImportContract } from "../../src/shared/utils/cookieImportContract.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { REGISTERED_EXECUTOR_IDS, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
+import { STAGED_PROVIDERS } from "../../open-sse/providers/staged.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
@@ -110,7 +113,14 @@ const callsOf = (route) => wire.calls.filter((call) => routeOf(call.url, call.in
 const sseData = (raw) => raw.split("\n").filter((line) => line.startsWith("data: ") && line !== "data: [DONE]").map((line) => JSON.parse(line.slice(6)));
 const errorOf = async (result) => (await result.response.json()).error;
 
-describe("staged Venice Web provider module", () => {
+describe("registered Venice Web provider module", () => {
+  it("is a registry entry with its own executor and is no longer staged", () => {
+    expect(REGISTRY).toContain(provider);
+    expect(REGISTERED_EXECUTOR_IDS).toEqual(expect.arrayContaining(["venice-web", "venw"]));
+    expect(hasSpecializedExecutor("venice-web")).toBe(true);
+    expect(STAGED_PROVIDERS["venice-web"]).toBeUndefined();
+  });
+
   it("is a cookie identity separate from the Venice API-key provider", () => {
     expect(provider).toMatchObject({ id: "venice-web", alias: "venw", category: "webCookie", authType: "cookie", transport: { baseUrl: VENICE_WEB_CHAT_URL, executor: "venice-web", authType: "cookie" } });
     const apiKeyProvider = REGISTRY.find((entry) => entry.id === "venice");
@@ -123,14 +133,15 @@ describe("staged Venice Web provider module", () => {
     expect(provider.models.every((model) => model.toolCalling === false)).toBe(true);
   });
 
-  it("imports only the __client cookie of clerk.venice.ai, without extension capture or web login", () => {
+  it("imports and captures only the __client cookie of clerk.venice.ai, without an account email or web login", () => {
     const contract = resolveCookieImportContract(cookieImportConfig(provider));
-    expect(contract).toMatchObject({ origin: "https://clerk.venice.ai", cookieNames: ["__client"], cookiePrefixes: [], extensionCapture: false });
+    expect(contract).toMatchObject({ origin: "https://clerk.venice.ai", cookieNames: ["__client"], cookiePrefixes: [], extensionCapture: true });
+    expect(contract.accountEmail).toBeUndefined();
     expect(isApprovedCookieName(contract, "__client")).toBe(true);
     for (const name of ["__session", "__client_uat", "__client.0"]) expect(isApprovedCookieName(contract, name)).toBe(false);
     expect(cookieDomainAllowed(contract.host, ".clerk.venice.ai")).toBe(true);
     for (const domain of ["api.venice.ai", "outerface.venice.ai", "example.com"]) expect(cookieDomainAllowed(contract.host, domain)).toBe(false);
-    expect(veniceWebCookieProfile.extensionCapture).toBe(false);
+    expect(veniceWebCookieProfile.extensionCapture).toBeUndefined();
     expect(provider.webLogin).toBeUndefined();
   });
 });

@@ -22,6 +22,12 @@ const TOKEN_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$/;
 const UNSAFE_VALUE_RE = /[^\x20-\x7e]|;|^\s|\s$/;
 
 const LOCAL_STORAGE_KEY_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+// An account email a profile may bind to the stored credential (Inner.ai Web). The grammar is the
+// one the executor accepts after the token (open-sse/executors/inner-ai-web/credential.js), so a
+// stored value always parses; it is printable ASCII without spaces, quotes, `;`, `,` or `<>`.
+const ACCOUNT_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+/** Longest account email accepted (RFC 5321 path limit). */
+export const MAX_ACCOUNT_EMAIL_LENGTH = 254;
 /** Most localStorage items an import may carry. */
 export const MAX_IMPORT_LOCAL_STORAGE_ITEMS = 4;
 
@@ -49,8 +55,10 @@ export function isValidLocalStorageKey(name) {
  * @param {object|null|undefined} config registry `cookieImport` or `webLogin` block
  * `optionalCookies` names cookies that are kept when a capture or import carries them and never
  * required: a capture without them still succeeds.
+ * `accountEmail: "optional"` lets the operator bind an account email to the pairing; it is appended
+ * to the stored Cookie header as ` <email>`. Any other value is refused.
  *
- * @returns {{ origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], optionalCookies?: readonly string[] } | null}
+ * @returns {{ origin: string, host: string, extensionCapture: boolean, cookieNames: readonly string[], cookiePrefixes: readonly string[], optionalCookies?: readonly string[], accountEmail?: "optional" } | null}
  */
 export function resolveCookieImportContract(config) {
   if (!config || !Array.isArray(config.cookieNames) || !config.cookieNames.every(isValidCookieName)) return null;
@@ -62,6 +70,8 @@ export function resolveCookieImportContract(config) {
   // Optional names follow the cookie-name grammar and never repeat a required name.
   if (!Array.isArray(optionalCookies) || optionalCookies.length > MAX_IMPORT_COOKIES || !optionalCookies.every(isValidCookieName) ||
     new Set(optionalCookies).size !== optionalCookies.length || optionalCookies.some((name) => config.cookieNames.includes(name))) return null;
+  // An account email rides next to one required cookie only, never a localStorage-only profile.
+  if (config.accountEmail !== undefined && (config.accountEmail !== "optional" || config.cookieNames.length !== 1 || localStorageKeys.length)) return null;
   let credentialPattern = null;
   if (config.credentialPattern !== undefined) {
     if (!isString(config.credentialPattern)) return null;
@@ -84,7 +94,22 @@ export function resolveCookieImportContract(config) {
     ...(optionalCookies.length ? { optionalCookies: Object.freeze([...optionalCookies]) } : null),
     ...(localStorageKeys.length ? { localStorageKeys: Object.freeze([...localStorageKeys]) } : null),
     ...(credentialPattern ? { credentialPattern } : null),
+    ...(config.accountEmail === "optional" ? { accountEmail: "optional" } : null),
   });
+}
+
+/**
+ * Normalize an operator-supplied account email. Blank or absent means "no email"; any non-string
+ * (including null) is refused. Error strings are static and never echo the input.
+ * @returns {{ ok: true, email: string } | { ok: false, error: string }}
+ */
+export function normalizeAccountEmail(value) {
+  if (value === undefined) return { ok: true, email: "" };
+  if (!isString(value)) return { ok: false, error: "Account email is not valid" };
+  const email = value.trim();
+  if (!email) return { ok: true, email: "" };
+  if (email.length > MAX_ACCOUNT_EMAIL_LENGTH || !ACCOUNT_EMAIL_RE.test(email)) return { ok: false, error: "Account email is not valid" };
+  return { ok: true, email };
 }
 
 /**

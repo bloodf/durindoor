@@ -1,4 +1,4 @@
-// Venice Web executor. STAGED: not in the executor map yet; see
+// Venice Web executor, registered in the executor map as `venice-web`; see
 // docs/providers/venice-web.md.
 //
 // Wire contract ported from cheaper-inference/OmniRoute (MIT) at
@@ -23,7 +23,7 @@ import {
   VENICE_WEB_ID,
   VENICE_WEB_MODELS,
   VENICE_WEB_ORIGIN,
-} from "../providers/private/venice-web.js";
+} from "../providers/registry/venice-web.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { readVeniceWebCredential } from "./venice-web/credential.js";
 import { VENICE_WEB_USER_AGENT, createVeniceSessions, findVeniceSessionId } from "./venice-web/session.js";

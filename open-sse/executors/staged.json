@@ -15,112 +15,16 @@
       "reason": "Only handlers/chatCore/executorProxy.js imports it, and no production module imports executorProxy.js."
     },
     {
-      "module": "open-sse/executors/inner-ai-web.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "InnerAiWebExecutor is not in the executor map; nothing in production imports it until the inner-ai-web registration change."
-    },
-    {
-      "module": "open-sse/executors/inner-ai-web/credential.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "Session-token parsing helper imported only by the staged Inner.ai Web executor and its sibling helpers."
-    },
-    {
-      "module": "open-sse/executors/inner-ai-web/discovery.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "Profile and model-catalog lookup imported only by the staged Inner.ai Web executor."
-    },
-    {
-      "module": "open-sse/executors/inner-ai-web/errors.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "Gateway-authored error helpers imported only by the staged Inner.ai Web executor and its sibling helpers."
-    },
-    {
-      "module": "open-sse/executors/inner-ai-web/events.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "SSE event parser imported only by the staged Inner.ai Web executor."
-    },
-    {
-      "module": "open-sse/executors/poe-web.js",
-      "staged": true,
-      "provider": "poe-web",
-      "reason": "PoeWebExecutor is not in the executor map; the poe catalog entry is the separate API-key provider."
-    },
-    {
-      "module": "open-sse/executors/v0-vercel-web.js",
-      "staged": true,
-      "provider": "v0-vercel-web",
-      "reason": "V0VercelWebExecutor is not in the executor map; the v0-vercel catalog entry is the separate API-key provider."
-    },
-    {
-      "module": "open-sse/executors/venice-web.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "VeniceWebExecutor is not in the executor map; the venice catalog entry is the separate API-key provider."
-    },
-    {
-      "module": "open-sse/executors/venice-web/credential.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "Clerk __client cookie parsing helper imported only by the staged Venice Web executor and its sibling helpers."
-    },
-    {
-      "module": "open-sse/executors/venice-web/errors.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "Gateway-authored error helpers imported only by the staged Venice Web executor and its sibling helpers."
-    },
-    {
-      "module": "open-sse/executors/venice-web/events.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "Newline-delimited JSON event parser imported only by the staged Venice Web executor."
-    },
-    {
-      "module": "open-sse/executors/venice-web/session.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "Clerk session-token exchange imported only by the staged Venice Web executor."
-    },
-    {
       "module": "open-sse/providers/private/adobe-firefly-api.js",
       "staged": true,
       "provider": "adobe-firefly-api",
       "reason": "Private provider definition; only the unregistered handlers/imageProviders/adobe-firefly-api.js and services/adobeFireflyApi import it, not the registry or the image adapter map."
     },
     {
-      "module": "open-sse/providers/private/inner-ai-web.js",
-      "staged": true,
-      "provider": "inner-ai-web",
-      "reason": "Private provider definition; only the staged Inner.ai Web executor and helpers import it, not the registry."
-    },
-    {
-      "module": "open-sse/providers/private/poe-web.js",
-      "staged": true,
-      "provider": "poe-web",
-      "reason": "Private provider definition; only the staged Poe Web executor imports it, not the registry."
-    },
-    {
       "module": "open-sse/providers/private/renderhour.js",
       "staged": true,
       "provider": "renderhour",
       "reason": "Private provider definition; only the unregistered RenderHour image and TTS handlers and services/renderhour import it, not the registry or any media adapter map."
-    },
-    {
-      "module": "open-sse/providers/private/v0-vercel-web.js",
-      "staged": true,
-      "provider": "v0-vercel-web",
-      "reason": "Private provider definition; neither the registry nor the executor map imports it yet."
-    },
-    {
-      "module": "open-sse/providers/private/venice-web.js",
-      "staged": true,
-      "provider": "venice-web",
-      "reason": "Private provider definition; only the staged Venice Web executor and helpers import it, not the registry."
     }
   ]
 }

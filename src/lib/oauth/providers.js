@@ -283,6 +283,17 @@ async function readAntigravityOAuthJson(response, signal) {
   return data;
 }
 
+/** Stop locally when the Antigravity client override is blank or incomplete. */
+function assertAntigravityClientConfigured(config) {
+  if (config?.oauthConfigError || !isString(config?.clientId) || !config.clientId) {
+    const error = new Error(config?.oauthConfigError ||
+      "Antigravity OAuth client is not configured. Unset both ANTIGRAVITY_OAUTH_CLIENT_ID and " +
+      "ANTIGRAVITY_OAUTH_CLIENT_SECRET to use the built-in desktop client, or set both, then restart.");
+    error.code = "OAUTH_VALIDATION_FAILED";
+    throw error;
+  }
+}
+
 /** Resolve user info and the project for a fresh Antigravity token. */
 async function antigravityResolveAccount(tokens, proxyOptions, signal) {
   // Google fingerprints X-Goog-Api-Client / Client-Metadata on these calls
@@ -1098,13 +1109,18 @@ const PROVIDERS = {
     config: ANTIGRAVITY_CONFIG,
     flowType: "authorization_code_pkce",
     buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
+      assertAntigravityClientConfigured(config);
       if (!isString(codeChallenge) || !codeChallenge) {
         throw new Error("Antigravity authorization requires a PKCE challenge");
       }
+      // The desktop client only knows its loopback callback, so a hosted or
+      // remote dashboard origin is never sent. The reported redirect is stored
+      // in the flow and reused verbatim by the token exchange.
+      const effectiveRedirectUri = config.fixedRedirectUri || redirectUri;
       const params = new URLSearchParams({
         client_id: config.clientId,
         response_type: "code",
-        redirect_uri: redirectUri,
+        redirect_uri: effectiveRedirectUri,
         scope: config.scopes.join(" "),
         state: state,
         access_type: "offline",
@@ -1112,9 +1128,14 @@ const PROVIDERS = {
         code_challenge: codeChallenge,
         code_challenge_method: "S256"
       });
-      return `${config.authorizeUrl}?${params.toString()}`;
+      const authUrl = `${config.authorizeUrl}?${params.toString()}`;
+      return config.fixedRedirectUri ? { authUrl, redirectUri: effectiveRedirectUri } : authUrl;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, _state, _meta, proxyOptions, signal) => {
+      assertAntigravityClientConfigured(config);
+      if (config.fixedRedirectUri && redirectUri !== config.fixedRedirectUri) {
+        throw new Error("Antigravity token exchange redirect does not match the desktop client callback");
+      }
       if (!isString(codeVerifier) || !codeVerifier) {
         throw new Error("Antigravity token exchange requires a PKCE verifier");
       }

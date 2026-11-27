@@ -117,7 +117,12 @@ function aggregateParsedChunks(chunks, fallbackModel, {
   // Preserve an explicit SSE error even after partial content. A failed terminal
   // is not an empty completion; both non-stream consumers must reject it (#1355).
   const errorChunk = chunks.find((chunk) => chunk?.error);
-  if (errorChunk) return { error: errorChunk.error };
+  if (errorChunk) return {
+    error: errorChunk.error,
+    // A failed stream that already generated content must never be replayed.
+    upstreamPartialOutput: chunks.some((chunk) => chunk?.response?.candidates?.some((candidate) =>
+      candidate.content?.parts?.length > 0) || chunk?.candidates?.some((candidate) => candidate.content?.parts?.length > 0))
+  };
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,

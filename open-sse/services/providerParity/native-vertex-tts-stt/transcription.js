@@ -79,7 +79,7 @@ export async function buildVertexTranscriptionRequest(model, formData, { kind = 
     if (!ALLOWED_FIELDS.has(name)) throw badRequest(`Vertex transcription does not support ${name}`);
   }
   const files = formData.getAll("file");
-  if (files.length !== 1 || !files[0] || isString(files[0]) || typeof files[0].arrayBuffer !== "function") throw badRequest("Vertex transcription needs one audio file");
+  if (files.length !== 1 || !(files[0] instanceof Blob)) throw badRequest("Vertex transcription needs one audio file");
   const file = files[0];
   const language = field(formData, "language");
   const prompt = field(formData, "prompt");

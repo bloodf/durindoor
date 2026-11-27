@@ -221,12 +221,14 @@ export async function buildVertexSpeechRequest(text, model, responseFormat = "mp
   if (instructions && instructions.length > VERTEX_TTS_MAX_STYLE_CHARS) throw badRequest(`Vertex TTS instructions are limited to ${VERTEX_TTS_MAX_STYLE_CHARS} characters`);
   const { modelId, voice } = await parseModelVoice(model, options.voice);
   const style = buildGeminiSpeechStyle(instructions, speed);
+  const part = { text: input };
+  if (style) part.speech_metadata = { style };
   return {
     modelId,
     voice,
     format,
     body: {
-      contents: [{ role: "user", parts: [{ text: input, ...(style ? { speech_metadata: { style } } : {}) }] }],
+      contents: [{ role: "user", parts: [part] }],
       generationConfig: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },

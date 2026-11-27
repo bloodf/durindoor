@@ -80,6 +80,8 @@ function attachUpstreamRequestId(state, result) {
  * Stage 5: post-process one attempt's result. Success is returned (after the
  * early-EOF peek); terminal and request-scoped failures are returned as-is;
  * retryable failures cool the account down and RETRY with the next one.
+ * A failure after partial upstream output is terminal before any retry path
+ * (timeout replay, request-buffer replay, pin, quota, fallback) is considered.
  */
 export async function processAttemptResult(ctx, state, attempt, result) {
   const { provider, model, request, requestSignal, preferredConnectionId, comboRouting } = ctx;
@@ -97,6 +99,17 @@ export async function processAttemptResult(ctx, state, attempt, result) {
   if (result.success) return handleSuccess(ctx, state, attempt, result);
   if (result.claudeRequestScoped) {
     result.response.claudeRequestScoped = true;
+    return terminal(result.response);
+  }
+  // Generated output already left the provider (text or tool parts before a
+  // trailing backend error). This check must run before every retry path: the
+  // Antigravity 504 timeout replay, the request-buffer replay, pinned/quota
+  // handling and account fallback. Any of them would run the generation again
+  // on the same or a sibling account and could repeat tool calls (#2034).
+  // The flag stays on the Response as internal metadata so the outer transient
+  // retry also stops; it never reaches the client payload or headers.
+  if (result.upstreamPartialOutput === true) {
+    result.response.upstreamPartialOutput = true;
     return terminal(result.response);
   }
   if (state.antigravityTimeoutResponse) result.response.skipAntigravityTimeoutReplay = true;
@@ -132,8 +145,6 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     log.warn("RETRY", `ACC:${credentials.connectionName} replaying once after upstream request-buffer overflow`);
     return RETRY;
   }
-  // Preserve a backend error after generated output; replay could repeat tools.
-  if (result.upstreamPartialOutput === true) return terminal(result.response);
   if (preferredConnectionId) {
     // A pinned connection must not rotate. Return the failure response immediately.
     log.warn("CHAT", `[${provider}/${model}] pinned connection ${preferredConnectionId.slice(0, 8)} failed; pin is terminal`);

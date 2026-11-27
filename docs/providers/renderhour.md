@@ -43,7 +43,7 @@ The submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `co
 
 ## Polling and results
 
-The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The submit itself waits at most 30 seconds. The 5 minutes start when the submit is answered.
+The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The submit itself waits at most 30 seconds. At that deadline, or when the client disconnects, the outgoing request is aborted, not only abandoned, and the body of any answer that still arrives is cancelled. The 5 minutes start when the submit is answered.
 
 A result is returned as `data: [{ "url": ... }]`. Every file must be a PNG, JPEG or WebP with an HTTPS URL that has no embedded credentials and does not contain the connection's API key, raw or URL-encoded. There must not be more files than requested. Otherwise the whole result is rejected. The gateway returns the URLs without downloading them, even if you ask for `b64_json`. Binary output (`response_format=binary`) makes the shared handler fetch the first URL without your API key. Whether RenderHour file URLs work without a key, and how long they last, has not been verified.
 
@@ -53,7 +53,7 @@ Usage counts the images actually returned. Token counts and cost are **unknown**
 
 After a submit is accepted (any 2xx answer), the job may be billed. When its outcome cannot be seen, it is recorded as an accepted job with unknown cost, and the gateway does not resubmit it to another account. That covers cancellation, timeout, a rejected or failed status request and an unreadable or invalid response.
 
-A submit that may have reached RenderHour but got no answer is handled the same way: a submit timeout, a reset connection or any other transport failure after a connection may have been made. It is recorded on the connection that sent it as an accepted job with unknown cost (`jobState: "submit-unknown"`), and no other account gets a second submit. Only a failure before any connection exists (`ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED` or a connect timeout) counts as unsent, so another connection may try.
+A submit that may have reached RenderHour but got no answer is handled the same way: a submit timeout, a client disconnect while the submit is in flight, a reset connection or any other transport failure after a connection may have been made. It is recorded on the connection that sent it as an accepted job with unknown cost (`jobState: "submit-unknown"`), and no other account gets a second submit. Only a failure before any connection exists (`ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED` or a connect timeout) counts as unsent, so another connection may try. A client that disconnects before the submit is started gets `499` with nothing sent and nothing recorded.
 
 ## Errors
 
@@ -74,7 +74,8 @@ A submit that may have reached RenderHour but got no answer is handled the same 
 | Not finished in 5 minutes, or a status request timed out | 504 | Yes |
 | Invalid job response or unusable result, including a response body that times out | 502 | Yes |
 | Cancelled after the submit was accepted | 499 | Yes |
-| Cancelled while the submit is in flight | 499 | No. Whether RenderHour accepted it is unknown |
+| Cancelled before the submit is sent | 499 | No, nothing sent |
+| Cancelled while the submit is in flight | 499 | Yes, as `submit-unknown`, on the connection that sent it |
 
 A job that RenderHour reports as failed is treated as a normal failure, so the shared account fallback policy decides whether another connection tries a new job. Whether RenderHour charges for failed jobs is unknown. Errors raised while following a job do not repeat RenderHour's text, and only the four failure reasons above are named. A refused submit's message can come from RenderHour, but the selected connection's key is removed from it and from the error body, including on `401` and `403`. A `429` message is always replaced.
 

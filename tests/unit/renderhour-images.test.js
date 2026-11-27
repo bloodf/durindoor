@@ -396,15 +396,34 @@ describe("renderhour cancellation", () => {
     expectAbort(await run({ signal: controller.signal }), true);
   });
 
-  it("aborts an in-flight submit without claiming the job was accepted", async () => {
+  it("aborts an in-flight submit at the transport and keeps the possibly accepted job", async () => {
     const controller = new AbortController();
+    const reason = new Error("client left");
+    let seen;
     serve((_url, init) => new Promise((_, reject) => {
-      expect(init.signal).toBe(controller.signal);
+      seen = { aborted: init.signal.aborted };
       init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
-      controller.abort();
+      controller.abort(reason);
     }));
-    expectAbort(await run({ signal: controller.signal }), false);
+    const result = await run({ signal: controller.signal });
+    expect(result).toMatchObject({ success: false, status: 499 });
+    // The fetch signal is composed with the submit deadline, live until the caller aborts,
+    // and then aborted with the caller's own reason.
+    expect(seen).toEqual({ aborted: false });
+    expect(calls[0].init.signal.aborted).toBe(true);
+    expect(calls[0].init.signal.reason).toBe(reason);
+    expect(result.acceptedJob).toMatchObject({
+      modality: "image", cost: null, costStatus: "unknown", costSource: "accepted-job", meta: { jobState: "submit-unknown" },
+    });
     expect(calls).toHaveLength(1);
+  });
+
+  it("sends nothing and claims no job when cancelled before the submit", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    serve();
+    expectAbort(await run({ signal: controller.signal }), false);
+    expect(calls).toHaveLength(0);
   });
 });
 

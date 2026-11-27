@@ -11,6 +11,7 @@ import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
 import { getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -18,7 +19,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
 import {
   wantsDefaultRoute,
@@ -132,8 +133,52 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   }
   if (!credentials) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${modelInfo.provider}`);
 
-  const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials, signal: request.signal });
-  if (!result.success) return result.response;
+  // A RenderHour plan sign-in is refreshed before its job is submitted.
+  const dispatched = modelInfo.provider === "renderhour" ? await checkAndRefreshToken(modelInfo.provider, credentials) : credentials;
+  /**
+   * Health boundary: the one immutable dispatch context for this attempt,
+   * taken after the optional RenderHour refresh and before any provider work
+   * is awaited. Outcome writes reuse it as-is, so the fingerprint, the
+   * dispatch time and the presented credential describe what was sent, not
+   * whatever the credential object or the clock hold once the job settles.
+   * A derived or exchanged token keeps a null fingerprint (fail-open).
+   */
+  const dispatch = Object.freeze({
+    usedCredential: dispatched?.accessToken || dispatched?.apiKey || null,
+    ...credentialDispatchSnapshot(dispatched),
+  });
+  const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials: dispatched, signal: request.signal, log });
+  if (!result.success) {
+    // Account health for the selected connection only, as /v1/videos does it.
+    // A caller disconnect says nothing about the account. Only structured
+    // evidence from the result is carried: a bounded Retry-After reset and an
+    // adapter's resetless quota flag (adobe-firefly-api `quota_exhausted`).
+    if (credentials.connectionId && !request.signal?.aborted && Number(result.status) !== 499 && shouldMarkAccountUnavailable(result.status)) {
+      const evidence = result.rateLimitEvidence ?? null;
+      await markAccountUnavailable(credentials.connectionId, result.status, result.error, modelInfo.provider, modelInfo.model, evidence?.resetAtMs ?? null, {
+        ...dispatch,
+        ...(evidence ? { rateLimitEvidence: evidence } : null),
+        ...(result.quotaExhausted === true ? { quotaExhausted: true } : null),
+      });
+    }
+    // The provider took a job whose outcome is unknown: record it once on this
+    // account with unknown cost. This route never resubmits it elsewhere.
+    if (result.acceptedJob) {
+      await recordAcceptedJobUsage(apiKey, {
+        ...result.acceptedJob,
+        billingEpoch,
+        usageEventId: `${getRequestId(request)}:/v1/video/generations`,
+        provider: modelInfo.provider, model: modelInfo.model,
+        connectionId: credentials.connectionId ?? null,
+        endpoint: "/v1/video/generations", modality: "video", comboName,
+        apiKeyId,
+      });
+      const headers = new Headers(result.response.headers);
+      headers.set(ACCEPTED_JOB_HEADER, "1");
+      return new Response(result.response.body, { status: result.response.status, headers });
+    }
+    return result.response;
+  }
   return recordApiKeyUsageForResponse(apiKey, result.response, {
     ...result.accounting,
     billingEpoch,

@@ -27,6 +27,7 @@ import { refreshMuseCodeToken } from "./museCodeAuth.js";
 import { refreshM365Token } from "./tokenRefresh/copilotM365.js";
 import { refreshMinimaxCodeToken } from "./minimaxCodeAuth.js";
 import { refreshWorkbuddyToken } from "./workbuddyAuth.js";
+import { createRenderHourRefreshHooks } from "./renderhour/oauth.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
@@ -320,6 +321,9 @@ const REFRESH_HANDLERS = {
   workbuddy: (c, log, p) => c.providerSpecificData?.enableSessionDispatch === true ? refreshWorkbuddyToken(c, log, p) : null,
   // Devin session tokens carry no refresh grant; a rejected one means sign in again.
   "devin-desktop": () => null,
+  // RenderHour plan sign-in: rotating single-use refresh tokens on a fixed
+  // origin. An rh_ API key has no refresh token and never reaches this handler.
+  renderhour: (c, log, p) => createRenderHourRefreshHooks().refreshCredentials(c, log, p),
   vertex: vertexRefreshHandler,
   "vertex-partner": vertexRefreshHandler
 };

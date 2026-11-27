@@ -206,7 +206,7 @@ describe("refusals, quota and leaks", () => {
     [403, 403, false],
     [402, 402, false],
     [429, 429, false],
-    [503, 503, false],
+    [503, 503, true],
     [500, 502, true],
     [502, 502, true],
   ])("maps Deepgram %i to %i without quoting the body", async (upstream, status, accepted) => {

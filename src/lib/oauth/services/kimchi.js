@@ -37,18 +37,23 @@ export class KimchiService {
   async startLogin() {
     const state = generateState();
     let resolveResult;
+    let callbackAccepted = false;
     const result = new Promise((resolve) => { resolveResult = resolve; });
 
     const { port, close } = await startLocalServer((params) => {
+      // Claim synchronously: validation is asynchronous and a second callback
+      // must not submit another token while the first one is in flight.
+      if (callbackAccepted) return;
+      callbackAccepted = true;
       this._handleCallback(params, state)
         .then(resolveResult)
         .catch((err) => resolveResult({ error: err.message }));
     });
 
     const timeout = setTimeout(() => {
+      callbackAccepted = true;
       resolveResult({ error: "Browser login timed out — please try again" });
-      close();
-    }, KIMCHI_CONFIG.callbackTimeoutMs);
+    }, KIMCHI_CONFIG.callbackTimeoutMs ?? SESSION_TTL_MS);
 
     sessions.set(state, { result, close, timeout, done: false, resolved: null });
 
@@ -65,18 +70,18 @@ export class KimchiService {
       setTimeout(() => sessions.delete(state), SESSION_TTL_MS).unref?.();
     });
 
-    const callbackUrl = `http://127.0.0.1:${port}${KIMCHI_CONFIG.callbackPath}`;
+    const callbackUrl = `http://127.0.0.1:${port}${KIMCHI_CONFIG.callbackPath || "/callback"}`;
     const authUrl = buildKimchiAuthUrl(callbackUrl, state);
     return { authUrl, port, state, result, close };
   }
 
   async _handleCallback(params, expectedState) {
-    if (params.error) {
-      throw new Error(params.error_description || params.error);
-    }
     const candidate = params.state;
     if (!candidate || candidate !== expectedState) {
       throw new Error("This request isn't valid. Please restart the Kimchi login flow.");
+    }
+    if (params.error) {
+      throw new Error("Kimchi sign-in was rejected. Please try again.");
     }
     const token = params.token;
     if (!token) {
@@ -91,7 +96,7 @@ export class KimchiService {
 
   async fetchProfile(token) {
     try {
-      const res = await fetch(KIMCHI_CONFIG.meUrl, {
+      const res = await fetch(KIMCHI_CONFIG.userInfoUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return {};

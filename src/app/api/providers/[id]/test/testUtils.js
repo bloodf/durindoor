@@ -42,7 +42,7 @@ import { rotationGroupFor } from "open-sse/services/refreshSerializer.js";
 import { OPENCODE_GO_USAGE_URL, classifyOpenCodeGoValidation } from "open-sse/services/usage/opencode-go.js";
 import { OutboundUrlGuardError, guardedProbeFetch } from "open-sse/utils/outboundUrlGuard.js";
 import { normalizeKiroRegion } from "open-sse/config/kiroRegions.js";
-import { normalizeGheUrl } from "open-sse/config/gheCopilot.js";
+import { storedGheBinding, gheBoundFetch } from "@/lib/oauth/providerParity/copilot/gheConnection.js";
 
 import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
 
@@ -112,12 +112,8 @@ export const OAUTH_TEST_CONFIG = {
     extraHeaders: { "User-Agent": "9Router", "Accept": "application/vnd.github+json" }
   },
   "ghe-copilot": {
-    // Probe the enterprise user API on the connection's own GHE host.
-    buildUrl: (_token, connection) => {
-      const gheUrl = normalizeGheUrl(connection.providerSpecificData?.gheUrl);
-      if (!gheUrl) throw new Error("GitHub Enterprise URL missing; reconnect this account");
-      return `${gheUrl}/api/v3/user`;
-    },
+    // Resolve the OAuth issuer from durable provenance before probing it.
+    buildUrl: (_token, connection) => `${storedGheBinding(connection, null, { refresh: true }).gheUrl}/api/v3/user`,
     method: "GET",
     authHeader: "Authorization",
     authPrefix: "Bearer ",
@@ -495,7 +491,10 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     return await tryProbe(accessToken);
   }
 
-    const testUrl = config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
+    const gheBinding = connection.provider === "ghe-copilot" ?
+      storedGheBinding(connection, effectiveProxy, { refresh: true }) : null;
+    const testUrl = gheBinding ? `${gheBinding.gheUrl}/api/v3/user` :
+      config.buildUrl ? config.buildUrl(accessToken, connection) : config.url;
     const headers = config.noAuth ?
     { ...config.extraHeaders } :
     { [config.authHeader]: `${config.authPrefix}${accessToken}`, ...config.extraHeaders };
@@ -504,7 +503,8 @@ async function testOAuthConnection(connection, effectiveProxy = null) {
     }
     const fetchOpts = { method: config.method, headers };
     if (config.body) fetchOpts.body = config.body;
-    const res = await fetchWithConnectionProxy(testUrl, fetchOpts, effectiveProxy);
+    const res = gheBinding ? await gheBoundFetch(gheBinding, testUrl, fetchOpts) :
+      await fetchWithConnectionProxy(testUrl, fetchOpts, effectiveProxy);
 
     const accepted = res.ok || config.acceptStatuses && config.acceptStatuses.includes(res.status);
     if (accepted) return { valid: true, error: null, refreshed, newTokens };

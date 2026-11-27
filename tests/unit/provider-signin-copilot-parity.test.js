@@ -7,6 +7,16 @@ vi.mock("open", () => ({ default: vi.fn() }));
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("Copilot sign-in boundaries", () => {
+  it("refuses legacy API-only enterprise credentials before dispatch", async () => {
+    const { GheCopilotExecutor } = await import("../../open-sse/executors/ghe-copilot.js");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await expect(new GheCopilotExecutor().execute({
+      model: "gpt-4o", body: { messages: [] }, stream: false,
+      credentials: { accessToken: "long-lived-oauth", providerSpecificData: { copilotApiUrl: "https://operator.example.test" } }
+    })).rejects.toThrow(/reauthentication needed/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each(["getDeviceCode", "getCopilotToken", "getUserInfo"])("does not expose the %s upstream body", async (method) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("synthetic-secret", { status: 401 }));
     await expect(new GitHubService()[method]("synthetic-token")).rejects.toThrow(/HTTP 401/);

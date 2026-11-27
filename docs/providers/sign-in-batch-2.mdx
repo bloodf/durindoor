@@ -1,0 +1,31 @@
+---
+title: Qwen, iFlow, Kiro and Copilot sign-in
+---
+
+Use **Providers → Add connection** and choose the provider that issued your
+credential. Each connection keeps its own account and selected proxy.
+
+- **Qwen OAuth:** choose Qwen, start device sign-in, open the displayed
+  verification URL and enter the code. Keep the dashboard flow open until it
+  completes. Qwen Cloud API keys are a separate provider; do not import them
+  into Qwen OAuth.
+- **iFlow:** start OAuth and complete the redirect to the dashboard. For cookie
+  import, supply one `BXAuth` cookie from your own iFlow session. Import rotates
+  the platform API key once; if the response is lost, inspect your connections
+  before repeating the import. Cookie responses never display the stored key.
+- **Kiro:** choose the supported sign-in method for your account and complete
+  its browser/device instructions. For an organization account, use your
+  organization's start URL and region. Keep those values associated with that
+  account when reconnecting.
+- **GitHub Copilot:** choose GitHub Copilot and complete device authorization
+  with the GitHub account holding the subscription.
+- **GitHub Enterprise Copilot:** choose the enterprise provider and explicitly
+  enter your enterprise HTTPS origin. Complete device authorization for that
+  host using the connection's selected proxy. A legacy connection containing
+  only an API URL must be reauthenticated with its enterprise origin before
+  dispatch. A provider-returned API URL cannot establish that identity.
+
+Cancellation or an expired code requires a fresh sign-in flow. If a connection
+requires reauthentication, reconnect the selected account. Public GitHub,
+GitHub Enterprise and Microsoft 365 Copilot Web are separate identities;
+credentials from one are not interchangeable with another.

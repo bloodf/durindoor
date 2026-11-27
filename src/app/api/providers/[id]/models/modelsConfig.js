@@ -19,7 +19,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
 import { updateProviderConnection } from "@/lib/localDb";
-import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
+import { gheRequestContext, gheBoundFetch } from "@/lib/oauth/providerParity/copilot/gheConnection.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels } from "open-sse/services/qoderModels.js";
@@ -673,13 +673,16 @@ export const PROVIDER_MODELS_CONFIG = {
   // Enterprise discovery must use the connection's scoped token and tenant host.
   "ghe-copilot": {
     customResolver: async (connection, proxyOptions = null) => {
-      const data = connection.providerSpecificData || {};
-      const base = resolveGheCopilotApiBase(data);
-      if (!base || !data.copilotToken) return { error: "Enterprise Copilot token or host missing; reconnect or refresh the connection", status: 401 };
-      const response = await proxyAwareFetch(`${base}/models`, {
+      let context;
+      try {
+        context = gheRequestContext(connection, proxyOptions);
+      } catch {
+        return { error: "Enterprise Copilot reauthentication needed", status: 401 };
+      }
+      const response = await gheBoundFetch(context.binding, `${context.base}/models`, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${data.copilotToken}`,
+          Authorization: `Bearer ${context.token}`,
           "Copilot-Integration-Id": "vscode-chat",
           "editor-version": `vscode/${GITHUB_COPILOT.VSCODE_VERSION}`,
           "editor-plugin-version": `copilot-chat/${GITHUB_COPILOT.COPILOT_CHAT_VERSION}`,
@@ -687,7 +690,7 @@ export const PROVIDER_MODELS_CONFIG = {
           "x-github-api-version": GITHUB_COPILOT.API_VERSION
         },
         cache: "no-store"
-      }, proxyOptions);
+      });
       if (!response.ok) return { error: `Enterprise Copilot models request failed: ${response.status}`, status: response.status };
       const rows = parseOpenAIStyleModels(await response.json());
       const models = rows.map((row) => withCopilotEndpointContract(row));

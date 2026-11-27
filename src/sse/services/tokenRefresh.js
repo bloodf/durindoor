@@ -1,6 +1,7 @@
 // Re-export from open-sse with local logger
+import { isDeepStrictEqual } from "node:util";
 import * as log from "../utils/logger.js";
-import { updateProviderConnection } from "../../lib/localDb.js";
+import { getProviderConnectionById, updateProviderConnection } from "../../lib/localDb.js";
 import { isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
@@ -152,7 +153,7 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  *   The write is refused when the stored token is neither this one nor its replacement.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, shouldCommitConnection } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -208,6 +209,7 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
         Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
       };
     }
+    if (shouldCommitConnection) guard = { ...guard, shouldCommitConnection };
     // The repo compares rotated identity claims with the stored row under its write lock.
     if (hasCodexIdentityClaims(updates)) guard = { ...guard, refreshRotation: true };
     const result = guard ?
@@ -307,12 +309,19 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         existingProviderSpecificData: creds._connection?.providerSpecificData || creds.providerSpecificData
       };
 
-      // Persist to DB (non-blocking path continues below)
+      // Copilot refresh also carries routing metadata. Compare the durable
+      // sending row under the writer lock rather than only the refresh token.
+      const guardedCopilot = provider === "github" || provider === "ghe-copilot";
+      const snapshot = structuredClone(credentials._connection || credentials);
+      const shouldCommitConnection = (stored) => Boolean(stored) &&
+        isDeepStrictEqual(providerRefreshContext(stored), providerRefreshContext(snapshot)) &&
+        isDeepStrictEqual(stored.providerSpecificData || {}, snapshot.providerSpecificData || {}) &&
+        (!snapshot.updatedAt || stored.updatedAt === snapshot.updatedAt);
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
+        guardedCopilot ? { shouldCommitConnection } :
         guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
-      // Never dispatch a Codex token whose identity the store did not accept.
-      if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
+      if (!applied && (guardedCopilot || guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
 
       creds = {
         ...creds,
@@ -323,6 +332,16 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         { ...creds.providerSpecificData, ...newCreds.providerSpecificData } :
         creds.providerSpecificData
       };
+
+      if (guardedCopilot && creds.connectionId) {
+        const committed = await getProviderConnectionById(creds.connectionId);
+        const expected = { ...snapshot, ...newCreds,
+          providerSpecificData: { ...(snapshot.providerSpecificData || {}), ...(newCreds.providerSpecificData || {}) } };
+        if (!committed || !isDeepStrictEqual(providerRefreshContext(committed), providerRefreshContext(expected))) return creds;
+        // Use the post-commit revision for the secondary session exchange.
+        creds._connection = committed;
+        creds.updatedAt = committed.updatedAt;
+      }
 
       // Non-blocking: discover only when this connection has no stored project ID.
       if (!creds.projectId && (provider !== "antigravity" && provider !== "agy" ||
@@ -347,6 +366,19 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         expiresIn: copilotToken ? Math.round(remaining / 1000) : "missing"
       });
 
+      // Capture durable credentials and routing before the exchange. Reconnects,
+      // deletions and competing rotations must win over this in-flight work.
+      const sending = structuredClone({
+        ...creds,
+        ...creds._connection,
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
+        providerSpecificData: creds._connection?.providerSpecificData || creds.providerSpecificData
+      });
+      const shouldCommitConnection = (stored) => Boolean(stored) &&
+        isDeepStrictEqual(providerRefreshContext(stored), providerRefreshContext(sending)) &&
+        isDeepStrictEqual(stored.providerSpecificData || {}, sending.providerSpecificData || {}) &&
+        (!sending.updatedAt || stored.updatedAt === sending.updatedAt);
       const copilotTokenResult = await refreshCopilotToken(creds.accessToken, effectiveProxyOptions);
       if (copilotTokenResult) {
         const updatedSpecific = {
@@ -355,13 +387,14 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
           copilotTokenExpiresAt: copilotTokenResult.expiresAt
         };
 
-        await updateProviderCredentials(creds.connectionId, {
+        const applied = await updateProviderCredentials(creds.connectionId, {
           providerSpecificData: {
             ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
             copilotToken: copilotTokenResult.token,
             copilotTokenExpiresAt: copilotTokenResult.expiresAt
           }
-        });
+        }, { shouldCommitConnection });
+        if (!applied) return creds;
 
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotTokenResult.token;

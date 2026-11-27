@@ -66,7 +66,7 @@ No production code imports these modules. The unregistered state is asserted onl
 ## Not covered
 
 - OpenAI Realtime bridging and chat-backed text bridges.
-- fal's `http-websocket` transport (`wss://ws.fal.run`).
+- fal's `http-websocket` transport (`wss://ws.fal.run`). It is staged separately; see [native-fal-http-websocket.md](native-fal-http-websocket.md).
 - Live fal sockets. Every test uses a synthetic socket.
 
 ## Evidence

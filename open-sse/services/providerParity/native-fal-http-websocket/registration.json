@@ -1,0 +1,77 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "src/lib/fal/dispatch.ts",
+      "src/lib/fal/realtime.ts",
+      "src/lib/fal/runtime.ts",
+      "src/app/api/v1/fal/run/route.ts",
+      "open-sse/handlers/fal/httpWebsocket.ts",
+      "open-sse/handlers/fal/httpWebsocketReply.ts",
+      "open-sse/handlers/fal/socket.ts",
+      "open-sse/handlers/fal/events.ts",
+      "open-sse/handlers/fal/output.ts",
+      "open-sse/handlers/fal/schema.ts",
+      "open-sse/config/falEndpoint.ts"
+    ]
+  },
+  "provider": {
+    "canonicalId": "fal-ai",
+    "aliases": ["fal"],
+    "existingDefinition": "open-sse/providers/registry/fal-ai.js (API-key connection; unchanged)",
+    "connectionModes": "unchanged: API key (credentials.apiKey, else credentials.accessToken) sent only as the WebSocket upgrade header `Authorization: Key <key>`; an HTTP(S) proxy resolved for https://ws.fal.run is honored, any other proxy is refused (409)",
+    "notCovered": [
+      "OpenAI Realtime (/v1/realtime) bridging and chat-backed text bridges: no source evidence",
+      "process-local session registry, artifact store and job/accounting rows (src/lib/fal/realtime.ts, src/lib/db/fal, src/lib/fal/accounting.ts)",
+      "the source's prompt-injection guard and Idempotency-Key refusal in src/app/api/v1/fal/run/route.ts"
+    ]
+  },
+  "transport": {
+    "name": "http-websocket",
+    "url": "wss://ws.fal.run/{endpoint_id}",
+    "endpointSelection": "definition.endpoint_id after legacy alias normalization (FAL_LEGACY_ENDPOINTS, the source table verbatim); otherwise it must be owner/app[/subpath], at most 300 chars, no ./.. segments (400 before any key use)",
+    "inputSchema": "the endpoint's direct HTTP schema (POST /{endpoint_id}, else the only non-/stream POST without {request_id}); never x-fal-realtime; unknown top-level keys refused unless additionalProperties is true",
+    "wire": "input: one text frame JSON.stringify(input); reply: text {type:start,request_id,status,headers}, raw body frames (text or binary), text {type:end,request_id,status,...}; one invocation at a time (409 while pending)",
+    "events": "SSE: `event: http-start` with the start frame; event-stream bodies forward each native SSE event, then `event: http-end` with { http }; JSON/text bodies `event: final` with { artifacts, output, http, partial: false }; other bodies `event: final` with { output: { file }, artifacts } via the artifact hook (data URI without one); status >= 400 emits `event: error` with the same shape plus { error }; protocol, transport and deadline failures emit `event: error` with { error, status: FAILED | IDLE_TIMEOUT | SUBMISSION_UNKNOWN } and end the stream",
+    "limits": "FAL_HTTP_WEBSOCKET_LIMITS: handshake 15 s, frame 32 MiB, send buffer 1 MiB, response body 32 MiB, SSE event 8 MiB, input 8 MiB, invocation 120 s (pass the configured upstream timeout), output high water 1 MiB, queued output 64 MiB, idle 120 s",
+    "retries": "none: no reconnect, no replay; an invocation without its end when the session stops is reported as SUBMISSION_UNKNOWN and onClose(true)"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-fal-http-websocket/index.js",
+    "connect": "connectFalHttpWebsocket({ definition, credentials, signal, onClose(uncertain), artifact, proxyUrl, agentFactory, socketFactory, limits }) -> Promise<{ output: ReadableStream<Uint8Array> (SSE), send(input), close(), endpoint, closed, pending }>",
+    "schema": "falHttpInputSchema, compileFalHttpWebsocketInput",
+    "reply": "FalHttpWebsocketReply, FalHttpWebsocketProtocolError, createFalEventParser",
+    "aliases": "FAL_LEGACY_ENDPOINTS, canonicalFalEndpoint, canonicalFalDefinition, isLegacyFalEndpoint, falHttpWebsocketUrl",
+    "realtimeAliases": "connectFalRealtimeCanonical, falRealtimePathCanonical, falRealtimeUrlCanonical: the frozen realtime bundle with definition.endpoint_id canonicalized first",
+    "metadata": "FAL_HTTP_WEBSOCKET_PROVIDER_ID, FAL_HTTP_WEBSOCKET_PROVIDER_ALIASES, FAL_HTTP_WEBSOCKET_TRANSPORT, FAL_HTTP_WEBSOCKET_ORIGIN, FAL_HTTP_WEBSOCKET_PROXY_ORIGIN, FAL_HTTP_WEBSOCKET_LIMITS, FAL_HTTP_WEBSOCKET_PROVIDER_METADATA"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/providers/registry/fal-ai.js",
+      "change": "add httpWebsocketConfig: FAL_HTTP_WEBSOCKET_PROVIDER_METADATA.httpWebsocketConfig ({ baseUrl: \"wss://ws.fal.run\" }) only together with the route below"
+    },
+    {
+      "file": "src/app/api/v1/fal/run (new route, serial registration change)",
+      "change": "for transport \"http-websocket\": authenticate the client key, resolve the selected fal-ai connection (credentials server-side only), resolve its proxy for https://ws.fal.run (relay proxies refused with 409), obtain the endpoint definition, call connectFalHttpWebsocket with the route's abort signal and limits.invocationTimeoutMs from the configured upstream timeout, pass the artifact store as `artifact`, send the first input, return `output` as text/event-stream with Cache-Control: no-store. Use connectFalRealtimeCanonical (not connectFalRealtime) for transport \"realtime\" so both transports accept the same endpoint aliases."
+    },
+    {
+      "file": "src/app/api/v1/fal/jobs/[id] (session/job route)",
+      "change": "follow-up inputs go through the registered session's `send` (validated there; 409 while an invocation is pending, 410 after close); DELETE calls close()"
+    },
+    {
+      "file": "accounting (src/lib/fal/accounting equivalent)",
+      "change": "record one dispatched session after the first send returns; onClose(true) or an `error` event with status SUBMISSION_UNKNOWN is an uncertain billable outcome, never retried or replayed; an `error` event with an `http` field is a definite upstream HTTP failure"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list fal.ai HTTP over WebSockets (wss://ws.fal.run, ordinary HTTP schema, start/body/end) next to the realtime transport"
+    },
+    {
+      "file": "tests/unit/native-fal-http-websocket.test.js",
+      "change": "replace the isolated `staging metadata (pre-registration only)` registry assertion with positive identity assertions; leave every other block unchanged"
+    }
+  ]
+}

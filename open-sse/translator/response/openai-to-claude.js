@@ -335,7 +335,7 @@ function toClaudeUsage(usage) {
   // input_tokens = prompt_tokens - cached_tokens - cache_creation_tokens
   // Because OpenAI's prompt_tokens includes all prompt-side tokens
   const claudeUsage = {
-    input_tokens: promptTokens - cacheReadTokens - cacheCreateTokens,
+    input_tokens: Math.max(0, promptTokens - cacheReadTokens - cacheCreateTokens),
     output_tokens: outputTokens
   };
   if (reportedCacheReadTokens !== undefined) claudeUsage.cache_read_input_tokens = reportedCacheReadTokens;
@@ -390,7 +390,12 @@ export function openaiToClaudeResponse(chunk, state) {
   if (!chunk) return finalizeOnFlush(state);
   if (chunk.usage && isObject(chunk.usage)) {
     const usage = toClaudeUsage(chunk.usage);
-    state.usage = state.claudeFinishHandled ? { ...state.usage, ...usage } : usage;
+    const hasMeasured = usage.input_tokens > 0 || usage.output_tokens > 0 ||
+      (usage.cache_read_input_tokens ?? 0) > 0 || (usage.cache_creation_input_tokens ?? 0) > 0;
+    if (hasMeasured) {
+      state.claudeMeasuredUsage = true;
+      state.usage = state.claudeFinishHandled ? { ...state.usage, ...usage } : usage;
+    }
   }
   if (!chunk.choices?.[0]) return null;
 

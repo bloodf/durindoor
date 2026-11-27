@@ -19,3 +19,64 @@ The existing 502 treatment of gRPC failures is unchanged. This intentionally
 replaces the earlier runtime test contract that exposed `grpc-message` and error
 chunk text. The parser's internal chunk decoder still exposes decoded material
 for protocol parsing; it is not a public error or log contract.
+
+### Typed failures, cancellation, and accepted work
+
+Compared with the local Devin Desktop executor port
+(`open-sse/executors/devin-desktop.js`, ported from OmniRoute
+[4265bb2](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/devin-desktop.ts), MIT).
+That source maps the Connect codes `unauthenticated`, `permission_denied`, and
+`resource_exhausted` to 401, 403, and 429. It treats an error trailer before any
+content as a plain failure that carries a status, and it does not refresh a rejected
+session token. That source covers a different Connect transport. The pinned
+revisions contain no Windsurf gRPC-web executor, so the numeric mapping below
+follows the gRPC status code table. It is not a port.
+
+- A trusted numeric `grpc-status` arrives in the gRPC-web trailer frame or, for
+  a trailers-only response, in the HTTP headers. Before any output, 16
+  (UNAUTHENTICATED) becomes a fixed 401 `Windsurf authentication failed`, and 8
+  (RESOURCE_EXHAUSTED) becomes a fixed 429. `grpc-message` and error chunk text
+  are never read into the result. 7 (PERMISSION_DENIED) keeps the existing 502
+  contract that the runtime and error-boundary tests pin. The source maps it to
+  403. DurinDoor does not, because a 403 starts the gateway's credential handling
+  and nothing here shows the code means a bad credential rather than model
+  entitlement.
+- Imported Windsurf tokens have no refresh token. The executor declines the
+  gateway's refresh-and-resend after a 401 or 403. Before this change, an
+  upstream 401 sent the same request twice.
+- Output means a content or usage frame. If output is followed by a non-OK
+  trailer, a missing trailer, a truncated frame, or an error chunk, the work is
+  accepted. A 200 body that fails while it is read is uncertain work. Both
+  return 502 with the fixed code `upstream_outcome_unknown`. The single-model
+  route then ends on the selected account. It does not cool the account down,
+  does not move to a sibling, does not run the outer transient retry, and does
+  not resend on a pinned account. This uses the same `upstreamPartialOutput`
+  rule as the Antigravity and MiniMax Code paths. The executor's own response
+  body keeps its earlier message and `upstream_error` code. The gateway gets
+  the classification through `parseError`.
+- A trailers-only failure with no output (for example 14 UNAVAILABLE) still
+  moves to a sibling, as it did before.
+- Cancellation before the send dispatches nothing. Cancellation while the send
+  is pending aborts it. Cancellation after headers cancels the upstream body
+  reader. Each case returns 499 after at most one send and tries no sibling.
+- A success that passed the gRPC OK trailer check is marked `validated`. The
+  gateway then settles quota as success and clears the account's stale failure
+  state. Before this change, a Windsurf success never cleared that state.
+  Failures record `FAILED <status>` and an error detail with zero tokens, and no
+  usage row. The gateway records no usage for failures, even when the upstream
+  sent a usage frame before failing.
+- Successful streaming output is unchanged.
+
+Combo routing still has a gap. `open-sse/services/combo.js` does not check
+`upstreamPartialOutput`, so a combo moves to its next member after accepted
+work. The flag is shared with Antigravity and MiniMax Code, and this change
+leaves combo behavior alone. Reproducer: one Windsurf account and a combo of
+`windsurf/swe-1.6` and `windsurf/gpt-5.5`. The first reply is a content frame
+followed by `grpc-status: 13`, and the second reply is a clean answer. The
+upstream receives two sends and the client gets 200 from the second member.
+The needed change is a terminal return for `result.upstreamPartialOutput ===
+true` next to the existing `claudeRequestScoped` check in the combo attempt
+loop.
+
+All evidence comes from mocked transports (`tests/unit/windsurf-gateway-accounting-2034.test.js`).
+It does not show that real Windsurf services send these status codes in these positions.

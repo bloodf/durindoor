@@ -11,7 +11,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
-import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
+import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, groupGeminiFunctionResponses, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { antigravityCatalogUserAgent } from "../services/antigravityCatalog.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
@@ -471,7 +471,9 @@ export class AntigravityExecutor extends BaseExecutor {
      * Normalize only turns emptied by thought filtering; Antigravity rejects empty parts and adjacent roles.
      * Ported from upstream decolua/9router#3366 without importing translator continuation policy.
      */
-    const contents = normalizeFilteredContents(body.request?.contents?.map((c) => {
+    // Split parallel replies are regrouped in call order before names and
+    // signatures are rewritten (CLIProxyAPI 13e0642; its Antigravity translator groups the same way).
+    const contents = normalizeFilteredContents(groupGeminiFunctionResponses(body.request?.contents)?.map((c) => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
       if (c.parts?.some((p) => p.functionResponse)) {

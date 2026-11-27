@@ -353,7 +353,9 @@ export function startCodexProxy(appPort) {
       await stopCodexProxy(server);
     });
 
-    server.listen(CODEX_PORT, "127.0.0.1", () => {
+    // Allow container bridge port-forwarding when explicitly opted in (#5897).
+    const host = process.env.CODEX_OAUTH_CALLBACK_BIND_ALL === "true" ? "0.0.0.0" : "127.0.0.1";
+    server.listen(CODEX_PORT, host, () => {
       codexProxyServer = server;
       armCodexProxyTimeout(server, generation);
       resolve({ success: true });

@@ -90,10 +90,11 @@ export function returnedImageUnits(accounting, normalized) {
 
 /**
  * Evidence for a client cancel that came after the provider answered 2xx but
- * before its body was fully read. The provider accepted the request and may
- * bill it, yet no returned image was observed: native units stay empty and an
- * unknown cost stays unknown, tagged so the ledger says why. A usage or USD
- * receipt already read from the body is kept as it was.
+ * before its body was fully read. Call it only once a provider usage receipt
+ * was actually read: that receipt, not the 2xx status, is the evidence of
+ * billable work. No returned image was observed, so native units stay empty
+ * and an unknown cost stays unknown, tagged so the ledger says why. The
+ * receipt's tokens and any USD cost are kept as reported.
  */
 export function cancelledAccounting(accounting) {
   const meta = { ...accounting.meta, clientCancelled: "after-upstream-headers" };
@@ -105,4 +106,16 @@ export function cancelledAccounting(accounting) {
     costSource: accounting.costStatus === "known" ? accounting.costSource : "client-cancelled",
     meta,
   };
+}
+
+/**
+ * Mark a client cancel that came after 2xx headers with no receipt read. The
+ * status alone proves neither acceptance nor completion (a 200 can carry an
+ * error envelope), so this is kept apart from usage: it is logged and flagged
+ * on the result, never recorded, and consumes no quota or request count.
+ */
+export function headerOnlyCancel(result, log, provider, model) {
+  log?.warn?.("USAGE", `[${provider}/${model}] client cancelled after upstream 2xx headers before any receipt; outcome unknown, not recorded`);
+  result.cancelledAfterHeaders = true;
+  return result;
 }

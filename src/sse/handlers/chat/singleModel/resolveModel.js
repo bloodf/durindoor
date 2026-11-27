@@ -1,11 +1,53 @@
-import { getModelInfo } from "../../../services/model.js";
+import { getModelInfo, resolveModelAlias } from "../../../services/model.js";
+import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js";
 import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapability.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { errorResponse } from "open-sse/utils/error.js";
+import { LOCAL_REQUEST_ERROR } from "open-sse/services/combo.js";
+import { isString } from "../../../../shared/utils/typeChecks.js";
 import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { terminal, proceed } from "./context.js";
+
+const OPENAI_INFERRED_PREFIX_RE = /^(?:gpt-|o[134])/i;
+const OPENAI_REGISTRY_ENTRY = REGISTRY.find((entry) => entry.id === "openai");
+
+function isKnownOpenAIBareModel(model) {
+  if (OPENAI_INFERRED_PREFIX_RE.test(model)) return true;
+  const stripped = stripRecognizedContextSuffix(model);
+  return OPENAI_REGISTRY_ENTRY?.models?.some(
+    (entry) =>
+      entry.id === model ||
+      entry.id === stripped ||
+      entry.aliases?.includes(model) ||
+      entry.aliases?.includes(stripped)
+  ) === true;
+}
+
+async function hasConfiguredModelAlias(modelStr) {
+  try {
+    if (await resolveModelAlias(modelStr)) return true;
+    const stripped = stripRecognizedContextSuffix(modelStr);
+    return stripped !== modelStr ? Boolean(await resolveModelAlias(stripped)) : false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Local HTTP 404 `model_not_found` for an unresolvable bare model on chat,
+ * messages, and responses inference routes (OmniRoute #21349 / KEA-9627).
+ * Marked `LOCAL_REQUEST_ERROR` so combo fallback advances without cooling
+ * accounts or penalizing health scores.
+ */
+export function unknownBareModelResponse(modelStr, message = null) {
+  const text = message || `Model '${modelStr}' could not be resolved to a known provider.`;
+  log.warn("CHAT", text, { model: modelStr });
+  const response = errorResponse(HTTP_STATUS.NOT_FOUND, text);
+  response[LOCAL_REQUEST_ERROR] = true;
+  return response;
+}
 
 /**
  * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
@@ -35,15 +77,28 @@ export function isNonChatModel(provider, model) {
 /**
  * Stage 1: resolve the requested model string to a provider/model pair.
  * A string that names no provider is a nested combo, handed back to the caller
- * through ctx.dispatchNestedCombo. Image-only and non-chat models are rejected
- * before credentials or dispatch so the upstream is never called.
+ * through ctx.dispatchNestedCombo. Unresolvable bare models on inference routes
+ * return HTTP 404 `model_not_found` before credential lookup or upstream
+ * dispatch (OmniRoute #21349 / KEA-9627). Ambiguous, malformed, image-only,
+ * and non-chat models keep their HTTP 400 rejections.
  */
 export async function resolveModel(ctx) {
   const { request, requestSignal, modelStr } = ctx;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
-  const modelInfo = await getModelInfo(modelStr);
+  const resolveInfo = ctx.resolveModelInfo || getModelInfo;
+  const modelInfo = await resolveInfo(modelStr);
 
-  if (!modelInfo.provider) {
+  if (modelInfo?.errorType === "ambiguous_model") {
+    const message = modelInfo.errorMessage || `Model '${modelStr}' is ambiguous. Use provider/model prefix.`;
+    log.warn("CHAT", message, { model: modelStr });
+    return terminal(errorResponse(HTTP_STATUS.BAD_REQUEST, message));
+  }
+
+  if (modelInfo?.errorType === "model_not_found") {
+    return terminal(unknownBareModelResponse(modelStr, modelInfo.errorMessage));
+  }
+
+  if (!modelInfo?.provider) {
     return terminal(await ctx.dispatchNestedCombo({
       body: ctx.body,
       modelStr,
@@ -64,6 +119,25 @@ export async function resolveModel(ctx) {
   }
 
   const { provider, model } = modelInfo;
+  if (!model) {
+    log.warn("CHAT", "Invalid model format", { model: modelStr });
+    return terminal(errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format"));
+  }
+
+  // Bare models that match no combo, alias, prefix rule, or OpenAI catalog
+  // entry previously fell through `inferProviderFromModelName`'s default
+  // "openai" fallback. Return 404 `model_not_found` locally before dispatch.
+  if (
+    isString(modelStr) &&
+    !modelStr.includes("/") &&
+    provider === "openai" &&
+    model === modelStr &&
+    !isKnownOpenAIBareModel(model) &&
+    !(await hasConfiguredModelAlias(modelStr))
+  ) {
+    return terminal(unknownBareModelResponse(modelStr));
+  }
+
   ctx.modelInfo = modelInfo;
   ctx.provider = provider;
   ctx.model = model;

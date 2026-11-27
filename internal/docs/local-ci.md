@@ -175,3 +175,16 @@ services need changing. Deterministic injected-operation tests cover EPERM,
 ESRCH, other signal errors, successful cleanup, and failure propagation. Native
 process-group integration coverage runs on the host platform; Linux evidence
 does not establish macOS permission behavior.
+
+Browser checkpoint follow-ups (#2661): the shared Playwright config rejects focused
+cases in discovery and execution. Before executing, local CI asks Playwright to
+list each proposed shard, reduces the count if a shard is empty, and verifies the
+complete exact-once union. Serial/file/project groups therefore follow Playwright's
+own allocation. Execution still rejects empty, skipped, failed and flaky reports.
+Owned-process enumeration errors fail cleanup even when the port is free; missing
+procfs cannot establish successful cleanup. No unverified process is signalled.
+Direct browser runs select and pin a fresh loopback port, while CI supplies each
+shard's port. An occupied selected port remains a hard failure. Chromium scratch
+uses a private short `/tmp/dd-pw-*` directory, removed on normal runner exit,
+independent of long report/output paths. Each planning and execution command
+retains the five-minute ceiling and private allowlisted CI environment.

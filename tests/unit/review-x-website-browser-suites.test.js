@@ -15,9 +15,10 @@ describe("website browser validation", () => {
 
   it("runs sharded browser suites under the local website condition and fails missing browsers", () => {
     const local = read("scripts/local-ci.mjs");
-    expect(local).toMatch(/if \(!websiteRun\)[\s\S]*?else \{[\s\S]*?website-build[\s\S]*?websiteBrowserInventoryCommand[\s\S]*?selectWebsiteBrowserShards[\s\S]*?websiteBrowserShardCommands[\s\S]*?verifyWebsiteBrowserCoverage/);
+    expect(local).toMatch(/if \(!websiteRun\)[\s\S]*?else \{[\s\S]*?website-build[\s\S]*?websiteBrowserInventoryCommand[\s\S]*?planWebsiteBrowserShards[\s\S]*?websiteBrowserShardCommands[\s\S]*?verifyWebsiteBrowserCoverage/);
     expect(local).toMatch(/else if \(!browserAvailable\) \{\s*anyFail = true;\s*skip\("website-browser-suites", "website-build", "required website browser suites cannot run: no executable Chromium browser", "failed"\)/);
     expect(local).not.toContain("browser suites skipped: no browser");
+    expect(local).toMatch(/await planWebsiteBrowserShards[\s\S]*?--shard=\$\{shard.shard\}[\s\S]*?extractPlaywrightTests/);
     expect(local).toMatch(/requiredWebsiteCoverageStep\(websiteRun, evidence\.websiteBrowserCoverage, evidence\.steps\)[\s\S]*?evidence\.steps\.push[\s\S]*?coverageStep\.status === "failed"\) anyFail = true/);
     expect(JSON.parse(read("website/package.json")).scripts["test:browser"]).toBe("playwright test");
   });

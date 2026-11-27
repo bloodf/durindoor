@@ -18,7 +18,7 @@ import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
 import { isObject, isString, isNumber } from "../../src/shared/utils/typeChecks.js";
-import { getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
+import { getGeminiThoughtSignature, getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
 
 // Native provider declarations bypass the shared OpenAI tool-schema normalization.
 // Visit only surviving schema nodes, never the property-name maps themselves.
@@ -319,6 +319,28 @@ export class AntigravityExecutor extends BaseExecutor {
         transformedBody: null
       };
     }
+    // Restore persisted tool-call signatures from SQLite on a cold RAM cache before dispatch (#5894).
+    const contents = options.body?.request?.contents;
+    if (Array.isArray(contents) && !isImageModel(options.model)) {
+      const sessionId = options.credentials?._clientSessionId || options.body.request.sessionId;
+      const model = options.body.model || options.model;
+      const lookups = new Map();
+      const restored = await Promise.all(contents.map(async (content) => {
+        if (!content || !Array.isArray(content.parts)) return content;
+        return {
+          ...content,
+          parts: await Promise.all(content.parts.map(async (part) => {
+            const id = part?.functionCall?.id;
+            const signature = part?.thoughtSignature;
+            if (!id || (signature && signature !== DEFAULT_THINKING_AG_SIGNATURE && signature !== DEFAULT_THINKING_GEMINI_CLI_SIGNATURE)) return part;
+            if (!lookups.has(id)) lookups.set(id, getGeminiThoughtSignature(id, sessionId, model));
+            const saved = await lookups.get(id);
+            return saved ? { ...part, thoughtSignature: saved } : part;
+          }))
+        };
+      }));
+      options = { ...options, body: { ...options.body, request: { ...options.body.request, contents: restored } } };
+    }
     let result = await super.execute(options);
     // A bare detail-free 429 means systemInstruction carries text Google fingerprints that the rewrite
     // list does not cover yet. Retry once with that text moved into the first user turn. Image models
@@ -502,10 +524,12 @@ export class AntigravityExecutor extends BaseExecutor {
       return c;
     }));
 
-    // Native requests bypass the translator's response schema normalization.
-    if (body.request?.generationConfig?.responseSchema) {
+    // Native requests bypass the translator's response schema normalization;
+    // enforce structuredOutput validation so invalid/recursive schemas fail locally.
+    if (body.request?.generationConfig?.responseSchema !== undefined) {
       body.request.generationConfig.responseSchema = cleanJSONSchemaForAntigravity(
-        structuredClone(body.request.generationConfig.responseSchema), { preserveNullable: true }
+        structuredClone(body.request.generationConfig.responseSchema),
+        { preserveNullable: true, structuredOutput: true }
       );
     }
 

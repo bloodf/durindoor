@@ -11,13 +11,12 @@ import { PROVIDER_NODE_INVALID, validateProviderNode } from "@/lib/providerNodes
 
 export const dynamic = "force-dynamic";
 
-// Node types the create route accepts, with the base URL used when the payload omits one.
-// System One has no default: its endpoint is always operator-supplied.
-const NODE_TYPE_DEFAULT_BASE_URL = new Map([
-  ["openai-compatible", "https://api.openai.com/v1"],
-  ["custom-embedding", "https://api.openai.com/v1"],
-  ["anthropic-compatible", "https://api.anthropic.com/v1"],
-  ["systemone-compatible", undefined]
+// Every node type requires an operator-supplied base URL.
+const NODE_TYPES = new Set([
+  "openai-compatible",
+  "custom-embedding",
+  "anthropic-compatible",
+  "systemone-compatible"
 ]);
 const PROVIDER_ID_SUFFIX_REGEX = /^[a-zA-Z0-9_.-]+$/;
 
@@ -52,11 +51,11 @@ export async function POST(request) {
 
     // Determine type
     const nodeType = type || "openai-compatible";
-    if (!NODE_TYPE_DEFAULT_BASE_URL.has(nodeType)) {
+    if (!NODE_TYPES.has(nodeType)) {
       return NextResponse.json({ error: "Invalid provider node type" }, { status: 400 });
     }
 
-    const checked = validateProviderNode(body, { type: nodeType, strict: true, baseUrlDefault: NODE_TYPE_DEFAULT_BASE_URL.get(nodeType) });
+    const checked = validateProviderNode(body, { type: nodeType, strict: true });
     if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
     const { name: nodeName, prefix: nodePrefix, baseUrl: nodeBaseUrl, iconUrl } = checked.value;
     const iconFields = iconUrl !== undefined ? { iconUrl } : null;

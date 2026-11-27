@@ -5,7 +5,9 @@
 // suno and udio belong here too: their only generic probe POSTs the music submit endpoint,
 // which starts a billable generation on the account.
 // notrack-web has no read-only endpoint: its only request is the chat dispatch.
-const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web", "doubao-web", "zai-web", "notrack-web", "cloudflare-playground", "suno", "udio"]);
+// poe-web and v0-vercel-web have no read-only endpoint either (#2034, 1127): their only request
+// is the chat dispatch, so a saved cookie is checked locally and the probe is skipped.
+const CONVERSATION_PROBE_PROVIDERS = new Set(["grok-web", "copilot-web", "zenmux-free", "adapta-web", "yuanbao-web", "doubao-web", "zai-web", "notrack-web", "cloudflare-playground", "suno", "udio", "poe-web", "v0-vercel-web"]);
 
 // Web sessions whose dispatch is deliberately closed (#2034): the executor returns provider_port_pending
 // because no authorized, verified non-browser request contract exists. Validate and Test Connection must

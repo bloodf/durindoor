@@ -4,7 +4,7 @@ import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
-import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { headerOnlyCancel, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 const XAI_IMAGE_EDIT_FIELDS = new Set(["n", "response_format", "quality", "resolution", "aspect_ratio", "storage_options"]);
 
@@ -90,8 +90,12 @@ export function deriveImageEditsUrl(imageConfig) {
  * @param {object|null} [options.jsonBody]
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} [options.log]
+ * @param {AbortSignal} [options.signal] - Client cancellation signal forwarded to the provider
  * @param {function} [options.onRequestSuccess]
- * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
+ * A client cancel while the 2xx body is read returns 499 with
+ * `cancelledAfterHeaders: true` and no usage: the unread body could have been an
+ * error envelope, so the status alone proves no billable work and records nothing.
+ * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string, cancelledAfterHeaders?: boolean }>}
  */
 export async function handleImageEditCore({
   formData,
@@ -99,7 +103,8 @@ export async function handleImageEditCore({
   modelInfo,
   credentials = null,
   log = null,
-  onRequestSuccess = null
+  onRequestSuccess = null,
+  signal
 }) {
   const { provider, model } = modelInfo;
   const mediaCfg = PROVIDER_MEDIA[provider];
@@ -138,8 +143,9 @@ export async function handleImageEditCore({
   log?.debug?.("IMAGE-EDIT", `${provider} | ${model} | ${editConfig.baseUrl}`);
   let res;
   try {
-    res = await proxyAwareFetch(editConfig.baseUrl, { method: "POST", headers, body: isNativeJson ? JSON.stringify(upstream) : upstream }, resolveCredentialProxyOptions(credentials));
+    res = await proxyAwareFetch(editConfig.baseUrl, { method: "POST", headers, body: isNativeJson ? JSON.stringify(upstream) : upstream, signal }, resolveCredentialProxyOptions(credentials));
   } catch (err) {
+    if (signal?.aborted || err?.name === "AbortError") return createErrorResult(499, "Image edit request aborted");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
   if (!res.ok) {
@@ -147,7 +153,15 @@ export async function handleImageEditCore({
     return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
   }
   if (onRequestSuccess) await onRequestSuccess();
-  const text = await res.text();
+  let text;
+  try {
+    text = await res.text();
+  } catch (err) {
+    // Other read failures keep propagating: the provider may already have billed.
+    if (!signal?.aborted) throw err;
+    // Nothing of the body was read, so the 2xx alone proves no billable work.
+    return headerOnlyCancel(createErrorResult(499, "Image edit request aborted"), log, provider, model);
+  }
   let value = null;
   try { value = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
   const accounting = mediaAccounting(value, provider, "image");

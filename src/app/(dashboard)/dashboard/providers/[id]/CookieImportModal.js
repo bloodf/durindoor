@@ -7,7 +7,7 @@ import { V5NativeSelect } from "@/shared/ui/v5/NativeSelect.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Textarea from "@/shared/ui/components/Textarea.jsx";
-import { resolveCookieImportContract } from "@/shared/utils/cookieImportContract";
+import { normalizeAccountEmail, resolveCookieImportContract } from "@/shared/utils/cookieImportContract";
 import { isFunction } from "@/shared/utils/typeChecks";
 import {
   MAX_HAR_FILE_BYTES,
@@ -66,6 +66,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [storageValues, setStorageValues] = useState({});
+  const [accountEmail, setAccountEmail] = useState("");
 
   const contract = useMemo(() => importContract ?? resolveCookieImportContract(webLogin), [importContract, webLogin]);
   const ambiguous = candidatesAreAmbiguous(candidates);
@@ -80,6 +81,9 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     const value = (storageValues[key] || "").trim();
     return Boolean(value) && (!credentialPattern || credentialPattern.test(value));
   });
+  // Inner.ai Web: an optional account email the server binds to the pairing. Blank means token only.
+  const takesAccountEmail = contract?.accountEmail === "optional";
+  const emailCheck = takesAccountEmail ? normalizeAccountEmail(accountEmail) : { ok: true, email: "" };
   const cookieConnections = usesCookies ? connections.filter((connection) => connection?.authType === "cookie") : connections;
 
   const clearSensitiveInput = () => {
@@ -88,6 +92,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     setCandidates([]);
     setSelectedIndex(-1);
     setStorageValues({});
+    setAccountEmail("");
   };
 
   const applyParsed = (parsed, kind) => {
@@ -170,9 +175,13 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     applyParsed(parseHarDocument(text), "har");
   };
 
-  const pairingTarget = () => (targetMode === "create"
-    ? { provider, action: "create", name: name.trim() }
-    : { provider, action: "update", connectionId });
+  const pairingTarget = () => ({
+    ...(targetMode === "create"
+      ? { provider, action: "create", name: name.trim() }
+      : { provider, action: "update", connectionId }),
+    // Only a non-blank email is sent; the server validates it again and never echoes it.
+    ...(takesAccountEmail && emailCheck.email ? { accountEmail: emailCheck.email } : null),
+  });
 
   const mintPairing = async () => {
     const response = await fetch(PAIRING_URL, {
@@ -186,7 +195,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   };
 
   const importSelected = async () => {
-    if (!contract || busy || (usesCookies && !selected) || !storageReady) return;
+    if (!contract || busy || (usesCookies && !selected) || !storageReady || !emailCheck.ok) return;
     setBusy(true);
     setError("");
     setStatus("");
@@ -220,7 +229,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   };
 
   const createExtensionPairing = async () => {
-    if (busy) return;
+    if (busy || !emailCheck.ok) return;
     setBusy(true);
     setError("");
     setStatus("");
@@ -238,12 +247,13 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     setPairing(null);
     setError("");
     setStatus("");
+    setAccountEmail("");
     onClose();
   };
 
   if (!contract) return null;
 
-  const targetReady = targetMode === "create" ? Boolean(name.trim()) : Boolean(connectionId);
+  const targetReady = (targetMode === "create" ? Boolean(name.trim()) : Boolean(connectionId)) && emailCheck.ok;
   const canImport = (!usesCookies || Boolean(selected)) && storageReady && targetReady && !busy;
   const sources = usesCookies
     ? [["paste", "Paste header or cURL"], ["file", "HAR file"], ["extension", "Browser extension"]]
@@ -306,6 +316,25 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
                 ))}
               </select>}
             </label>}
+          {takesAccountEmail ?
+            <>
+              <Input
+                label="Account email (optional)"
+                type="email"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="user@example.com"
+                value={accountEmail}
+                onChange={(event) => { setAccountEmail(event.target.value); setPairing(null); }}
+                disabled={busy} />
+              <p className="text-xs text-dd-muted">
+                The email you sign in to {providerName || provider} with, stored after the token. DurinDoor first asks the provider profile for
+                the account email and uses this one only when that lookup returns none. Leave it blank to store the token alone and rely on the
+                profile lookup. Replacing a connection with a blank email also removes any email saved before. The browser extension never reads
+                an email: enter it here before you create the pairing.
+              </p>
+              {!emailCheck.ok ? <p className="text-xs text-dd-danger">Enter a single email address, or leave the field blank.</p> : null}
+            </> : null}
         </section>
 
         {mode === "paste" && storageKeys.length > 0 &&

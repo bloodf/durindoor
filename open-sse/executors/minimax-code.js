@@ -27,6 +27,7 @@ import {
   applyMinimaxCodeBudgets,
   isRetryableMinimaxCodeStatus,
   minimaxCodeBackoffMs,
+  resolveMinimaxCodeResponseHeadersTimeoutMs,
   resolveMinimaxCodeRetries,
   resolveMinimaxCodeTimeoutMs,
 } from "../services/minimaxCodeBudget.js";
@@ -194,18 +195,32 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
     // One time budget for the whole call: the attempt, the backoff and the retry. It stops at
     // the response headers, so a stream that is already flowing is not cut by it.
     const timeoutMs = resolveMinimaxCodeTimeoutMs();
+    const headerTimeoutMs = resolveMinimaxCodeResponseHeadersTimeoutMs();
     const budget = new AbortController();
     const timer = setTimeout(() => budget.abort(new Error(`MiniMax Code gateway call timed out after ${timeoutMs} ms`)), timeoutMs);
     const signal = input.signal ? AbortSignal.any([input.signal, budget.signal]) : budget.signal;
     this.config = { ...this.config, retry: this.#retryConfig() };
+    const requestPolicy = {
+      ...(input.requestPolicy || null),
+      headerTimeoutMs: input.requestPolicy?.headerTimeoutMs ?? headerTimeoutMs,
+    };
     let result;
     try {
-      result = await super.execute({ ...input, signal, model: resolution.model, body: budgeted.body });
+      result = await super.execute({ ...input, signal, requestPolicy, model: resolution.model, body: budgeted.body });
     } catch (error) {
       // Our own timeout is not a verdict on the model, so it answers 500 (not 504, which
       // would take the model out of every fallback combo).
       if (budget.signal.aborted && !input.signal?.aborted) {
         return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms.`);
+      }
+      if (error?.errorKind === "connect_timeout") {
+        const timeout = new DOMException(
+          `Upstream did not send response headers within ${headerTimeoutMs} ms`,
+          "TimeoutError"
+        );
+        timeout.errorKind = "connect_timeout";
+        timeout.providerAttemptStartedAt = error.providerAttemptStartedAt;
+        throw timeout;
       }
       throw error;
     } finally {

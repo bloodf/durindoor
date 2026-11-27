@@ -5,6 +5,7 @@ import * as log from "../utils/logger.js";
 import { getRefreshLeadMs } from "open-sse/services/tokenRefresh.js";
 import { getCredentialExpiryMs } from "open-sse/services/oauthCredentialManager.js";
 import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
+import { trackRefreshPersistence } from "open-sse/services/refreshSerializer.js";
 
 /** Refresh when expiry is within 30 minutes (or the provider on-request lead, whichever larger). */
 import { isBrowser } from "../../shared/utils/typeChecks.js";
@@ -16,6 +17,8 @@ let started = false;
 let intervalHandle = null;
 let initialTimeoutHandle = null;
 let tickRunning = false;
+// Set by stop: a running tick finishes its current account and starts no other.
+let stopRequested = false;
 
 function isTruthyEnv(value) {
   if (value == null || value === "") return false;
@@ -136,6 +139,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
     const baseNormalDelay = Number(process.env.BG_REFRESH_DELAY_MS) || 1_500;
 
     for (let i = 0; i < due.length; i++) {
+      if (stopRequested) break;
       const snapshot = due[i];
       let conn = snapshot;
       try {
@@ -151,7 +155,8 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
             });
           } else {
             if (fresh) conn = fresh;
-            await refresh(conn);
+            if (stopRequested) break;
+            await trackRefreshPersistence(refresh(conn));
             log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
               id: conn.id,
               email: conn.email || conn.name || conn.id,
@@ -159,7 +164,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
             });
           }
         } else {
-          await refresh(conn);
+          await trackRefreshPersistence(refresh(conn));
           log.info("BG_TOKEN_REFRESH", "Connection refresh finished", {
             id: conn.id,
             email: conn.email || conn.name || conn.id,
@@ -176,7 +181,7 @@ export async function runBackgroundTokenRefreshTick(deps = {}) {
       }
 
       // Sequential delay between accounts to prevent bursting upstream providers (especially Google Cloud)
-      if (i < due.length - 1) {
+      if (i < due.length - 1 && !stopRequested) {
         const isSensitive = refreshCapabilities(snapshot.provider).googleAntiBurst === true;
         const baseDelay = isSensitive ? baseSensitiveDelay : baseNormalDelay;
         const jitter = isSensitive ? Math.floor(Math.random() * 4000) : 200;
@@ -203,6 +208,7 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
   if (isNonServerRuntime()) return false;
 
   started = true;
+  stopRequested = false;
   const period = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : DEFAULT_INTERVAL_MS;
 
   const safeTick = () => {
@@ -224,6 +230,7 @@ export function startBackgroundTokenRefresh({ intervalMs } = {}) {
 }
 
 export function stopBackgroundTokenRefresh() {
+  stopRequested = true;
   if (initialTimeoutHandle) {
     clearTimeout(initialTimeoutHandle);
     initialTimeoutHandle = null;

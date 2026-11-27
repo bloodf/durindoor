@@ -1,0 +1,89 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (topaz: baseUrl https://api.topazlabs.com, authType apikey, authHeader x-api-key, format topaz, models [topaz-enhance, inputModalities [image]], supportedSizes [1024x1024])",
+      "open-sse/handlers/imageGeneration.ts (format topaz -> handleTopazImageGeneration: input image required; multipart POST {baseUrl}/image/v1/enhance, headers Accept image/jpeg + X-API-Key apiKey || accessToken; form image (image.png) + output_width/output_height when size is WxH; raw image answer -> { b64_json } or { url: data: } with revised_prompt)"
+    ],
+    "notPorted": [
+      "open-sse/config/upscaleRegistry.ts + open-sse/handlers/imageUpscale/topaz.ts (format topaz-upscale on /v1/images/upscale: factor, output_format, topaz_model, sharpen, denoise, fix_compression, face_enhancement*). DurinDoor has no upscale route; that is a separate endpoint and request contract, not this image-generation delta."
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no topaz entry; open-sse/providers/registry/topaz.js declares serviceKinds [image] and authType apikey but no imageConfig, models or transport; tests/unit/1136-media-discovery.test.js asserts mediaTransportSupport('image', 'topaz') === 'unsupported'. The fal-ai topaz namespace (native-fal-ai-video/config.js) is a fal.run model family on another origin and credential, not api.topazlabs.com.",
+    "sourceReachability": "the source entry is registered in IMAGE_PROVIDERS and dispatched by format (not disabled)"
+  },
+  "module": "open-sse/services/providerParity/native-topaz-image/index.js",
+  "exports": {
+    "topazImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createTopazImageAdapter": "factory; options { fetchImpl, submitTimeoutMs, timeoutMs, now } for tests",
+    "parseTopazImageRequest": "(model, body) -> { model, prompt, image { bytes, format, mime }, output { width, height } | null, responseFormat }; throws status 400 before any network call",
+    "buildTopazEnhanceForm": "request -> FormData: image (Blob, sniffed MIME, file name image.png), then output_width/output_height when size was given",
+    "buildTopazEnhanceHeaders": "token -> { Accept: image/jpeg, X-API-Key: token }",
+    "decodeTopazInputImage": "inline data: URI or bare base64 -> { bytes, format, mime }; URLs refused",
+    "resolveTopazImageModel": "strip topaz/; null for models outside the source registry",
+    "resolveTopazImageCredential": "source order apiKey > accessToken (trimmed) | null",
+    "sniffTopazImage": "magic-byte check -> png | jpeg | webp | null",
+    "topazAcceptedJob": "accepted-job accounting for an uncertain submit",
+    "TOPAZ_*": "config constants (ids, aliases, origin, path, url, headers, models, sizes, MIMEs, bounds)"
+  },
+  "provider": {
+    "canonicalId": "topaz",
+    "aliases": [],
+    "serviceKinds": ["image"],
+    "existingServiceKinds": "registry already declares [image]; unchanged",
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "X-API-Key",
+      "scheme": "raw key",
+      "credentialFields": ["apiKey", "accessToken (source fallback)"],
+      "sentTo": ["https://api.topazlabs.com"]
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions"
+  },
+  "models": [
+    { "id": "topaz-enhance", "kind": "image", "inputModalities": ["image"], "sizes": "optional WxH, integer sides 1..8192 (registry advertises 1024x1024)" }
+  ],
+  "request": {
+    "accepted": ["model", "exactly one inline input image via image | image_url | image_urls[] | imageUrls[] (data: URI or bare base64 of PNG/JPEG/WebP, <= 20 MiB)", "prompt (optional, echoed as revised_prompt, not sent)", "size WxH (sent as output_width/output_height)", "n (1 only)", "response_format url (default, data: URL) | b64_json", "user (not sent)", "stream false"],
+    "refused": ["unknown model", "no input image", "more than one distinct input image", "http(s) or any other URL input (source fetched it)", "non-image or GIF/TIFF input, data: MIME contradicting the bytes", "malformed or > 8192 size", "n != 1", "mask, messages, output_format, topaz_model, sharpen, denoise, face_enhancement and any other field", "streaming", "binary output"],
+    "responseFormats": ["url", "b64_json"]
+  },
+  "endpoints": {
+    "enhance": { "method": "POST", "url": "https://api.topazlabs.com/image/v1/enhance", "body": "multipart/form-data: image, [output_width, output_height]", "answer": "raw image bytes (Accept image/jpeg)", "billable": true, "redirect": "manual (refused)" },
+    "discovery": "none: the source has no Topaz image model discovery; the model list is the static registry entry"
+  },
+  "bounds": { "submitTimeoutMs": 180000, "totalTimeoutMs": 240000, "maxInputImageBytes": 20971520, "responseMaxBytes": 50331648, "maxOutputEdge": 8192, "maxPromptChars": 8000 },
+  "accounting": {
+    "success": "nativeUnits.images = 1; cost unknown (the answer carries no usage)",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, redirect, foreign-origin answer; accepted: a 2xx that is unreadable, too large or not a PNG/JPEG/WebP. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed with no acceptedJob; other 4xx passed without the upstream body"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add topaz: topazImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore enforces responseFormats, calls adapter.generate and records success)"
+    },
+    {
+      "file": "open-sse/providers/registry/topaz.js",
+      "change": "add models [{ id: \"topaz-enhance\", name: \"topaz-enhance\", kind: \"image\", inputModalities: [\"image\"] }]; keep authType apikey and serviceKinds [image]. No imageConfig baseUrl is needed by the guarded adapter (and one would derive an /v1/images/edits passthrough this adapter does not support)."
+    },
+    {
+      "file": "tests/unit/1136-media-discovery.test.js, tests/unit/media-routes.test.js",
+      "change": "these use topaz as the example of an image provider without a transport; switch the example to another adapter-less provider"
+    },
+    {
+      "file": "docs/providers/catalog.mdx, open-sse/AGENT-INDEX.md",
+      "change": "regenerate after the registry edit"
+    },
+    {
+      "file": "tests/unit/native-topaz-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

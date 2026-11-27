@@ -314,7 +314,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `lemonade` | openai | apikey | `http://localhost:13305/api/v1` |
 | `leonardo` |  | apikey | `` |
 | `linkup` |  | apikey | `` |
-| `liquid` |  | apikey | `https://api.liquid.ai/v1/chat/completions` |
+| `liquid` |  | apikey | `https://api.liquid.ai/openai/v1/chat/completions` |
 | `literouter` |  | apikey | `https://api.literouter.com/v1/chat/completions` |
 | `llama-cpp` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `llamafile` | openai | apikey | `http://127.0.0.1:8080/v1` |

@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import "../translator/registerAll.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import {
+  applyThinking,
+  assertDeclaredEffortsCanReason,
   clampTierToSupported,
   normalizeToDeclaredTiers,
   resolveOpenAiEffort,
@@ -129,5 +131,92 @@ describe("models with a reasoning tier are unaffected (#2648)", () => {
   it("keeps catalog rows like gpt-5.5 unchanged", () => {
     expect(resolveOpenAiEffort("high", "openai", "gpt-5.5")).toBe("high");
     expect(resolveOpenAiEffort("none", "openai", "gpt-5.5")).toBe("none");
+  });
+});
+
+// Every provider-specific renderer runs after the central check in
+// applyThinking, so none of them can fold a reasoning request onto `none`.
+const RENDER_FORMATS = [
+  "openai", "openai-responses", "openai-low-high-max", "llmtr", "tokenmarket", "ollama",
+  "commandcode", "claude-adaptive", "claude-budget", "gemini-level", "gemini-budget", "zai",
+  "qwen-effort", "qwen", "deepseek", "kimi", "opencode", "minimax", "hunyuan", "step", "kiro",
+];
+const formatCaps = (thinkingFormat, operator = {}) => {
+  const caps = { reasoning: true, thinkingFormat, thinkingEfforts: ["none"], ...operator };
+  Object.defineProperty(caps, "customKeys", {
+    value: new Set(["thinkingFormat", "thinkingEfforts", ...Object.keys(operator)]), enumerable: false,
+  });
+  return caps;
+};
+const targetFor = (fmt) => fmt.startsWith("claude-") ? FORMATS.CLAUDE
+  : fmt === "openai-responses" ? FORMATS.OPENAI_RESPONSES
+    : fmt.startsWith("gemini-") ? FORMATS.GEMINI : FORMATS.OPENAI;
+const render = (fmt, body, caps = formatCaps(fmt), provider = "custom-test", model = "none-only-model") =>
+  applyThinking(targetFor(fmt), model, { model, messages, ...body }, provider, undefined, caps);
+const REASONING_REQUESTS = [
+  { reasoning_effort: "high" },
+  { reasoning_effort: "bogus" },
+  { reasoning_effort: "auto" },
+  { thinking: { type: "enabled", budget_tokens: 4096 } },
+  { thinking: { type: "adaptive" } },
+  { output_config: { effort: "max" } },
+];
+
+describe("none-only validation runs before every effort renderer (#2648)", () => {
+  for (const fmt of RENDER_FORMATS) {
+    it(`${fmt}: rejects reasoning requests with a local 400 and keeps none`, () => {
+      for (const body of REASONING_REQUESTS) {
+        const error = catchError(() => render(fmt, body));
+        expect(error.statusCode, `${fmt} ${JSON.stringify(body)}`).toBe(400);
+        expect(error.unsupportedReasoningEffort).toBe(true);
+      }
+      expect(() => render(fmt, { reasoning_effort: "none" })).not.toThrow();
+      expect(() => render(fmt, { thinking: { type: "disabled" } })).not.toThrow();
+      expect(() => render(fmt, {})).not.toThrow();
+    });
+  }
+
+  it("rejects a suffix override and an injected intent too", () => {
+    const caps = formatCaps("deepseek");
+    expect(catchError(() => applyThinking(FORMATS.OPENAI, "m(high)", { messages }, "custom-test", undefined, caps)).statusCode).toBe(400);
+    expect(catchError(() => applyThinking(FORMATS.OPENAI, "m", { messages }, "custom-test", { mode: "level", level: "low" }, caps)).statusCode).toBe(400);
+  });
+
+  it("covers the provider early-return paths (native Claude, MiniMax, Gemini Hydrogen)", () => {
+    const plain = { reasoning: true, thinkingEfforts: ["none"] };
+    for (const [target, provider, model] of [
+      [FORMATS.CLAUDE, "ollama", "llama-x"],
+      [FORMATS.OPENAI, "minimax", "MiniMax-M3"],
+      [FORMATS.OPENAI, "gemini-interactions", "gemini-4-hydrogen"],
+    ]) {
+      const error = catchError(() => applyThinking(target, model, { messages, reasoning_effort: "high" }, provider, undefined, plain));
+      expect(error.statusCode, provider).toBe(400);
+      expect(() => applyThinking(target, model, { messages, reasoning_effort: "none" }, provider, undefined, plain)).not.toThrow();
+    }
+  });
+
+  it("rejects none as well when the model cannot disable thinking", () => {
+    const caps = formatCaps("deepseek", { thinkingCanDisable: false });
+    const error = catchError(() => render("deepseek", { reasoning_effort: "none" }, caps));
+    expect(error.statusCode).toBe(400);
+    expect(error.message).not.toContain('send "none"');
+  });
+
+  it("leaves models without reasoning, or with a reasoning tier, alone", () => {
+    expect(() => assertDeclaredEffortsCanReason({ mode: "level", level: "high" }, { reasoning: false, thinkingEfforts: ["none"] })).not.toThrow();
+    expect(() => assertDeclaredEffortsCanReason({ mode: "level", level: "high" }, { reasoning: true, thinkingEfforts: ["none", "high"] })).not.toThrow();
+    expect(() => assertDeclaredEffortsCanReason(null, { reasoning: true, thinkingEfforts: ["none"] })).not.toThrow();
+    const ok = render("deepseek", { reasoning_effort: "high" }, formatCaps("deepseek", { thinkingEfforts: ["none", "high"] }));
+    expect(ok.thinking).toEqual({ type: "enabled" });
+    const adaptive = render("claude-adaptive", { reasoning_effort: "high" }, formatCaps("claude-adaptive", { thinkingEfforts: ["none", "low", "high"] }));
+    expect(adaptive.thinking?.type).toBe("adaptive");
+    const lhm = render("openai-low-high-max", { reasoning_effort: "high" }, formatCaps("openai-low-high-max", { thinkingEfforts: ["low", "high", "max"] }));
+    expect(lhm.reasoning_effort).toBe("high");
+  });
+
+  it("leaves static catalog rows alone", () => {
+    expect(() => applyThinking(FORMATS.OPENAI, "deepseek-v4-pro", { messages, reasoning_effort: "high" }, "deepseek")).not.toThrow();
+    expect(() => applyThinking(FORMATS.CLAUDE, "claude-opus-4-6", { messages, reasoning_effort: "high" }, "anthropic")).not.toThrow();
+    expect(() => applyThinking(FORMATS.OPENAI, "deepseek-v4-pro", { messages, reasoning_effort: "high" }, "opencode-go")).not.toThrow();
   });
 });

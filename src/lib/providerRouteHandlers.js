@@ -1,3 +1,5 @@
+import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
+import { readAdobeFireflyCredential } from "open-sse/services/adobeFireflyApi/auth.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import { NextResponse } from "next/server";
@@ -99,6 +101,17 @@ function awsSessionToken(sessionToken, providerSpecificData) {
   return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
+/** Local shape check for the media job providers registered for #2034 (1127). */
+function mediaJobCredentialError(provider, credentials) {
+  try {
+    if (provider === "renderhour") renderHourAuthorization(credentials);
+    else if (provider === "adobe-firefly-api") readAdobeFireflyCredential(credentials);
+    return null;
+  } catch (error) {
+    return error?.message || "Invalid credential";
+  }
+}
+
 export function sanitizeProviderConnection(connection) {
   const result = stripConnectionSecrets(connection);
   if (connection.providerSpecificData) {
@@ -147,6 +160,11 @@ export function canDiscoverModels(connection) {
       case "cloudflare-ai":
         // cloudflareModels.js: the search URL is account-scoped.
         return Boolean((connection.apiKey || connection.accessToken) && connection.providerSpecificData?.accountId);
+      case "renderhour":
+        // modelsConfig.js: the pinned list after a check of the stored rh_ key or sign-in.
+        return Boolean(connection.apiKey || connection.accessToken);
+      case "adobe-firefly-api":
+        return Boolean(connection.providerSpecificData?.clientId && (connection.apiKey || connection.accessToken));
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
@@ -389,6 +407,10 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     if (provider === "google-pse" && !providerSpecificData?.cx) {
       return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });
     }
+    // Refused before storage: a credential that can never authenticate, Adobe's own
+    // web-app client IDs, or a RenderHour key that is not an rh_ key.
+    const mediaCredentialError = mediaJobCredentialError(provider, { apiKey, providerSpecificData });
+    if (mediaCredentialError) return NextResponse.json({ error: mediaCredentialError }, { status: 400 });
 
     // Compatible/embedding nodes — no longer enforce single-connection limit.
     // Multiple API keys per node are allowed; downstream auth logic handles

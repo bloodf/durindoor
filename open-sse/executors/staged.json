@@ -13,18 +13,6 @@
       "provider": "cliproxyapi",
       "catalogProvider": "cliproxyapi",
       "reason": "Only handlers/chatCore/executorProxy.js imports it, and no production module imports executorProxy.js."
-    },
-    {
-      "module": "open-sse/providers/private/adobe-firefly-api.js",
-      "staged": true,
-      "provider": "adobe-firefly-api",
-      "reason": "Private provider definition; only the unregistered handlers/imageProviders/adobe-firefly-api.js and services/adobeFireflyApi import it, not the registry or the image adapter map."
-    },
-    {
-      "module": "open-sse/providers/private/renderhour.js",
-      "staged": true,
-      "provider": "renderhour",
-      "reason": "Private provider definition; only the unregistered RenderHour image and TTS handlers and services/renderhour import it, not the registry or any media adapter map."
     }
   ]
 }

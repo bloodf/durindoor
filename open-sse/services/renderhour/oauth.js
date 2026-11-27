@@ -1,6 +1,7 @@
-// RenderHour subscription sign-in: the token protocol. STAGED: nothing in the
-// OAuth provider map, the refresh handler table or any executor imports this
-// module yet. See docs/providers/renderhour.md.
+// RenderHour subscription sign-in: the token protocol. The OAuth provider map
+// (src/lib/oauth/providers.js), the refresh handler table
+// (open-sse/services/tokenRefresh.js) and the media credential choice
+// (./media.js) use it. See docs/providers/renderhour.md.
 //
 // Protocol adapted from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper

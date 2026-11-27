@@ -1,18 +1,17 @@
-// RenderHour (renderhour.com): image, video and speech jobs. STAGED: nothing in
-// the registry or any media adapter map imports this module yet, so it is
-// unavailable to users. See docs/providers/renderhour.md.
+// RenderHour (renderhour.com): image, video and speech jobs with an `rh_` API
+// key or a subscription OAuth sign-in. Registered for #2034 (1127): images run
+// through the shared image core, video through /v1/video/generations and speech
+// through /v1/audio/speech. See docs/providers/renderhour.md.
 //
 // Origin, endpoints and the image, video and speech model ids come from
 // cheaper-inference/OmniRoute at 9671192011beb2d7f83979f40be488c5da8772b9 (MIT,
 // Copyright (c) 2026 Cheaper Inference - Created by Diego Souza):
 // open-sse/config/providers/registry/renderhour/mediaModels.ts.
 //
-// The default export still declares images only, the slice already staged.
-// Video and speech are staged as named exports (RENDERHOUR_STAGED_MEDIA) for
-// the later registration change. The pinned source also declares a
-// subscription OAuth sign-in; its staged protocol is described by
-// RENDERHOUR_STAGED_OAUTH below and lives in services/renderhour/oauth.js. It is
-// not declared on the default export. There is no chat transport.
+// The pinned source also declares a subscription OAuth sign-in
+// (src/lib/oauth/providers/renderhour.ts and
+// services/tokenRefresh/providers/renderhour.ts); its protocol lives in
+// services/renderhour/oauth.js. There is no chat transport.
 
 export const RENDERHOUR_ID = "renderhour";
 export const RENDERHOUR_ORIGIN = "https://renderhour.com";
@@ -82,13 +81,11 @@ export function renderHourTaskOf(model) {
 
 const entries = (list, kind, params) => list.map(([id, name]) => ({ id, name, params, kind }));
 
-// What registration will declare for video and speech, kept off the default
-// export so the staged image identity is unchanged. Nothing reads this yet.
-// There is deliberately no videoConfig or ttsConfig: the shared video job proxy
-// and the config-driven speech formats do not fit a submit-and-poll job, so
-// registration routes both through the adapters in handlers/videoProviders and
-// handlers/ttsProviders instead.
-export const RENDERHOUR_STAGED_MEDIA = Object.freeze({
+// Every model, by kind. There is deliberately no videoConfig or ttsConfig: the
+// shared /v1/videos job proxy and the config-driven speech formats do not fit a
+// submit-and-poll job, so video runs through handlers/videoProviders and speech
+// through handlers/ttsProviders instead.
+export const RENDERHOUR_MEDIA = Object.freeze({
   serviceKinds: Object.freeze(["image", "video", "tts"]),
   models: Object.freeze([
     ...entries(MODELS, "image", ["size", "n"]),
@@ -97,14 +94,12 @@ export const RENDERHOUR_STAGED_MEDIA = Object.freeze({
   ]),
 });
 
-// What registration will declare for the subscription sign-in, kept off the
-// default export so the API-key identity is unchanged. Nothing reads this yet.
-// Source: src/lib/oauth/providers/renderhour.ts and
+// The subscription sign-in. Source: src/lib/oauth/providers/renderhour.ts and
 // open-sse/services/tokenRefresh/providers/renderhour.ts at the pinned commit.
-export const RENDERHOUR_STAGED_OAUTH = Object.freeze({
+export const RENDERHOUR_OAUTH = Object.freeze({
   authType: "oauth",
   flowType: "authorization_code_pkce",
-  // Hooks registration wires in. Paths are relative to the repository root.
+  // Wired hooks. Paths are relative to the repository root.
   oauthHandler: "src/lib/oauth/services/renderhour.js#renderhourOAuthProvider",
   refreshHooks: "open-sse/services/renderhour/oauth.js#createRenderHourRefreshHooks",
   // The operator's RenderHour client id; there is no embedded default.
@@ -124,14 +119,16 @@ export default {
     textIcon: "RH",
     website: RENDERHOUR_ORIGIN,
     notice: {
-      text: "Image generation only, with an rh_ API key. Requests poll until the job finishes (up to 5 minutes).",
+      text: "Image, text-to-video and speech jobs with an rh_ API key, or a plan sign-in when the operator sets RENDERHOUR_OAUTH_CLIENT_ID. No reference images, image-to-video or voice choice. Images and video return file URLs only (response_format url). Cost is not reported.",
       apiKeyUrl: RENDERHOUR_ORIGIN,
     },
   },
   category: "apikey",
   authType: "apikey",
+  authModes: ["apikey", "oauth"],
+  authHint: "An rh_ API key from renderhour.com, or sign in to a RenderHour plan (needs RENDERHOUR_OAUTH_CLIENT_ID on the server).",
   transport: null,
-  models: MODELS.map(([id, name]) => ({ id, name, params: ["size", "n"], kind: "image" })),
-  serviceKinds: ["image"],
+  models: RENDERHOUR_MEDIA.models.map((model) => ({ ...model, params: [...model.params] })),
+  serviceKinds: [...RENDERHOUR_MEDIA.serviceKinds],
   imageConfig: { baseUrl: RENDERHOUR_GENERATIONS_URL },
 };

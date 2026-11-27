@@ -182,6 +182,18 @@ export async function handleImageGenerationCore({
     );
   }
 
+  // An adapter that declares its output formats refuses any other before anything
+  // is sent or billed, instead of answering in a different format afterwards.
+  if (Array.isArray(adapter.responseFormats)) {
+    const requested = binaryOutput ? "binary" : body.response_format ?? "url";
+    if (!adapter.responseFormats.includes(requested)) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        `Provider '${provider}' supports response_format ${adapter.responseFormats.join(", ")} only`
+      );
+    }
+  }
+
   // Executor-delegating adapters: skip manual URL/headers/body, use the proven executor flow
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {

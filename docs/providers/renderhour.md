@@ -1,42 +1,46 @@
 ---
 title: RenderHour
-description: Staged and unavailable. RenderHour image, text-to-video and text-to-speech jobs with an rh_ API key, the staged subscription sign-in, their job flow, errors and limits.
-status: unreleased
+description: Available. RenderHour image, text-to-video and text-to-speech jobs with an rh_ API key or a plan sign-in, their job flow, errors and limits. Mock-tested only.
+status: available
 ---
 
-> **Staged and unavailable.** The code exists, but the provider is not registered. You cannot add a RenderHour connection or send requests to it yet. A later change has to register it.
+> **Available, mock-tested only.** You can add a RenderHour connection with an `rh_` API key, or sign in to a RenderHour plan when the server sets `RENDERHOUR_OAUTH_CLIENT_ID`. Every flow below is covered by closed mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
 
-RenderHour (`renderhour`) generates images, videos and speech through one asynchronous job API at [renderhour.com](https://renderhour.com). It has been tested only against mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
+RenderHour (`renderhour`) generates images, videos and speech through one asynchronous job API at [renderhour.com](https://renderhour.com).
 
 ## Scope
 
-| Capability | State |
-| --- | --- |
-| Image generation from a text prompt, with an `rh_` API key | Staged, covered by mocks |
-| Reference images and image editing | Not supported. The request is refused |
-| Video from a text prompt, with an `rh_` API key | Staged as a standalone adapter, covered by mocks. No route reaches it |
-| Image-to-video (start frame, end frame, reference images) | Not supported. The request is refused |
-| Speech from text, with an `rh_` API key | Staged as a standalone adapter, covered by mocks. No route reaches it |
-| Voice selection | Not supported. RenderHour picks each speech model's voice |
-| Subscription OAuth sign-in (authorization code with PKCE, rotating refresh) | Staged as standalone modules, covered by mocks. No route, refresh table or media adapter uses it, and it needs an operator client id |
-| Chat | Not part of this provider. It has no chat transport or fallback |
+| Capability | Route | State |
+| --- | --- | --- |
+| Image generation from a text prompt | `POST /v1/images/generations` | Available. `response_format` `url` only |
+| Reference images and image editing | — | Not supported. Refused before submit |
+| Video from a text prompt | `POST /v1/video/generations` | Available. `response_format` `url` only. Not on the `/v1/videos` job API |
+| Image-to-video (start frame, end frame, reference images) | — | Not supported. Refused before submit |
+| Speech from text | `POST /v1/audio/speech` | Available. Raw audio in RenderHour's container, or `response_format=json` |
+| Voice selection, a named audio container | — | Not supported. Refused before submit |
+| `rh_` API key | All three | Available |
+| Plan sign-in (authorization code with PKCE, rotating refresh) | All three | Available when the operator sets `RENDERHOUR_OAUTH_CLIENT_ID`. Otherwise sign-in refuses to start |
+| Model discovery | Provider models | The pinned lists, after a local check of the selected connection's credential |
+| Chat | — | Not part of this provider. No chat transport or fallback |
 
 ## Credential
 
-Use an API key that starts with `rh_`. It is sent as `Authorization: Bearer rh_...`. A missing key, an OAuth access token or any other key format is refused with `401` before anything is sent. API keys have no refresh. Each request uses the key and proxy settings of its selected connection, and polling keeps both for that job.
+An API-key connection holds a key that starts with `rh_`. Adding one refuses any other format before it is stored. Validation checks only the format: RenderHour has no read-only key check, and a test job would bill.
 
-## Subscription sign-in (staged)
+An OAuth connection holds the plan access token from the sign-in below. The connection's auth type decides which secret is sent, as `Authorization: Bearer …`: an `rh_` key for an API-key connection, the access token for an OAuth connection. A missing secret, an `rh_` key on an OAuth connection or an access token on an API-key connection is refused with `401` before anything is sent. API keys have no refresh. Each request uses the credential and proxy settings of its selected connection, and polling keeps both for that job.
 
-The pinned source also signs in to a RenderHour plan, whose access token pays in plan credits on the same `/v1` API. DurinDoor stages that sign-in in `services/renderhour/oauth.js` (protocol) and `src/lib/oauth/services/renderhour.js` (provider handler and sign-in session). Nothing registers either one, and the media adapters above still accept only `rh_` keys.
+## Subscription sign-in
 
-What the source shows, and what the staged code does:
+The pinned source also signs in to a RenderHour plan, whose access token pays in plan credits on the same `/v1` API. The protocol lives in `services/renderhour/oauth.js`, the handler in `src/lib/oauth/services/renderhour.js`. It is registered as `renderhour` in the OAuth provider map (`src/lib/oauth/providers.js`) and in the refresh table (`open-sse/services/tokenRefresh.js`). The image, video and speech routes refresh an expiring plan token before they submit a job.
+
+What the source shows, and what the registered code does:
 
 - **Authorize.** `GET https://renderhour.com/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri`, `state`, an S256 `code_challenge` and no `scope`. The client is public, so there is no client secret.
 - **Exchange.** `POST https://renderhour.com/api/oauth/token`, form-encoded, `grant_type=authorization_code` with `client_id`, `code`, `redirect_uri` and `code_verifier`. Then `GET https://renderhour.com/api/oauth/userinfo` with the access token reads `sub`, `email` and `name`. If that call fails, the sign-in is kept without them.
-- **Refresh.** `POST` to the same token URL with `grant_type=refresh_token`, `refresh_token` and `client_id`. The source says access tokens (`rhat_`) last an hour and refresh tokens (`rhrt_`) rotate on every refresh, last 30 days and stop working once used. The staged code depends on none of those lifetimes. It refreshes five minutes before the stored expiry, or when no expiry is stored.
+- **Refresh.** `POST` to the same token URL with `grant_type=refresh_token`, `refresh_token` and `client_id`. The source says access tokens (`rhat_`) last an hour and refresh tokens (`rhrt_`) rotate on every refresh, last 30 days and stop working once used. The registered code depends on none of those lifetimes. It refreshes five minutes before the stored expiry, or when no expiry is stored.
 - **Refresh failures.** `invalid_grant`, `invalid_token`, `token_expired` or a `401` mean the refresh token is spent. The shared refresh path then checks whether a concurrent refresh already stored a newer pair. If none did, it marks the connection `reauth_required` and keeps the old tokens. Anything else, including `429`, `5xx`, `invalid_client`, a malformed body or a network error, keeps the stored credentials unchanged.
 - **Persistence.** A refresh writes only through the shared compare-and-swap commit, bound to the connection's stored tokens and `accountId`. A stale refresh never overwrites a newer pair. Two refreshes of the same connection, or of the same refresh token, share one request, so a single-use token is never sent twice by one process. When RenderHour sends no new refresh token, the stored one is kept.
-- **Account selection.** A repeat sign-in replaces the stored connection with the same RenderHour account id (`sub`). Email decides only when an id is missing. Two different ids never match.
+- **Account selection.** A repeat sign-in replaces the stored connection with the same RenderHour account id (`sub`). Email decides only when an id is missing. Two different ids never match, even with the same email. Connection storage applies this rule (`selectRenderHourConnection`).
 
 Fork differences from the source:
 
@@ -65,7 +69,7 @@ For images, the submit body holds `model`, `prompt` and `count`, plus `aspect_ra
 
 ## Models
 
-Every model id belongs to exactly one task. A model of another task, or any id RenderHour does not list (a chat model, for example), is refused with `400` before submission, and the message names the task the id belongs to. A chat-shaped body (`messages`, `tools`) is refused too.
+The registry entry lists all 30 models, each with its kind (`image`, `video` or `tts`). Every model id belongs to exactly one task. A model of another task, or any id RenderHour does not list (a chat model, for example), is refused with `400` before submission, and the message names the task the id belongs to. A chat-shaped body (`messages`, `tools`) is refused too.
 
 Image: `nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2`, `gpt-image-2`, `seedream-5.0-pro`, `seedream-5.0-flash`, `flux-3-image`, `flux-2-pro`, `grok-imagine-image-2.0`, `z-image` and `recraft-v4.1`.
 
@@ -77,7 +81,7 @@ These are fixed lists copied from the source.
 
 ### Discovery
 
-`discoverRenderHourModels(credentials, { task })` returns the models of one task, or of all three, for the selected connection. It is static. The source says its list mirrors RenderHour's `GET /v1/models`, but it ships no client for that endpoint and does not document the response, so nothing is fetched. The call only checks that the connection holds an `rh_` key (otherwise `401`). It answers `accountVerified: false`: whether that account can use each model is unknown. The result is built per call, so one account never sees another's.
+The provider models endpoint answers through `discoverRenderHourModels(credentials, { task })`, which returns the models of one task, or of all three, for the selected connection. It is static. The source says its list mirrors RenderHour's `GET /v1/models`, but it ships no client for that endpoint and does not document the response, so nothing is fetched. The call only checks that the connection holds a usable `rh_` key or plan token (otherwise `401`). It answers `accountVerified: false`: whether that account can use each model is unknown. The result is built per call, so one account never sees another's.
 
 ## Video
 
@@ -89,11 +93,11 @@ A video request is the OpenAI-style JSON body. The submit body holds `model` and
 
 `image`, `image_url`, `start_image`, `first_frame`, `end_image`, `last_frame`, `reference_images`, `image_urls`, `input_reference` and their spellings are refused with `400`. The source would upload them first, which this slice does not.
 
-The job is read every 5 seconds for up to 15 minutes. The result is `{ created, data: [{ url, format }] }` with up to 4 files. Each must be an MP4, WebM or QuickTime file with an HTTPS URL that has no embedded credentials and does not contain the key. URLs are returned without being downloaded, also for `response_format: "b64_json"`. Usage counts the videos returned. Duration and cost are unknown.
+The job is read every 5 seconds for up to 15 minutes. The result is `{ created, data: [{ url, format }] }` with up to 4 files. Each must be an MP4, WebM or QuickTime file with an HTTPS URL that has no embedded credentials and does not contain the key. URLs are returned without being downloaded. Any `response_format` other than `url` (for example `b64_json`) is refused with `400` before submit. Usage counts the videos returned. Duration and cost are unknown.
 
 ## Speech
 
-The speech adapter follows the speech core contract. The text input becomes the job's `text`, trimmed. `voice` and `response_format` are not sent, because RenderHour picks the voice. A `model/voice` id is refused with `400`. The job is read every 2 seconds for up to 3 minutes.
+The speech adapter follows the speech core contract. The text input becomes the job's `text`, trimmed. `voice` and `response_format` are not sent, because RenderHour picks the voice and the container. Without a `response_format`, the response is the raw file and its `Content-Type` names the container RenderHour produced. With `response_format=json`, it is `{ audio, format }`. Any other named format (`mp3`, `wav`, …) is refused with `400` before submit, because the container cannot be promised. A `model/voice` id is refused with `400`. The job is read every 2 seconds for up to 3 minutes.
 
 The first finished file is downloaded and returned as audio in the container RenderHour produced (MP3, WAV, Ogg, Opus, AAC, FLAC, MP4 or WebM audio). The download:
 
@@ -115,7 +119,7 @@ These rules apply to images. Video and speech use the same poll, retry and size 
 
 The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The submit itself waits at most 30 seconds. At that deadline, or when the client disconnects, the outgoing request is aborted, not only abandoned, and the body of any answer that still arrives is cancelled. The 5 minutes start when the submit is answered.
 
-A result is returned as `data: [{ "url": ... }]`. Every file must be a PNG, JPEG or WebP with an HTTPS URL that has no embedded credentials and does not contain the connection's API key, raw or URL-encoded. There must not be more files than requested. Otherwise the whole result is rejected. The gateway returns the URLs without downloading them, even if you ask for `b64_json`. Binary output (`response_format=binary`) makes the shared handler fetch the first URL without your API key. Whether RenderHour file URLs work without a key, and how long they last, has not been verified.
+A result is returned as `data: [{ "url": ... }]`. Every file must be a PNG, JPEG or WebP with an HTTPS URL that has no embedded credentials and does not contain the connection's secret, raw or URL-encoded. There must not be more files than requested. Otherwise the whole result is rejected. The gateway returns the URLs without downloading them. `response_format` `b64_json` and `binary` are refused with `400` before submit, so no job is billed for a format the gateway would not return. Whether RenderHour file URLs work without a key, and how long they last, has not been verified.
 
 ## Usage and cost
 
@@ -129,7 +133,7 @@ A submit that may have reached RenderHour but got no answer is handled the same 
 
 | Situation | Status | Accepted job recorded |
 | --- | --- | --- |
-| Bad key format, unsupported or other-task model, chat body, reference image or image-to-video input | 401 or 400 | No, nothing sent |
+| Bad key format, unsupported or other-task model, chat body, reference image, image-to-video input or unsupported `response_format` | 401 or 400 | No, nothing sent |
 | Submit refused, such as 401, 403 or 429 | Same as RenderHour | No |
 | Submit redirected | 502 | No. The redirect is not followed |
 | Submit timed out after 30 seconds | 504 | Yes, as `submit-unknown` |
@@ -155,27 +159,13 @@ A job that RenderHour reports as failed is treated as a normal failure, so the s
 
 When a refused submit is `429` with a `Retry-After` header, either in seconds or as an HTTP date, that exact reset is passed to account cooldown with the source `retry_after`. The client gets the same `Retry-After`. Without the header no reset is claimed.
 
-## Before registration
+## Registration and evidence
 
-Video and speech are not wired anywhere. Registration needs:
+Registered for #2034 (1127): the registry entry (`open-sse/providers/registry/renderhour.js`), `IMAGE_ADAPTERS`, `TTS_ADAPTERS`, the synchronous video adapter map (`open-sse/handlers/videoProviders/index.js`), the OAuth provider map, the refresh table, connection create and validate, and model discovery. The speech and video routes record an accepted job with unknown cost when a job may bill and its outcome cannot be seen, and do not resubmit it to another account. RenderHour has no `videoConfig` or `ttsConfig`, so the `/v1/videos` job proxy never reaches it.
 
-- The provider catalog entry declaring `RENDERHOUR_STAGED_MEDIA.serviceKinds` and `.models` from `providers/private/renderhour.js`, in place of the image-only default export. The image staging test then needs updating.
-- The speech adapter map: `renderhour` in `TTS_ADAPTERS` (`handlers/ttsProviders/index.js`), mapped to the default export of `handlers/ttsProviders/renderhour.js`.
-- The speech route must record `acceptedJob` from a failed speech result, as the image route does. It does not today.
-- A video route branch that calls `createRenderHourVideoAdapter().generate({ model, body, credentials, signal, log })` (the default export of `handlers/videoProviders/renderhour.js`) and records `acceptedJob`. The shared `/v1/videos` proxy in `videoCore.js` passes job ids back to the client and has no accepted-job ledger, so RenderHour should not get a `videoConfig` for it.
-- Model listing through `discoverRenderHourModels` from `services/renderhour/media.js`, and the usual generated indexes and dashboard files.
+`tests/unit/provider-media-registration-1127.test.js` drives the public routes with closed mocks: connection create and validate, discovery, image, video and speech submit/poll/result, plan-token refresh and rotation persistence, sign-in start without and with a client id, PKCE exchange and account separation, `429` with `Retry-After`, redirected submits, an uncertain submit not repeated on a second account, deadline and client-disconnect accepted jobs, `response_format` refusals and two concurrent accounts. The other `renderhour-*` test files cover the adapters and cores in detail.
 
-For images, the three gaps that offline runs found in the shared image handler are closed: submit redirects, an echoed key in submit errors, and a dropped `Retry-After`. Each one is covered by closed-network tests through the shared handler and the image route.
-
-Subscription sign-in registration needs:
-
-- `renderhour: renderhourOAuthProvider` (from `src/lib/oauth/services/renderhour.js`) in the `PROVIDERS` map of `src/lib/oauth/providers.js`. The generic flow then binds state, verifier and redirect URI through `flowStore.js`. The completion step should pick the connection to update with `selectRenderHourConnection`.
-- `renderhour: (c, log, p) => createRenderHourRefreshHooks().refreshCredentials(c, log, p)` in `REFRESH_HANDLERS` (`open-sse/services/tokenRefresh.js`), and a RenderHour executor whose `needsRefresh` and `refreshCredentials` come from `createRenderHourRefreshHooks()`, so `refreshAndUpdateCredentials` persists rotations.
-- Optionally `renderhour: lane("renderhour")` in `tokenRefresh/capabilities.js`, if RenderHour turns out to revoke a whole token family when sibling accounts refresh together. The source does not say.
-- A credential choice in `services/renderhour/media.js` and the image adapter: `renderHourOAuthAuthorization` for an `oauth` connection, `renderHourAuthorization` for an `rh_` key. Today both adapters refuse an OAuth token with `401`.
-- The provider catalog declaring `RENDERHOUR_STAGED_OAUTH` beside the API-key mode, a dashboard sign-in entry, and `RENDERHOUR_OAUTH_CLIENT_ID` in the operator docs.
-
-Image registration still needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. Until then, the tests have to substitute the adapter lookup. A live check with a real account is separate and has not happened for any task. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
+Not proven: a live check with a real account has not happened for any task or for the sign-in. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests or a DurinDoor client id. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
 
 ## Source
 
@@ -192,4 +182,4 @@ Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/
 - [`tests/unit/renderhour-oauth-provider.test.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/tests/unit/renderhour-oauth-provider.test.ts)
 - [`handlers/videoGeneration/pollRetry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/pollRetry.ts)
 
-Differences from the source: media adapters accept only `rh_` keys; the sign-in is staged without an embedded client id; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.
+Differences from the source: the sign-in has no embedded client id; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.

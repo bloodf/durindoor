@@ -1,6 +1,5 @@
-// Adobe Firefly Services API image generation: async submit + bounded poll.
-// STAGED: not in IMAGE_ADAPTERS, so no route reaches it. See
-// docs/providers/adobe-firefly-api.md.
+// Adobe Firefly Services API image generation: async submit + bounded poll,
+// registered in IMAGE_ADAPTERS. See docs/providers/adobe-firefly-api.md.
 //
 // Written from Adobe's published contract, AdobeDocs/ffs-firefly-api at
 // 1027f559cdb1509a61b34e2f2da9618ec431f2cb (static/firefly-api.json,
@@ -16,7 +15,7 @@ import { nowSec } from "./_base.js";
 import {
   ADOBE_FIREFLY_API_MODEL_IDS,
   ADOBE_FIREFLY_GENERATE_URL,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache, refreshAdobeFireflyToken, resolveAdobeFireflyAuth } from "../../services/adobeFireflyApi/auth.js";
 import {
   ADOBE_FIREFLY_MAX_IMAGES,
@@ -82,6 +81,9 @@ export function createAdobeFireflyApiImageAdapter({
     submitTimeoutMs,
     submitOutcomeUnknown: true,
     retryAfterResets: true,
+    // Read by imageGenerationCore before dispatch: pre-signed URLs only, never
+    // downloaded into b64_json or binary output.
+    responseFormats: ["url"],
     // A submit 401 drops the token it carried. With `retry`, one new token is
     // minted (client-credentials mode only) so the core may resend the refused,
     // never accepted submit once. The token stays in the in-memory cache only.

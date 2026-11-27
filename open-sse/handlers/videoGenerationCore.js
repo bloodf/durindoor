@@ -4,13 +4,34 @@ import { getExecutor } from "../executors/index.js";
 import { mediaAccounting } from "./mediaAccounting.js";
 import { getVideoConfig } from "./videoCore.js";
 import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
+import { getVideoGenerationAdapter, VIDEO_GENERATION_RESPONSE_FORMATS } from "./videoProviders/index.js";
 
 /** Providers /v1/video/generations can run (async job APIs use /v1/videos). */
-export const supportsVideoGeneration = (provider) => provider === "veoaifree-web";
+export const supportsVideoGeneration = (provider) => provider === "veoaifree-web" || getVideoGenerationAdapter(provider) !== null;
+
+/**
+ * Run a job adapter (videoProviders/index.js). An unsupported response format
+ * is refused before anything is sent; a failure the provider may still bill
+ * keeps the adapter's `acceptedJob` for the route to record.
+ */
+async function generateWithAdapter(adapter, { model, body, credentials, signal, log }) {
+  const requested = body.response_format ?? "url";
+  if (!VIDEO_GENERATION_RESPONSE_FORMATS.includes(requested)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `This provider returns video URLs only; response_format must be ${VIDEO_GENERATION_RESPONSE_FORMATS.join(", ")}`);
+  }
+  try {
+    return await adapter.generate({ model, body, credentials, signal, log });
+  } catch (error) {
+    if (signal?.aborted || error?.name === "AbortError") return createErrorResult(499, "Video generation request aborted");
+    return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Video generation failed");
+  }
+}
 
 /** Return receipt accounting separately; never bill requested duration or prompt length. */
-export async function handleVideoGenerationCore({ provider, model, body, credentials, signal }) {
+export async function handleVideoGenerationCore({ provider, model, body, credentials, signal, log }) {
   if (!body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");
+  const adapter = getVideoGenerationAdapter(provider);
+  if (adapter) return generateWithAdapter(adapter, { model, body, credentials, signal, log });
   if (!supportsVideoGeneration(provider)) {
     // The provider may still serve video through the async job API, so name
     // the endpoint that can run it instead of denying video altogether.

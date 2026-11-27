@@ -13,6 +13,10 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { REGISTERED_EXECUTOR_IDS, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
 import { STAGED_PROVIDERS } from "../../open-sse/providers/staged.js";
 import { STAGED_PROVIDERS as EXPORTED } from "../../open-sse/providers/index.js";
+import { getImageAdapter } from "../../open-sse/handlers/imageProviders/index.js";
+import { getTtsAdapter } from "../../open-sse/handlers/ttsProviders/index.js";
+import { getVideoGenerationAdapter } from "../../open-sse/handlers/videoProviders/index.js";
+import { getVideoConfig } from "../../open-sse/handlers/videoCore.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const EXECUTOR = /^open-sse\/executors\/([^/]+)\.js$/;
@@ -63,6 +67,19 @@ const PROMOTED_1127_FIXTURE = Object.freeze([
   ["open-sse/providers/private/poe-web.js", "poe-web"],
   ["open-sse/providers/private/v0-vercel-web.js", "v0-vercel-web"],
   ["open-sse/providers/private/venice-web.js", "venice-web"],
+].map(([module, provider]) => Object.freeze({ module, provider })));
+
+// The two media providers promoted from staging for #2034 (1127). Their former
+// manifest rows stay here as a stable fixture: each was a private definition
+// owned by its own id, with no executor, and now lives in the registry and the
+// media adapter maps it declares.
+const PROMOTED_MEDIA_1127 = Object.freeze({
+  renderhour: Object.freeze({ image: true, video: true, tts: true }),
+  "adobe-firefly-api": Object.freeze({ image: true, video: true, tts: false }),
+});
+const PROMOTED_MEDIA_1127_FIXTURE = Object.freeze([
+  ["open-sse/providers/private/adobe-firefly-api.js", "adobe-firefly-api"],
+  ["open-sse/providers/private/renderhour.js", "renderhour"],
 ].map(([module, provider]) => Object.freeze({ module, provider })));
 
 describe("provider staging ownership", () => {
@@ -123,6 +140,34 @@ describe("provider staging ownership", () => {
       expect(hasSpecializedExecutor(id), id).toBe(true);
       expect(REGISTERED_EXECUTOR_IDS, id).toContain(id);
       expect(REGISTRY.find((entry) => entry.id === id)?.transport?.executor, id).toBe(id);
+    }
+  });
+
+  it("registers the promoted 1127 media providers on their declared routes and leaves none of their modules staged", async () => {
+    const staged = new Set(manifest.modules.map(({ module }) => module));
+    for (const { module, provider } of PROMOTED_MEDIA_1127_FIXTURE) {
+      // The fixture row keeps the private-definition ownership rule exact.
+      expect(PRIVATE.test(module), module).toBe(true);
+      expect(path.basename(module, ".js"), module).toBe(provider);
+      const live = module.replace("open-sse/providers/private/", "open-sse/providers/registry/");
+      expect(fs.existsSync(path.join(root, module)), module).toBe(false);
+      expect((await import(path.join(root, live))).default.id, live).toBe(provider);
+      expect(staged.has(module), module).toBe(false);
+      expect(staged.has(live), live).toBe(false);
+      expect(byProvider[provider], provider).toBeUndefined();
+      expect(STAGED_PROVIDERS[provider], provider).toBeUndefined();
+    }
+    for (const [id, routes] of Object.entries(PROMOTED_MEDIA_1127)) {
+      const entry = REGISTRY.find((candidate) => candidate.id === id);
+      expect(entry?.transport, id).toBeNull();
+      expect(hasSpecializedExecutor(id), id).toBe(false);
+      expect(REGISTERED_EXECUTOR_IDS, id).not.toContain(id);
+      expect(getImageAdapter(id) !== null, `${id} image`).toBe(routes.image);
+      expect(getVideoGenerationAdapter(id) !== null, `${id} video`).toBe(routes.video);
+      expect(getTtsAdapter(id) !== null, `${id} tts`).toBe(routes.tts);
+      // Neither goes through the /v1/videos job proxy.
+      expect(getVideoConfig(id), id).toBeNull();
+      expect(entry.serviceKinds, id).toEqual(Object.entries(routes).filter(([, on]) => on).map(([kind]) => kind));
     }
   });
 

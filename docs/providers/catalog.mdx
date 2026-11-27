@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 407 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 408 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -114,7 +114,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | DataRobot | `datarobot` | apikey | 0 | [site](https://docs.datarobot.com) |
 | DeepAI | `deepai` | apikey | 1 | [site](https://deepai.org/docs) |
 | Deepgram | `deepgram` | apikey | 4 | [site](https://deepgram.com) |
-| DeepInfra | `deepinfra` | apikey | 0 | [site](https://deepinfra.com) |
+| DeepInfra | `deepinfra` | apikey | 15 | [site](https://deepinfra.com) |
 | DeepRelay | `deeprelay` | apikey | 17 | [site](https://deeprelay.ai) |
 | DeepSeek | `deepseek` | apikey | 4 | [site](https://deepseek.com) |
 | DeepSeek Web | `deepseek-web` | apikey | 14 | [site](https://chat.deepseek.com) |
@@ -336,7 +336,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Requesty | `requesty` | freeTier | 0 | [site](https://requesty.ai) |
 | Routeway | `routeway` | apikey | 8 |  |
 | Runcrate | `runcrate` | apikey | 6 | [site](https://www.runcrate.ai) |
-| Runway ML | `runwayml` | apikey | 4 | [site](https://runwayml.com) |
+| Runway ML | `runwayml` | apikey | 7 | [site](https://runwayml.com) |
 | SambaNova | `sambanova` | freeTier | 5 | [site](https://sambanova.ai) |
 | SAP Generative AI Hub | `sap` | apikey | 0 | [site](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/generative-ai-hub-in-sap-ai-core) |
 | Sarvam AI | `sarvam` | apikey | 2 | [site](https://docs.sarvam.ai) |
@@ -345,6 +345,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | SEA-LION | `sealion` | apikey | 5 | [site](https://sea-lion.ai) |
 | SearchAPI | `searchapi` | apikey | 0 | [site](https://www.searchapi.io) |
 | SearXNG | `searxng` | none | 0 | [site](https://docs.searxng.org) |
+| Segmind | `segmind` | apikey | 4 | [site](https://segmind.com) |
 | SenseNova | `sensenova` | freeTier | 6 | [site](https://platform.sensenova.cn) |
 | SenseNova (Intl) | `sensenova-intl` | apikey | 5 | [site](https://platform.sensenova.ai) |
 | Serper | `serper` | apikey | 0 | [site](https://serper.dev) |
@@ -447,5 +448,7 @@ Add or edit **Kie.ai**, paste your KIE API key and save. The existing chat conne
 These native routes submit and poll within bounded deadlines and return hosted URLs; they do not download the artifacts. Set `response_format: "url"` and `n: 1` unless noted above. Streaming, binary/base64 output and file uploads are unsupported. Use `/v1/video/generations` for these providers; `/v1/videos` job polling is unavailable. An accepted or uncertain submission is never retried on another account and records unknown-cost usage once. Cancellation stops local waiting, without promising upstream job cancellation. Refused credentials or quota errors apply to the selected connection; correct its key or quota before retrying.
 
 Haiper, Leonardo.Ai and Veo AI Free Web media are described in [Haiper](./haiper.md), [Leonardo.Ai](./leonardo.md) and [Veo AI Free Web](./veoaifree-web.md).
+
+Runway ML video, DeepInfra video, embeddings and rerank, and Segmind video are described in [Runway ML](./runwayml.md), [DeepInfra](./deepinfra.md) and [Segmind](./segmind.md).
 
 Google Flow (`googleflow`/`flow`) is unavailable and is not advertised. The pinned source marks this transport unsupported and returns 501 before network. Its comments report retired endpoints and stored OAuth bearer rejection; these are source findings, not current live observations. Existing Google OAuth connections are unchanged.

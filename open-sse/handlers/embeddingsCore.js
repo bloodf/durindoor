@@ -10,6 +10,7 @@ import { mediaAccounting } from "./mediaAccounting.js";
 import { getModelMeta, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { modelParams } from "../providers/models/schema.js";
 import { resolveInputType } from "../config/embeddingParams.js";
+import { DEEPINFRA_ID, handleDeepinfraNative } from "../services/providerParity/native-deepinfra-embedding-rerank/index.js";
 
 /**
  * False when a returned `data[].embedding` is empty or not numeric. Empty `data`
@@ -60,6 +61,13 @@ export async function handleEmbeddingsCore({
   }
   if (provider === "cohere" && Array.isArray(input) && input.some((value) => !isString(value))) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Cohere text embeddings require strings; use the native Embed endpoint for multimodal input");
+  }
+  // DeepInfra: one bounded native submit (text, float only) on the selected
+  // connection. No refresh, retry or replay; an uncertain send carries acceptedJob.
+  if (provider === DEEPINFRA_ID) {
+    const result = await handleDeepinfraNative({ kind: "embedding", body, modelInfo: { provider, model }, credentials, signal });
+    if (result.success && onRequestSuccess) await onRequestSuccess();
+    return result;
   }
   const adapter = getEmbeddingAdapter(provider);
   if (!adapter) {

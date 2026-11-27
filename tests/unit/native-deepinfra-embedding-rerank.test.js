@@ -199,14 +199,19 @@ describe("DeepInfra native protocol (independent of registration)", () => {
   });
 });
 
-// ISOLATED STAGING BLOCK: registration can replace only these assertions.
-describe("private staging registration", () => {
-  it("remains unregistered with explicit future integration metadata", async () => {
+// ISOLATED REGISTRATION BLOCK: the positive registry identity checks.
+describe("canonical registration (isolated)", () => {
+  it("registers the embedding adapter and the pinned media catalogs on deepinfra", async () => {
     const { getEmbeddingAdapter } = await import("../../open-sse/handlers/embeddingProviders/index.js");
-    expect(getEmbeddingAdapter("deepinfra")).toBeNull();
+    const { default: deepinfraRegistry } = await import("../../open-sse/providers/registry/deepinfra.js");
+    expect(getEmbeddingAdapter("deepinfra")).toBe(deepinfraEmbeddingAdapter);
     const metadata = JSON.parse(readFileSync(new URL("../../open-sse/services/providerParity/native-deepinfra-embedding-rerank/registration.json", import.meta.url), "utf8"));
-    expect(metadata.registered).toBe(false);
     expect(metadata.canonicalId).toBe("deepinfra");
+    expect(deepinfraRegistry.id).toBe(metadata.canonicalId);
+    expect(deepinfraRegistry.serviceKinds).toEqual(expect.arrayContaining(metadata.serviceKinds));
+    expect(deepinfraRegistry.models.filter((m) => m.kind === "embedding").map((m) => m.id)).toEqual(metadata.models.embedding);
+    expect(deepinfraRegistry.models.filter((m) => m.kind === "rerank").map((m) => m.id)).toEqual(metadata.models.rerank);
+    expect(deepinfraRegistry.transport).toMatchObject({ authHeader: "bearer", validateUrl: "https://api.deepinfra.com/v1/openai/models" });
   });
 });
 

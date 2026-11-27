@@ -11,9 +11,16 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
-import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { checkAndRefreshToken, updateProviderCredentials } from "../services/tokenRefresh.js";
 import { resolveTypedMediaModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
+
+// combo.js ACCEPTED_JOB_HEADER: an accepted or uncertain submit stops every
+// fallback. Kept local so this route does not load the combo engine.
+const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
+
+/** Providers whose rerank core runs one bounded native submit (rerankCore.js). */
+const NATIVE_RERANK_PROVIDERS = new Set(["deepinfra"]);
 
 /**
  * Handle rerank request — Cohere/Jina/Voyage-style /v1/rerank passthrough.
@@ -49,10 +56,18 @@ async function routeRerank(request, body, modelStr, url, { settings, apiKey, aut
 
   // Model and account fallbacks retain the original admission epoch.
   const usageContext = { billingEpoch: apiKeyAuth.billingEpoch, usageEventId: `${getRequestId(request)}:${url.pathname}`, endpoint: url.pathname };
+  // Once a provider may have billed a submit, no fallback model receives the
+  // request: every later hop answers with that same recorded response.
+  let accepted = null;
   return runWithModelFallback(
     modelStr,
     settings.modelFallbacks,
-    (m) => handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext, pinOptions),
+    async (m) => {
+      if (accepted) return accepted.clone();
+      const response = await handleSingleModelRerank(m, body, request, apiKey, apiKeyAuth.apiKeyId, usageContext, pinOptions);
+      if (response.headers?.get?.(ACCEPTED_JOB_HEADER)) accepted = response.clone();
+      return response;
+    },
     log
   );
 }
@@ -83,6 +98,23 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
     // The stable id of the admitted key travels with the usage.
     apiKeyId,
   });
+  /** A submit the provider may have billed without a usable answer (DeepInfra
+   * native): recorded once on the sending account, never replayed. */
+  const recordAccepted = async (result, credentials) => {
+    await recordAcceptedJobUsage(apiKey, {
+      ...result.acceptedJob,
+      ...usageContext,
+      provider,
+      model,
+      connectionId: credentials.connectionId || null,
+      modality: "rerank",
+      apiKeyId,
+    });
+    const response = result.response || errorResponse(result.status, result.error);
+    const headers = new Headers(response.headers);
+    headers.set(ACCEPTED_JOB_HEADER, "1");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  };
   if (modelStr !== `${provider}/${model}`) {
     log.info("ROUTING", `${modelStr} → ${provider}/${model}`);
   } else {
@@ -141,7 +173,9 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
         await clearAccountError(credentials.connectionId, credentials, model, dispatch);
       },
     });
-    if (!result.success && [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.FORBIDDEN].includes(result.status)) {
+    // Native services own their single bounded submit: no refresh, no resend
+    // and no credential rewrite on a refusal.
+    if (!result.success && !NATIVE_RERANK_PROVIDERS.has(provider) && [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.FORBIDDEN].includes(result.status)) {
       const retryCredentials = await checkAndRefreshToken(provider, { ...credentials, accessToken: null });
       if (retryCredentials.accessToken !== credentials.accessToken) {
         await updateProviderCredentials(credentials.connectionId, { accessToken: retryCredentials.accessToken, refreshToken: retryCredentials.refreshToken, providerSpecificData: retryCredentials.providerSpecificData, testStatus: "active" });
@@ -150,8 +184,20 @@ async function handleSingleModelRerank(modelStr, body, request, apiKey, apiKeyId
     }
 
     if (result.success) return { response: await recordSuccess(result, credentials) };
-    return { result, dispatch };
+    if (request.signal?.aborted && result.acceptedJob) return { response: await recordAccepted(result, credentials) };
+    return {
+      result, dispatch, resetAt: result.resetsAtMs ?? null,
+      failureContext: {
+        ...(result.rateLimitEvidence ? { rateLimitEvidence: result.rateLimitEvidence } : null),
+        ...(result.quotaExhausted === true ? { quotaExhausted: true } : null),
+      },
+    };
     },
+    onAttemptResult(result, credentials) {
+      if (result.status !== 499) return null;
+      return result.acceptedJob ? recordAccepted(result, credentials) : result.response;
+    },
+    onAccountFailure: (result, credentials) => (result.acceptedJob ? recordAccepted(result, credentials) : null),
     onFallback(result, credentials) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
     },

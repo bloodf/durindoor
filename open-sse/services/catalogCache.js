@@ -9,14 +9,18 @@
 
 /**
  * @param {object} [config]
+ * @param {number} [config.ttl] Alias for ttlMs, in milliseconds.
+ * @param {number} [config.negativeTtl] Alias for negativeTtlMs, in milliseconds.
  * @param {number} [config.ttlMs] Lifetime of a loaded value.
  * @param {number} [config.negativeTtlMs] Lifetime of a remembered failure.
  * @param {(...args: any[]) => any} [config.keyFn] Builds a cache key, exposed as `keyFor`.
  * @param {number} [config.maxEntries] Oldest entry is dropped at this size.
  */
 export function createCatalogCache({
-  ttlMs = 0,
-  negativeTtlMs = 0,
+  ttl = 0,
+  negativeTtl = 0,
+  ttlMs = ttl,
+  negativeTtlMs = negativeTtl,
   keyFn = (key) => key,
   maxEntries = Infinity
 } = {}) {

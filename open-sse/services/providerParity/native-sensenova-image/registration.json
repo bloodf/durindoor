@@ -1,0 +1,89 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (sensenova: baseUrl https://api.sensenova.cn/v1/images/generations, authType apikey, authHeader bearer, format openai, model sensenova-u1-fast 'SenseNova U1 Fast', supportedSizes [1024x1024], no fallbackUrl; comment: same SenseNova api-key/connection as the chat provider, 9router#2233)",
+      "open-sse/handlers/imageGeneration.ts (format openai -> handleOpenAIImageGeneration: body { model, prompt } + output options, n, size, quality, response_format, style; Authorization Bearer apiKey || accessToken)",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts (deadline covers body read; 2xx without b64_json/url -> 502)",
+      "open-sse/handlers/imageGeneration/result.ts (usage kept internal)",
+      "src/app/api/providers/[id]/models/discovery/providerSets.ts and providerModelsConfig.ts (no sensenova entry: no dynamic image-model discovery in the source)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none for sensenova: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no sensenova key on this branch or origin/main fdbb72865a; open-sse/providers/registry/sensenova.js has no serviceKinds or imageConfig, and no checkout file names api.sensenova.cn.",
+    "notEquivalent": "sensenova-intl (createOpenAIAdapter('sensenova-intl'), imageConfig https://token.sensenova.ai/v1/images/generations, bodyFields incl. watermark/prompt_extend) is a different host, account region and body whitelist; it is not reused and not changed.",
+    "genericAdapter": "createOpenAIAdapter('sensenova') would read PROVIDER_MEDIA.sensenova.imageConfig (absent) and has no fixed-origin/redirect refusal or uncertain-submit handling, so it is not used here.",
+    "discovery": "the source has no dynamic discovery for sensenova images; the chat provider's validateUrl https://token.sensenova.cn/v1/models is a chat-host list and is not repurposed. The static model list is the catalog."
+  },
+  "module": "open-sse/services/providerParity/native-sensenova-image/index.js",
+  "exports": {
+    "sensenovaImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createSensenovaImageAdapter": "factory; options { fetchImpl, submitTimeoutMs, timeoutMs, now } for tests",
+    "buildSensenovaImageRequest": "(model, body) -> { model, prompt, output_format?, n?, size?, quality?, response_format?, style? } in source order; throws status 400 before any network call",
+    "resolveSensenovaImageModel": "strip sensenova/ and pass any safe single-segment id through (source parity); null for unsafe ids",
+    "resolveSensenovaImageCredential": "source credentials.apiKey || credentials.accessToken",
+    "normalizeSensenovaImageItems": "usable items: public https url or base64 png/jpeg/webp -> { items, formats, unsafe }",
+    "sensenovaPublicUrl": "https on a public literal host without userinfo, or null",
+    "sensenovaAcceptedJob": "accepted-job accounting for an uncertain submit",
+    "isSafeSensenovaModelId": "model id syntax check",
+    "SENSENOVA_PROVIDER_ID": "sensenova",
+    "SENSENOVA_IMAGE_URL": "https://api.sensenova.cn/v1/images/generations",
+    "SENSENOVA_IMAGE_MODELS": "source registry model list"
+  },
+  "provider": {
+    "canonicalId": "sensenova",
+    "aliases": [],
+    "serviceKinds": ["image"],
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken"],
+      "sentTo": ["https://api.sensenova.cn"]
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions"
+  },
+  "models": [
+    { "id": "sensenova-u1-fast", "name": "SenseNova U1 Fast", "sizes": ["1024x1024"], "note": "source registry model; any safe id passes through when prefixed sensenova/" }
+  ],
+  "modelAliases": {},
+  "bareModelIdNote": "sensenova-intl also lists sensenova-u1-fast; registration should keep bare-id resolution unchanged and route sensenova/sensenova-u1-fast explicitly.",
+  "request": {
+    "accepted": ["model", "prompt", "n (1..10)", "size (WxH, sides 64..2048)", "quality (short word)", "style (short word)", "response_format url | b64_json", "output_format png | jpeg | webp", "user (not sent)", "stream false"],
+    "refused": ["unsafe or multi-segment model id", "image / image_url / mask / input images", "background", "frame_count / frame_duration_ms", "output_compression", "watermark / prompt_extend", "output_format gif | svg", "streaming", "any other non-null field"],
+    "responseFormats": ["url", "b64_json"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://api.sensenova.cn/v1/images/generations", "body": "{ model, prompt, ... }", "answer": "{ created, data: [{ url } | { b64_json }], usage? }", "billable": true, "redirect": "manual (refused)" }
+  },
+  "bounds": { "submitTimeoutMs": 120000, "totalTimeoutMs": 180000, "responseMaxBytes": 41943040, "maxResults": 16 },
+  "accounting": {
+    "success": "nativeUnits.images = returned usable items; upstream usage (if any) recorded as internal tokens; cost unknown unless usage carries a USD receipt",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, foreign-origin answer; accepted: a 2xx that is unreadable or without a usable image. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed; no acceptedJob",
+    "redirect": "3xx -> 502, never followed"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add sensenova: sensenovaImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore calls adapter.generate and records success); leave sensenova-intl unchanged"
+    },
+    {
+      "file": "open-sse/providers/registry/sensenova.js",
+      "change": "serviceKinds [\"llm\", \"image\"], imageConfig { baseUrl: https://api.sensenova.cn/v1/images/generations } and an image model entry { id: sensenova-u1-fast, kind: image }; keep category freeTier, chat transport (token.sensenova.cn), clamp/normalizers and usage features unchanged"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list image for sensenova with the supported subset"
+    },
+    {
+      "file": "tests/unit/native-sensenova-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

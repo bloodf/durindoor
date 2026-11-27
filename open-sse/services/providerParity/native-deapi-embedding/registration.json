@@ -1,0 +1,91 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts",
+      "src/shared/constants/providers/apikey/specialty-media.ts"
+    ],
+    "registryFields": { "id": "deapi", "baseUrl": "https://oai.deapi.ai/v1/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and OPENAI_COMPAT_PROVIDERS (no deapi key; getEmbeddingAdapter('deapi') is null)",
+      "open-sse/handlers/embeddingProviders/openai.js (generic OpenAI-compatible factory; reads PROVIDER_MEDIA['deapi'].embeddingConfig, which does not exist, so its URL would be undefined)",
+      "open-sse/providers/registry/** (no deapi entry, no alias resolving to it)",
+      "src/** and docs/providers/catalog.mdx (no deapi catalog row)"
+    ],
+    "result": "no existing equivalent; provider metadata and the embeddings adapter are the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-deapi-embedding/index.js",
+  "exports": {
+    "deapiEmbeddingAdapter": "default adapter instance; embed({ model, body, credentials, signal, log }) plus buildUrl/buildHeaders/buildBody for introspection",
+    "createDeapiEmbeddingAdapter": "factory; options { timeoutMs, now, fetch } for tests",
+    "buildDeapiEmbeddingRequest": "(model, body) -> { upstream, items, encodingFormat, model }; throws status 400",
+    "normalizeDeapiEmbeddings": "(answer, { items, dimensions, encodingFormat }) -> { data, usage }; throws on unusable answers",
+    "packFloat32Base64": "little-endian float32 base64 pack (source packEmbeddingAsBase64)",
+    "deapiAcceptedJob": "(jobState) accepted-work accounting with unknown cost",
+    "deapiToken": "selected connection key: apiKey, then accessToken; null when missing or containing CR/LF",
+    "DEAPI_PROVIDER": "catalog metadata (id, alias, name, website, authType, authHint, serviceKinds)",
+    "DEAPI_EMBEDDING_MODELS": "[{ id: Bge_M3_FP16, name: BGE-M3 (deAPI), kind: embedding, dimensions: 1024 }]",
+    "DEAPI_EMBEDDINGS_URL": "https://oai.deapi.ai/v1/embeddings",
+    "DEAPI_EMBEDDING_TIMEOUT_MS": "60000, one deadline for send and body read"
+  },
+  "provider": {
+    "canonicalId": "deapi",
+    "aliases": ["deapi"],
+    "existingRegistryEntry": null,
+    "existingServiceKinds": null,
+    "addServiceKinds": ["embedding"],
+    "serviceKindsNote": "the source catalog row has serviceKinds [] and derives kinds from its media registries; this fork's registry needs the explicit kind. Image, video, TTS and STT for deapi are separate #2034 rows and are not claimed here",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "tokenRefresh": "none (API key); a 401/403 is final for the call",
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "embedding": [{ "id": "Bge_M3_FP16", "name": "BGE-M3 (deAPI)", "dimensions": 1024 }],
+    "dynamicDiscovery": "none in the source; static list only. No deAPI /models fetcher exists in either tree"
+  },
+  "endpoints": {
+    "embeddings": {
+      "method": "POST",
+      "url": "https://oai.deapi.ai/v1/embeddings",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ model, input, encoding_format: \"float\" }",
+      "redirect": "manual (refused)"
+    }
+  },
+  "supportedInput": {
+    "input": "string or 1..256 non-empty strings, each at most 20000 characters",
+    "encoding_format": ["float", "base64"],
+    "dimensions": "absent or 1024 (not forwarded)",
+    "ignored": ["user"],
+    "refused": ["token arrays", "structured or multimodal items", "any other field", "any other model"]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import { deapiEmbeddingAdapter } and add `deapi: deapiEmbeddingAdapter` to EMBEDDING_ADAPTERS (not to OPENAI_COMPAT_PROVIDERS)"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "after getEmbeddingAdapter, `if (isFunction(adapter.embed)) return adapter.embed({ model, body, credentials, signal, log })` and call onRequestSuccess only on success; the shared fetch, refresh retry and upstream error relay must not run for deapi"
+    },
+    {
+      "file": "open-sse/providers/registry/deapi.js",
+      "change": "new entry: id/alias deapi, authType apikey, serviceKinds [\"embedding\"], DEAPI_EMBEDDING_MODELS as kind embedding rows; no chat transport (the gateway has no chat/completions)"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "it already selects the connection and enforces quota before handleEmbeddingsCore. It does not read acceptedJob today: record result.acceptedJob as unknown-cost usage on the selected connection (as imageGeneration.js recordAcceptedImageJob does) and do not fall through to another account for a result that carries acceptedJob, so uncertain work is never replayed"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list deAPI with the embedding kind after registration"
+    }
+  ]
+}

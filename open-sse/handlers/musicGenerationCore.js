@@ -7,6 +7,7 @@ import { isNumber, isString } from "../../src/shared/utils/typeChecks.js";
 import { mediaAccounting } from "./mediaAccounting.js";
 import { createSseFrameReader } from "../utils/sseFrames.js";
 import { createMediaRegistry, lookupMediaAdapter } from "./mediaRegistry.js";
+import { handleVertexMusicGeneration, isVertexMusicProvider } from "../services/providerParity/native-vertex-music/index.js";
 
 
 export const MUSIC_ADAPTERS = createMediaRegistry({
@@ -171,6 +172,11 @@ async function handleMinimaxMusicGeneration({ provider, model, body, credentials
 
 export async function handleMusicGenerationCore({ provider, model, body, credentials, requestId = null, signal, onComplete }) {
   if (provider === "minimax" || provider === "minimax-cn") return handleMinimaxMusicGeneration({ provider, model, body, credentials, signal, onComplete });
+  // Vertex AI Lyria 2: one synchronous predict call; never a cookie job or a poll.
+  if (isVertexMusicProvider(provider)) {
+    if (requestId) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Vertex music generation is synchronous and has no request id to poll");
+    return handleVertexMusicGeneration({ model, body, credentials, signal });
+  }
   const config = lookupMediaAdapter(MUSIC_ADAPTERS, provider);
   if (!config) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);
   if (!requestId && !body?.prompt) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Missing required field: prompt");

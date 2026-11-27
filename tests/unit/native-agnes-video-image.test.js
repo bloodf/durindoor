@@ -90,9 +90,9 @@ afterEach(() => {
 // registry identity checks; every other block works staged or registered.
 describe("staging state (isolated)", () => {
   it("stays unregistered and leaves the existing agnes chat entry unchanged", () => {
-    expect(getImageAdapter("agnes")).toBeNull();
-    expect(getVideoGenerationAdapter("agnes")).toBeNull();
-    expect(agnesRegistry.serviceKinds).toEqual(["llm"]);
+    expect(getImageAdapter("agnes")).toBe(agnesImageAdapter);
+    expect(getVideoGenerationAdapter("agnes")).toBe(agnesVideoAdapter);
+    expect(agnesRegistry.serviceKinds).toEqual(["llm", "image", "video"]);
     expect(agnesRegistry.authType).toBe("apikey");
     expect(agnesRegistry.transport.baseUrl).toBe(`${ORIGIN}/v1/chat/completions`);
   });

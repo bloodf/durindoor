@@ -14,7 +14,8 @@
 //   * Ownership. A process is signalled only when /proc proves it belongs to
 //     this shard: every uid equal to this runner's euid, the shard's owner
 //     token in its environment (never its argv), and an unchanged kernel
-//     start time between the scan and the signal. A PID that was reused by
+//     start time between the scan and the signal. Signals go to single
+//     verified PIDs, never to a process group. A PID that was reused by
 //     another program fails the token and start-time checks. A listener that
 //     cannot be attributed is never touched, even when it holds the port.
 //   * Fail closed. Every PID is classified as exited, foreign, owned or
@@ -336,11 +337,25 @@ export function snapshotShardBaseline({ procRoot = "/proc", ...options } = {}) {
 // Signals only processes whose identity is re-read immediately before the
 // signal and still classifies as owned with the same kernel start time. A
 // recycled PID has a different start time and no token, and a process that
-// became unreadable is no longer proven, so both are skipped. A verified group
-// leader takes its group with it: Linux never hands out a PID while a live
-// process still uses it as a process group ID, and the group was created by
-// this shard's own launcher. ESRCH (already gone) is fine; any other refusal
-// is thrown so the caller fails closed.
+// became unreadable is no longer proven, so both are skipped. ESRCH (already
+// gone) is fine; any other refusal is thrown so the caller fails closed.
+//
+// Every signal goes to one positive PID, never to a process group. kill(-pgid)
+// reaches every member of the group, and membership proves nothing: a group
+// can hold an uncertain member (unreadable environ), a member that dropped
+// the token, or an unrelated process that joined with setpgid. Group
+// ownership cannot be established from /proc without classifying every
+// member, and the member list can change between that check and the signal,
+// so the guard does not claim it. Each shard process inherits the token, so
+// it is found and signalled on its own; a member that cannot be proven owned
+// is left alone and fails cleanup while it lives.
+//
+// Residual race: Linux offers no PID-reuse-safe signal from Node (no
+// pidfd_send_signal). Between the re-read and kill(), the verified process can
+// exit, be reaped by its parent, and the kernel can hand the PID to a new
+// process. That window is a few system calls wide and needs the PID space to
+// wrap in it; the guard narrows it to the re-read immediately before each
+// kill() and does not claim to close it.
 export function signalOwnedProcesses(processes, signal, {
   owner,
   procRoot = "/proc",
@@ -350,12 +365,12 @@ export function signalOwnedProcesses(processes, signal, {
 } = {}) {
   const signalled = [];
   for (const seen of processes) {
+    if (!Number.isInteger(seen?.pid) || seen.pid <= 1) continue;
     const now = classifyProcess(readProcessIdentity(seen.pid, procRoot, { readFile }), owner, euid);
     if (now.verdict !== "owned" || now.identity.startTime !== seen.startTime) continue;
-    const target = now.identity.pgid === now.pid ? -now.pid : now.pid;
     try {
-      kill(target, signal);
-      signalled.push({ pid: now.pid, group: target < 0, signal });
+      kill(now.pid, signal);
+      signalled.push({ pid: now.pid, signal });
     } catch (error) {
       if (error.code !== "ESRCH") throw Object.assign(new Error(`shard server signal failed: ${error.code || error.message}`), { signalFailure: true });
     }

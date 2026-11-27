@@ -14,6 +14,7 @@ import { PROVIDER_MODELS } from "@/shared/constants/models";
 import { GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS } from "open-sse/config/runtimeConfig.js";
 import {
   convertGeminiToInternal,
+  validateGeminiFunctionPairing,
   convertOpenAIResponseToGemini,
   transformOpenAISSEToGeminiSSE,
 } from "./geminiBridge.js";
@@ -75,8 +76,15 @@ async function POSTHandler(request, { params }) {
     //   :generateContent       => stream: false (plain JSON)
     const stream = action === ":streamGenerateContent";
 
+    // Validate before conversion can drop invalid boundaries or repair missing replies.
+    try {
+      validateGeminiFunctionPairing(body.contents);
+    } catch (error) {
+      return Response.json({ error: { code: 400, status: "INVALID_ARGUMENT", message: error.message } }, { status: 400 });
+    }
+
     // Convert Gemini request format to OpenAI/internal format
-    const convertedBody = convertGeminiToInternal(body, model, stream);
+    const convertedBody = convertGeminiToInternal(body, model, stream, true);
 
     // Create new request with converted body. It is plain JSON, so the client's
     // representation headers no longer describe it. Keep the client abort

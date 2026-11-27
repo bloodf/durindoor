@@ -1,24 +1,6 @@
-import { createRequire } from "node:module";
-import { delimiter, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// Worktrees may link node_modules to a shared checkout. Node resolves those
-// package symlinks from their shared target, so expose the existing project
-// links while loading configs that have peer dependencies such as Next.js.
-const root = fileURLToPath(new URL(".", import.meta.url));
-const linkedModulePaths = [join(root, "node_modules"), join(root, "node_modules/.pnpm/node_modules")];
-const moduleApi = createRequire(import.meta.url)("node:module");
-process.env.NODE_PATH = [...new Set([
-  ...linkedModulePaths,
-  ...(process.env.NODE_PATH ?? "").split(delimiter).filter(Boolean),
-])].join(delimiter);
-moduleApi.Module._initPaths();
-
-const [{ defineConfig, globalIgnores }, { default: nextVitals }, { default: reactHooks }] = await Promise.all([
-  import("eslint/config"),
-  import("eslint-config-next/core-web-vitals"),
-  import("eslint-plugin-react-hooks"),
-]);
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import reactHooks from "eslint-plugin-react-hooks";
 
 const eslintConfig = defineConfig([
   ...nextVitals,

@@ -390,8 +390,10 @@ export function openaiToClaudeResponse(chunk, state) {
   if (!chunk) return finalizeOnFlush(state);
   if (chunk.usage && isObject(chunk.usage)) {
     const usage = toClaudeUsage(chunk.usage);
-    const hasMeasured = usage.input_tokens > 0 || usage.output_tokens > 0 ||
-      (usage.cache_read_input_tokens ?? 0) > 0 || (usage.cache_creation_input_tokens ?? 0) > 0;
+    // A gateway estimate (e.g. Cursor's executor usage, #2615) is not a provider
+    // measurement: it keeps the buffered client margin instead of the exact path.
+    const hasMeasured = chunk.usage.estimated !== true && (usage.input_tokens > 0 || usage.output_tokens > 0 ||
+      (usage.cache_read_input_tokens ?? 0) > 0 || (usage.cache_creation_input_tokens ?? 0) > 0);
     if (hasMeasured) state.claudeMeasuredUsage = true;
     if (hasMeasured || !state.claudeMeasuredUsage) {
       state.usage = state.claudeFinishHandled ? { ...state.usage, ...usage } : usage;

@@ -15,9 +15,10 @@ export const supportsVideoGeneration = (provider) => provider === "veoaifree-web
  * keeps the adapter's `acceptedJob` for the route to record.
  */
 async function generateWithAdapter(adapter, { model, body, credentials, signal, log }) {
-  const requested = body.response_format ?? "url";
-  if (!VIDEO_GENERATION_RESPONSE_FORMATS.includes(requested)) {
-    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `This provider returns video URLs only; response_format must be ${VIDEO_GENERATION_RESPONSE_FORMATS.join(", ")}`);
+  const formats = adapter.responseFormats ?? VIDEO_GENERATION_RESPONSE_FORMATS;
+  const requested = body.response_format ?? adapter.defaultResponseFormat ?? "url";
+  if (!formats.includes(requested)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, `This provider supports response_format ${formats.join(", ")} only`);
   }
   try {
     return await adapter.generate({ model, body, credentials, signal, log });

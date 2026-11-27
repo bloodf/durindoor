@@ -1,3 +1,6 @@
+import { resolveProfile } from "open-sse/services/fireflyWebUi/profile.js";
+import { DATA_DIR } from "@/lib/dataDir.js";
+import { parseFireflyWebUiConfig } from "open-sse/services/fireflyWebUi/config.js";
 import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
 import {
   antigravityCatalogRouteFingerprint,
@@ -123,6 +126,15 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
+  if (connection.provider === "adobe-firefly-web") {
+    try {
+      const config = parseFireflyWebUiConfig(connection);
+      resolveProfile({ dataDir: DATA_DIR, connectionId: connection.id, profileHandle: config.profileHandle });
+      return { provider: connection.provider, connectionId: connection.id, source: "operator_configured", warning: "Configured labels only; live entitlement is unknown", models: Object.entries(config.modelMap).map(([id, entry]) => ({ id, name: entry.label, kind: entry.kind })) };
+    } catch (error) {
+      return { error: error.message, status: error.status || 400, outcome: error.outcome };
+    }
+  }
   if (connection.provider === "kilocode") return fetchKiloCatalog();
 
   // T3 Chat, Adapta and the staged web-session providers publish a curated

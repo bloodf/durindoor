@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import definition, { ADOBE_FIREFLY_WEB_ID, ADOBE_FIREFLY_WEB_ORIGIN } from "../../open-sse/providers/private/adobe-firefly-web.js";
+import definition, { ADOBE_FIREFLY_WEB_ID, ADOBE_FIREFLY_WEB_ORIGIN } from "../../open-sse/providers/registry/adobe-firefly-web.js";
 import { STAGED_PROVIDERS } from "../../open-sse/providers/staged.js";
 import manifest from "../../open-sse/executors/staged.json";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
@@ -28,26 +28,28 @@ const status = (fn) => {
   return null;
 };
 
-describe("staged registration", () => {
-  it("is one canonical id with no alias, authType none, image and video, and staged only", () => {
+describe("registered experimental provider", () => {
+  it("is one canonical id with no alias, authType none, image and video, and registered", () => {
     expect(definition).toMatchObject({ id: "adobe-firefly-web", authType: "none", serviceKinds: ["image", "video"], models: [] });
     expect(definition.alias).toBeUndefined();
     expect(definition.uiAlias).toBeUndefined();
     expect(ADOBE_FIREFLY_WEB_ORIGIN).toBe("https://firefly.adobe.com");
-    expect(STAGED_PROVIDERS[ADOBE_FIREFLY_WEB_ID]).toMatchObject({ staged: true, docs: "docs/providers/adobe-firefly-web.md" });
+    expect(STAGED_PROVIDERS[ADOBE_FIREFLY_WEB_ID]).toBeUndefined();
     expect(manifest.modules.filter(({ provider }) => provider === ADOBE_FIREFLY_WEB_ID).map(({ module }) => module))
-      .toEqual(["open-sse/providers/private/adobe-firefly-web.js"]);
+      .toEqual([]);
     const ids = new Set(REGISTRY.flatMap(({ id, alias, aliases }) => [id, alias, ...(aliases || [])]));
-    for (const id of ["adobe-firefly-web", "adobe-firefly", "firefly"]) expect(ids.has(id), id).toBe(false);
-    expect(getImageAdapter(ADOBE_FIREFLY_WEB_ID)).toBeNull();
-    expect(getVideoGenerationAdapter(ADOBE_FIREFLY_WEB_ID)).toBeNull();
+    expect(ids.has(ADOBE_FIREFLY_WEB_ID)).toBe(true);
+    expect(REGISTRY.find(({ id }) => id === ADOBE_FIREFLY_WEB_ID)).toBe(definition);
+    for (const id of ["adobe-firefly", "firefly"]) expect(ids.has(id), id).toBe(false);
+    expect(getImageAdapter(ADOBE_FIREFLY_WEB_ID).generate).toBeTypeOf("function");
+    expect(getVideoGenerationAdapter(ADOBE_FIREFLY_WEB_ID).generate).toBeTypeOf("function");
   });
 
   it("ships no default Adobe selectors and imports no shared or stealth browser code", () => {
     const dir = path.join(root, "open-sse/services/fireflyWebUi");
     const sources = [
       ...fs.readdirSync(dir).map((name) => fs.readFileSync(path.join(dir, name), "utf8")),
-      fs.readFileSync(path.join(root, "open-sse/providers/private/adobe-firefly-web.js"), "utf8"),
+      fs.readFileSync(path.join(root, "open-sse/providers/registry/adobe-firefly-web.js"), "utf8"),
       fs.readFileSync(path.join(root, "open-sse/handlers/imageProviders/adobe-firefly-web.js"), "utf8"),
       fs.readFileSync(path.join(root, "open-sse/handlers/videoProviders/adobe-firefly-web.js"), "utf8"),
     ].join("\n").replace(/^\s*(?:\/\/|\*|\/\*\*).*$/gm, "");
@@ -60,11 +62,11 @@ describe("staged registration", () => {
     expect(sources).not.toMatch(/name:\s*["'](Generate|Prompt|Model|Download)["']/);
   });
 
-  it("documents the staged provider as staged and unavailable", () => {
+  it("documents the available provider as experimental and mock-only", () => {
     const doc = fs.readFileSync(path.join(root, "docs/providers/adobe-firefly-web.md"), "utf8");
-    expect(doc).toMatch(/staged/i);
-    expect(doc).toMatch(/unavailable/i);
-    expect(doc).toMatch(/^status:\s*unreleased\s*$/m);
+    expect(doc).toMatch(/experimental/i);
+    expect(doc).toMatch(/mock/i);
+    expect(doc).toMatch(/^status:\s*experimental\s*$/m);
     expect(doc).not.toMatch(/internal\/docs/);
   });
 });

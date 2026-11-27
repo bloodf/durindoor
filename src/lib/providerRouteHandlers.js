@@ -1,3 +1,4 @@
+import { FIREFLY_WEB, saveFireflyConnection, publicFireflyData } from "@/lib/fireflyWebUiConnection.js";
 import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
 import { adobeFireflyCredentialFields } from "open-sse/services/adobeFireflyApi/auth.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
@@ -78,6 +79,7 @@ const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [
 /** providerSpecificData without secrets (see isSecretProviderSpecificKey). */
 export function pickSafeProviderSpecificData(_provider, providerSpecificData) {
   if (!providerSpecificData) return providerSpecificData;
+  if (_provider === FIREFLY_WEB) return publicFireflyData(providerSpecificData);
   return Object.fromEntries(
     Object.entries(providerSpecificData).filter(([key]) => !isSecretProviderSpecificKey(key))
   );
@@ -124,6 +126,7 @@ export function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === FIREFLY_WEB) return true;
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
@@ -288,6 +291,7 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const body = await request.json();
     if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return NextResponse.json({ error: "Private account references cannot be supplied" }, { status: 400 });
     const provider = normalizeProviderId(body.provider);
+    if (provider === FIREFLY_WEB) return saveFireflyConnection(request, body);
     const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly, authType: requestedAuthType } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {

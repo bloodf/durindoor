@@ -58,6 +58,7 @@ describe("provider staging", () => {
   const PROMOTED_PRIVATE_1127 = Object.freeze({
     "open-sse/providers/private/renderhour.js": "renderhour",
     "open-sse/providers/private/adobe-firefly-api.js": "adobe-firefly-api",
+    "open-sse/providers/private/adobe-firefly-web.js": "adobe-firefly-web",
   });
 
   it("promotes the 1127 media definitions to the registry and leaves no stale private copy", () => {

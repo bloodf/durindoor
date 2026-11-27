@@ -20,6 +20,7 @@ import magnific from "./magnific.js";
 import deepai from "./deepai.js";
 import copilotM365 from "./copilotM365.js";
 import renderhour from "./renderhour.js";
+import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
@@ -62,6 +63,7 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   // Adobe Firefly Services API (operator S2S credential). Never the consumer
   // firefly.adobe.com web app: `adobe-firefly` and `firefly` stay unknown.
   "adobe-firefly-api": adobeFireflyApi,
+  "adobe-firefly-web": adobeFireflyWeb,
 });
 
 export function getImageAdapter(provider) {

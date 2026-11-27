@@ -242,6 +242,10 @@ async function validateProviderKey(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, sessionToken, providerSpecificData } = body;
 
+    if (provider === "adobe-firefly-web") {
+      return NextResponse.json({ valid: false, skipped: true, outcome: "needs_operator", note: "Browser sign-in and mapping validation require the operator; no browser was opened" });
+    }
+
     // Adobe Firefly Services, in either credential mode. Client-secret mode mints
     // one IMS token with the documented token request; the token is not kept and
     // nothing is generated. A supplied access token is checked locally only

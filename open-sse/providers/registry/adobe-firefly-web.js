@@ -1,7 +1,6 @@
 // Adobe Firefly consumer web UI (firefly.adobe.com) driven in an ordinary,
 // unmodified Playwright Chromium against an operator-owned browser profile.
-// STAGED for #2034: nothing in the registry, the image adapter map or the
-// video adapter map imports this module, so it is unavailable to users. See
+// Registered experimental image/video browser provider. See
 // docs/providers/adobe-firefly-web.md.
 //
 // Contract: internal/docs/firefly-consumer-browser-contract.md. That page is a
@@ -24,16 +23,16 @@ export const ADOBE_FIREFLY_WEB_ORIGIN = "https://firefly.adobe.com";
 const ADOBE_FIREFLY_WEB = {
   id: ADOBE_FIREFLY_WEB_ID,
   display: {
-    name: "Adobe Firefly (web UI, staged)",
+    name: "Adobe Firefly (experimental browser)",
     icon: "image",
     color: "#475569",
     textIcon: "FW",
     website: ADOBE_FIREFLY_WEB_ORIGIN,
     notice: {
-      text: "Staged and unavailable. Drives the Firefly website in an ordinary browser with an operator-owned profile and an operator-validated control mapping. No API key, token or cookie is accepted.",
+      text: "Experimental, operator-mapped and tested with mocks only. Drives the Firefly website in an ordinary browser with an operator-owned profile and an operator-validated control mapping. No API key, token or cookie is accepted.",
     },
   },
-  category: "web",
+  category: "apikey",
   authType: "none",
   transport: null,
   // Models come only from the connection's operator-validated modelMap.

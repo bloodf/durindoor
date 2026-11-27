@@ -185,13 +185,21 @@ export async function handleImageGenerationCore({
   // An adapter that declares its output formats refuses any other before anything
   // is sent or billed, instead of answering in a different format afterwards.
   if (Array.isArray(adapter.responseFormats)) {
-    const requested = binaryOutput ? "binary" : body.response_format ?? "url";
+    const requested = binaryOutput ? "binary" : body.response_format ?? adapter.defaultResponseFormat ?? "url";
     if (!adapter.responseFormats.includes(requested)) {
       return createErrorResult(
         HTTP_STATUS.BAD_REQUEST,
         `Provider '${provider}' supports response_format ${adapter.responseFormats.join(", ")} only`
       );
     }
+  }
+
+  // Guarded synchronous adapters own serialization and uncertain-submit receipts.
+  if (isFunction(adapter.generate)) {
+    if (streamToClient) return createErrorResult(400, "This provider does not support streaming");
+    const result = await adapter.generate({ model, body, credentials, signal, log });
+    if (result.success && onRequestSuccess) await onRequestSuccess();
+    return result;
   }
 
   // Executor-delegating adapters: skip manual URL/headers/body, use the proven executor flow

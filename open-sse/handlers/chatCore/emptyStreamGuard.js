@@ -84,6 +84,21 @@ export function isMeaningfulPart(part) {
   return isString(part.text) && part.text.trim().length > 0;
 }
 
+// A frame commits the client to this attempt once it carries any candidate
+// output, thinking included. A signature-only part with empty text does not.
+function carriesOutput(parsed) {
+  const parts = (parsed?.response || parsed)?.candidates?.[0]?.content?.parts;
+  return Array.isArray(parts) && parts.some((part) => isMeaningfulPart(part) || isString(part?.text) && part.text !== "");
+}
+
+// Message for an attempt that committed output but ended without an answer
+// (CLIProxyAPI dbe641f executor/helps/gemini_zero_output.go, MIT).
+function committedZeroOutputMessage(held) {
+  return held && held.kind !== "error_object" ?
+  `upstream returned zero output with finishReason ${held.reason}` :
+  "upstream stream closed with zero output";
+}
+
 // Decide what to do with one parsed SSE event.
 // - forward: pass the original line through (optionally marking the stream
 //   terminal so the attempt is never retried)
@@ -168,6 +183,9 @@ function classifyEvent(parsed, meaningfulSeen) {
  *   client retries rotate); awaited before the error event is emitted, and
  *   handed the held upstream error object so quota reset times can be parsed,
  *   plus the HTTP `status` of a retry the upstream rejected
+ * @param {boolean} [options.replayCommitted] false for clients that must never
+ *   see a replay once output was forwarded (native Gemini endpoints): an empty
+ *   committed attempt then ends with one 502 UNAVAILABLE error event instead
  * @returns {ReadableStream} byte stream for the SSE transform pipeline
  */
 export function createEmptyRetryStream({
@@ -179,7 +197,8 @@ export function createEmptyRetryStream({
   baseDelayMs = EMPTY_STREAM_BASE_DELAY_MS,
   onAttemptDiscarded,
   onExhausted,
-  onInBandError
+  onInBandError,
+  replayCommitted = true
 }) {
   const encoder = new TextEncoder();
   let currentReader = null;
@@ -202,6 +221,7 @@ export function createEmptyRetryStream({
     async start(controller) {
       currentReader = body.getReader();
       let meaningfulSeen = false;
+      let committed = false; // some forwarded frame carried output
       let lastHeld = null; // last withheld terminal, kept for the exhaustion event
 
       const emit = (text) => {
@@ -226,7 +246,7 @@ export function createEmptyRetryStream({
         err.name = "AbortError";
         try {controller.error(err);} catch {/* already closed */}
       };
-      const exhaust = async (reason, { notifyProvider = true, status } = {}) => {
+      const exhaust = async (reason, { notifyProvider = true, status, errorStatus = "EMPTY_RESPONSE" } = {}) => {
         // Bench-before-emit: the error event triggers the client's automatic
         // retry, so the observer (account bench) must complete first or the
         // retry can land on the account that just failed.
@@ -240,7 +260,7 @@ export function createEmptyRetryStream({
         // gemini translator converts either into the client-facing error finish.
         const line = lastHeld?.kind === "error_object" ?
         lastHeld.line :
-        `data: ${JSON.stringify({ error: { code: 502, status: "EMPTY_RESPONSE", message: reason } })}`;
+        `data: ${JSON.stringify({ error: { code: 502, status: errorStatus, message: reason } })}`;
         emit(`${line}\n\n`);
         closeStream();
       };
@@ -296,6 +316,7 @@ export function createEmptyRetryStream({
           }
           const forwarded = usagePayload(parsed);
           if (forwarded) forwardedUsageSignature = forwarded.signature;
+          if (carriesOutput(parsed)) committed = true;
           emit(wire);
         };
 
@@ -387,6 +408,17 @@ export function createEmptyRetryStream({
         if (downstreamGone) return discardAbandoned(currentBody);
 
         const reason = held ? held.reason : endReason;
+        if (!replayCommitted && committed) {
+          // The client already holds this attempt's output: fail it, never replay.
+          log?.warn?.("STREAM", `ANTIGRAVITY | empty (${reason}) after committed output | not replayed`);
+          lastHeld = held;
+          try {
+            await Promise.resolve(onAttemptDiscarded?.(currentBody, reason, { final: true }));
+          } catch {
+            return exhaust("local quota reservation settlement failed", { notifyProvider: false });
+          }
+          return exhaust(committedZeroOutputMessage(held), { errorStatus: "UNAVAILABLE" });
+        }
         log?.warn?.("STREAM", `ANTIGRAVITY | empty (${reason}) | attempt ${attempt + 1}/${EMPTY_STREAM_MAX_RETRIES + 1}`);
 
         try {

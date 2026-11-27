@@ -1,0 +1,97 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "src/shared/constants/providers/audio.ts",
+      "src/lib/providers/validation/audioMiscProviders.ts"
+    ],
+    "registryFields": {
+      "stt": { "id": "rev-ai", "baseUrl": "https://api.rev.ai/speechtotext/v1", "authType": "apikey", "authHeader": "bearer", "async": true, "format": "rev-ai" }
+    },
+    "registryKey": "rev-ai (audioRegistry.ts AUDIO_TRANSCRIPTION_PROVIDERS key, equal to id and format)"
+  },
+  "localEquivalence": {
+    "checked": [
+      "git grep -i -E 'rev-ai|revai|rev\\.ai' over HEAD and origin/main open-sse and src: no provider, alias (rev-ai or revai), model row, sttConfig or format handler; only internal/docs/port-reports inventory rows (provider-native-capabilities-1127.md marks it MISSING sttConfig)",
+      "open-sse/handlers/sttCore.js handleSttCore format switch: no rev-ai format; the async job formats there (assemblyai and similar) use other endpoints, auth schemes and envelopes (no options/media multipart job, no Accept text/plain transcript)",
+      "open-sse/providers/registry: no entry with id, alias or aliases rev-ai or revai"
+    ],
+    "result": "no Rev AI path exists today, so this module (provider definition and STT adapter) is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-revai-stt/index.js",
+  "exports": {
+    "revaiSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createRevaiSttAdapter": "factory; options { fetchImpl, totalTimeoutMs, callTimeoutMs, pollIntervalMs, maxTranscriptBytes, wait, now } for tests",
+    "buildRevaiTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData (options, media), model, responseFormat } or a 400 error result with local: true",
+    "revaiJobOptions": "(model) -> source options part JSON.stringify({ transcriber: model })",
+    "revaiUploadFileName": "source upload file name rule",
+    "revaiAcceptedJob": "(modality, jobState, jobId) accepted-job accounting with unknown cost",
+    "REVAI_PROVIDER_DEFINITION": "staged registry entry (id, alias, aliases, display, apikey auth, transport.validateUrl, serviceKinds, sttConfig)",
+    "REVAI_STT_MODELS": "transcription models",
+    "REVAI_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\"]",
+    "REVAI_UNSUPPORTED_FIELDS": "request fields refused before submit (timestamp granularities, diarization spellings)",
+    "REVAI_PROVIDER_ID": "rev-ai",
+    "REVAI_ALIAS": "revai",
+    "REVAI_STT_FORMAT": "rev-ai",
+    "REVAI_JOBS_URL": "https://api.rev.ai/speechtotext/v1/jobs",
+    "REVAI_VALIDATE_URL": "https://api.rev.ai/speechtotext/v1/jobs?limit=1"
+  },
+  "provider": {
+    "canonicalId": "rev-ai",
+    "aliases": ["revai"],
+    "uiAlias": "revai",
+    "existingRegistryEntry": null,
+    "serviceKinds": ["stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "validateUrl": "https://api.rev.ai/speechtotext/v1/jobs?limit=1",
+    "formats": { "stt": "rev-ai" }
+  },
+  "models": {
+    "stt": [
+      { "id": "machine", "name": "Reverb ASR" },
+      { "id": "low_cost", "name": "Low-Cost ASR" },
+      { "id": "fusion", "name": "Fusion ASR" }
+    ],
+    "dynamicDiscovery": "none: the pinned source lists Rev AI models statically and has no Rev AI models fetcher; the only Rev AI list call is the validation probe GET /speechtotext/v1/jobs?limit=1, which lists jobs, not models"
+  },
+  "endpoints": {
+    "submitJob": { "method": "POST", "url": "https://api.rev.ai/speechtotext/v1/jobs", "headers": ["Authorization: Bearer <key>", "Content-Type: multipart/form-data"], "body": "options = {\"transcriber\":\"<model>\"}, then media = file", "answer": "{ id, status }", "billable": true },
+    "jobStatus": { "method": "GET", "url": "https://api.rev.ai/speechtotext/v1/jobs/{id}", "headers": ["Authorization: Bearer <key>"], "answer": "{ id, status: in_progress | transcribed | failed, duration_seconds? }" },
+    "transcript": { "method": "GET", "url": "https://api.rev.ai/speechtotext/v1/jobs/{id}/transcript", "headers": ["Authorization: Bearer <key>", "Accept: text/plain"], "answer": "text/plain transcript" }
+  },
+  "bounds": {
+    "sttTotalTimeoutMs": 180000,
+    "sttCallTimeoutMs": 60000,
+    "pollIntervalMs": 2000,
+    "maxSttFileBytes": 104857600,
+    "maxTranscriptBytes": 16777216,
+    "redirects": "refused",
+    "retries": "0 for the job submit; status checks repeat only inside the deadline"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/rev-ai.js",
+      "change": "new entry from REVAI_PROVIDER_DEFINITION with model rows from REVAI_STT_MODELS (kind stt); check the revai alias is still free; keep sttConfig (translationModels [] so supportsSttTranslation stays false)"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"rev-ai\") return await revaiSttAdapter.transcribe({ model, formData, credentials, kind, signal })`; the existing STT accepted-job recording in src/sse/handlers/stt.js then records result.acceptedJob on the selected connection"
+    },
+    {
+      "file": "src/shared/constants/providers (provider display list)",
+      "change": "add the Rev AI display entry (name, icon record_voice_over, color #FF5C35, text icon RV, website) and API key validation against validateUrl (401/403 -> invalid key)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Rev AI stt kind after registration"
+    }
+  ]
+}

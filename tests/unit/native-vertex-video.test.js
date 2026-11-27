@@ -127,12 +127,11 @@ describe("staging state (pre-registration only)", () => {
 });
 
 describe("metadata", () => {
-  it("uses the existing vertex provider id, aliases and the five source model ids", () => {
+  it("uses the existing vertex provider id, aliases and only the two active Veo 3.1 model ids", () => {
     expect(VERTEX_VIDEO_PROVIDER_ID).toBe(vertexRegistry.id);
     expect(VERTEX_VIDEO_PROVIDER_ALIASES).toEqual(vertexRegistry.aliases);
-    expect(VERTEX_VIDEO_MODEL_IDS).toEqual([
-      "veo-3.1-generate-001", "veo-3.1-fast-generate-001", "veo-3.0-generate-001", "veo-3.0-fast-generate-001", "veo-2.0-generate-001",
-    ]);
+    expect(VERTEX_VIDEO_MODEL_IDS).toEqual(["veo-3.1-generate-001", "veo-3.1-fast-generate-001"]);
+    expect(VERTEX_VIDEO_PROVIDER_METADATA.videoModels.map((model) => model.id)).toEqual(VERTEX_VIDEO_MODEL_IDS);
     expect(VERTEX_VIDEO_PROVIDER_METADATA).toMatchObject({ format: "vertex-veo", serviceKinds: ["video"], responseFormats: ["b64_json"] });
     expect(defaultAdapter).toMatchObject({ async: true, responseFormats: VERTEX_VIDEO_RESPONSE_FORMATS, defaultResponseFormat: "b64_json" });
     expect(bundle.vertexVideoAdapter).toBe(defaultAdapter);
@@ -161,8 +160,8 @@ describe("request contract", () => {
       instances: [{ prompt: PROMPT }],
       parameters: { sampleCount: 1, aspectRatio: "9:16", durationSeconds: 8, negativePrompt: "rain" },
     });
-    expect(buildVertexVideoRequest("veo-2.0-generate-001", { prompt: PROMPT, aspectRatio: "16:9", durationSeconds: 5 }).parameters)
-      .toEqual({ sampleCount: 1, aspectRatio: "16:9", durationSeconds: 5 });
+    expect(buildVertexVideoRequest("veo-3.1-fast-generate-001", { prompt: PROMPT, aspectRatio: "16:9", durationSeconds: 4 }).parameters)
+      .toEqual({ sampleCount: 1, aspectRatio: "16:9", durationSeconds: 4 });
     expect(buildVertexVideoRequest(MODEL, { prompt: PROMPT, size: "16:9" }).parameters.aspectRatio).toBe("16:9");
   });
 
@@ -188,7 +187,7 @@ describe("request contract", () => {
   });
 
   it("refuses models outside the source list, including chat models and Gemini-API preview names", async () => {
-    for (const model of ["gemini-2.5-flash", "veo-3.1-generate-preview", "veo-2.0-generate-001 "]) {
+    for (const model of ["gemini-2.5-flash", "veo-3.1-generate-preview", "veo-3.1-generate-001 "]) {
       const result = await generate({}, { model });
       expect(result.status).toBe(400);
       expect(result.error).toMatch(/Unsupported Vertex video model/);
@@ -197,8 +196,21 @@ describe("request contract", () => {
   });
 
   it("checks durations per model", () => {
-    expect(() => buildVertexVideoRequest("veo-2.0-generate-001", { prompt: PROMPT, duration: 4 })).toThrow(/5, 6, 7, 8/);
-    expect(() => buildVertexVideoRequest("veo-3.0-fast-generate-001", { prompt: PROMPT, duration: 7 })).toThrow(/4, 6, 8/);
+    for (const model of VERTEX_VIDEO_MODEL_IDS) {
+      for (const duration of [4, 6, 8]) expect(buildVertexVideoRequest(model, { prompt: PROMPT, duration }).parameters.durationSeconds).toBe(duration);
+      for (const duration of [5, 7]) expect(() => buildVertexVideoRequest(model, { prompt: PROMPT, duration })).toThrow(/4, 6, 8/);
+    }
+  });
+
+  it.each(["veo-3.0-generate-001", "veo-3.0-fast-generate-001", "veo-2.0-generate-001"])("refuses retired %s with 400 before any token mint or request", async (model) => {
+    serve(accepted(opName(PROJECT_A, "us-central1", model)), videoDone(undefined, opName(PROJECT_A, "us-central1", model)));
+    const result = await generate({}, { model });
+    expect(result.status).toBe(400);
+    expect(result.error).toMatch(/Unsupported Vertex video model/);
+    expect(calls).toHaveLength(0);
+    expect(mints).toHaveLength(0);
+    expect(result.acceptedJob).toBeUndefined();
+    expect(() => buildVertexVideoRequest(model, { prompt: PROMPT })).toThrow(/Unsupported Vertex video model/);
   });
 
   it("offers b64_json only, and the public core sends nothing for response_format url", async () => {
@@ -304,15 +316,16 @@ describe("success", () => {
   });
 
   it("two credentials stay in their own project, location and token", async () => {
-    const opB = opName(PROJECT_B, "europe-west4", "veo-2.0-generate-001");
+    const FAST = "veo-3.1-fast-generate-001";
+    const opB = opName(PROJECT_B, "europe-west4", FAST);
     serve(accepted(), videoDone(), accepted(opB), videoDone(undefined, opB));
     const a = await generate({}, { credentials: { apiKey: SA_A } });
-    const b = await generate({}, { model: "veo-2.0-generate-001", credentials: { apiKey: SA_B, providerSpecificData: { location: "europe-west4" } } });
+    const b = await generate({}, { model: FAST, credentials: { apiKey: SA_B, providerSpecificData: { location: "europe-west4" } } });
     expect(a.success && b.success).toBe(true);
     expect(calls.map((call) => call.url)).toEqual([
       SUBMIT_A, POLL_A,
-      `${regional(PROJECT_B, "europe-west4", "veo-2.0-generate-001")}:predictLongRunning`,
-      `${regional(PROJECT_B, "europe-west4", "veo-2.0-generate-001")}:fetchPredictOperation`,
+      `${regional(PROJECT_B, "europe-west4", FAST)}:predictLongRunning`,
+      `${regional(PROJECT_B, "europe-west4", FAST)}:fetchPredictOperation`,
     ]);
     expect(calls.slice(0, 2).every((call) => call.init.headers.Authorization === `Bearer ${TOKEN_A}`)).toBe(true);
     expect(calls.slice(2).every((call) => call.init.headers.Authorization === `Bearer ${TOKEN_B}`)).toBe(true);
@@ -417,7 +430,7 @@ describe("submit failures", () => {
 
   it.each([
     ["missing", {}],
-    ["another model", { name: opName(PROJECT_A, "us-central1", "veo-2.0-generate-001") }],
+    ["another model", { name: opName(PROJECT_A, "us-central1", "veo-3.1-fast-generate-001") }],
     ["another location", { name: opName(PROJECT_A, "europe-west4") }],
     ["path traversal", { name: `${OP_A}/../../x` }],
   ])("an unusable operation name (%s) is unknown and not polled", async (_label, body) => {
@@ -565,7 +578,7 @@ describe("helpers", () => {
   it("operation names must be of this model and location", () => {
     expect(isVertexVideoOperationName(OP_A, { model: MODEL, location: "us-central1" })).toBe(true);
     expect(isVertexVideoOperationName(OP_A, { model: MODEL })).toBe(true);
-    expect(isVertexVideoOperationName(OP_A, { model: "veo-2.0-generate-001" })).toBe(false);
+    expect(isVertexVideoOperationName(OP_A, { model: "veo-3.1-fast-generate-001" })).toBe(false);
     expect(isVertexVideoOperationName(`https://evil.example.com/${OP_A}`, { model: MODEL })).toBe(false);
     expect(isVertexVideoOperationName(123, { model: MODEL })).toBe(false);
   });

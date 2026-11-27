@@ -28,6 +28,8 @@ Sign in at auth.openai.com. OpenAI only redirects to `http://localhost:1455/auth
 
 On a loopback dashboard, DurinDoor binds port 1455 on the server for the duration of the login and polls for the result. If something else holds that port, often a running Codex CLI login, you get `Port 1455 is in use`. Stop the other process and try again.
 
+In Docker bridge networking, pass `-e CODEX_OAUTH_CALLBACK_BIND_ALL=true -p 127.0.0.1:1455:1455` so the callback listener binds `0.0.0.0` inside the container while the published port stays scoped to the Docker host loopback interface. The listener still rejects non-loopback `Origin` headers.
+
 From a remote dashboard the browser cannot reach the server's port 1455. The modal opens the login in a new tab and asks you to paste the callback URL. The page at `localhost:1455` will fail to load in your browser; copy the URL from the address bar anyway.
 
 ### Device code sign-in

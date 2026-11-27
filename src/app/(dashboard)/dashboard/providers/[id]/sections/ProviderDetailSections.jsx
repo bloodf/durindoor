@@ -1,5 +1,6 @@
 "use client";
 
+import FireflyBrowserPanel from "../FireflyBrowserPanel.jsx";
 import OpenRouterRoutingCard from "../OpenRouterRoutingCard";
 
 import ProviderRpmControl from "../ProviderRpmControl.jsx";
@@ -78,6 +79,8 @@ export default function ProviderDetailSections({ addConnectionError, allSelected
       </div>);
 
   }
+
+  if (providerId === "adobe-firefly-web") return <FireflyBrowserPanel />;
 
   const autoSyncPanel = !isCompatible ? (
     <ModelAutoSyncPanel

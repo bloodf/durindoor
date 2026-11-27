@@ -24,12 +24,14 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [OmniRoute open-PR working notes (#1073)](./omniroute-open-prs-1073.md)
 - [Claude Code sign-in comparison (#2034)](./claude-signin-parity-2034.md)
 - [OmniRoute current sign-in/provider delta (release/v3.8.55, #2034)](./parity-omni-d3f06-refresh.md)
+- [OmniRoute auth and provider delta (through c71f006, #2034)](./parity-omni-c71f006-refresh.md)
 - [OpenCode Go DeepSeek effort tiers (#2034)](./opencode-go-effort-parity-2034.md)
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
 - [NoTrack developer API provider (#2034)](./notrack-2034.md)
 - [Firefly consumer browser contract (#2034)](./firefly-consumer-browser-contract.md)
+- [AI Horde native images on the existing provider (#2034)](./aihorde-images-2034.md)
 - [Session capture storage and retention (#1131)](./session-capture-1131.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.

@@ -1,3 +1,6 @@
+import { FIREFLY_WEB, saveFireflyConnection, publicFireflyData } from "@/lib/fireflyWebUiConnection.js";
+import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
+import { adobeFireflyCredentialFields } from "open-sse/services/adobeFireflyApi/auth.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import { NextResponse } from "next/server";
@@ -76,6 +79,7 @@ const PROVIDER_SECRET_TOP_LEVEL_FIELDS = [
 /** providerSpecificData without secrets (see isSecretProviderSpecificKey). */
 export function pickSafeProviderSpecificData(_provider, providerSpecificData) {
   if (!providerSpecificData) return providerSpecificData;
+  if (_provider === FIREFLY_WEB) return publicFireflyData(providerSpecificData);
   return Object.fromEntries(
     Object.entries(providerSpecificData).filter(([key]) => !isSecretProviderSpecificKey(key))
   );
@@ -99,6 +103,16 @@ function awsSessionToken(sessionToken, providerSpecificData) {
   return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
+/** Local shape check for RenderHour (#2034, 1127); Adobe Firefly Services uses adobeFireflyCredentialFields. */
+function mediaJobCredentialError(provider, credentials) {
+  try {
+    if (provider === "renderhour") renderHourAuthorization(credentials);
+    return null;
+  } catch (error) {
+    return error?.message || "Invalid credential";
+  }
+}
+
 export function sanitizeProviderConnection(connection) {
   const result = stripConnectionSecrets(connection);
   if (connection.providerSpecificData) {
@@ -112,6 +126,7 @@ export function sanitizeProviderConnection(connection) {
 // never more permissive than what each resolver actually consumes.
 export function canDiscoverModels(connection) {
   const provider = connection.provider;
+  if (provider === FIREFLY_WEB) return true;
   if (provider === "cerebrium") return Boolean(cerebriumBaseUrl(connection.providerSpecificData?.baseUrl) && connection.apiKey);
   if (LOCAL_CATALOG_WEB_PROVIDERS.has(provider)) return true; // Curated local catalog.
   if (provider === "reka") return true; // Curated local catalog (OmniRoute #1956).
@@ -147,6 +162,11 @@ export function canDiscoverModels(connection) {
       case "cloudflare-ai":
         // cloudflareModels.js: the search URL is account-scoped.
         return Boolean((connection.apiKey || connection.accessToken) && connection.providerSpecificData?.accountId);
+      case "renderhour":
+        // modelsConfig.js: the pinned list after a check of the stored rh_ key or sign-in.
+        return Boolean(connection.apiKey || connection.accessToken);
+      case "adobe-firefly-api":
+        return Boolean(connection.providerSpecificData?.clientId && (connection.apiKey || connection.accessToken));
       case "kimchi":
       case "orcarouter":
         return Boolean(connection.accessToken || connection.apiKey);
@@ -271,6 +291,7 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const body = await request.json();
     if (body.providerSpecificData && ["chatgptPlanAccount", "chatgptPlanBindingRevision"].some((key) => Object.hasOwn(body.providerSpecificData, key))) return NextResponse.json({ error: "Private account references cannot be supplied" }, { status: 400 });
     const provider = normalizeProviderId(body.provider);
+    if (provider === FIREFLY_WEB) return saveFireflyConnection(request, body);
     const { apiKey, sessionToken, name, displayName, priority, globalPriority, defaultModel, testStatus, createOnly, authType: requestedAuthType } = body;
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
@@ -353,7 +374,9 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
+    // Adobe Firefly Services takes a client secret or a supplied S2S access token.
+    const isAdobeFirefly = provider === "adobe-firefly-api";
+    if (!apiKey && !(isAdobeFirefly && body.accessToken) && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
       const label = isWebCookieProvider ? "Cookie value" : resolvedAuthType === "auth_token" ? "Auth Token" : "API Key";
       return NextResponse.json({ error: `${label} is required` }, { status: 400 });
     }
@@ -389,6 +412,30 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     if (provider === "google-pse" && !providerSpecificData?.cx) {
       return NextResponse.json({ error: "Programmable Search Engine ID (cx) is required" }, { status: 400 });
     }
+    // Refused before storage: a credential that can never authenticate, Adobe's own
+    // web-app client IDs, or a RenderHour key that is not an rh_ key.
+    // Adobe Firefly Services stores exactly one mode, only as supplied: a client
+    // secret, or an access token with its optional, validated expiry. A minted
+    // token is never stored, and creating a connection never calls Adobe.
+    let adobeCredential = null;
+    if (isAdobeFirefly) {
+      if (looksLikeEncryptedEnvelope(body.accessToken)) {
+        return NextResponse.json({ error: encryptedEnvelopeCredentialMessage() }, { status: 400 });
+      }
+      try {
+        adobeCredential = adobeFireflyCredentialFields({
+          credentialMode: body.credentialMode,
+          apiKey,
+          accessToken: body.accessToken,
+          expiresAt: body.expiresAt,
+          clientId: providerSpecificData?.clientId,
+        });
+      } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
+    const mediaCredentialError = mediaJobCredentialError(provider, { apiKey, providerSpecificData });
+    if (mediaCredentialError) return NextResponse.json({ error: mediaCredentialError }, { status: 400 });
 
     // Compatible/embedding nodes — no longer enforce single-connection limit.
     // Multiple API keys per node are allowed; downstream auth logic handles
@@ -477,7 +524,9 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
         provider,
         authType: resolvedAuthType,
         name: connectionName,
-        apiKey: apiKey || "",
+        apiKey: adobeCredential ? adobeCredential.apiKey || "" : apiKey || "",
+        ...(adobeCredential?.accessToken ? { accessToken: adobeCredential.accessToken } : null),
+        ...(adobeCredential?.expiresAt ? { expiresAt: adobeCredential.expiresAt } : null),
         managementApiKey: provider === "xai" && isString(body.managementApiKey) ? body.managementApiKey.trim() : undefined,
         sessionToken: usesAwsCredentials ? awsSessionToken(sessionToken, body.providerSpecificData) : undefined,
         priority: priority || 1,

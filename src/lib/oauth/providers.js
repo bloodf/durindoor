@@ -57,6 +57,7 @@ import { OAuthCancelledError, throwIfOAuthCancelled } from "./cancellation.js";
 
 export { OAuthCancelledError, throwIfOAuthCancelled };
 import orcarouter from "./orcarouterProvider.js";
+import { renderhourOAuthProvider } from "./services/renderhour.js";
 import gheCopilot from "./gheCopilotProvider.js";
 import copilotM365 from "./copilotM365Provider.js";
 import museCode from "./museCodeProvider.js";
@@ -2185,7 +2186,10 @@ const PROVIDERS = {
   "minimax-code": minimaxCodeOAuthProvider,
   "zed-hosted": zedHosted,
   freebuff,
-  workbuddy
+  workbuddy,
+  // RenderHour plan sign-in (authorization code + PKCE, public client).
+  // RENDERHOUR_OAUTH_CLIENT_ID is an optional client override.
+  renderhour: renderhourOAuthProvider
 };
 
 // Amazon Q Developer signs in exactly like Kiro (AWS Builder ID / IAM Identity

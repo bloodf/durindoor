@@ -14,7 +14,7 @@ vi.mock("../../open-sse/handlers/imageProviders/index.js", async (importOriginal
   };
 });
 
-import provider, { RENDERHOUR_GENERATIONS_URL, RENDERHOUR_IMAGE_MODEL_IDS } from "../../open-sse/providers/private/renderhour.js";
+import provider, { RENDERHOUR_GENERATIONS_URL, RENDERHOUR_IMAGE_MODEL_IDS } from "../../open-sse/providers/registry/renderhour.js";
 import renderHourAdapter, { createRenderHourImageAdapter } from "../../open-sse/handlers/imageProviders/renderhour.js";
 import * as job from "../../open-sse/services/renderhour/job.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
@@ -96,22 +96,23 @@ afterEach(() => {
   staged.adapter = null;
 });
 
-describe("renderhour staging", () => {
-  it("declares an image-only API-key identity with no chat transport", () => {
-    expect(provider).toMatchObject({ id: "renderhour", category: "apikey", authType: "apikey", transport: null, serviceKinds: ["image"] });
-    expect(provider.models.map((model) => model.id)).toEqual(RENDERHOUR_IMAGE_MODEL_IDS);
-    expect(provider.models).toHaveLength(11);
-    expect(new Set(provider.models.map((model) => model.kind))).toEqual(new Set(["image"]));
-    for (const field of ["oauth", "authModes", "hasOAuth", "ttsConfig", "videoConfig", "passthroughModels"]) {
+describe("renderhour registration", () => {
+  it("declares the eleven image models, with no chat transport", () => {
+    expect(provider).toMatchObject({ id: "renderhour", category: "apikey", authType: "apikey", transport: null });
+    expect(provider.serviceKinds).toContain("image");
+    const images = provider.models.filter((model) => model.kind === "image");
+    expect(images.map((model) => model.id)).toEqual(RENDERHOUR_IMAGE_MODEL_IDS);
+    expect(images).toHaveLength(11);
+    for (const field of ["oauth", "hasOAuth", "ttsConfig", "videoConfig", "passthroughModels"]) {
       expect(provider).not.toHaveProperty(field);
     }
     expect(provider.imageConfig.baseUrl).toBe("https://renderhour.com/v1/generations");
   });
 
-  it("is not reachable through the registry, the adapter map or a chat executor", async () => {
+  it("is reachable through the registry and the image adapter map, never a chat executor", async () => {
     const actual = await vi.importActual("../../open-sse/handlers/imageProviders/index.js");
-    expect(actual.getImageAdapter("renderhour")).toBeNull();
-    expect(REGISTRY.some((entry) => entry.id === "renderhour")).toBe(false);
+    expect(actual.getImageAdapter("renderhour")).toBe(renderHourAdapter);
+    expect(REGISTRY.filter((entry) => entry.id === "renderhour")).toEqual([provider]);
     expect(hasSpecializedExecutor("renderhour")).toBe(false);
   });
 

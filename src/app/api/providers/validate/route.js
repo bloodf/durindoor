@@ -32,6 +32,8 @@ import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
+import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
+import { adobeFireflyCredentialFields, createAdobeTokenCache, resolveAdobeFireflyAuth } from "open-sse/services/adobeFireflyApi/auth.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -240,6 +242,40 @@ async function validateProviderKey(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, sessionToken, providerSpecificData } = body;
 
+    if (provider === "adobe-firefly-web") {
+      return NextResponse.json({ valid: false, skipped: true, outcome: "needs_operator", note: "Browser sign-in and mapping validation require the operator; no browser was opened" });
+    }
+
+    // Adobe Firefly Services, in either credential mode. Client-secret mode mints
+    // one IMS token with the documented token request; the token is not kept and
+    // nothing is generated. A supplied access token is checked locally only
+    // (client ID, token shape, consumer-app refusal, expiry): IMS is never called
+    // for it and no read-only Firefly check is documented, so it is reported as
+    // skipped rather than verified.
+    if (provider === "adobe-firefly-api") {
+      let fields;
+      try {
+        fields = adobeFireflyCredentialFields({
+          credentialMode: body.credentialMode,
+          apiKey,
+          accessToken: body.accessToken,
+          expiresAt: body.expiresAt,
+          clientId: providerSpecificData?.clientId,
+        });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error?.message || "Invalid Adobe Firefly Services credential" });
+      }
+      if (fields.mode === "access_token") {
+        return NextResponse.json({ valid: true, skipped: true, error: null, note: "Access token checked locally; Adobe is not contacted until the first job" });
+      }
+      try {
+        await resolveAdobeFireflyAuth({ apiKey: fields.apiKey, providerSpecificData }, { cache: createAdobeTokenCache(), signal: request.signal });
+        return NextResponse.json({ valid: true, error: null });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error?.message || "Adobe IMS refused the credential" });
+      }
+    }
+
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
     if (provider === "devin-cli-agentic") {
@@ -299,6 +335,17 @@ async function validateProviderKey(request) {
     // Skipping chat must not accept a cookie that could never authenticate.
     if (provider === "zenmux-free" && !extractZenmuxCtoken(apiKey)) {
       return NextResponse.json({ valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" });
+    }
+
+    // RenderHour publishes no read-only key check, and a job would bill: check the
+    // rh_ format locally, then skip. The account itself is verified by the first job.
+    if (provider === "renderhour") {
+      try {
+        renderHourAuthorization({ apiKey });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error.message });
+      }
+      return NextResponse.json({ valid: true, skipped: true, error: null, note: "Key format checked; RenderHour has no read-only key check" });
     }
 
     // Local-only, no request: a JWT access token past its exp is reported as expired. Other

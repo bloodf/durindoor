@@ -161,7 +161,7 @@ export function extractSyntxImmediateUrls(value, into = [], depth = 0) {
   }
   if (isRecord(value)) {
     for (const key of PREFERRED_URL_KEYS) if (isString(value[key])) push(value[key]);
-    for (const nested of Object.values(value)) if (nested && typeof nested === "object") extractSyntxImmediateUrls(nested, into, depth + 1);
+    for (const nested of Object.values(value)) if (isRecord(nested) || Array.isArray(nested)) extractSyntxImmediateUrls(nested, into, depth + 1);
   }
   return into;
 }

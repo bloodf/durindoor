@@ -170,7 +170,9 @@ export function createTopazUpscaleAdapter(options = {}) {
         request = parseTopazUpscaleRequest(model, body);
         const token = resolveTopazUpscaleCredential(credentials);
         if (!token) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, "Missing Topaz Labs API key");
-        image = await resolveSourceImage(request.source, { signal, ...(sourceFetchImpl ? { fetchImpl: sourceFetchImpl } : {}) });
+        const sourceOptions = { signal };
+        if (sourceFetchImpl) sourceOptions.fetchImpl = sourceFetchImpl;
+        image = await resolveSourceImage(request.source, sourceOptions);
         size = topazTargetSize(request, image);
         request.token = token;
       } catch (error) {
@@ -212,15 +214,15 @@ export function createTopazUpscaleAdapter(options = {}) {
         return withAcceptedJob(createErrorResult(HTTP_STATUS.BAD_GATEWAY,
           `Topaz Labs upscale returned ${format ?? "no valid image"}, not the requested ${request.outputFormat}`), provider, "accepted");
       }
+      const meta = { factor: size.factor, output_format: format, mime: IMAGE_MIMES[format] };
+      if (size.target) {
+        meta.width = size.target.width;
+        meta.height = size.target.height;
+      }
       return upscaleSuccess({
         provider, model, now,
         images: [imageEntry(bytes, format, request.responseFormat)],
-        meta: {
-          factor: size.factor,
-          output_format: format,
-          mime: IMAGE_MIMES[format],
-          ...(size.target ? { width: size.target.width, height: size.target.height } : {}),
-        },
+        meta,
       });
     },
   };

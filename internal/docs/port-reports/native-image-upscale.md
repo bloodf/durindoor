@@ -103,3 +103,21 @@ Both IDs return a fixed 501 with `unavailable: true`. The response comes before 
 ```bash
 cd tests && node node_modules/vitest/vitest.mjs run unit/native-image-upscale.test.js --maxWorkers=2
 ```
+
+## Gate retry preservation
+
+The retry carries forward candidate `5758b90c61e5247c6d567583f436adc98c62426c`
+(including the original implementation from `995093a29f`) and all 131 regression
+cases unchanged. Its evidence and selected tests passed; the separate checks step
+failed on six anti-slop diagnostics. Optional source transport and result metadata
+properties now use explicit assignments, and recursive SYNTX URL extraction uses
+the shared record predicate plus the array predicate. These are syntax-only lint
+repairs: no vendor contract, guard, payload, result or accounting behavior changes.
+
+Retry validation: the focused upscale file passes all 131 tests unchanged;
+`sh scripts/checks.sh unit` with the 13 candidate paths selected passes 51 files
+and 1746 tests, including the security-related selections. The anti-slop gate
+reports zero diagnostics. Root `pnpm run lint` exits 0 (349 existing ESLint
+warnings, no errors). Website dependencies were installed from the local
+pnpm store to satisfy a selected dashboard fixture import; no fixture or test
+was changed.

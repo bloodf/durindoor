@@ -193,7 +193,9 @@ export function createStabilityUpscaleAdapter(options = {}) {
         request = parseStabilityUpscaleRequest(model, body);
         token = resolveStabilityUpscaleCredential(credentials);
         if (!token) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, "Missing Stability AI API key");
-        image = await resolveSourceImage(request.source, { signal, ...(sourceFetchImpl ? { fetchImpl: sourceFetchImpl } : {}) });
+        const sourceOptions = { signal };
+        if (sourceFetchImpl) sourceOptions.fetchImpl = sourceFetchImpl;
+        image = await resolveSourceImage(request.source, sourceOptions);
       } catch (error) {
         return createErrorResult(error.status ?? HTTP_STATUS.BAD_REQUEST, error.message);
       }
@@ -242,16 +244,13 @@ export function createStabilityUpscaleAdapter(options = {}) {
           bytes ? `Stability AI upscale returned ${format ?? "no valid image"}, not the requested ${request.outputFormat}` : "Stability AI upscale returned no image"),
         provider, "accepted", jobMeta);
       }
+      const meta = { factor: 4, output_format: format, mime: IMAGE_MIMES[format] };
+      if (request.creativity !== null) meta.creativity = request.creativity;
+      if (final.seed !== undefined) meta.seed = final.seed;
       return upscaleSuccess({
         provider, model, now,
         images: [imageEntry(bytes, format, request.responseFormat)],
-        meta: {
-          factor: 4,
-          output_format: format,
-          mime: IMAGE_MIMES[format],
-          ...(request.creativity !== null ? { creativity: request.creativity } : {}),
-          ...(final.seed !== undefined ? { seed: final.seed } : {}),
-        },
+        meta,
         accountingMeta: jobMeta,
       });
     },

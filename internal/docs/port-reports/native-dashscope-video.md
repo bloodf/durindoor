@@ -56,7 +56,7 @@ Nothing is registered. Only the isolated `staging state (isolated)` block assert
 
 ## Fork deviations (all safety)
 
-- Each identity uses one fixed host. A connection whose `providerSpecificData.region` is not `global-sg`, or that has a custom `baseUrl`, is refused before any request. The key never goes to a host it was not issued for, and no host is substituted.
+- Each identity uses one fixed host per region. The pinned default instances accept only `global-sg`. The regional instances also accept `china-beijing` (see Regional parity). A custom `baseUrl` or unknown region is refused before any request. The key never goes to a host it was not issued for, and no host is substituted.
 - Every fetch and the whole job are time-bounded and abortable. Redirects are refused, never followed with the key. Bodies are size-bounded.
 - Upstream text never reaches an error; only a vendor code with a safe shape does. Errors redact the selected connection's secrets.
 - Submit outcomes:
@@ -75,8 +75,8 @@ Nothing is registered. Only the isolated `staging state (isolated)` block assert
 
 ## Not covered
 
-- The china-beijing hosts (`dashscope.aliyuncs.com`, `token-plan.cn-beijing.maas.aliyuncs.com`, `coding.dashscope.aliyuncs.com`) and custom base URLs. These connections are refused.
-- The caller's `timeout_ms` and `poll_interval_ms`. The source defaults of 300 s and 2.5 s are fixed.
+- Custom base URLs and unrecognized regions. These connections are refused.
+- `poll_timeout_ms`, which is refused because the source DashScope handler reads `timeout_ms`.
 - Task cancellation. The source never cancels, so an abandoned task may still bill; `acceptedJob` records that.
 - DashScope image (`multimodal-generation/generation`) and SpeechSynthesizer audio for these identities. This unit stages the pinned video registry entries only.
 
@@ -84,7 +84,7 @@ Nothing is registered. Only the isolated `staging state (isolated)` block assert
 
 Follow `registration.json` `integrationPoints`:
 
-1. Add the three default adapters, with their aliases, to `VIDEO_GENERATION_ADAPTERS`.
+1. Add `dashscopeRegionalVideoAdapters[id]` for the three identities, with their aliases, to `VIDEO_GENERATION_ADAPTERS`.
 2. Add each identity's video models (`kind: "video"`) and the `video` service kind to its registry entry.
 3. Note the route in `docs/providers/catalog.mdx`.
 
@@ -97,3 +97,40 @@ Closed mocks only. No live account, provider call, browser, Docker or paid API w
 ```sh
 cd tests && node node_modules/vitest/vitest.mjs run unit/native-dashscope-video.test.js --maxWorkers=2
 ```
+
+## Regional parity
+
+The map is `native-dashscope-image/regions.js`. It is a finite, literal map from (identity, region) to origin. The image, video and speech adapters all use it. It ports `src/shared/constants/alibabaProviderRegions.ts` at `c71f0065`, including `ALIBABA_PROVIDER_REGION_VALUES`, `normalizeAlibabaProviderRegion`, the chat presets (`ALIBABA_PROVIDER_ENDPOINTS` and `LEGACY_FAMILY_PRESETS`), and `resolveAlibabaProviderMediaBaseUrl` with `ALIBABA_PROVIDER_MEDIA_OVERRIDES`.
+
+| Identity | global-sg | china-beijing |
+| --- | --- | --- |
+| `alibaba`, `qwen-cloud` | `dashscope-intl.aliyuncs.com` | `dashscope.aliyuncs.com` |
+| `qwen-cloud-token-plan` | `token-plan.ap-southeast-1.maas.aliyuncs.com` | `token-plan.cn-beijing.maas.aliyuncs.com` |
+| `bailian-coding-plan` (media override) | `coding-intl.dashscope.aliyuncs.com` | `coding.dashscope.aliyuncs.com` |
+
+- The region comes from the selected connection's `providerSpecificData.region`. An unset or blank value means `global-sg`, which is the source default. The source spellings are case-insensitive. The origin comes only from the adapter's own identity and that region. Neither the caller nor the connection can supply a URL.
+- A saved source chat preset in `providerSpecificData.baseUrl` counts as unset, as in the source `isFamilyPresetUrl`. This includes current and retired presets for the same identity. The region still decides the host.
+- Explicit refusals, each a 400 before any network call:
+  - an unrecognized or non-string region, where the source silently falls back to global-sg and could send the key to a region the owner did not choose;
+  - a custom, non-preset base URL, including another identity's preset, where the source sends the key to it;
+  - any identity outside the map (`alibaba-cn` and the other Alibaba-family ids are separate identities).
+- After the send, redirects are refused, and an answer whose URL names another origin is an unknown outcome carrying `acceptedJob`. It is never resent. Success accounting records `meta.region`.
+- The pinned default instances and factories keep their first contract: global-sg only. The existing native suites still assert that contract. The regional instances are separate exports, opted in with `regional: true`, and `registration.json` wires those for registration. Nothing is registered here.
+
+### Caller polling options
+
+The source reads `timeout_ms` and `poll_interval_ms` through `open-sse/utils/pollBounds.ts`. Both pinned and regional instances now honor them instead of ignoring them:
+
+- `timeout_ms` is the whole job deadline, including submit. The default is 300 s and the cap is 600 s, which is the source `MAX_CALLER_POLL_TIMEOUT_MS`.
+- `poll_interval_ms` defaults to 2.5 s and is capped at 120 s, which is the source `MAX_CALLER_VIDEO_POLL_INTERVAL_MS`. It is raised to a 1 s gateway floor because the source has no floor.
+- Each value must be a whole number of milliseconds of at least 1, given as a number or digit string, as in source `positiveWholeMs`. These cases are refused with 400 before submit, where the source falls back silently:
+  - a value that is not numeric or is below 1;
+  - `poll_timeout_ms`;
+  - an interval that is not shorter than the timeout, because the task would be created and billed but never checked.
+- Regional success accounting records `meta.pollTimeoutMs` and `meta.pollIntervalMs`. When the deadline expires after acceptance, the result is a 504 with `acceptedJob` (`accepted`), and the task is never resubmitted.
+
+```sh
+cd tests && node node_modules/vitest/vitest.mjs run unit/native-dashscope-region-parity.test.js unit/native-dashscope-image.test.js unit/native-dashscope-video.test.js unit/native-dashscope-tts.test.js --maxWorkers=2
+```
+
+`tests/unit/native-dashscope-region-parity.test.js` covers these cases with closed mocks: the exact origin, auth and envelope for each identity and region; alias and model handling; unsupported regions and base URLs refused before the network; redirect and other-origin refusal; two-account isolation across regions; quota; accepted jobs with no replay; and cancellation and deadlines. No live account or provider was called.

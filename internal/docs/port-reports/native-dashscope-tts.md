@@ -57,9 +57,9 @@ Each of these gets a local 400 (401 for the key), and nothing is sent:
 - `speed` other than 1, `instructions`, or a `language` hint;
 - a non-string voice, a `model/voice` suffix, any other model, empty input, or a body over 256 KiB;
 - a missing API key, a key with CR/LF, or a connection with only an access token;
-- a connection whose `providerSpecificData.region` names another region (the source's Beijing host). The local identity has no region selector, so the host is not inferred.
+- on the pinned instance, a connection whose `providerSpecificData.region` names another region. The regional instance serves the Beijing Token Plan host as well (see Regional parity) and refuses only unknown regions and custom base URLs.
 
-The source honors `providerSpecificData.baseUrl`. This adapter ignores it and sends the key only to the fixed URL.
+The source honors `providerSpecificData.baseUrl`. The pinned instance ignores it and sends the key only to the fixed URL. The regional instance refuses a non-preset base URL before submit.
 
 ## Failures and accounting
 
@@ -91,3 +91,30 @@ The source honors `providerSpecificData.baseUrl`. This adapter ignores it and se
 ```bash
 cd tests && node node_modules/vitest/vitest.mjs run unit/native-dashscope-tts.test.js --maxWorkers=2
 ```
+
+## Regional parity
+
+The map is `native-dashscope-image/regions.js`. It is a finite, literal map from (identity, region) to origin. The image, video and speech adapters all use it. It ports `src/shared/constants/alibabaProviderRegions.ts` at `c71f0065`, including `ALIBABA_PROVIDER_REGION_VALUES`, `normalizeAlibabaProviderRegion`, the chat presets (`ALIBABA_PROVIDER_ENDPOINTS` and `LEGACY_FAMILY_PRESETS`), and `resolveAlibabaProviderMediaBaseUrl` with `ALIBABA_PROVIDER_MEDIA_OVERRIDES`.
+
+| Identity | global-sg | china-beijing |
+| --- | --- | --- |
+| `alibaba`, `qwen-cloud` | `dashscope-intl.aliyuncs.com` | `dashscope.aliyuncs.com` |
+| `qwen-cloud-token-plan` | `token-plan.ap-southeast-1.maas.aliyuncs.com` | `token-plan.cn-beijing.maas.aliyuncs.com` |
+| `bailian-coding-plan` (media override) | `coding-intl.dashscope.aliyuncs.com` | `coding.dashscope.aliyuncs.com` |
+
+- The region comes from the selected connection's `providerSpecificData.region`. An unset or blank value means `global-sg`, which is the source default. The source spellings are case-insensitive. The origin comes only from the adapter's own identity and that region. Neither the caller nor the connection can supply a URL.
+- A saved source chat preset in `providerSpecificData.baseUrl` counts as unset, as in the source `isFamilyPresetUrl`. This includes current and retired presets for the same identity. The region still decides the host.
+- Explicit refusals, each a 400 before any network call:
+  - an unrecognized or non-string region, where the source silently falls back to global-sg and could send the key to a region the owner did not choose;
+  - a custom, non-preset base URL, including another identity's preset, where the source sends the key to it;
+  - any identity outside the map (`alibaba-cn` and the other Alibaba-family ids are separate identities).
+- After the send, redirects are refused, and an answer whose URL names another origin is an unknown outcome carrying `acceptedJob`. It is never resent. Success accounting records `meta.region`.
+- The pinned default instances and factories keep their first contract: global-sg only. The existing native suites still assert that contract. The regional instances are separate exports, opted in with `regional: true`, and `registration.json` wires those for registration. Nothing is registered here.
+
+Speech uses `qwen-cloud-token-plan` only: `https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer` and `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer`. The source speech handler reads no caller timeout option, so the gateway bounds apply unchanged. Registration wires `dashscopeRegionalTtsAdapter` into `TTS_ADAPTERS`.
+
+```sh
+cd tests && node node_modules/vitest/vitest.mjs run unit/native-dashscope-region-parity.test.js unit/native-dashscope-image.test.js unit/native-dashscope-video.test.js unit/native-dashscope-tts.test.js --maxWorkers=2
+```
+
+`tests/unit/native-dashscope-region-parity.test.js` covers these cases with closed mocks: the exact origin, auth and envelope for each identity and region; alias and model handling; unsupported regions and base URLs refused before the network; redirect and other-origin refusal; two-account isolation across regions; quota; accepted jobs with no replay; and cancellation and deadlines. No live account or provider was called.

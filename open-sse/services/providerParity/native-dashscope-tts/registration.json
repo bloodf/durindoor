@@ -18,8 +18,15 @@
         "authType": "apikey",
         "authHeader": "bearer",
         "format": "dashscope-tts",
-        "supportedFormats": ["mp3"],
-        "models": [{ "id": "qwen-audio-3.0-tts-plus", "name": "Qwen Audio 3.0 TTS Plus" }]
+        "supportedFormats": [
+          "mp3"
+        ],
+        "models": [
+          {
+            "id": "qwen-audio-3.0-tts-plus",
+            "name": "Qwen Audio 3.0 TTS Plus"
+          }
+        ]
       }
     },
     "handler": "handleDashscopeTtsSpeech: POST { model, input: { text: input, voice: voice.trim() || longanlingxin }, parameters: { format: mp3, sample_rate: 24000 } } with Content-Type application/json + Authorization Bearer; non-2xx forwarded through upstreamErrorResponse; a JSON code is a 502 even with HTTP 200; output.audio.data base64 wins, else output.audio.url is downloaded with fetchRemoteMedia (public-only, pinned DNS, 50 MiB); answer audio/mpeg",
@@ -39,11 +46,11 @@
   },
   "module": "open-sse/services/providerParity/native-dashscope-tts/index.js",
   "exports": {
-    "dashscopeTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
-    "createDashscopeTtsAdapter": "factory; options { fetchImpl, downloadFetchImpl, timeoutMs, downloadTimeoutMs, maxAudioBytes } for tests",
+    "dashscopeTtsAdapter": "pinned Singapore TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createDashscopeTtsAdapter": "factory; options { fetchImpl, downloadFetchImpl, timeoutMs, downloadTimeoutMs, maxAudioBytes, regional }",
     "buildDashscopeTtsRequest": "(model, text, options) -> source body; throws status 400 for any field the source would drop",
     "normalizeDashscopeTtsFormat": "mp3 aliases (plus json) or omitted -> mp3, else null",
-    "dashscopeTtsRegionSupported": "(providerSpecificData) -> whether the connection region selects the Singapore host",
+    "dashscopeTtsRegionSupported": "pinned instance only: (providerSpecificData) -> whether the connection region selects the Singapore host",
     "downloadDashscopeTtsAudio": "(url, { signal, fetchImpl, timeoutMs, maxBytes }) -> { bytes } | { failure }; no credential, no redirects, public-only",
     "dashscopeTtsAccounting": "(data, model) -> accounting with reported *_tokens and usage.characters, cost unknown",
     "dashscopeTtsAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
@@ -68,33 +75,63 @@
     "DASHSCOPE_TTS_MAX_AUDIO_BYTES": "52428800",
     "DASHSCOPE_TTS_MAX_REQUEST_BYTES": "262144",
     "DASHSCOPE_TTS_MAX_ENVELOPE_BYTES": "base64 of the audio cap plus 64 KiB",
-    "dashscopeTtsModel": "(id) -> static model row or null"
+    "dashscopeTtsModel": "(id) -> static model row or null",
+    "dashscopeRegionalTtsAdapter": "region-parity instance (createDashscopeTtsAdapter({ regional: true })); the instance registration wires",
+    "dashscopeTtsUrl": "(region) -> fixed SpeechSynthesizer URL for global-sg or china-beijing, else null",
+    "DASHSCOPE_TTS_PATH": "/api/v1/services/audio/tts/SpeechSynthesizer"
   },
   "provider": {
     "canonicalId": "qwen-cloud-token-plan",
     "alias": "qct",
     "existingRegistryEntry": "open-sse/providers/registry/qwen-cloud-token-plan.js",
-    "existingServiceKinds": ["llm"],
-    "addServiceKinds": ["tts"],
-    "authModes": ["apikey"],
-    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey"] },
+    "existingServiceKinds": [
+      "llm"
+    ],
+    "addServiceKinds": [
+      "tts"
+    ],
+    "authModes": [
+      "apikey"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey"
+      ]
+    },
     "connectionBaseUrlHonored": false,
-    "regions": "providerSpecificData.region unset or a Singapore alias only; any other region refused with 400 before submit",
+    "regions": "pinned instance: providerSpecificData.region unset or a Singapore alias only; regional instance: global-sg or china-beijing per regionParity; anything else refused with 400 before submit",
     "format": "dashscope-tts"
   },
   "models": {
-    "tts": [{ "id": "qwen-audio-3.0-tts-plus", "name": "Qwen Audio 3.0 TTS Plus" }],
+    "tts": [
+      {
+        "id": "qwen-audio-3.0-tts-plus",
+        "name": "Qwen Audio 3.0 TTS Plus"
+      }
+    ],
     "voiceSuffix": "refused: the voice comes from the voice field (default longanlingxin)"
   },
   "endpoints": {
     "speech": {
       "method": "POST",
       "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer",
-      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "headers": [
+        "Content-Type: application/json",
+        "Authorization: Bearer <key>"
+      ],
       "body": "{ model, input: { text, voice }, parameters: { format: \"mp3\", sample_rate: 24000 } }",
       "answer": "application/json { output: { audio: { data | url } }, usage?, request_id } or { code, message }"
     },
-    "download": { "method": "GET", "url": "output.audio.url (https, public host)", "headers": ["Accept: audio/*"], "credential": "none" }
+    "download": {
+      "method": "GET",
+      "url": "output.audio.url (https, public host)",
+      "headers": [
+        "Accept: audio/*"
+      ],
+      "credential": "none"
+    }
   },
   "bounds": {
     "ttsTimeoutMs": 120000,
@@ -111,7 +148,7 @@
     },
     {
       "file": "open-sse/handlers/ttsProviders/index.js",
-      "change": "import { dashscopeTtsAdapter } and add it to TTS_ADAPTERS under qwen-cloud-token-plan (alias qct resolves through the registry), so handleTtsCore uses the adapter before synthesizeViaConfig"
+      "change": "import { dashscopeRegionalTtsAdapter } and add it to TTS_ADAPTERS under qwen-cloud-token-plan (alias qct resolves through the registry), so handleTtsCore uses the adapter before synthesizeViaConfig"
     },
     {
       "file": "src/sse/handlers/tts.js",
@@ -121,5 +158,28 @@
       "file": "docs/providers/catalog.mdx",
       "change": "list the Qwen Cloud Token Plan tts kind after registration"
     }
-  ]
+  ],
+  "regionParity": {
+    "adapter": "dashscopeRegionalTtsAdapter",
+    "urls": {
+      "global-sg": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer",
+      "china-beijing": "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+    },
+    "map": "open-sse/services/providerParity/native-dashscope-image/regions.js DASHSCOPE_MEDIA_ORIGINS: finite (identity, region) -> literal origin, ported from alibabaProviderRegions.ts media roots",
+    "regions": [
+      "global-sg",
+      "china-beijing"
+    ],
+    "default": "global-sg when providerSpecificData.region is unset or blank (source getDefaultAlibabaProviderRegion)",
+    "spellings": "global-sg: global, international, singapore, ap-southeast-1; china-beijing: china, cn, beijing, cn-beijing (case-insensitive, trimmed)",
+    "refusedBeforeSend": [
+      "an unrecognized or non-string region (the source silently falls back to global-sg)",
+      "a non-preset providerSpecificData.baseUrl (the source sends the key to it)",
+      "an identity outside the map (alibaba-cn and other Alibaba-family ids)"
+    ],
+    "presetBaseUrl": "a saved source chat preset of the same identity (current or retired) is treated as unset, as in the source isFamilyPresetUrl; the region still decides",
+    "isolation": "the origin comes from the adapter's own identity and the selected connection's region only; the key is never sent to another identity's or region's host, redirects are refused, an answer naming another origin is an unknown outcome",
+    "accounting": "success accounting.meta.region records the region served",
+    "timeouts": "the source speech handler reads no caller timeout option; the gateway bounds in `bounds` apply"
+  }
 }

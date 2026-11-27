@@ -15,9 +15,13 @@
 // speech row).
 //
 // Fork deviations: see ./http.js for transport. The source resolves the host
-// from the connection's region and honors a custom base URL; here the key goes
-// only to the registry's Singapore SpeechSynthesizer URL, a connection naming
-// another region is refused before submit and a custom base URL is ignored.
+// from the connection's region and honors a custom base URL. The default
+// (pinned) adapter sends the key only to the registry's Singapore
+// SpeechSynthesizer URL, refuses a connection naming another region and
+// ignores a custom base URL. The regional adapter (`regional: true`) sends it
+// to the identity's fixed host for the connection's source region
+// (global-sg or china-beijing, ../native-dashscope-image/regions.js) and
+// refuses an unknown region or a custom base URL before submit.
 // Every request field the source would silently drop is refused before submit:
 // a response_format other than mp3 (or the json wrapper), streaming, a speed
 // other than 1, instructions, a language, a non-string voice, a `model/voice`
@@ -39,8 +43,9 @@ import { isNumber, isRecord, isString } from "../../../../src/shared/utils/typeC
 import {
   DASHSCOPE_TTS_DEFAULT_MODEL, DASHSCOPE_TTS_DEFAULT_VOICE, DASHSCOPE_TTS_DOWNLOAD_TIMEOUT_MS, DASHSCOPE_TTS_MAX_AUDIO_BYTES,
   DASHSCOPE_TTS_MAX_ENVELOPE_BYTES, DASHSCOPE_TTS_MAX_REQUEST_BYTES, DASHSCOPE_TTS_MODELS, DASHSCOPE_TTS_PROVIDER_ID,
-  DASHSCOPE_TTS_SAMPLE_RATE, DASHSCOPE_TTS_SINGAPORE_REGIONS, DASHSCOPE_TTS_TIMEOUT_MS, DASHSCOPE_TTS_URL, dashscopeTtsModel,
+  DASHSCOPE_TTS_SAMPLE_RATE, DASHSCOPE_TTS_SINGAPORE_REGIONS, DASHSCOPE_TTS_TIMEOUT_MS, DASHSCOPE_TTS_URL, dashscopeTtsModel, dashscopeTtsUrl,
 } from "./config.js";
+import { resolveDashscopeConnectionRegion } from "../native-dashscope-image/regions.js";
 import {
   dashscopeTtsSecrets, dashscopeTtsToken, dashscopeVendorCode, discard, invalid, isUnpaidCode, lostResult, sendOnce, withAcceptedJob,
 } from "./http.js";
@@ -101,6 +106,16 @@ export function buildDashscopeTtsRequest(model, text, options = {}) {
   };
   if (Buffer.byteLength(JSON.stringify(request)) > DASHSCOPE_TTS_MAX_REQUEST_BYTES) throw reject("DashScope speech request is too large");
   return request;
+}
+
+// True when a response names another origin than the one asked.
+function answeredElsewhere(response, url) {
+  if (!response.url) return false;
+  try {
+    return new URL(response.url).origin !== new URL(url).origin;
+  } catch {
+    return true;
+  }
 }
 
 /** Whether bytes start like an mp3 file (ID3 tag or an MPEG layer III frame). */
@@ -176,16 +191,19 @@ export async function downloadDashscopeTtsAudio(url, { signal, fetchImpl, timeou
  * @param {number} [options.timeoutMs] - deadline for the request and its body
  * @param {number} [options.downloadTimeoutMs] - deadline for the result URL download
  * @param {number} [options.maxAudioBytes] - decoded audio cap
+ * @param {boolean} [options.regional] - resolve the connection's source region to its fixed host
  */
 export function createDashscopeTtsAdapter({
   fetchImpl, downloadFetchImpl, timeoutMs = DASHSCOPE_TTS_TIMEOUT_MS,
   downloadTimeoutMs = DASHSCOPE_TTS_DOWNLOAD_TIMEOUT_MS, maxAudioBytes = DASHSCOPE_TTS_MAX_AUDIO_BYTES,
+  regional = false,
 } = {}) {
   const maxEnvelopeBytes = Math.min(DASHSCOPE_TTS_MAX_ENVELOPE_BYTES, Math.ceil(maxAudioBytes / 3) * 4 + 64 * 1024);
   return {
     provider: DASHSCOPE_TTS_PROVIDER_ID,
     models: DASHSCOPE_TTS_MODELS,
     responseFormats: DASHSCOPE_TTS_RESPONSE_FORMATS,
+    regions: Object.freeze(regional ? ["global-sg", "china-beijing"] : ["global-sg"]),
     /**
      * TTS adapter contract (ttsCore.js): `{ base64, format, accounting }` on
      * success, or a full error result; `local` marks caller input errors and
@@ -203,11 +221,16 @@ export function createDashscopeTtsAdapter({
       }
       const token = dashscopeTtsToken(credentials);
       if (!token) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, "DashScope speech needs a Qwen Cloud Token Plan API key");
-      if (!dashscopeTtsRegionSupported(credentials?.providerSpecificData)) {
+      let target = { region: "global-sg", url: DASHSCOPE_TTS_URL };
+      if (regional) {
+        const bound = resolveDashscopeConnectionRegion(DASHSCOPE_TTS_PROVIDER_ID, credentials);
+        if (bound.error) return invalid(`DashScope speech connection ${bound.error}`);
+        target = { region: bound.region, url: dashscopeTtsUrl(bound.region) };
+      } else if (!dashscopeTtsRegionSupported(credentials?.providerSpecificData)) {
         return invalid("DashScope speech is staged for the Singapore Token Plan host only; this connection names another region");
       }
 
-      const sent = await sendOnce(DASHSCOPE_TTS_URL, {
+      const sent = await sendOnce(target.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
@@ -215,6 +238,11 @@ export function createDashscopeTtsAdapter({
       if (sent.failure) return sent.failure;
 
       const { response, fetchSignal } = sent;
+      if (regional && answeredElsewhere(response, target.url)) {
+        sent.clear();
+        discard(response);
+        return withAcceptedJob(createErrorResult(HTTP_STATUS.BAD_GATEWAY, "DashScope speech was answered by another origin"), "submit-unknown");
+      }
       let data = null;
       try {
         let raw;
@@ -263,7 +291,9 @@ export function createDashscopeTtsAdapter({
       if (bytes.length === 0) return lostResult("audio was empty");
       if (bytes.length > maxAudioBytes) return lostResult("audio was unreadable or too large");
       if (!isMp3(bytes)) return lostResult("audio is not an mp3 file");
-      return { base64: bytes.toString("base64"), format: "mp3", accounting: dashscopeTtsAccounting(data, payload.model) };
+      const accounting = dashscopeTtsAccounting(data, payload.model);
+      if (regional) accounting.meta.region = target.region;
+      return { base64: bytes.toString("base64"), format: "mp3", accounting };
     },
   };
 }

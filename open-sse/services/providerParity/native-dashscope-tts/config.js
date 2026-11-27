@@ -19,6 +19,8 @@
 // alitp-intl, alicode*, bailian-coding-plan, qwencloud) keep their own hosts
 // and keys and are not touched: the source registry has no speech row for them.
 
+import { dashscopeMediaOrigin } from "../native-dashscope-image/regions.js";
+
 export const DASHSCOPE_TTS_PROVIDER_ID = "qwen-cloud-token-plan";
 /** The source registry alias, identical to the existing local registry alias. */
 export const DASHSCOPE_TTS_ALIAS = "qct";
@@ -26,7 +28,19 @@ export const DASHSCOPE_TTS_AUTH_MODES = Object.freeze(["apikey"]);
 export const DASHSCOPE_TTS_FORMAT = "dashscope-tts";
 /** The only origin the adapter sends the key to: the source registry host (Singapore). */
 export const DASHSCOPE_TTS_ORIGIN = "https://token-plan.ap-southeast-1.maas.aliyuncs.com";
-export const DASHSCOPE_TTS_URL = `${DASHSCOPE_TTS_ORIGIN}/api/v1/services/audio/tts/SpeechSynthesizer`;
+/** Source SPEECH_SYNTHESIZER_PATH under the media root (/api/v1). */
+export const DASHSCOPE_TTS_PATH = "/api/v1/services/audio/tts/SpeechSynthesizer";
+export const DASHSCOPE_TTS_URL = `${DASHSCOPE_TTS_ORIGIN}${DASHSCOPE_TTS_PATH}`;
+
+/**
+ * The SpeechSynthesizer URL of this identity in a canonical source region
+ * (source resolveSpeechSynthesizerUrl over resolveAlibabaProviderMediaBaseUrl,
+ * as the finite map in ../native-dashscope-image/regions.js), or null.
+ */
+export function dashscopeTtsUrl(region) {
+  const origin = dashscopeMediaOrigin(DASHSCOPE_TTS_PROVIDER_ID, region);
+  return origin ? `${origin}${DASHSCOPE_TTS_PATH}` : null;
+}
 /** Source DASHSCOPE_TTS_DEFAULT_VOICE ("longanlufeng" is the other published one). */
 export const DASHSCOPE_TTS_DEFAULT_VOICE = "longanlingxin";
 /** Source body constant `parameters.sample_rate`. */
@@ -42,8 +56,9 @@ export const DASHSCOPE_TTS_DEFAULT_MODEL = DASHSCOPE_TTS_MODELS[0].id;
 /**
  * Source resolver region values (src/shared/constants/alibabaProviderRegions.ts
  * normalizeAlibabaProviderRegion) that select the registry's Singapore host.
- * Any other named region (the source's china-beijing host) is refused before
- * submit: the local identity has no region selector, so it is not inferred.
+ * The default (pinned) adapter refuses any other named region before submit.
+ * The regional adapter (`regional: true`) also serves the source's
+ * china-beijing Token Plan host; see dashscopeTtsUrl.
  */
 export const DASHSCOPE_TTS_SINGAPORE_REGIONS = Object.freeze(["global-sg", "global", "international", "singapore", "ap-southeast-1"]);
 

@@ -11,5 +11,12 @@ export {
   dashscopeTtsRegionSupported, downloadDashscopeTtsAudio, isMp3, normalizeDashscopeTtsFormat,
 } from "./tts.js";
 
-/** Default instance: TTS_ADAPTERS under `qwen-cloud-token-plan` (alias qct resolves through the registry). */
+/** Pinned Singapore instance (the first staging contract) for `qwen-cloud-token-plan`. */
 export const dashscopeTtsAdapter = createDashscopeTtsAdapter();
+
+/**
+ * Region-parity instance (#2034): the connection's source region (global-sg or
+ * china-beijing) selects this identity's fixed SpeechSynthesizer host. This is
+ * what the serial registration step wires into TTS_ADAPTERS.
+ */
+export const dashscopeRegionalTtsAdapter = createDashscopeTtsAdapter({ regional: true });

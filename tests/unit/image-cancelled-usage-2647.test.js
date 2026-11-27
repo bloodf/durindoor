@@ -1,5 +1,6 @@
 // #2647: a client cancel after the provider's 2xx headers but before its body is
-// read must keep what is known and never invent usage. Every upstream here is a
+// read must keep what is known and never invent usage. A 2xx alone is not
+// evidence; only a usage receipt read before the cancel is. Every upstream here is a
 // local stub; no provider or paid API is called.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -46,7 +47,7 @@ const UNKNOWN_CANCELLED = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("image generation core: cancel after upstream 2xx (#2647)", () => {
-  it("returns 499 with unknown-cost cancelled evidence when a synchronous body is cancelled", async () => {
+  it("returns 499 without cancelled evidence when only the 2xx headers were seen", async () => {
     const { sent } = stalledUpstream(['{"created":1,"data":[{"b64_json":"aGk="}],"usa']);
     const controller = new AbortController();
     const onRequestSuccess = vi.fn();
@@ -60,7 +61,9 @@ describe("image generation core: cancel after upstream 2xx (#2647)", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe(499);
-    expect(result.cancelledUsage).toEqual(UNKNOWN_CANCELLED);
+    // The status line is not evidence: the unread body may be an error envelope.
+    expect(result.cancelledUsage).toBeUndefined();
+    expect(result.cancelledAfterHeaders).toBe(true);
     expect(result.acceptedJob).toBeUndefined();
     // Account health is untouched: a cancel is not provider success or failure.
     expect(onRequestSuccess).not.toHaveBeenCalled();
@@ -160,7 +163,7 @@ describe("image edit core: cancel after upstream 2xx (#2647)", () => {
     return handleImageEditCore({ formData, modelInfo: { provider: "openai", model: "gpt-image-1" }, credentials, signal });
   };
 
-  it("returns 499 with unknown-cost cancelled evidence instead of throwing", async () => {
+  it("returns 499 without cancelled evidence instead of throwing", async () => {
     const { sent } = stalledUpstream(['{"data":[{"b64_json":"aGk="}]']);
     const controller = new AbortController();
     const pending = edit(controller.signal);
@@ -170,7 +173,8 @@ describe("image edit core: cancel after upstream 2xx (#2647)", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe(499);
-    expect(result.cancelledUsage).toEqual(UNKNOWN_CANCELLED);
+    expect(result.cancelledUsage).toBeUndefined();
+    expect(result.cancelledAfterHeaders).toBe(true);
   });
 
   it("still propagates a body read failure that is not a client cancel", async () => {

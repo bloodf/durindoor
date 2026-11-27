@@ -67,7 +67,7 @@ restart.
 - `open-sse/services/copilotEndpointContract.js` (new) owns the
   normalization and the route decision. It is pure: no I/O, no provider
   state.
-- `open-sse/services/copilotModels.js:74` (`expandCatalog`) now attaches the
+- `open-sse/services/catalogs/copilotModels.js:74` (`expandCatalog`) now attaches the
   contract to each discovered row (`supportedEndpoints`, plus a
   `targetFormat` marker for a Responses-only model). A row that declares no
   endpoint carries none.
@@ -130,7 +130,7 @@ when the stored contract already matches.
 
 - `open-sse/services/copilotEndpointContract.js` (new) — normalization and
   route decision.
-- `open-sse/services/copilotModels.js` — discovery carries the contract.
+- `open-sse/services/catalogs/copilotModels.js` — discovery carries the contract.
 - `open-sse/executors/github.js` — route selection from the contract.
 - `open-sse/executors/ghe-copilot.js` — enterprise GPT-6 route.
 - `src/app/api/providers/[id]/models/modelsConfig.js` — normalize and store

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { clearKimchiCatalog, resolveKimchiModels } from "../../open-sse/services/kimchiModels.js";
+import { clearKimchiCatalog, resolveKimchiModels } from "../../open-sse/services/catalogs/kimchiModels.js";
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));

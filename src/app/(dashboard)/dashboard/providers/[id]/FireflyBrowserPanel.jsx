@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useEffect, useState } from "react";
 
 /** Experimental ordinary-browser configuration; all locators are supplied by the operator. */
@@ -15,14 +17,10 @@ export default function FireflyBrowserPanel() {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    const response = await fetch("/api/providers", { cache: "no-store" });
-    if (!response.ok) throw new Error("Unable to load connections");
-    const data = await response.json();
+    const data = await api.get("/api/providers", { cache: "no-store", defaultHeaders: false }).catch((error) => { if (error.status) throw new Error("Unable to load connections"); throw error; });
     setConnections((data.connections || []).filter((row) => row.provider === "adobe-firefly-web"));
   }
-  useEffect(() => { let active = true; fetch("/api/providers", { cache: "no-store" }).then(async (response) => {
-    if (!response.ok) throw new Error("Unable to load connections");
-    const data = await response.json();
+  useEffect(() => { let active = true; api.get("/api/providers", { cache: "no-store", defaultHeaders: false }).catch((error) => { if (error.status) throw new Error("Unable to load connections"); throw error; }).then((data) => {
     if (active) setConnections((data.connections || []).filter((row) => row.provider === "adobe-firefly-web"));
   }).catch((error) => { if (active) setMessage(error.message); }); return () => { active = false; }; }, []);
 
@@ -46,9 +44,7 @@ export default function FireflyBrowserPanel() {
       const hasMapping = Object.keys(parsedMapping).length > 0 || Object.keys(modelMap).length > 0;
       if (hasMapping && !attested) throw new Error("Attest your control mapping before saving");
       const fireflyWebUi = { enabled, ...(hasMapping ? { mapping: { ...parsedMapping, validatedBy: "operator", validatedAt: new Date().toISOString() }, modelMap } : null) };
-      const response = await fetch(selected ? `/api/providers/${selected}` : "/api/providers", { method: selected ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: "adobe-firefly-web", name, providerSpecificData: { fireflyWebUi } }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Save failed");
+      const data = await (selected ? api.put : api.post)(selected ? `/api/providers/${selected}` : "/api/providers", { provider: "adobe-firefly-web", name, providerSpecificData: { fireflyWebUi } }).catch((error) => { if (error.status) throw new Error(error.body?.error || "Save failed"); throw error; });
       setSelected(data.connection.id); await load(); setMessage("Saved. Live behavior remains unknown.");
     } catch (error) { setMessage(error.message); } finally { setBusy(false); }
   }
@@ -56,10 +52,10 @@ export default function FireflyBrowserPanel() {
   async function setup(method) {
     setBusy(true);
     try {
-      const response = await fetch(`/api/providers/${selected}/firefly-setup`, { method });
-      const data = await response.json();
-      setMessage(response.ok ? `${data.outcome}: ${data.note || (data.open ? "Browser is open for operator action" : "No setup browser is open; sign-in is unknown")}` : data.error);
-    } catch { setMessage("Setup status unknown"); } finally { setBusy(false); }
+      const url = `/api/providers/${selected}/firefly-setup`;
+      const data = method === "GET" ? await api.get(url, { defaultHeaders: false }) : method === "POST" ? await api.post(url, undefined, { defaultHeaders: false }) : await api.del(url, { defaultHeaders: false });
+      setMessage(`${data.outcome}: ${data.note || (data.open ? "Browser is open for operator action" : "No setup browser is open; sign-in is unknown")}`);
+    } catch (error) { setMessage(error.status ? error.body?.error : "Setup status unknown"); } finally { setBusy(false); }
   }
 
   return <section className="flex flex-col gap-4 p-6">

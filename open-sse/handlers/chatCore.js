@@ -72,9 +72,9 @@ import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits 
 import { isCursorProvider } from "../providers/cursorProviders.js";
 import { getNodeReportedModalities, hasStripEligibleMedia, withNodeModalities } from "../providers/nodeModalities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
-import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
+import { getOllamaCatalogModel } from "../services/catalogs/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
-import { getOpenRouterModelCapabilities } from "../services/openrouterCatalog.js";
+import { getOpenRouterModelCapabilities } from "../services/catalogs/openrouterCatalog.js";
 import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { shouldProtectCachedPrefix } from "../config/promptCacheProviders.js";

@@ -16,7 +16,7 @@ cheaper-inference/OmniRoute at `c71f0065a7efe9230ec23b96a12253b050c4d7ad` (MIT):
 
 | File | Role |
 | --- | --- |
-| `open-sse/services/aihordeImageCatalog.js` | Public image catalog, shared blocking refresh, `listHordeImageModelRows` for discovery |
+| `open-sse/services/catalogs/aihordeImageCatalog.js` | Public image catalog, shared blocking refresh, `listHordeImageModelRows` for discovery |
 | `open-sse/handlers/imageProviders/aihorde.js` | `.generate({ model, body, credentials, signal, log })` adapter, `defaultResponseFormat: "b64_json"` |
 | `open-sse/handlers/imageProviders/index.js` | `aihorde` and `horde` entries in `IMAGE_ADAPTERS` |
 | `open-sse/providers/registry/aihorde.js` | `serviceKinds: ["llm", "image"]` and the notice; transport unchanged |

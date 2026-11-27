@@ -1,3 +1,4 @@
+import api from "../../src/shared/utils/api.js";
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React, { act, useLayoutEffect } from "react";
@@ -96,15 +97,16 @@ for (const path of callers) {
     const refresh = vi.fn();
     const close = vi.fn();
     const select = vi.fn();
-    const factory = new Function("fetch", "selectedConnection", "fetchConnections", "fetch_", "setShowEditModal", "setSelectedConnection", "fetchQuota", "USAGE_SUPPORTED_PROVIDERS", "useCallback", `${source.slice(start, end)}; return handleUpdateConnection;`);
-    const save = factory(fetchBoundary, { id: "synthetic-edit", provider: "openai" }, refresh, refresh, close, select, vi.fn(), [], (fn) => fn);
+    vi.stubGlobal("fetch", fetchBoundary);
+    const factory = new Function("api", "fetch", "dashboardRequest", "selectedConnection", "fetchConnections", "fetch_", "setShowEditModal", "setSelectedConnection", "fetchQuota", "USAGE_SUPPORTED_PROVIDERS", "useCallback", `${source.slice(start, end)}; return handleUpdateConnection;`);
+    const save = factory(api, fetchBoundary, fetchBoundary, { id: "synthetic-edit", provider: "openai" }, refresh, refresh, close, select, vi.fn(), [], (fn) => fn);
     await expect(save({ name: "Draft" })).rejects.toThrow("Failed to save connection");
     await expect(save({ name: "Draft" })).rejects.toThrow("synthetic network failure");
     expect(refresh).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();
     expect(select).not.toHaveBeenCalled();
     expect(fetchBoundary).toHaveBeenCalledWith("/api/providers/synthetic-edit", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"name":"Draft"}' });
-    fetchBoundary.mockResolvedValueOnce({ ok: true });
+    fetchBoundary.mockResolvedValueOnce(path.includes("ConnectionsCard") ? { ok: true, status: 204 } : { ok: true });
     await save({ name: "Draft" });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledWith(false);

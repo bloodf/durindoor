@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -70,17 +72,15 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   const handleValidate = async () => {
     setValidating(true);
     try {
-      const res = await fetch("/api/provider-nodes/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: formData.baseUrl,
-          apiKey: checkKey,
-          type: isAnthropic ? "anthropic-compatible" : "openai-compatible",
-          modelId: checkModelId.trim() || undefined,
-        }),
+      const data = await api.post("/api/provider-nodes/validate", {
+        baseUrl: formData.baseUrl,
+        apiKey: checkKey,
+        type: isAnthropic ? "anthropic-compatible" : "openai-compatible",
+        modelId: checkModelId.trim() || undefined,
+      }).catch((error) => {
+        if (error.body) return error.body;
+        throw error;
       });
-      const data = await res.json();
       setValidationResult(data.valid ? "success" : "failed");
     } catch {
       setValidationResult("failed");

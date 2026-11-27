@@ -67,7 +67,7 @@ export class GithubExecutor extends BaseExecutor {
   // executeWithMessagesEndpoint below) — the only Copilot endpoint that surfaces
   // prompt-cache token counts. gpt/gemini/grok models stay on /chat/completions
   // (or /responses). Name-pattern check, not a registry field: Copilot's live model
-  // catalog (services/copilotModels.js) regularly exposes claude-* variants ahead
+  // catalog (services/catalogs/copilotModels.js) regularly exposes claude-* variants ahead
   // of the static registry (registry/github.js).
   isClaudeModel(model) {
     return /claude/i.test(model || "");

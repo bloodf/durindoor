@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import api from "@/shared/utils/api";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
@@ -208,12 +209,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (requiresClientId && !clientId.trim()) return;
     setValidating(true);
     try {
-      const res = await fetch("/api/providers/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() })
-      });
-      const data = await res.json();
+      const data = await api.post("/api/providers/validate", { provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() });
       setValidationResult(providerValidationOutcome(data));
     } catch {
       setValidationResult("failed");
@@ -227,22 +223,14 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setSaving(true);
     setCliImportError("");
     try {
-      const response = await fetch("/api/oauth/commandcode/auto-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await api.post("/api/oauth/commandcode/auto-import", {
           name: formData.name,
           proxyPoolId: formData.proxyPoolId === NONE_PROXY_POOL_VALUE ? null : formData.proxyPoolId
-        })
       });
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || "Could not import the CLI connection");
-      }
       onBulkDone?.();
       onClose();
     } catch (failure) {
-      setCliImportError(failure.message);
+      setCliImportError(failure.status ? (failure.body?.error || "Could not import the CLI connection") : failure.message);
     } finally {
       setSaving(false);
     }
@@ -270,12 +258,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       try {
         setValidating(true);
         setValidationResult(null);
-        const res = await fetch("/api/providers/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() })
-        });
-        const data = await res.json();
+        const data = await api.post("/api/providers/validate", { provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() });
         isValid = !!data.valid;
         setValidationResult(providerValidationOutcome(data));
       } catch {
@@ -314,9 +297,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     // if the preflight GET fails rather than risk an overwrite.
     let usedNames;
     try {
-      const res = await fetch("/api/providers");
-      if (!res.ok) throw new Error("preflight failed");
-      const data = await res.json();
+      const data = await api.get("/api/providers", { defaultHeaders: false });
       // Malformed payload (non-array connections) must abort, not plan from an
       // empty list — planning blind could overwrite an existing key.
       if (!data || !Array.isArray(data.connections)) throw new Error("preflight malformed");
@@ -358,10 +339,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     let failed = 0;
     for (const entry of plan) {
       try {
-        const res = await fetch("/api/providers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        await api.post("/api/providers", {
             provider,
             apiKey: entry.apiKey,
             ...(isAuthToken ? { authType: "auth_token" } : null),
@@ -371,10 +349,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             createOnly: true,
             defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
             ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : null)
-          })
         });
-        if (res.ok) success++;else
-        failed++;
+        success++;
       } catch {
         failed++;
       }

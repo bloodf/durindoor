@@ -6,7 +6,7 @@ import {
   clearCursorModelCache,
   parseCursorUsableModels,
   resolveCursorModels,
-} from "../../open-sse/services/cursorModels.js";
+} from "../../open-sse/services/catalogs/cursorModels.js";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   ...await importOriginal(),

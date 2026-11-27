@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   resolveQoderModels: vi.fn(),
 }));
 
-vi.mock("../../open-sse/services/qoderModels.js", () => mocks);
+vi.mock("../../open-sse/services/catalogs/qoderModels.js", () => mocks);
 
 import qoder from "../../open-sse/providers/registry/qoder.js";
 import { getCapabilitiesForModel, resolveModelLimits } from "../../open-sse/providers/capabilities.js";

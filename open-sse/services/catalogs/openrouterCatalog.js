@@ -1,8 +1,8 @@
-import { hasPaidEvidence } from "../config/freeModelCatalog.js";
-import { readBoundedResponseText } from "../utils/error.js";
-import { extractLiveModelLimits } from "./modelMetadata.js";
+import { hasPaidEvidence } from "../../config/freeModelCatalog.js";
+import { readBoundedResponseText } from "../../utils/error.js";
+import { extractLiveModelLimits } from "../modelMetadata.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 /**
  * OpenRouter's public model catalog (GET /api/v1/models).

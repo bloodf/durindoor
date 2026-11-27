@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discoverOllamaCatalog } from "../../open-sse/services/ollamaCatalog.js";
+import { discoverOllamaCatalog } from "../../open-sse/services/catalogs/ollamaCatalog.js";
 
 function response(body, ok = true) {
   return { ok, json: async () => body };

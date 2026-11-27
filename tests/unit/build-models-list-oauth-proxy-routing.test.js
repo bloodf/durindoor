@@ -32,16 +32,16 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   updateProviderCredentials: vi.fn(),
 }));
 
-vi.mock("open-sse/services/kiroModels.js", () => ({
+vi.mock("open-sse/services/catalogs/kiroModels.js", () => ({
   resolveKiroModels: mocks.resolveKiroModels,
 }));
 
-vi.mock("open-sse/services/copilotModels.js", () => ({
+vi.mock("open-sse/services/catalogs/copilotModels.js", () => ({
   resolveCopilotModels: mocks.resolveCopilotModels,
 }));
 
-vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
-vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));

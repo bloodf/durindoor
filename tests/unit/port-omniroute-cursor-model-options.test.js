@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeMessage } from "../../open-sse/utils/cursorProtobuf.js";
 import { buildAgentRunFrame } from "../../open-sse/executors/cursor.js";
-import { addCursorEffortAliases } from "../../open-sse/services/cursorModels.js";
+import { addCursorEffortAliases } from "../../open-sse/services/catalogs/cursorModels.js";
 
 const text = (field) => Buffer.from(field[0].value).toString();
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { useState, useEffect, useRef } from "react";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { useRouter } from "next/navigation";
@@ -127,7 +129,7 @@ export default function useProviderDetail(providerId) {
   const [scheduleConnection, setScheduleConnection] = useState(null);
   const [autoPingQueue] = useState(() => createLatestIntentQueue({
     write: async (_key, enabled, { connectionId }) => {
-      const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+      const response = await dashboardRequest(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled })
@@ -338,7 +340,7 @@ export default function useProviderDetail(providerId) {
   // Fetch free models from Kilo API for kilocode provider
   useEffect(() => {
     if (providerId !== "kilocode") return;
-    fetch("/api/providers/kilo/free-models").
+    dashboardRequest("/api/providers/kilo/free-models").
     then((res) => res.json()).
     then((data) => {if (data.models?.length) setKiloFreeModels(data.models);}).
     catch(() => {});
@@ -373,7 +375,7 @@ export default function useProviderDetail(providerId) {
     let active = true;
     setChutesCatalog({ provider: providerId, status: "loading", models: [] });
     const params = new URLSearchParams({ url: "https://llm.chutes.ai/v1/models", type: "chutes-all" });
-    fetch(`/api/providers/suggested-models?${params}`).then(async (response) => {
+    dashboardRequest(`/api/providers/suggested-models?${params}`).then(async (response) => {
       const data = await response.json();
       if (!response.ok || data.error) throw new Error("Catalog unavailable");
       if (active) setChutesCatalog({ provider: providerId, status: data.data?.length ? "loaded" : "empty", models: data.data || [] });
@@ -438,7 +440,7 @@ export default function useProviderDetail(providerId) {
         }));
 
         try {
-          const res = await fetch(`/api/providers/${connection.id}/test`, { method: "POST", signal: run.signal });
+          const res = await dashboardRequest(`/api/providers/${connection.id}/test`, { method: "POST", signal: run.signal });
           const data = await res.json();
           if (!isCurrent()) return;
           const wasSkipped = !!data.skipped;
@@ -560,7 +562,7 @@ export default function useProviderDetail(providerId) {
       for (const { connectionId, proxyPoolId } of assignments) {
         if (generation !== providerGenerationRef.current) return;
         try {
-          const res = await fetch(`/api/providers/${connectionId}`, {
+          const res = await dashboardRequest(`/api/providers/${connectionId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ proxyPoolId })
@@ -643,7 +645,7 @@ export default function useProviderDetail(providerId) {
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
-      const res = await fetch("/api/models/test", {
+      const res = await dashboardRequest("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -690,7 +692,7 @@ export default function useProviderDetail(providerId) {
           return runModelTest(modelId);
         },
         disableModels: async (ids) => {
-          const res = await fetch("/api/models/disabled", {
+          const res = await dashboardRequest("/api/models/disabled", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ providerAlias: providerStorageAlias, ids })

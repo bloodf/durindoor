@@ -14,7 +14,7 @@ vi.mock("@/lib/db/repos/settingsRepo", () => ({
   getSettings: vi.fn(async () => ({ disabledFreeProviders: [], hidePaidModels: false })),
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: vi.fn(async () => null) }));
-vi.mock("open-sse/services/kiroModels.js", async (importOriginal) => ({
+vi.mock("open-sse/services/catalogs/kiroModels.js", async (importOriginal) => ({
   ...(await importOriginal()),
   resolveKiroModels: mocks.resolveKiroModels,
 }));

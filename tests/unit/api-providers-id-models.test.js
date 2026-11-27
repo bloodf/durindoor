@@ -31,25 +31,25 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   updateProviderCredentials: vi.fn(),
 }));
 
-vi.mock("open-sse/services/kiroModels.js", () => ({
+vi.mock("open-sse/services/catalogs/kiroModels.js", () => ({
   resolveKiroModels: vi.fn(),
 }));
 
-vi.mock("open-sse/services/copilotModels.js", () => ({
+vi.mock("open-sse/services/catalogs/copilotModels.js", () => ({
   resolveCopilotModels: vi.fn(),
 }));
 
-vi.mock("open-sse/services/kimchiModels.js", () => ({
+vi.mock("open-sse/services/catalogs/kimchiModels.js", () => ({
   resolveKimchiModels: vi.fn(),
 }));
 
-vi.mock("open-sse/services/qoderModels.js", () => ({
+vi.mock("open-sse/services/catalogs/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 
 import { getProviderConnectionById } from "@/lib/localDb";
-import { resolveKiroModels } from "open-sse/services/kiroModels.js";
-import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { resolveKiroModels } from "open-sse/services/catalogs/kiroModels.js";
+import { resolveCopilotModels } from "open-sse/services/catalogs/copilotModels.js";
 import { refreshGoogleToken } from "@/sse/services/tokenRefresh";
 import { GET } from "../../src/app/api/providers/[id]/models/route.js";
 

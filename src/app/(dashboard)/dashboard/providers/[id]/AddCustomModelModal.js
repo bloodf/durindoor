@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -115,12 +117,10 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     setTestError("");
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
-      const res = await fetch("/api/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, connectionId, kind: modelType }),
+      const data = await api.post("/api/models/test", { model: `${providerAlias}/${cleanId}`, connectionId, kind: modelType }).catch((error) => {
+        if (error.body) return error.body;
+        throw error;
       });
-      const data = await res.json();
       setTestStatus(probeOutcome(data));
       setTestError(data.error || "");
     } catch (err) {

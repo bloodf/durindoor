@@ -1,3 +1,4 @@
+import { isLiquidDecisionModel } from "open-sse/config/liquid.js";
 import { admit } from "../services/admission.js";
 import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
 import { randomUUID } from "node:crypto";
@@ -16,7 +17,7 @@ import * as log from "../utils/logger.js";
 import { toExecutorCredentials, toCoreResult } from "./typeHelpers.js";
 import { enforceApiKeyModelPolicy } from "../services/apiKeyPolicy.js";
 import { nativeUsageAdmission, observeNativeResponse } from "../services/nativeUsage.js";
-import { isObject } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { resolveCredentialProxyOptions } from "open-sse/services/oauthCredentialManager.js";
 
@@ -79,7 +80,7 @@ async function handleSystemoneHandler(request) {
   // Retain the admission generation through retries and deferred response usage.
   const billingEpoch = apiKeyAuth.billingEpoch;
 
-  if (!modelStr) {
+  if (!isString(modelStr) || !modelStr.trim()) {
     log.warn("SYSTEMONE", "Missing model");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing model");
   }
@@ -100,6 +101,10 @@ async function handleSystemoneHandler(request) {
   }
 
   const { provider, model } = modelInfo;
+  // Validate resolved aliases as well as direct IDs before credential selection.
+  if (provider === "liquid" && !isLiquidDecisionModel(model)) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid Liquid decision model ID");
+  }
   const resolvedPolicyError = await enforceApiKeyModelPolicy(request, `${provider}/${model}`, apiKey);
   if (resolvedPolicyError) return resolvedPolicyError;
 
@@ -126,7 +131,7 @@ async function handleSystemoneHandler(request) {
     }
     const result = toCoreResult(
       await handleSystemoneCore({
-        routingPolicy: (await getSettings()).openrouterRouting,
+        routingPolicy: settings.openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials,
@@ -177,7 +182,7 @@ async function handleSystemoneHandler(request) {
     const dispatch = credentialDispatchSnapshot(credentials);
     const result = toCoreResult(
       await handleSystemoneCore({
-        routingPolicy: (await getSettings()).openrouterRouting,
+        routingPolicy: settings.openrouterRouting,
         body,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),

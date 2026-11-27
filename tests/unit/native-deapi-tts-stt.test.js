@@ -1,5 +1,5 @@
-// deAPI native speech (TTS) and transcription (STT) adapters, staged and
-// unregistered (#2034). Closed mocks only: every request goes to an injected
+// deAPI native speech (TTS) and transcription (STT) adapters, registered on
+// deapi (#2034). Closed mocks only: every request goes to an injected
 // transport, an unexpected request fails the test, and every key is synthetic.
 // Wire shapes follow OmniRoute c71f0065 (audioSpeech.ts and
 // audioTranscription.ts OpenAI-compatible default branches, audioMultipart.ts
@@ -84,12 +84,22 @@ async function sentForm(call) {
   return { contentType, entries: [...parsed.entries()] };
 }
 
-// ── Staging block: the only assertions about registration state ──────────
-describe("deAPI tts/stt staging state (promote at registration)", () => {
-  it("is not registered: no TTS adapter, no provider registry file", () => {
-    expect(Object.hasOwn(TTS_ADAPTERS, "deapi")).toBe(false);
-    expect(existsSync(new URL("../../open-sse/providers/registry/deapi.js", import.meta.url))).toBe(false);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// ── Registration block: the only assertions about registration state ─────
+describe("deAPI tts/stt canonical registration (isolated)", () => {
+  it("registers the TTS adapter and the deapi registry entry with the staged sttConfig", async () => {
+    expect(TTS_ADAPTERS.deapi.adapter).toBe(deapiTtsAdapter);
+    expect(existsSync(new URL("../../open-sse/providers/registry/deapi.js", import.meta.url))).toBe(true);
+    const { default: deapiRegistry } = await import("../../open-sse/providers/registry/deapi.js");
+    expect(deapiRegistry).toMatchObject({ id: DEAPI_PROVIDER_DEFINITION.id, alias: DEAPI_PROVIDER_DEFINITION.alias, category: "apikey", authType: "apikey" });
+    expect(deapiRegistry.serviceKinds).toEqual(expect.arrayContaining(DEAPI_PROVIDER_DEFINITION.serviceKinds));
+    expect(deapiRegistry.sttConfig).toEqual(DEAPI_PROVIDER_DEFINITION.sttConfig);
+    expect(supportsSttTranslation(deapiRegistry.sttConfig, "WhisperLargeV3Ct2")).toBe(false);
+    // Speech runs through TTS_ADAPTERS, so no generic ttsConfig is registered.
+    expect(deapiRegistry.ttsConfig).toBeUndefined();
+    expect(deapiRegistry.models).toEqual(expect.arrayContaining([
+      ...DEAPI_TTS_MODELS.map(({ id, name }) => ({ id, name, kind: "tts" })),
+      ...DEAPI_STT_MODELS.map(({ id, name }) => ({ id, name, kind: "stt" })),
+    ]));
   });
 });
 

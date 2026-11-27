@@ -17,6 +17,8 @@ import veoAiFree from "../../services/providerParity/native-veoaifree-web-video/
 import runwayVideo from "../../services/providerParity/native-runwayml-video/index.js";
 import { deepinfraVideoAdapter } from "../../services/providerParity/native-deepinfra-video/index.js";
 import segmindVideo from "../../services/providerParity/native-segmind-video/adapter.js";
+import { deapiVideoAdapter } from "../../services/providerParity/native-deapi-video-image/index.js";
+import { novitaVideoAdapter } from "../../services/providerParity/native-novita-video/index.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   "fal-ai": falVideo,
@@ -49,6 +51,10 @@ export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   deepinfra: deepinfraVideoAdapter,
   // Segmind: one synchronous POST answered with MP4 bytes, returned as b64_json.
   segmind: segmindVideo,
+  // deAPI /v1/videos job: bounded poll, then the key-gated /content MP4 as b64_json.
+  deapi: deapiVideoAdapter,
+  // Novita /v3/async task on the existing novita connection; result URLs only.
+  novita: novitaVideoAdapter,
 });
 
 /** The adapter for `provider`, or null when it has none. */

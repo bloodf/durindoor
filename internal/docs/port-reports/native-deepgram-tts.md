@@ -69,17 +69,37 @@ No `/v1/audio/speech` path reaches Deepgram, so the staged module is the whole T
 - Size bounds: 50 MiB of audio, 2 MiB for a discovery answer, and 16 KiB read from an error body. Error text is never returned.
 - Each request is sent once and never retried or replayed.
 - Accepted-job outcome (`acceptedJob`, cost unknown):
-  - `submit-unknown`: a timeout, abort or transport failure after sending, a 5xx other than 503, or a redirect.
+  - `submit-unknown`: a timeout, abort or transport failure after sending, any 5xx (503 included, see "503 replay" below), or a redirect.
   - `accepted`: an unusable 2xx, meaning a non-audio type, non-MP3 bytes, an empty or oversized body, or a body that stalled or was aborted.
   - Neither: a pre-connect failure (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, connect timeout) or a pre-aborted signal. These carry no accepted job.
 - Refusal mapping:
   - 400 to 400;
   - 401 and 403 pass through as an API key refusal;
   - 402 to 402 with `quotaExhausted` on this connection;
-  - 429 and 503 pass through with `Retry-After` evidence;
+  - 429 passes through with `Retry-After` evidence;
+  - 503 passes through with `Retry-After` evidence and, for speech, `acceptedJob` (`submit-unknown`);
   - other 4xx pass through.
 - A 200 JSON body is not audio. With an `err_code`/`err_msg` or standard error envelope it is a 502 with no audio and no accepted job. Any other JSON is a lost accepted result.
 - Discovery keeps only well-formed Aura `canonical_name` rows. Names with control characters or markup fall back to the id, languages are filtered to BCP-47-like codes, and duplicates are dropped. Discovery never carries `acceptedJob`.
+
+## 503 replay (#2034, 2026-11-27)
+
+The adapter used to treat a speech 503 as a refusal with no `acceptedJob`, so the media account loop could send the same text to another account. No primary Deepgram source supports that. Sources (public GET, read 2026-11-27):
+
+- [Errors reference](https://developers.deepgram.com/reference/errors), "Handling HTTP Errors": "503 Service Unavailable: The server isn't ready to handle the request. Common causes include a server that is down for maintenance or is overloaded." The TTS `503` example body has `err_msg` "Please try again later". The page says nothing about billing.
+- [Pricing](https://deepgram.com/pricing): TTS is billed per 1,000 input characters. No statement on failed or 5xx requests.
+
+Nothing says a 503 did no work or is not billed, and no structured "not accepted" field is documented. A speech 503 now:
+
+- keeps HTTP status 503 and the bounded `Retry-After` (`resetsAtMs`) for the selected account's health;
+- carries `acceptedJob` (`costSource: "accepted-job"`, cost unknown, `jobState: "submit-unknown"`). In `runMediaAccounts`, the TTS handler's `onAccountFailure` records the job on the selected account and ends the loop, so it is never replayed on another account;
+- never quotes the body; it is still drained only up to 16 KiB under a 2 s bound.
+
+Model discovery (`billable: false`) is a free read and keeps a plain 503. Same contract as the HuggingFace speech fix (`internal/docs/port-reports/native-audio-503-contract.md`, commit `84b4a16baf`).
+
+Tests: `tests/unit/private-audio-503-replay.test.js` (30 tests, 15 per vendor). It covers absent, empty, malformed, HTML, Deepgram-shaped, Fish-shaped and oversized 503 bodies, Retry-After as seconds, as an HTTP date and missing, a caller abort and a deadline on a stalled 503 body, neighbouring 429/500/502/504, two-account key isolation, the real `runMediaAccounts` loop (one send, one account marked, no second account), and discovery without a job. Mutations: reverting the Deepgram 503 change fails 13 Deepgram cases; applying the job to discovery too fails the discovery case.
+
+Conflict: `tests/unit/native-deepgram-tts.test.js` row `[503, 503, false]` in "maps Deepgram %i to %i without quoting the body" asserts the old no-job outcome and now fails. It was outside this change's allowed files and was left unchanged.
 
 ## Registration (serial step, not done here)
 

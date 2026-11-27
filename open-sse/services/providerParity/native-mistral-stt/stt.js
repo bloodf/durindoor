@@ -13,16 +13,28 @@
 // part type from the upload or application/octet-stream). The answer is passed
 // through with its content type.
 //
+// Vendor contract (wins over the source where they differ), read 2026-11-27:
+// https://docs.mistral.ai/openapi.yaml (sha256 acf0efcb...), operationId
+// audio_api_v1_transcriptions_post, request schema AudioTranscriptionRequest,
+// 200 schema TranscriptionResponse; and mistralai/client-python at
+// 6e9e31ac6f982c1fdfe177787ded223f458c9f69 (models/audiotranscriptionrequest.py,
+// utils/forms.py serialize_multipart_form). The request schema has no `prompt`
+// and no `response_format` field; `language` matches ^\w{2}$; `temperature` is
+// an unbounded `number`; `timestamp_granularities` is an array of
+// "segment" | "word" that the SDK sends as one repeated multipart field named
+// `timestamp_granularities` (no `[]` suffix). The source's
+// `timestamp_granularities[]` and `response_format` parts are therefore not sent.
+//
 // Fork deviations: see ./http.js for transport; in addition only the three
 // source models; translations, streaming, a `url` input, response_format other
-// than json, timestamp granularities other than segment/word, an out-of-range
-// temperature, a non-empty `prompt` (the Voxtral transcription endpoint
-// documents no such field; the source forwarded it blindly), and a missing,
-// empty or oversized file are refused before submit. All spellings of the
-// granularity field are merged under the source's `timestamp_granularities[]`
-// (the source read a single value). The answer must be a JSON object with a
-// string `text`; anything else, including a mislabelled error envelope, is not
-// returned as a transcript.
+// than json (accepted and not forwarded: the endpoint answers JSON only),
+// timestamp granularities other than segment/word, a language that is not two
+// word characters, a temperature outside the gateway's 0 to 1 bound (the
+// vendor schema sets no range), a non-empty `prompt`, and a missing, empty or
+// oversized file are refused before submit. All client spellings of the
+// granularity field are merged under the vendor's `timestamp_granularities`.
+// The answer must be a JSON object with a string `text`; anything else,
+// including a mislabelled error envelope, is not returned as a transcript.
 import { Buffer } from "node:buffer";
 import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
@@ -37,6 +49,10 @@ import { discard, invalid, lostResult, mistralToken, sendOnce, withAcceptedJob }
 
 export const MISTRAL_TRANSCRIPTION_RESPONSE_FORMATS = Object.freeze(["json"]);
 const GRANULARITY_FIELDS = Object.freeze(["timestamp_granularities[]", "timestamp_granularities"]);
+/** Vendor multipart name: a repeated field, no `[]` (client-python serialize_multipart_form). */
+export const MISTRAL_GRANULARITY_WIRE_FIELD = "timestamp_granularities";
+/** AudioTranscriptionRequest.language pattern in the vendor OpenAPI document. */
+const LANGUAGE_PATTERN = /^\w{2}$/;
 const GRANULARITIES = new Set(["segment", "word"]);
 const MAX_TEXT_FIELD = 4096;
 
@@ -88,6 +104,7 @@ export async function buildMistralTranscriptionRequest(model, formData, { kind =
 
   const language = optionalText(formData, "language");
   if (language.error) return invalid(language.error);
+  if (language.value !== null && !LANGUAGE_PATTERN.test(language.value)) return invalid("Mistral transcription language must be a two-letter code such as en");
   const prompt = optionalText(formData, "prompt");
   if (prompt.error) return invalid(prompt.error);
   if (prompt.value !== null) return invalid("Mistral transcription does not accept a prompt");
@@ -97,7 +114,8 @@ export async function buildMistralTranscriptionRequest(model, formData, { kind =
   if (rawTemperature !== null && rawTemperature !== "") {
     const number = Number(rawTemperature);
     if (!isString(rawTemperature) || !rawTemperature.trim() || !Number.isFinite(number) || number < 0 || number > 1) {
-      return invalid("Mistral transcription temperature must be a number from 0 to 1");
+      // Gateway bound; the vendor schema declares an unbounded number.
+    return invalid("Mistral transcription temperature must be a number from 0 to 1");
     }
     temperature = rawTemperature.trim();
   }
@@ -108,13 +126,13 @@ export async function buildMistralTranscriptionRequest(model, formData, { kind =
   if (bytes.length > MISTRAL_MAX_STT_FILE_BYTES) return invalid("Mistral transcription file is too large");
   const type = isString(file.type) && file.type && !/[\r\n]/.test(file.type) ? file.type : "application/octet-stream";
 
-  // Source field order: model, the optional fields, then the file.
+  // Source field order: model, the optional fields, then the file. Only
+  // fields the vendor AudioTranscriptionRequest schema declares are sent.
   const body = new FormData();
   body.append("model", entry.id);
   if (language.value !== null) body.append("language", language.value);
-  if (named) body.append("response_format", "json");
   if (temperature !== null) body.append("temperature", temperature);
-  for (const granularity of granularities) body.append("timestamp_granularities[]", granularity);
+  for (const granularity of granularities) body.append(MISTRAL_GRANULARITY_WIRE_FIELD, granularity);
   body.append("file", new Blob([bytes], { type }), mistralUploadFileName(file));
   return { body };
 }

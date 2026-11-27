@@ -92,13 +92,32 @@ function redirected(response) {
   return false;
 }
 
+/** A `Retry-After` value as rate-limit evidence, or null when absent or unusable. */
+function retryAfterEvidence(retryAfter) {
+  const evidence = parseRateLimitEvidence({ status: 429, headers: new Headers({ "retry-after": retryAfter ?? "" }), now: Date.now() });
+  return evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
+}
+
+const unavailable = (secrets, retryAfter) => {
+  const usable = retryAfterEvidence(retryAfter);
+  return createErrorResult(503, `Mistral is unavailable for ${LABEL}; whether it was processed is unknown`, usable?.resetAtMs, undefined, usable, secrets);
+};
+
 /**
- * A refused answer, by HTTP status. Mistral's text is never quoted. A 5xx
- * other than 503 may have come after the model did the work, so its
- * outcome is unknown and it carries `acceptedJob`.
+ * A refused answer, by HTTP status. Mistral's text is never quoted.
+ *
+ * Every 5xx, 503 included, arrives after the upload was dispatched and may
+ * have come after the model did billable work. The vendor contract
+ * (docs.mistral.ai/openapi.yaml, operationId audio_api_v1_transcriptions_post)
+ * documents only a 200 response for this operation and no structured error
+ * body that proves a request was rejected before processing, so no 5xx is
+ * treated as unsent: each carries `acceptedJob` (`submit-unknown`) and is
+ * never replayed. A 503 additionally keeps its status and a usable
+ * `Retry-After` reset for the selected connection's health.
  */
 export function mistralSttRefusal(status, { secrets, retryAfter = null }) {
-  if (status >= 500 && status !== 503) {
+  if (status === 503) return withAcceptedJob(unavailable(secrets, retryAfter), "submit-unknown");
+  if (status >= 500) {
     return withAcceptedJob(
       createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Mistral ${LABEL} failed with ${status}; whether it was processed is unknown`),
       "submit-unknown"
@@ -111,10 +130,9 @@ export function mistralSttRefusal(status, { secrets, retryAfter = null }) {
   }
   if (status === 401) return createErrorResult(401, `Mistral refused the API key for ${LABEL}`, undefined, undefined, null, secrets);
   if (status === 403) return createErrorResult(403, `Mistral forbade the ${LABEL} request`, undefined, undefined, null, secrets);
-  if (status === 429 || status === 503) {
-    const evidence = parseRateLimitEvidence({ status: 429, headers: new Headers({ "retry-after": retryAfter ?? "" }), now: Date.now() });
-    const usable = evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(status, `Mistral ${status === 429 ? "rate limited" : "is unavailable for"} ${LABEL}`, usable?.resetAtMs, undefined, usable, secrets);
+  if (status === 429) {
+    const usable = retryAfterEvidence(retryAfter);
+    return createErrorResult(429, `Mistral rate limited ${LABEL}`, usable?.resetAtMs, undefined, usable, secrets);
   }
   const passed = status >= 400 && status < 500 ? status : HTTP_STATUS.BAD_GATEWAY;
   return createErrorResult(passed, `Mistral refused the ${LABEL} request with ${status}`, undefined, undefined, null, secrets);

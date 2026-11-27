@@ -6,7 +6,7 @@ import { createMistralSttAdapter } from "./stt.js";
 export * from "./config.js";
 export { mistralSttAcceptedJob, mistralSttRefusal } from "./http.js";
 export {
-  MISTRAL_TRANSCRIPTION_RESPONSE_FORMATS, buildMistralTranscriptionRequest, createMistralSttAdapter, mistralUploadFileName,
+  MISTRAL_GRANULARITY_WIRE_FIELD, MISTRAL_TRANSCRIPTION_RESPONSE_FORMATS, buildMistralTranscriptionRequest, createMistralSttAdapter, mistralUploadFileName,
 } from "./stt.js";
 
 /** Default instance: a `mistral` branch ahead of handleSttCore's format switch. */

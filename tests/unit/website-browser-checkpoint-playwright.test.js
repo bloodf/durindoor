@@ -25,7 +25,7 @@ describe("browser checkpoint follow-ups", () => {
       expect(result.ok).toBe(false);
       expect(result.reason).toMatch(/enumeration denied/);
       const absent = await cleanupShardServer({ owner: "a".repeat(32), port: 4000,
-        procRoot: path.join(dir, "missing"), probe: async () => false });
+        procRoot: path.join(dir, "missing"), platform: "linux", probe: async () => false });
       expect(absent.ok).toBe(false);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

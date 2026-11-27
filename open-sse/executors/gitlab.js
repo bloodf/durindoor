@@ -1,8 +1,20 @@
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
-import { createExecutorSender } from "./sendRequest.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { cancelDiscardedResponse, createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { assertOutboundUrlAllowed } from "../utils/outboundUrlGuard.js";
+import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import {
+  buildGitLabDirectGatewayUrl,
+  buildGitLabDirectHeaders,
+  gitlabDirectAccessUrl,
+  gitlabRequestError,
+  isCacheableGitLabDirectAccess,
+  isGitLabDirectAccessRejection,
+  normalizeGitLabRoot,
+  parseGitLabDirectAccess,
+  readCachedGitLabDirectAccess
+} from "../../src/lib/oauth/providerParity/gitlab/directAccess.js";
 
 function asObject(value) {
   return value && isObject(value) && !Array.isArray(value) ? value : {};
@@ -151,11 +163,20 @@ function streamFromCompletion(json) {
   return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
-function errorResponse(status, message) {
-  return new Response(JSON.stringify({ error: { message, type: status === 401 || status === 403 ? "authentication_error" : "api_error" } }), {
+function errorResponse(status) {
+  return new Response(JSON.stringify(gitlabRequestError(status)), {
     status,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function isOutboundAllowed(url) {
+  try {
+    assertOutboundUrlAllowed(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export class GitlabExecutor extends BaseExecutor {
@@ -180,22 +201,99 @@ export class GitlabExecutor extends BaseExecutor {
     return buildRequestBody(model, body || {}, credentials || {});
   }
 
+  /**
+   * Direct access applies to a Duo OAuth sign-in only. PAT and older untyped
+   * connections keep the public completions endpoint.
+   */
+  directAccessIssuer(credentials) {
+    const data = asObject(credentials?.providerSpecificData);
+    if (this.provider !== "gitlab-duo" || data.authKind !== "oauth") return null;
+    if (credentials?.apiKey || !isString(credentials?.accessToken) || !credentials.accessToken) return null;
+    return normalizeGitLabRoot(resolveGitLabBase(credentials));
+  }
+
+  /** Exchange the OAuth token for gateway credentials; null means use the public endpoint. */
+  async exchangeDirectAccess(sender, issuer, credentials, signal, proxyOptions) {
+    const url = gitlabDirectAccessUrl(issuer);
+    if (!isOutboundAllowed(url)) return null;
+    let response;
+    try {
+      response = await sender.sendRequest(url, {
+        method: "POST",
+        headers: { Accept: "application/json", Authorization: `Bearer ${credentials.accessToken}` },
+        signal: signal || undefined
+      }, proxyOptions, { quotaBearing: false });
+    } catch {
+      if (signal?.aborted) throw requestAbortError(signal.reason);
+      return null;
+    }
+    try {
+      if (!response.ok) return null;
+      return parseGitLabDirectAccess(JSON.parse(await response.text()), issuer);
+    } catch {
+      if (signal?.aborted) throw requestAbortError(signal.reason);
+      return null;
+    } finally {
+      if (!response.bodyUsed) cancelDiscardedResponse(response);
+      await settleProviderAttemptDispatch(response, { success: response.ok, reason: response.ok ? "success" : "fallback" });
+    }
+  }
+
+  /** Store or clear the connection's gateway entry when the caller supplies a store. */
+  async persistDirectAccess(input, entry) {
+    if (!isFunction(input.persistGitLabDirectAccess)) return;
+    try {
+      await input.persistGitLabDirectAccess(entry);
+    } catch {
+      input.log?.warn?.("GITLAB-DUO", "Could not store direct access state");
+    }
+  }
+
+  async resolveTarget(input, sender, monolith) {
+    const { credentials, signal, proxyOptions = null } = input;
+    const issuer = this.directAccessIssuer(credentials);
+    if (!issuer) return monolith;
+    const cachedEntry = readCachedGitLabDirectAccess(credentials.providerSpecificData, issuer);
+    const entry = cachedEntry || await this.exchangeDirectAccess(sender, issuer, credentials, signal, proxyOptions);
+    if (!entry || !isOutboundAllowed(buildGitLabDirectGatewayUrl(entry.baseUrl))) return monolith;
+    if (!cachedEntry && isCacheableGitLabDirectAccess(entry)) await this.persistDirectAccess(input, entry);
+    return { mode: "direct", url: buildGitLabDirectGatewayUrl(entry.baseUrl), headers: buildGitLabDirectHeaders(entry) };
+  }
+
   async execute(input) {
     const { model, body, stream, credentials, signal, proxyOptions = null } = input;
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     const sender = createExecutorSender(this, input);
-    const url = this.buildUrl(model, stream, 0, credentials);
-    const headers = this.buildHeaders(credentials);
     const transformedBody = this.transformRequest(model, body, stream, credentials);
-    const response = await sender.sendRequest(url, {
+    const payload = JSON.stringify(transformedBody);
+    const monolith = { mode: "monolith", url: this.buildUrl(model, stream, 0, credentials), headers: this.buildHeaders(credentials) };
+    let target = await this.resolveTarget(input, sender, monolith);
+    const send = (destination) => sender.sendRequest(destination.url, {
       method: "POST",
-      headers,
-      body: JSON.stringify(transformedBody),
+      headers: destination.headers,
+      body: payload,
       signal: signal || undefined
     }, proxyOptions);
+
+    let response = await send(target);
+    // A gateway auth rejection means the gateway did no work, so the public
+    // endpoint may receive the request. Any other gateway answer is final.
+    if (target.mode === "direct" && isGitLabDirectAccessRejection(response.status)) {
+      cancelDiscardedResponse(response);
+      await settleProviderAttemptDispatch(response, { reason: "fallback" });
+      await this.persistDirectAccess(input, null);
+      if (signal?.aborted) throw requestAbortError(signal.reason);
+      target = monolith;
+      response = await send(target);
+    }
     const result = (replacement) => {
       transferProviderAttemptDispatch(response, replacement);
-      return { response: replacement, url, headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+      return { response: replacement, url: target.url, headers: target.headers, transformedBody, attemptStartedAt: sender.attemptStartedAt };
     };
+    if (!response.ok) {
+      cancelDiscardedResponse(response);
+      return result(errorResponse(response.status));
+    }
     let text;
     try {
       text = await response.text();
@@ -203,16 +301,13 @@ export class GitlabExecutor extends BaseExecutor {
       await settleProviderAttemptDispatch(response, { reason: "upstream_error" });
       throw error;
     }
-    let payload = null;
+    let parsed = null;
     try {
-      payload = text ? JSON.parse(text) : {};
+      parsed = text ? JSON.parse(text) : {};
     } catch {
-      payload = { message: text };
+      parsed = { message: text };
     }
-    if (!response.ok) {
-      return result(errorResponse(response.status, `GitLab Duo auth failed or request rejected: ${payload?.message || text}`));
-    }
-    const json = completionResponse(payload, model);
+    const json = completionResponse(parsed, model);
     return result(stream ? streamFromCompletion(json) :
       new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } }));
   }

@@ -107,6 +107,32 @@ describe("9router #5818 compatible-node modality discovery", () => {
     expect(ollamaFetch.mock.calls.filter(([u]) => u.endsWith("/api/show"))).toHaveLength(1);
   });
 
+  it("falls back per requested model when /models describes only other models", async () => {
+    const lists = {
+      "http://localhost:1234/v1/models": { data: [{ id: "text-model", input_modalities: ["text"] }, { id: "vision-model" }] },
+      "http://localhost:1234/api/v0/models": { data: [{ id: "vision-model", type: "vlm" }] },
+    };
+    const f = vi.fn(async (url) => ({ ok: Boolean(lists[url]), json: async () => lists[url] || {} }));
+    const creds = { providerSpecificData: { baseUrl: "http://localhost:1234/v1" } };
+
+    expect(await getNodeReportedModalities(P, "vision-model", creds, f)).toEqual({ vision: true });
+    expect(await getNodeReportedModalities(P, "vision-model", creds, f)).toEqual({ vision: true });
+    expect(f.mock.calls.map(([u]) => u)).toEqual(Object.keys(lists));
+  });
+
+  it("lets the requested model's own /models metadata win over LM Studio and Ollama", async () => {
+    const f = vi.fn(async (url) => ({
+      ok: true,
+      json: async () => (url.endsWith("/v1/models")
+        ? { data: [{ id: "text-model", input_modalities: ["text"] }, { id: "vision-model" }] }
+        : { data: [{ id: "text-model", type: "vlm" }], capabilities: ["vision"] }),
+    }));
+    const creds = { providerSpecificData: { baseUrl: "http://localhost:1234/v1" } };
+
+    expect(await getNodeReportedModalities(P, "text-model", creds, f)).toEqual({});
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
   it("uses x-api-key and normalizes /messages baseUrl for anthropic-compatible nodes", async () => {
     const f = okJson({ data: [{ id: "custom-vision", input_modalities: ["text", "image"] }] });
     const creds = { apiKey: "anth-secret", providerSpecificData: { baseUrl: "https://node.example/v1/messages" } };

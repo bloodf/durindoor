@@ -29,6 +29,15 @@ No code is ported. The extension is an original implementation against DurinDoor
 - **Fixed messages.** Results map HTTP status to static text; server bodies are never displayed.
 - **STORE zip.** Compression output depends on the zlib version; STORE keeps the package byte-identical across machines.
 
+## Inner.ai Web and Venice Web (1127)
+
+Both are one exact-origin, one-cookie entries in `providers.js`, with one optional host permission each in `manifest.json` (`https://app.innerai.com/*`, `https://clerk.venice.ai/*`). No wildcard permission, localStorage read or cross-origin capture was added; `prepareCapture` keeps its exact equality between the active tab origin and the compiled origin.
+
+- **Inner.ai account email.** The executor accepts `token=<jwt> <email>` (`open-sse/executors/inner-ai-web/credential.js`). The registry profile sets `accountEmail: "optional"`, which `resolveCookieImportContract` accepts only next to exactly one required cookie. The pairing route takes an optional `accountEmail`, validates it with `normalizeAccountEmail` (`src/shared/utils/cookieImportContract.js`, the executor's email grammar, at most 254 characters) and stores it in the server-side pairing entry only; the pairing response never carries it. `handleCookieImport` refuses any body with an `accountEmail` key (after the pairing is spent) and appends the paired email to the composed header. A blank or absent email stores the token alone, so a replacement never carries an earlier email forward. The extension reads no email and makes no account or profile call.
+- **Venice Clerk origin.** The credential origin and the capture tab are both `https://clerk.venice.ai`. The user signs in at `venice.ai` and then opens the Clerk origin in the active tab; the extension refuses a `venice.ai` tab.
+
+Tests: `tests/unit/provider-cookie-capture-extension.test.js` (Inner.ai Web and Venice Web block), `tests/unit/provider-session-registration-1127.test.js` (account email and Venice capture block), `tests/unit/provider-cookie-import-dashboard.test.js` (optional account email). Mocked only; no live capture was run.
+
 ## Rejected alternatives
 
 `chrome.storage` for the pairing or last result (persists credentials); `cookies.getAll` with client-side filtering; permanent `host_permissions`; a background sync loop; native messaging; reading the dashboard session; auto-capture on page load.

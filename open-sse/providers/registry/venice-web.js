@@ -24,12 +24,14 @@ export const VENICE_WEB_CHAT_URL = "https://outerface.venice.ai/api/inference/ch
 export const VENICE_WEB_CREDENTIAL_HINT =
   "Copy the `__client` cookie of clerk.venice.ai while signed in at venice.ai. A Venice API key does not work here.";
 
-// Dashboard cookie import only. The pinned source defines no extension capture
-// and no sign-in or session-ready contract, so there is no `webLogin` profile.
+// Dashboard import (Cookie header, cURL or HAR) and extension capture of the one
+// `__client` cookie of the Clerk origin, https://clerk.venice.ai. Sign in at
+// venice.ai first, then open the Clerk origin itself in the tab the extension
+// captures from: the capture tab and the credential share that one exact origin.
+// The pinned source defines no sign-in contract, so there is no `webLogin`.
 export const veniceWebCookieProfile = Object.freeze({
   origin: VENICE_WEB_CLERK_ORIGIN,
   cookieNames: Object.freeze(["__client"]),
-  extensionCapture: false,
 });
 
 // The pinned source's static list. Venice has no known model listing for this

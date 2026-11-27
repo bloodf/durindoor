@@ -133,14 +133,15 @@ describe("registered Venice Web provider module", () => {
     expect(provider.models.every((model) => model.toolCalling === false)).toBe(true);
   });
 
-  it("imports only the __client cookie of clerk.venice.ai, without extension capture or web login", () => {
+  it("imports and captures only the __client cookie of clerk.venice.ai, without an account email or web login", () => {
     const contract = resolveCookieImportContract(cookieImportConfig(provider));
-    expect(contract).toMatchObject({ origin: "https://clerk.venice.ai", cookieNames: ["__client"], cookiePrefixes: [], extensionCapture: false });
+    expect(contract).toMatchObject({ origin: "https://clerk.venice.ai", cookieNames: ["__client"], cookiePrefixes: [], extensionCapture: true });
+    expect(contract.accountEmail).toBeUndefined();
     expect(isApprovedCookieName(contract, "__client")).toBe(true);
     for (const name of ["__session", "__client_uat", "__client.0"]) expect(isApprovedCookieName(contract, name)).toBe(false);
     expect(cookieDomainAllowed(contract.host, ".clerk.venice.ai")).toBe(true);
     for (const domain of ["api.venice.ai", "outerface.venice.ai", "example.com"]) expect(cookieDomainAllowed(contract.host, domain)).toBe(false);
-    expect(veniceWebCookieProfile.extensionCapture).toBe(false);
+    expect(veniceWebCookieProfile.extensionCapture).toBeUndefined();
     expect(provider.webLogin).toBeUndefined();
   });
 });

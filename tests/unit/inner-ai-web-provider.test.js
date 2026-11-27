@@ -111,14 +111,15 @@ describe("registered Inner.ai Web provider module", () => {
     expect(provider.models.map((model) => model.id)).toHaveLength(19);
   });
 
-  it("imports only the token cookie from app.innerai.com, without extension capture or web login", () => {
+  it("imports and captures only the token cookie from app.innerai.com, with an optional paired email and no web login", () => {
     const contract = resolveCookieImportContract(cookieImportConfig(provider));
-    expect(contract).toMatchObject({ origin: "https://app.innerai.com", cookieNames: ["token"], extensionCapture: false });
+    expect(contract).toMatchObject({ origin: "https://app.innerai.com", cookieNames: ["token"], cookiePrefixes: [], extensionCapture: true, accountEmail: "optional" });
     expect(isApprovedCookieName(contract, "token")).toBe(true);
     expect(isApprovedCookieName(contract, "refresh_token")).toBe(false);
     expect(cookieDomainAllowed(contract.host, ".innerai.com")).toBe(true);
     expect(cookieDomainAllowed(contract.host, "example.com")).toBe(false);
-    expect(innerAiWebCookieProfile.extensionCapture).toBe(false);
+    expect(innerAiWebCookieProfile.extensionCapture).toBeUndefined();
+    expect(innerAiWebCookieProfile.accountEmail).toBe("optional");
     expect(provider.webLogin).toBeUndefined();
   });
 });

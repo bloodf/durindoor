@@ -493,17 +493,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
     // decolua/9router#5901: route Azure requests to deployment pools advertising the
     // requested model while keeping legacy fixed-deployment connections for unlisted models.
+    // A pool that does not serve the requested model must not decide eligibility,
+    // rate-limit or recovery outcomes, so the filter runs before every one of those
+    // decisions — not only before the final selection.
     const isAzureDeployment = providerId === "azure" && Boolean(model);
     const azurePoolOwnsModel = isAzureDeployment && connections.some((conn) =>
       getAzureDeploymentPool(conn.providerSpecificData).includes(model));
+    const servesRequestedDeployment = (conn) => {
+      if (!isAzureDeployment) return true;
+      const data = conn?.providerSpecificData;
+      if (data?.deploymentMode === "pool") return getAzureDeploymentPool(data).includes(model);
+      return !azurePoolOwnsModel || data?.deployment === model;
+    };
+    const deployableConnections = connections.filter(servesRequestedDeployment);
     // decolua/9router#3203: evaluate RPM without spending budget; record only final selection.
-    const eligibleBeforeRpm = connections.filter((c) => {
+    const eligibleBeforeRpm = deployableConnections.filter((c) => {
       if (excludeSet.has(c.id)) return false;
-      if (isAzureDeployment) {
-        const data = c.providerSpecificData;
-        if (data?.deploymentMode === "pool" && !getAzureDeploymentPool(data).includes(model)) return false;
-        if (data?.deploymentMode !== "pool" && azurePoolOwnsModel && data?.deployment !== model) return false;
-      }
       if (isQuotaLockoutActive(c, selectionNow)) return false;
       if (requestedModelLockActive(c, model, boundedModel, selectionNow)) return false;
       if (quotaDecisions.get(c.id)?.skip) return false;
@@ -518,8 +523,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // never picks one, so no row is stamped or counted. Nothing left: stop before the warnings.
     if (options?.probeOnly && availableConnections.length === 0) return { alternateAvailable: false };
 
-    log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
-    connections.forEach((c) => {
+    log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${deployableConnections.length}`);
+    deployableConnections.forEach((c) => {
       const excluded = excludeSet.has(c.id);
       const locked = requestedModelLockActive(c, model, boundedModel, selectionNow);
       const quotaBlocked = quotaDecisions.get(c.id)?.skip === true;
@@ -530,7 +535,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     });
 
-    const recoveryBlocked = options?.connectionRecovery ? connections.filter((c) =>
+    const recoveryBlocked = options?.connectionRecovery ? deployableConnections.filter((c) =>
       !excludeSet.has(c.id) && !requestedModelLockActive(c, model, boundedModel, selectionNow) &&
       !isQuotaLockoutActive(c, selectionNow) && !quotaDecisions.get(c.id)?.skip && !isConnectionGated(c, selectionNow) &&
       !isOverLimit(c.id, rpmLimit, selectionNow) &&
@@ -552,7 +557,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         log.warn("AUTH", `${provider} | saved key unavailable, falling back to optional no-auth`);
         return buildOptionalNoAuthCredential();
       }
-      const rpmCandidates = connections.filter((connection) => !excludeSet.has(connection.id));
+      const rpmCandidates = deployableConnections.filter((connection) => !excludeSet.has(connection.id));
       const gatedSummary = summarizeGatedConnections(rpmCandidates, selectionNow);
       if (gatedSummary) {
         log.warn("AUTH", `${provider} | all ${rpmCandidates.length} accounts blocked by peak-hour protection or RPD cap`);
@@ -564,11 +569,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         return rpmSummary;
       }
       // Find earliest lock expiry across all connections for retry timing
-      const blockedConns = connections.filter(
+      const blockedConns = deployableConnections.filter(
         (c) => !excludeSet.has(c.id) && (requestedModelLockActive(c, model, boundedModel, selectionNow) || isQuotaLockoutActive(c, selectionNow) || quotaDecisions.get(c.id)?.skip)
       );
       if (blockedConns.length > 0) {
-        const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow), blockedConns, connections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
+        const summary = includeExcludedModelRetry(summarizeBlockedConnections(blockedConns, quotaDecisions, model, boundedModel, selectionNow), blockedConns, deployableConnections, excludeSet, quotaDecisions, model, boundedModel, selectionNow, rpmLimit);
         log.warn("AUTH", `${provider} | all accounts unavailable for requested scope`);
         return {
           allRateLimited: true,
@@ -578,7 +583,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           lastErrorCode: summary.status
         };
       }
-      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
+      log.warn("AUTH", `${provider} | all ${deployableConnections.length} accounts unavailable`);
       return null;
     }
 

@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import {
+  TRANSIENT_OWNER_ENV,
+  TRANSIENT_RUNNER_ENV,
   TRANSIENT_STATE_ENV,
   transientServerPlan,
   transientStatePath,
@@ -14,13 +16,25 @@ import {
 // never attaches to a server that already exists. There is no unit, schedule
 // or daemon behind it, so nothing survives the run.
 //
-// The port is fixed and explicit rather than inherited from a running server,
-// because a discovered port is how a suite ends up talking to yesterday's
-// process. `reuseExistingServer: false` makes an occupied port a hard failure
-// instead of a silent attach.
+// The port is explicit rather than inherited from a running server, because a
+// discovered port is how a suite ends up talking to yesterday's process.
+// `reuseExistingServer: false` makes an occupied port a hard failure instead
+// of a silent attach. local-ci gives each shard its own free port, private
+// state file and owner token through WEBSITE_TRANSIENT_*; a direct run falls
+// back to port 3100, a per-process state file and a fresh token. Workers load
+// this file again, so the chosen values are pinned into process.env once.
 const plan = transientServerPlan();
-const stateFile = transientStatePath();
+process.env[TRANSIENT_OWNER_ENV] = plan.owner;
+const stateFile = process.env[TRANSIENT_STATE_ENV] || transientStatePath();
 process.env[TRANSIENT_STATE_ENV] = stateFile;
+// Only the main runner starts the web server; its PID lets the launcher stop
+// the server when the runner is killed before it can clean up. Workers
+// (TEST_WORKER_INDEX set) inherit the main runner's value; an inherited value
+// in the main runner is ignored so a nested run cannot watch a foreign PID.
+const runnerPid = process.env.TEST_WORKER_INDEX === undefined
+  ? String(process.pid)
+  : process.env[TRANSIENT_RUNNER_ENV];
+process.env[TRANSIENT_RUNNER_ENV] = runnerPid;
 
 // Minimal Linux hosts can lack Fontconfig entirely. Chromium then gives text
 // zero dimensions, even for web fonts. Use the bundled fonts in that case.
@@ -51,6 +65,6 @@ export default defineConfig({
     reuseExistingServer: false,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     timeout: 120_000,
-    env: { ...plan.env, [TRANSIENT_STATE_ENV]: stateFile },
+    env: { ...plan.env, [TRANSIENT_STATE_ENV]: stateFile, [TRANSIENT_RUNNER_ENV]: runnerPid },
   },
 });

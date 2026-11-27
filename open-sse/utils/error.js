@@ -11,6 +11,49 @@ import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS, HTTP_STATUS } from "../config/runtimeC
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.js";
 import { NAIVE_RESET_TIMEZONES } from "../config/naiveResetTimezones.js";
 
+const RESPONSES_INVALID_REQUEST_CODES = new Set([
+  "context_length_exceeded", "insufficient_quota", "credit_balance_exhausted",
+  "organization_spend_limit_exceeded", "project_spend_limit_exceeded",
+  "usage_not_included", "cyber_policy", "bio_policy", "misalignment_policy_violation", "invalid_prompt",
+]);
+
+/** Extract the error payload from a Responses `error` or `response.failed` event (#5899). */
+export function getResponsesEventError(event, data) {
+  if (event !== "error" && event !== "response.failed") return null;
+  if (!data || !isObject(data)) return { message: "Upstream Responses request failed" };
+  return data.error || data.response?.error || {
+    ...(data.type && data.type !== "error" ? { type: data.type } : null),
+    code: data.code,
+    message: data.message || "Upstream Responses request failed",
+  };
+}
+
+/**
+ * Map a Responses failure payload to a Claude-valid error type and matching
+ * HTTP status (#5899), redacting any supplied credential secrets.
+ * @param {string|object|null|undefined} error
+ * @param {string[]} [secrets]
+ */
+export function claudeResponsesError(error, secrets = []) {
+  const rawMessage = (isString(error) ? error : error?.message) || "Upstream Responses request failed";
+  const message = sanitizeErrorMessageWithSecrets(rawMessage, secrets);
+  const code = error?.code;
+  const errorType = error?.type;
+  if (
+    RESPONSES_INVALID_REQUEST_CODES.has(code) ||
+    RESPONSES_INVALID_REQUEST_CODES.has(errorType) ||
+    code === "invalid_request_error" ||
+    errorType === "invalid_request_error"
+  ) {
+    return { status: HTTP_STATUS.BAD_REQUEST, error: { type: "invalid_request_error", message } };
+  }
+  const type = /overload|at.capacity|service_unavailable/i.test(`${code || ""} ${errorType || ""} ${rawMessage}`)
+    ? "overloaded_error"
+    : "api_error";
+  const status = type === "overloaded_error" ? HTTP_STATUS.SERVICE_UNAVAILABLE : HTTP_STATUS.BAD_GATEWAY;
+  return { status, error: { type, message } };
+}
+
 /**
  * Build OpenAI-compatible error response body
  * @param {number} statusCode - HTTP status code

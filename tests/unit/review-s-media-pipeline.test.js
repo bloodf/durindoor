@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   admitKey: vi.fn(),
   selectAccount: vi.fn(),
   markUnavailable: vi.fn(),
+  clearAccountError: vi.fn(),
   refresh: vi.fn(),
   persistCredentials: vi.fn(),
   fetch: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: mocks.admitKey,
   getProviderCredentialsWithQuotaPreflight: mocks.selectAccount,
   markAccountUnavailable: mocks.markUnavailable,
-  clearAccountError: vi.fn(),
+  clearAccountError: mocks.clearAccountError,
 }));
 vi.mock("@/sse/services/model.js", () => ({
   getModelInfo: async (id) => {
@@ -181,4 +182,5 @@ it.each([200, 429])("cancels an edit while reading an upstream %s body", async (
   expect((await handleImageEdit(req)).status).toBe(499);
   expect(mocks.selectAccount).toHaveBeenCalledOnce();
   expect(mocks.markUnavailable).not.toHaveBeenCalled();
+  expect(mocks.clearAccountError).not.toHaveBeenCalled();
 });

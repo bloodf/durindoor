@@ -681,7 +681,7 @@ export async function clearAccountError(connectionId, currentConnection, model =
   }
 
   const allLockKeys = Object.keys(conn).filter((k) => k.startsWith("modelLock_"));
-  if (!atomicApplied && (conn.testStatus || conn.lastError || allLockKeys.length > 0)) {
+  if (!atomicApplied && (conn.testStatus || conn.lastError || conn.quotaLockout?.status || allLockKeys.length > 0)) {
     const isolated = context?.webFetch === true || context?.webSearch === true;
     const relevantLockKeys = isolated ?
     allLockKeys.filter((k) => k === `modelLock_${fallbackModel}`) :
@@ -700,11 +700,15 @@ export async function clearAccountError(connectionId, currentConnection, model =
     });
     const clearObj = Object.fromEntries(keysToClear.map((k) => [k, null]));
     if (context?.webSearch === true && fallbackModel) clearObj[`modelError_${fallbackModel}`] = null;
+    const activeQuotaLockout = isQuotaLockoutActive(conn, now);
+    if (!isolated && conn.quotaLockout?.status && !activeQuotaLockout) {
+      clearObj.quotaLockout = null;
+    }
     // Never let ordinary request success clear a durable reauth_required state;
     // only a successful OAuth reconnect (which writes testStatus:"active"
     // directly) may revive the account. See connectionsRepo fallback-clear guard.
     const reauthPinned = conn.testStatus === "reauth_required" || conn.errorCode === "REAUTH";
-    if (!isolated && !reauthPinned && remainingActiveLocks.length === 0) {
+    if (!isolated && !reauthPinned && !activeQuotaLockout && remainingActiveLocks.length === 0) {
       Object.assign(clearObj, { testStatus: "active", lastError: null, lastErrorAt: null, backoffLevel: 0 });
     }
     if (Object.keys(clearObj).length > 0) await updateProviderConnection(connectionId, clearObj);

@@ -11,9 +11,21 @@
 //
 // Playwright starts this file through `webServer`, so the whole process tree
 // belongs to the run and dies with it. Nothing here survives the run.
+//
+// "Dies with it" has to hold even when the run does not end politely.
+// Playwright gives the web server its own process group, so a runner killed
+// with SIGKILL (a timed-out local-ci shard, for one) never gets to stop it.
+// The launcher therefore watches the runner PID it was given and stops its
+// server as soon as that runner is gone. The runner's kernel start time is
+// recorded at launch, so a recycled PID does not keep a leftover alive.
+//
+// Every process in the tree inherits the run's owner token
+// (WEBSITE_TRANSIENT_OWNER). local-ci uses it to prove ownership before it
+// signals anything; see scripts/lib/website-shard-server.mjs.
 
 import { spawn } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -23,6 +35,9 @@ export const LOOPBACK_HOST = "127.0.0.1";
 export const DEFAULT_TRANSIENT_PORT = 3100;
 export const TRANSIENT_PORT_ENV = "WEBSITE_TRANSIENT_PORT";
 export const TRANSIENT_STATE_ENV = "WEBSITE_TRANSIENT_STATE_FILE";
+export const TRANSIENT_OWNER_ENV = "WEBSITE_TRANSIENT_OWNER";
+export const TRANSIENT_RUNNER_ENV = "WEBSITE_TRANSIENT_RUNNER_PID";
+const OWNER_RE = /^[a-f0-9]{32}$/;
 
 const WEBSITE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NEXT_BIN = join(WEBSITE_ROOT, "node_modules", "next", "dist", "bin", "next");
@@ -69,12 +84,57 @@ export function transientStatePath(pid = process.pid) {
   return join(tmpdir(), `durindoor-website-transient-server-${pid}.json`);
 }
 
+// local-ci supplies one token per shard. A direct `playwright test` run gets
+// a fresh one so its server tree is just as identifiable.
+export function resolveTransientOwner(env = process.env) {
+  const raw = env[TRANSIENT_OWNER_ENV];
+  if (raw === undefined || raw === "") return randomBytes(16).toString("hex");
+  if (!OWNER_RE.test(raw)) throw new Error(`${TRANSIENT_OWNER_ENV} must be 32 lowercase hex characters`);
+  return raw;
+}
+
+// Kernel start time (clock ticks since boot) of a PID, or null when it is not
+// readable. A PID plus its start time names one process for its whole life.
+export function processStartTime(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return fields[0] === "Z" ? null : fields[19];
+  } catch {
+    return null;
+  }
+}
+
+export function processAlive(pid, startTime = null) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code !== "EPERM") return false;
+  }
+  if (startTime === null) return true;
+  return processStartTime(pid) === startTime;
+}
+
+// Calls onGone once the runner exits. Returns a function that stops watching.
+export function watchRunner(pid, { intervalMs = 250, onGone } = {}) {
+  if (!Number.isInteger(pid) || pid <= 1) throw new Error("invalid runner PID");
+  const startTime = processStartTime(pid);
+  const timer = setInterval(() => {
+    if (processAlive(pid, startTime)) return;
+    clearInterval(timer);
+    onGone();
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 // One plan, shared by the Playwright config and the launcher. The port is
 // explicit on both sides so the browser target and the bound socket cannot
 // drift apart.
 export function transientServerPlan({
   port = resolveTransientPort(),
   host = LOOPBACK_HOST,
+  owner = resolveTransientOwner(),
 } = {}) {
   const baseURL = `http://${host}:${port}`;
   return {
@@ -83,7 +143,9 @@ export function transientServerPlan({
     baseURL,
     url: baseURL,
     command: `${process.execPath} ${TRANSIENT_SCRIPT} --port ${port}`,
+    owner,
     env: {
+      [TRANSIENT_OWNER_ENV]: owner,
       [TRANSIENT_PORT_ENV]: String(port),
       HOSTNAME: host,
       PORT: String(port),
@@ -180,7 +242,7 @@ async function main(argv) {
     ...process.env,
     [TRANSIENT_PORT_ENV]: argument ?? process.env[TRANSIENT_PORT_ENV],
   });
-  const plan = transientServerPlan({ port });
+  const plan = transientServerPlan({ port, owner: resolveTransientOwner() });
 
   if (await isPortListening(LOOPBACK_HOST, port)) {
     process.stderr.write(
@@ -200,6 +262,10 @@ async function main(argv) {
 
   writeStateFile(statePath, {
     pid: server.pid,
+    serverStartTime: processStartTime(server.pid),
+    launcherPid: process.pid,
+    launcherStartTime: processStartTime(process.pid),
+    owner: plan.owner,
     port,
     host: plan.host,
     url: plan.url,
@@ -213,6 +279,21 @@ async function main(argv) {
     await server.stop();
     removeStateFile(statePath);
   };
+
+  // A runner that vanished without stopping us (SIGKILL, OOM) must not leave
+  // the server holding the port.
+  const runnerPid = Number(process.env[TRANSIENT_RUNNER_ENV]);
+  if (Number.isInteger(runnerPid) && runnerPid > 1) {
+    watchRunner(runnerPid, {
+      onGone: () => {
+        process.stderr.write(`Playwright runner ${runnerPid} is gone; stopping the transient server.\n`);
+        stop().then(
+          () => process.exit(0),
+          () => process.exit(1),
+        );
+      },
+    });
+  }
 
   for (const signal of ["SIGTERM", "SIGINT"]) {
     process.on(signal, () => {

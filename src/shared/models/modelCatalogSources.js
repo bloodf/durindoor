@@ -147,6 +147,23 @@ function withRuntimeContext(row, contextLength) {
   return { ...row, capabilities };
 }
 
+/**
+ * Honor declared vision input_modalities from compatible upstream /models rows (#5900).
+ * Empty modality arrays are treated as unknown rather than "no vision" so static
+ * and explicit local catalog flags remain intact when upstream lists are empty.
+ */
+function withCompatibleVision(row) {
+  const inputs = [
+    row?.architecture?.input_modalities,
+    row?.input_modalities,
+    row?.modalities?.input,
+  ].find((list) => Array.isArray(list) && list.length > 0);
+  if (!inputs) return row;
+  const capabilities = isRecord(row.capabilities) ? { ...row.capabilities } : {};
+  capabilities.vision = inputs.some((value) => isString(value) && value.trim().toLowerCase() === "image");
+  return { ...row, capabilities };
+}
+
 // Cache per connection, endpoint and credential so private catalogs never cross accounts.
 // Entries live 5 minutes; a failed refresh serves the last-known-good catalog.
 const compatibleCatalogCache = new Map();
@@ -166,7 +183,7 @@ export async function resolveCompatibleCatalog(conn, guard) {
     const rows = Array.isArray(data) ? data : data?.data;
     if (!Array.isArray(rows)) return cached?.value || null;
     let models = rows.map((row) => isString(row) ? { id: row } : row).filter((row) => isString(row?.id) && row.id.trim());
-    models = models.map((row) => withRuntimeContext(row, readCompatibleContextLength(row)));
+    models = models.map((row) => withCompatibleVision(withRuntimeContext(row, readCompatibleContextLength(row))));
     const reportsWindow = models.some((row) => Number.isFinite(row.capabilities?.contextWindow));
     if (!reportsWindow && models.length > 0 && isOpenAICompatibleProvider(conn.provider)) {
       const loaded = await probeLmStudioLoadedContexts(base, headers, guard, proxy, key);

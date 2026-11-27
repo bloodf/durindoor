@@ -37,7 +37,7 @@ import {
 import { SSE_COMMENT_KEEPALIVE, SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER } from "./sseConstants.js";
 import { isBoolean, isNumber, isObject, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractStreamErrorPayload } from "./streamLifecycle.js";
-import { credentialErrorSecrets, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
+import { claudeResponsesError, credentialErrorSecrets, getResponsesEventError, sanitizeErrorMessageWithSecrets, sanitizeStructuredErrorBody } from "./error.js";
 
 export { COLORS, formatSSE };
 export { SSE_DONE, SSE_HEADERS, SSE_HEADERS_NO_BUFFER };
@@ -153,15 +153,19 @@ function sanitizePublicErrorEnvelope(parsed, secrets = []) {
  * client speaks another format, so it never reaches the client as `[Error]`
  * stop content (#1327). Same-format Responses keeps the upstream failed event.
  */
-function translatedTerminalError(parsed, sourceFormat) {
+function translatedTerminalError(parsed, sourceFormat, eventName = null) {
   if (parsed?.error) return parsed.error;
-  if (parsed?.type !== "response.failed" || sourceFormat === FORMATS.OPENAI_RESPONSES) return null;
+  if (sourceFormat === FORMATS.OPENAI_RESPONSES) return null;
+  if (eventName === "error" || parsed?.type === "error") {
+    return getResponsesEventError("error", parsed);
+  }
+  if (parsed?.type !== "response.failed") return null;
   // A failed status without an error object still ends as an error terminal.
   return parsed.response?.error || (parsed.response?.status === "failed" ? { message: "Upstream response failed" } : null);
 }
 
 /** Forward executor-side validation failures in the client's SSE format (#2681). */
-function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
+function formatTranslatedStreamError(error, sourceFormat, secrets = [], targetFormat = null) {
   const normalized = normalizeStreamError(error, secrets);
   if (sourceFormat === FORMATS.OPENAI_RESPONSES) {
     const now = Math.floor(Date.now() / 1000);
@@ -181,7 +185,15 @@ function formatTranslatedStreamError(error, sourceFormat, secrets = []) {
     return `event: response.failed\ndata: ${JSON.stringify(failed)}\n\ndata: [DONE]\n\n`;
   }
   if (sourceFormat === FORMATS.CLAUDE) {
-    return formatClaudeSseError(normalized) + "data: [DONE]\n\n";
+    // Classify from the original error type/code before normalizeStreamError
+    // fills default code:"stream_error", which would otherwise shadow error.type.
+    const claudeError = targetFormat === FORMATS.OPENAI_RESPONSES
+      ? claudeResponsesError(
+          isObject(error) ? { ...error, message: normalized.message } : normalized.message,
+          secrets,
+        ).error
+      : normalized;
+    return formatClaudeSseError(claudeError) + "data: [DONE]\n\n";
   }
   return `data: ${JSON.stringify({ error: normalized })}\n\ndata: [DONE]\n\n`;
 }
@@ -838,6 +850,11 @@ export function createSSEStream(options = {}) {
   let pendingClaudeFinish = null;
   let releasingClaudeFinish = false;
   let translatedStreamFinalized = false;
+  const isMatchingClaudeUsageTrailer = (finish, receipt) =>
+    Boolean(receipt && !receipt.done &&
+      (!finish.id || !receipt.id || receipt.id === finish.id) &&
+      (!receipt.choices || receipt.choices.length === 0) &&
+      hasValidUsage(receipt.usage));
   const clearCompletionFlushTimer = () => {
     clearTimeout(completionFlushTimer);
     completionFlushTimer = null;
@@ -966,13 +983,16 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
-        const receipt = pendingClaudeFinish && trimmed ? parseSSELine(trimmed, targetFormat) : null;
+        const hasPendingData = pendingClaudeFinish && parseSseFrame(line).data.trim().length > 0;
+        const receipt = hasPendingData ? parseSSELine(trimmed, targetFormat) : null;
+        // Comments, metadata, and empty/whitespace data heartbeats cannot release
+        // the finish before its usage trailer.
         // A usage trailer split over data lines is awaited until it is joined.
-        if (pendingClaudeFinish && trimmed && (receipt || !startsSplitData(trimmed))) {
+        if (hasPendingData && (receipt || !startsSplitData(trimmed))) {
           const finish = pendingClaudeFinish;
           pendingClaudeFinish = null;
           clearCompletionFlushTimer();
-          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) {
+          if (isMatchingClaudeUsageTrailer(finish, receipt)) {
             finish.usage = receipt.usage;
           }
           releasingClaudeFinish = true;
@@ -1426,10 +1446,12 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
-        // Only wait when the actual upstream request asks for a usage trailer.
+        // Defer Claude terminal events on direct OpenAI Chat streams when finish_reason
+        // arrives without valid usage so a trailing usage-only frame can populate exact
+        // input and cache token counts (upstream #5890).
         if (!releasingClaudeFinish && targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE &&
-            providerBody?.stream_options?.include_usage === true && parsed.id &&
-            parsed.choices?.some?.((choice) => choice.finish_reason) && !hasValidUsage(parsed.usage)) {
+            parsed.choices?.some?.((choice) => choice.finish_reason && choice.finish_reason !== OPENAI_FINISH.ERROR) &&
+            !hasValidUsage(parsed.usage)) {
           pendingClaudeFinish = parsed;
           completionFlushTimer = setTimeout(() => {
             completionFlushTimer = null;
@@ -1437,7 +1459,10 @@ export function createSSEStream(options = {}) {
             pendingClaudeFinish = null;
             if (!finish) return;
             releasingClaudeFinish = true;
-            try { processLines([`data: ${JSON.stringify(finish)}`], controller); }
+            try {
+              processLines([`data: ${JSON.stringify(finish)}`], controller);
+              finalizeTranslatedStream();
+            }
             catch (error) { controller.error(error); }
             finally { releasingClaudeFinish = false; }
           }, PENDING_COMPLETION_FLUSH_MS);
@@ -1468,11 +1493,11 @@ export function createSSEStream(options = {}) {
         // nested response.failed) before any client-facing translation.
         streamErrorPayload ??= extractStreamErrorPayload(parsed);
         sanitizePublicErrorEnvelope(parsed, errorSecrets);
-        const terminalError = translatedTerminalError(parsed, nativeGemini ? FORMATS.GEMINI : sourceFormat);
+        const terminalError = translatedTerminalError(parsed, nativeGemini ? FORMATS.GEMINI : sourceFormat, currentOpenAIResponsesEvent || currentUpstreamEvent);
         if (terminalError) {
           streamErrorPayload ??= extractStreamErrorPayload({ error: terminalError });
           clearCompletionFlushTimer();
-          const output = formatTranslatedStreamError(terminalError, nativeGemini ? FORMATS.GEMINI : sourceFormat, errorSecrets);
+          const output = formatTranslatedStreamError(terminalError, nativeGemini ? FORMATS.GEMINI : sourceFormat, errorSecrets, targetFormat);
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           upstreamErrorForwarded = true;
@@ -1672,9 +1697,14 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
+            const directChatToClaude = targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
-              const estimated = mergeUsage(state.usage ?? item.usage, addBufferToUsage(estimateStreamUsage(totalContentLength, sourceFormat)));
+              const baseUsage = hasValidUsage(state.usage) || state.usage?.kiro_credits !== undefined ? state.usage : null;
+              const estimated = mergeUsage(baseUsage, addBufferToUsage(estimateStreamUsage(totalContentLength, sourceFormat)));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
+            } else if (state.finishReason && isFinishChunk && directChatToClaude && state.claudeMeasuredUsage) {
+              // Emit exact measured input and cache counts on direct Chat→Claude streams without buffer padding (upstream #5890).
+              item.usage = filterUsageForFormat(withTps(enrichUsageCost(item.usage, provider, model)), sourceFormat);
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               // Preserve the translated Claude cache details for OpenAI clients.
@@ -1787,7 +1817,7 @@ export function createSSEStream(options = {}) {
           const finish = pendingClaudeFinish;
           pendingClaudeFinish = null;
           const receipt = buffer.trim() && parseSSELine(buffer.trim(), targetFormat);
-          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) finish.usage = receipt.usage;
+          if (isMatchingClaudeUsageTrailer(finish, receipt)) finish.usage = receipt.usage;
           releasingClaudeFinish = true;
           try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
         }
@@ -1991,10 +2021,10 @@ export function createSSEStream(options = {}) {
           // client-facing translation or formatted error terminal.
           streamErrorPayload ??= extractStreamErrorPayload(tail);
           sanitizePublicErrorEnvelope(tail, errorSecrets);
-          const tailError = translatedTerminalError(tail, sourceFormat);
+          const tailError = translatedTerminalError(tail, sourceFormat, currentOpenAIResponsesEvent || currentUpstreamEvent);
           if (tailError) {
             streamErrorPayload ??= extractStreamErrorPayload({ error: tailError });
-            const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets);
+            const output = formatTranslatedStreamError(tailError, sourceFormat, errorSecrets, targetFormat);
             reqLogger?.appendConvertedChunk?.(output);
             controller.enqueue(sharedEncoder.encode(output));
             upstreamErrorForwarded = true;

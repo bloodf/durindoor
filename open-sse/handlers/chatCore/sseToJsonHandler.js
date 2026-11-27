@@ -5,7 +5,7 @@ import { hasClaudeSearch } from "../../translator/concerns/searchRouting.js";
 import { Buffer } from "node:buffer";
 import { normalizeMistralContent } from "../../utils/arrayContentDelta.js";
 import { convertResponsesStreamToJson } from "../../transformer/streamToJsonConverter.js";
-import { createErrorResult as createFormattedErrorResult } from "../../utils/error.js";
+import { claudeResponsesError, createErrorResult as createFormattedErrorResult, credentialErrorSecrets } from "../../utils/error.js";
 import { readBodyWithTimeout, BodyReadTimeoutError } from "../../utils/bodyTimeout.js";
 import { HTTP_STATUS, MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS, RESPONSE_BODY_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { EMPTY_CONTENT_COOLDOWN_MS, INCOHERENT_NON_STREAMING_RESPONSE_MESSAGE } from "../../config/errorConfig.js";
@@ -117,7 +117,12 @@ function aggregateParsedChunks(chunks, fallbackModel, {
   // Preserve an explicit SSE error even after partial content. A failed terminal
   // is not an empty completion; both non-stream consumers must reject it (#1355).
   const errorChunk = chunks.find((chunk) => chunk?.error);
-  if (errorChunk) return { error: errorChunk.error };
+  if (errorChunk) return {
+    error: errorChunk.error,
+    // A failed stream that already generated content must never be replayed.
+    upstreamPartialOutput: chunks.some((chunk) => chunk?.response?.candidates?.some((candidate) =>
+      candidate.content?.parts?.length > 0) || chunk?.candidates?.some((candidate) => candidate.content?.parts?.length > 0))
+  };
   const terminal = createUpstreamTerminalTracker({
     format,
     expectedChoiceCount: providerBody?.n,
@@ -522,6 +527,22 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS,
           throwOnTimeout: true
         });
+        if (sourceFormat === FORMATS.CLAUDE && jsonResponse?.status === "failed" && jsonResponse.error) {
+          const { status, error } = claudeResponsesError(jsonResponse.error, credentialErrorSecrets(credentials));
+          appendLog({ status: `FAILED ${status}` });
+          // Forward the merged error body and credentials so createErrorResult
+          // preserves the mapped Claude error.type and redacts credential secrets.
+          const errorBody = {
+            error: {
+              ...(isObject(jsonResponse.error) ? jsonResponse.error : null),
+              ...error,
+            },
+          };
+          return {
+            ...createErrorResult(status, error.message, undefined, errorBody, null, credentials, status),
+            quotaTerminalReason: "stream_error",
+          };
+        }
         if (!["completed", "incomplete"].includes(jsonResponse?.status)) {
           return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Provider stream ended before a coherent terminal");
         }

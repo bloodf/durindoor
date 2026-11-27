@@ -408,7 +408,10 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         "X-Client-Version": ANTIGRAVITY_IDE_VERSION
       },
       body: JSON.stringify({
-        ...(projectId ? { project: projectId } : null)
+        ...(projectId ? { project: projectId } : null),
+        // Match the native quota client envelope (upstream #141).
+        metadata: CLIENT_METADATA,
+        mode: 1
       })
     }, 10000, proxyOptions),
     weeklyPromise]

@@ -3,6 +3,8 @@ import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { probeAssemblyAiKey } from "open-sse/services/assemblyai.js";
 import { validateT3Session } from "open-sse/executors/t3-chat-web.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
+import { parsePoeCookie } from "open-sse/executors/poe-web.js";
+import { v0SessionCookie } from "open-sse/executors/v0-vercel-web.js";
 import { ANTIGRAVITY_IDE_USER_AGENT, KIMI_PLATFORM_CHAT_URL } from "../../../../../../open-sse/providers/shared.js";
 import { getProviderConnectionById, updateProviderConnection, getSettings } from "@/lib/localDb";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
@@ -1262,6 +1264,12 @@ export async function testSingleConnection(id) {
     if (connection.provider === "copilot-web") {
       const check = checkCopilotWebCredential(connection.apiKey || connection.providerSpecificData?.cookie);
       if (check.expired) return { valid: false, error: check.error, latencyMs: 0, testedAt: new Date().toISOString() };
+    }
+    if (connection.provider === "poe-web" && !parsePoeCookie(connection.apiKey)) {
+      return { valid: false, error: "Paste the p-b cookie value or a Cookie header with exactly one p-b from poe.com", latencyMs: 0, testedAt: new Date().toISOString() };
+    }
+    if (connection.provider === "v0-vercel-web" && !v0SessionCookie({ apiKey: connection.apiKey })) {
+      return { valid: false, error: "Paste the __vercel_session cookie value or a Cookie header with exactly one __vercel_session from v0.dev", latencyMs: 0, testedAt: new Date().toISOString() };
     }
     if (connection.provider === "zenmux-free" && !extractZenmuxCtoken(connection.apiKey)) {
       return { valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken", latencyMs: 0, testedAt: new Date().toISOString() };

@@ -1,4 +1,5 @@
 import { validateFirecrawlBaseUrl, validateFirecrawlHeaders, parseFirecrawlHeaders } from "open-sse/shared/firecrawlConfig.js";
+import firecrawl from "../../providers/registry/firecrawl.js";
 import { parseContext7LibraryId } from "../../shared/context7LibraryId.js";
 // Returns normalized shape across all providers
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -156,7 +157,7 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 
   const fmt = format || getDefaultFormat();
-  const formats = providerConfig?.formats;
+  const formats = provider === "firecrawl" ? firecrawl.fetchConfig.formats : providerConfig?.formats;
   if (Array.isArray(formats) && formats.length && !formats.includes(fmt)) {
     return {
       success: false,
@@ -269,7 +270,7 @@ async function runFirecrawl({ url, fmt, timeoutMs, apiKey, maxCharacters, costPe
   }
   const accounting = mediaAccounting(json, provider, "fetch");
   const d = json?.data || {};
-  const text = truncate(d.markdown || d.html || d.text || "", maxCharacters);
+  const text = truncate(d[fmt], maxCharacters);
   const title = d.metadata?.title || null;
   return {
     success: true,

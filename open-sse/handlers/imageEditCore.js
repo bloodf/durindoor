@@ -4,7 +4,7 @@ import { PROVIDER_MEDIA } from "../providers/index.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
-import { mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { headerOnlyCancel, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 const XAI_IMAGE_EDIT_FIELDS = new Set(["n", "response_format", "quality", "resolution", "aspect_ratio", "storage_options"]);
 
@@ -91,8 +91,13 @@ export function deriveImageEditsUrl(imageConfig) {
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} [options.log]
  * @param {AbortSignal} [options.signal] - Client cancellation signal forwarded to the provider
- * @param {function} [options.onRequestSuccess]
- * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string }>}
+ * @param {function} [options.onRequestSuccess] - Called only after the 2xx body is fully read
+ * A client cancel while a non-2xx error body is read also returns 499, so the
+ * caller neither cools the account nor falls back.
+ * A client cancel while the 2xx body is read returns 499 with
+ * `cancelledAfterHeaders: true` and no usage: the unread body could have been an
+ * error envelope, so the status alone proves no billable work and records nothing.
+ * @returns {Promise<{ success: boolean, response: Response, status?: number, error?: string, cancelledAfterHeaders?: boolean }>}
  */
 export async function handleImageEditCore({
   formData,
@@ -145,17 +150,28 @@ export async function handleImageEditCore({
     if (signal?.aborted || err?.name === "AbortError") return createErrorResult(499, "Image edit request aborted");
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
+  if (!res.ok) {
+    let errInfo;
+    try {
+      errInfo = await parseUpstreamError(res, null, { signal });
+    } catch (err) {
+      // A client cancel mid error-body read is a cancel, not an upstream
+      // failure: no account cooldown, no fallback, no usage.
+      if (signal?.aborted) return createErrorResult(499, "Image edit request aborted");
+      throw err;
+    }
+    return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
+  }
   let text;
   try {
-    if (!res.ok) {
-      const errInfo = await parseUpstreamError(res, null, { signal });
-      return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
-    }
     text = await res.text();
-  } catch (error) {
-    if (signal?.aborted) return createErrorResult(499, "Image edit request aborted");
-    throw error;
+  } catch (err) {
+    // Other read failures keep propagating: the provider may already have billed.
+    if (!signal?.aborted) throw err;
+    // Nothing of the body was read, so the 2xx alone proves no billable work.
+    return headerOnlyCancel(createErrorResult(499, "Image edit request aborted"), log, provider, model);
   }
+  // Account health clears only once the successful body has been read.
   if (onRequestSuccess) await onRequestSuccess();
   let value = null;
   try { value = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }

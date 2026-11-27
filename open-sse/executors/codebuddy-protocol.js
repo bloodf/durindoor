@@ -1,6 +1,7 @@
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
-import { ROLE } from "../translator/schema/index.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { OPENAI_FINISH, ROLE } from "../translator/schema/index.js";
+import { createSseFrameReader, replaceSseFrameData } from "../utils/sseFrames.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const NEUTRAL_PROMPT = "You are a helpful AI assistant that helps with software engineering tasks.";
 const AGENT_PATTERN = /you are claude code|claude.?code.{1,80}official.{1,80}cli|anthropic.{1,80}official.{1,80}cli|anxthxropic.{1,80}official.{1,80}cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s{0,80}=\s{0,80}(?:cli|vscode|jetbrains|gui)|claude.?code.{1,80}issues|give feedback.{1,80}claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>/i;
@@ -73,40 +74,146 @@ export function normalizeCodeBuddyRequest(body) {
   return body;
 }
 
-/** Normalize SSE chunks while retaining provider dispatch metadata. */
+/**
+ * Normalize CodeBuddy SSE streams using the shared WHATWG SSE frame reader
+ * while retaining provider dispatch metadata (upstream 9router #2954, #5902).
+ * Normalizes empty finish reasons to null, drops empty function_call shells,
+ * suppresses duplicate [DONE] sentinels, and emits one terminal finish chunk
+ * before [DONE] when a clean turn ends with open choices and no upstream error.
+ *
+ * A usage-only frame (choices: []) is held until the terminal chunk exists,
+ * then folded into it. Forwarding it earlier duplicated usage and made the
+ * upstream terminal tracker read the usage frame as an incoherent turn
+ * (9router #5902 review finding).
+ */
 export function normalizeCodeBuddyResponse(result) {
   const response = result.response;
   if (!response?.ok || !response.body || !response.headers.get("content-type")?.includes("text/event-stream")) return result;
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let pending = "";
-  const rewrite = (line) => {
-    if (!line.startsWith("data:")) return line;
-    try {
-      const chunk = JSON.parse(line.slice(5));
-      if (!Array.isArray(chunk.choices)) return line;
-      for (const choice of chunk.choices) {
-        if (choice.finish_reason === "") choice.finish_reason = null;
-        const call = choice.delta?.function_call;
-        if (call && !call.name && !call.arguments) delete choice.delta.function_call;
-      }
-      return `data: ${JSON.stringify(chunk)}`;
-    } catch { return line; }
+  const reader = createSseFrameReader();
+  const openChoices = new Map();
+  const finishedChoices = new Set();
+  let lastChunk = null;
+  let usage = undefined;
+  // Held usage-only frame, emitted after the terminal chunk or at EOF.
+  let pendingUsageWire = null;
+  let errorSeen = false;
+  let doneSeen = false;
+
+  /** Emit the held usage-only frame in its original wire form. */
+  const flushPendingUsage = (controller) => {
+    if (!pendingUsageWire) return;
+    controller.enqueue(encoder.encode(pendingUsageWire));
+    pendingUsageWire = null;
   };
+
+  const emitFrame = (frame, controller) => {
+    if (doneSeen) return;
+    const wire = frame.wire ?? `${frame.raw}\n\n`;
+    if (frame.eventName?.trim() === "error") {
+      errorSeen = true;
+      // A failed turn keeps the upstream order: usage before the error.
+      flushPendingUsage(controller);
+    }
+    if (!frame.hasData) {
+      controller.enqueue(encoder.encode(wire));
+      return;
+    }
+    const payload = frame.data.trim();
+    if (payload === "[DONE]") {
+      doneSeen = true;
+      if (!errorSeen && openChoices.size > 0 && lastChunk) {
+        const { id, model, created } = lastChunk;
+        const choices = Array.from(openChoices, ([index, toolCallSeen]) => ({
+          index,
+          delta: {},
+          finish_reason: toolCallSeen ? OPENAI_FINISH.TOOL_CALLS : OPENAI_FINISH.STOP,
+        }));
+        const terminal = {
+          id,
+          model,
+          created,
+          object: "chat.completion.chunk",
+          choices,
+          ...(usage !== undefined ? { usage } : null),
+        };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(terminal)}\n\n`));
+        // The terminal chunk carries the held usage: usage reaches the client
+        // exactly once, after one coherent finish.
+        pendingUsageWire = null;
+      } else if (pendingUsageWire) {
+        // No terminal chunk to fold the usage into: keep the upstream frame.
+        flushPendingUsage(controller);
+      }
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      return;
+    }
+    try {
+      const chunk = JSON.parse(payload);
+      if (chunk?.error || chunk?.type === "error") {
+        errorSeen = true;
+        // A failed turn keeps the upstream order: usage before the error.
+        flushPendingUsage(controller);
+      }
+      if (chunk?.usage) usage = chunk.usage;
+      // A usage-only frame carries no choice. Hold it back so it cannot be
+      // read as a turn end before the finish chunk exists.
+      if (chunk?.usage && !(Array.isArray(chunk?.choices) && chunk.choices.length > 0)) {
+        pendingUsageWire = wire;
+        return;
+      }
+      if (Array.isArray(chunk?.choices)) {
+        let changed = false;
+        chunk.choices.forEach((choice, position) => {
+          if (!choice || !isObject(choice)) return;
+          const index = choice.index ?? position;
+          if (choice.finish_reason === "") {
+            choice.finish_reason = null;
+            changed = true;
+          }
+          const call = choice.delta?.function_call;
+          if (call && !call.name && !call.arguments) {
+            delete choice.delta.function_call;
+            changed = true;
+          }
+          if (choice.finish_reason) {
+            finishedChoices.add(index);
+            openChoices.delete(index);
+          } else if (choice.delta && isObject(choice.delta) && Object.keys(choice.delta).length > 0 && !finishedChoices.has(index)) {
+            const hasTool = Boolean(choice.delta.tool_calls?.length);
+            openChoices.set(index, hasTool || openChoices.get(index) === true);
+            lastChunk = chunk;
+          }
+        });
+        controller.enqueue(encoder.encode(changed ? replaceSseFrameData(frame, JSON.stringify(chunk)) : wire));
+        return;
+      }
+    } catch {
+      // Leave parsing of other upstream frames to the downstream SSE handler.
+    }
+    controller.enqueue(encoder.encode(wire));
+  };
+
   const transform = new TransformStream({
-    transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      const lines = pending.split("\n");
-      pending = lines.pop();
-      if (lines.length) controller.enqueue(encoder.encode(lines.map(rewrite).join("\n") + "\n"));
+    transform(bytes, controller) {
+      for (const frame of reader.push(decoder.decode(bytes, { stream: true }))) {
+        emitFrame(frame, controller);
+      }
     },
     flush(controller) {
-      pending += decoder.decode();
-      if (pending) controller.enqueue(encoder.encode(rewrite(pending)));
+      const tail = decoder.decode();
+      if (tail) {
+        for (const frame of reader.push(tail)) emitFrame(frame, controller);
+      }
+      for (const frame of reader.flush()) emitFrame(frame, controller);
+      // A stream that ended without [DONE] still owes the client its usage.
+      flushPendingUsage(controller);
     },
   });
   const headers = new Headers(response.headers);
   headers.delete("content-length");
+  headers.delete("content-encoding");
   const normalized = new Response(response.body.pipeThrough(transform), { status: response.status, statusText: response.statusText, headers });
   transferProviderAttemptDispatch(response, normalized);
   return { ...result, response: normalized };

@@ -1,4 +1,4 @@
-import { WebSessionExecutor } from "./web-session-executor.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 const API = "https://app.blackbox.ai/api/chat";
 function completion(content, model) { return new Response(JSON.stringify({ id: `chatcmpl-${crypto.randomUUID()}`, object: "chat.completion", created: Math.floor(Date.now()/1000), model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json" } }); }
 function chunks(content, model) { const id = `chatcmpl-${crypto.randomUUID()}`; return [[{role:"assistant"},null],[{content},null],[{},"stop"]].map(([delta,finish_reason]) => ({ id, object:"chat.completion.chunk", created: Math.floor(Date.now()/1000), model, choices:[{index:0,delta,finish_reason}] })); }

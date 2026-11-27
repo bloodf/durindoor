@@ -44,3 +44,17 @@ Storybook inventory above and the Liquid chat-only assertion before it was
 updated. The corrected assertion passed in the 69-test focused rerun; the full
 suite was not rerun after that test-only correction. The complete CI gate is
 therefore not green. Root lint and commitlint from `origin/main` to `HEAD` pass.
+
+## Gate evidence follow-up
+
+The evidence gate selects `tests/unit/liquid-systemone-review.test.js` explicitly.
+That standalone offline suite now covers dispatch through the real proxy transport
+with a stubbed fetch boundary: fixed Liquid host, ignored host metadata, model-ID
+validation, redirect refusal, and separate OpenRouter credentials and endpoint.
+The existing Liquid catalog contract now asserts the complete six-model inventory
+and exact model kinds as well as retaining its three-chat-model assertion; no
+unexpected model rows are ignored by the complete-inventory check.
+
+Validation: the exact gate selector passed 13 tests. The combined seven-file
+Liquid/System One/OpenRouter/Laya focused run passed all 82 tests. No production
+code changed in this follow-up, and no live provider requests were made.

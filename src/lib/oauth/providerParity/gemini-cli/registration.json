@@ -1,0 +1,9 @@
+{
+  "status": "staged",
+  "provider": "gemini-cli",
+  "module": "src/lib/oauth/providerParity/gemini-cli/index.js",
+  "exports": {
+    "exchangeGeminiCode": "Replace the gemini-cli exchangeToken slot in src/lib/oauth/providers.js; preserve the existing authorization flow store and proxy selection.",
+    "refreshGeminiDiscoveryToken": "Use in gemini-cli customResolver refreshFn in src/app/api/providers/[id]/models/modelsConfig.js with GEMINI_CONFIG and refreshGoogleToken; preserve the selected proxy as the fifth refreshGoogleToken argument."
+  }
+}

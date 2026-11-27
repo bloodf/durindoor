@@ -37,7 +37,7 @@ without raw upstream messages.
 
 ## Verification and continuity
 
-`tests/unit/cli-oauth-flow-ownership.test.js` runs the actual CommonJS menu,
+`tests/unit/cli-provider-flow-ownership.test.js` runs the actual CommonJS menu,
 helper and API client through an intercepted `http.request` into the actual
 public GET/POST handlers and real flow store/completion code. Provider network,
 authorization fixtures, UI, clipboard and credential files are mocked; no real
@@ -56,8 +56,12 @@ installation. No full-suite, live-provider, browser, Docker or remote changes
 are part of this unit.
 
 Final scoped validation: 115 assertions passed across nine files:
-cli-oauth-flow-ownership (34), cli-providers-auto-ping (22),
+cli-provider-flow-ownership (34), cli-providers-auto-ping (22),
 oauth-route-bound-flow (12), oauth-flow-store (10), oauth-flow-lifecycle (6),
 cli-fast-path (4), cli-admin-combos (15), cli-api-key-expiry (4), and
 root-cli-advisories (8). Explicit ESLint checks on the changed JavaScript files
 and `git diff --check` passed. No baseline changes.
+
+The evidence gate selects `unit/cli-provider-flow-ownership.test.js` from the
+`tests/` directory. The suite was renamed to match that selector; all 34
+scenarios and assertions are preserved unchanged.

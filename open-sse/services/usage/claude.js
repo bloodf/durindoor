@@ -11,7 +11,7 @@ import { U, fetchReadWithTimeout, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
-import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
@@ -112,7 +112,7 @@ const OBSERVED_WINDOWS = [
 ];
 
 export function observeClaudeUsageHeaders(accessToken, headers) {
-  if (!accessToken || typeof headers?.get !== "function") return;
+  if (!accessToken || !isFunction(headers?.get)) return;
   const key = getOAuthCacheKey(accessToken);
   const now = Date.now();
   const windows = { ...observedQuotas.get(key) };

@@ -36,3 +36,9 @@ Result: **4 files passed, 49 tests passed, 0 failures**, 2026-11-27 at 11:41:47 
 An initial run found an incorrect test assumption: an ordinary 429 with a non-credit body is not necessarily request-scoped. The fixture was corrected to use Fast mode; the final fixture explicitly reports scoped Fable rejection with healthy shared weekly quota. No production classifier was changed to satisfy the test.
 
 `git diff --check` passed. No baseline edits, full suite, build, live provider calls, agents, pushes or GitHub mutations were performed. No remaining implementation gaps were found in this bounded unit. Full local CI and independent review remain merge prerequisites outside this work order.
+
+## Gate correction
+
+The independent gate rejected implementation commit `9732e2d1ab60971c053ef085236d34caebe24ac2` for one `anti-slop/no-runtime-typeof` diagnostic in the observer's header-method guard. Its scoped tests passed (97 files, 1,217 tests), as reported by the orchestrator. Replaced that guard with the existing `isFunction` utility; no lint exemptions or baseline changes were added.
+
+Local correction validation: `timeout 300 pnpm run lint:anti-slop` passed with zero diagnostics across 3,226 files. The same four-file acceptance command above passed again with a private HOME/DATA_DIR/cache and credential-free environment: **49/49 tests, 4/4 files**, started 2026-11-27 11:45:11 UTC, duration 13.98 seconds. `git diff --check` passed. Full CI and independent merge review remain outside this work order.

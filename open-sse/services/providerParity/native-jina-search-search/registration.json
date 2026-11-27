@@ -1,0 +1,61 @@
+{
+  "registered": false,
+  "canonicalId": "jina-search",
+  "aliases": ["jina-search"],
+  "requestOnlyAliases": ["jina-ai", "jina"],
+  "credentialFallbacks": ["jina-ai"],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/handlers/search/jinaSearch.ts",
+      "src/shared/validation/schemas/apiV1.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["JINA_SEARCH_ID", "JINA_SEARCH_REQUEST_ALIASES", "JINA_SEARCH_CREDENTIAL_FALLBACKS", "JINA_SEARCH_ORIGIN", "JINA_SEARCH_URL", "JINA_SEARCH_DEFAULT_TIMEOUT_MS", "JINA_SEARCH_MAX_TIMEOUT_MS", "searchConfig", "searchModels", "jinaSearchProviderDefinition"],
+    "adapter.js": ["jinaSearchAdapter", "buildJinaSearchBody", "normalizeJinaSearch", "jinaSearchHeaders", "sanitizeJinaQuery", "safeResultUrl", "invalid"],
+    "service.js": ["handleJinaSearchNative", "listJinaSearchModels"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {
+    "webSearch": ["jina-search"]
+  },
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "identity": "selected connection only; connectionId recorded in accounting; no credential mutation, cache, refresh, replay or failover"
+  },
+  "endpoints": {
+    "search": "https://s.jina.ai/",
+    "discovery": null
+  },
+  "envelope": {
+    "request": "POST https://s.jina.ai/ JSON { q, num: min(max_results || 5, 50), gl?: country (upper-cased), hl?: language, page?: offset when > 0 } with Content-Type/Accept application/json and Authorization: Bearer",
+    "response": "local search envelope { provider: 'jina-search', query, results: SearchResult[], answer: null, usage: { queries_used: 1, search_cost_usd: 0.002 }, metrics, errors } rebuilt from validated items of a bare array, `data` or `results`"
+  },
+  "integration": {
+    "provider": "add jinaSearchProviderDefinition as new open-sse/providers/registry/jina-search.js (serviceKinds ['webSearch'], searchConfig); no existing local provider uses this id, so nothing is replaced",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleJinaSearchNative for provider 'jina-search' before tryDedicatedProvider; callers.js/normalizers.js have no jina-search builder or normalizer: the generic fallback would POST { query, max_results, search_type } (not the source { q, num } envelope) and normalize to zero results",
+    "route": "src/sse/handlers/search.js handleSingleProviderSearch resolves `jina` to the jina-ai embedding provider; request-only aliases jina-ai/jina -> jina-search apply to /v1/search routing only and must never change resolveProviderId",
+    "credentials": "source reuses jina-ai connections (SEARCH_CREDENTIAL_FALLBACKS); registration must select from jina-search first, then jina-ai, keeping the selected connection's identity and quota scope; jina-reader reuse is a comment in the source registry, not a mapping",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "search_type 'web' only; time_range only absent or 'any'; domain_filter, content_options and provider_options refused unless empty (the source silently drops them)",
+    "query 1..500 characters after NFKC/whitespace normalization; control bytes refused",
+    "max_results positive integer, clamped to 50 as the source does; offset integer 0..100 forwarded verbatim as `page` (source mapping)",
+    "country two letters; language 2-3 letters with optional short region",
+    "fixed origin https://s.jina.ai; caller/connection base URL overrides are not honored; redirects refused",
+    "15s default / 60s maximum per-call deadline, also bounded by an absolute deadlineAt; 8MiB success and 16KiB error response bounds",
+    "result URLs must be public http(s) without userinfo; unsafe items are dropped and counted in errors",
+    "upstream error messages and bodies are never relayed",
+    "Jina meta.usage.tokens recorded as nativeUnits.jina_tokens only; ledger cost stays unknown",
+    "no streaming, answer synthesis, polling, browser or WebSocket protocol; no dynamic model discovery exists in the source"
+  ]
+}

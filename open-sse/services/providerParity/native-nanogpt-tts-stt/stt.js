@@ -22,6 +22,11 @@
 // the first); other client fields are not forwarded, as in the source; a JSON
 // answer must be an object with a string `text`, and a text answer must not be
 // JSON or HTML.
+//
+// createNanogptDocumentedSttAdapter (the instance registration uses) takes its
+// per-model formats from NANOGPT_DOCUMENTED_STT_MODELS, which adds srt and vtt
+// for whisper-1; a subtitle answer must be valid SubRip or WebVTT (see
+// ./subtitles.js). createNanogptSttAdapter keeps the original subset unchanged.
 import { Buffer } from "node:buffer";
 import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
@@ -29,15 +34,18 @@ import { readBounded } from "../../../handlers/codexSttAudio.js";
 import { createErrorResult, errorEnvelopeMessage } from "../../../utils/error.js";
 import { isFunction, isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
-  NANOGPT_MAX_STT_FILE_BYTES, NANOGPT_MAX_TRANSCRIPT_BYTES, NANOGPT_PROVIDER_ID, NANOGPT_STT_MODELS, NANOGPT_STT_TIMEOUT_MS,
-  NANOGPT_TRANSCRIPTION_URL, nanogptSttModel,
+  NANOGPT_DOCUMENTED_STT_MODELS, NANOGPT_MAX_STT_FILE_BYTES, NANOGPT_MAX_TRANSCRIPT_BYTES, NANOGPT_PROVIDER_ID, NANOGPT_STT_MODELS,
+  NANOGPT_STT_TIMEOUT_MS, NANOGPT_TRANSCRIPTION_URL,
 } from "./config.js";
 import { discard, invalid, lostResult, nanogptToken, sendOnce, withAcceptedJob } from "./http.js";
+import { NANOGPT_SUBTITLE_CONTENT_TYPES, isSubtitleFormat, subtitleTypeAllowed, validSubtitles } from "./subtitles.js";
 
 const MODALITY = "stt";
 const LABEL = "transcription";
 /** Union of every model's response formats. */
 export const NANOGPT_TRANSCRIPTION_RESPONSE_FORMATS = Object.freeze(["json", "text", "verbose_json"]);
+/** Union of every documented model's response formats. */
+export const NANOGPT_DOCUMENTED_TRANSCRIPTION_RESPONSE_FORMATS = Object.freeze(["json", "text", "verbose_json", "srt", "vtt"]);
 const JSON_FORMATS = new Set(["json", "verbose_json"]);
 const GRANULARITY_FIELDS = Object.freeze(["timestamp_granularities[]", "timestamp_granularities"]);
 const MAX_FILE_NAME = 255;
@@ -65,12 +73,14 @@ function optionalText(formData, name) {
 /**
  * Check a transcription request and build the source's multipart body.
  *
+ * @param {object} [options] - gateway-side settings, never client fields
+ * @param {readonly object[]} [options.models] - model rows with their response formats (NANOGPT_STT_MODELS by default)
  * @returns {Promise<{ body: FormData, responseFormat: string } | object>} the body, or a 400 error result with `local: true`
  */
-export async function buildNanogptTranscriptionRequest(model, formData, { kind = "transcription" } = {}) {
+export async function buildNanogptTranscriptionRequest(model, formData, { kind = "transcription", models = NANOGPT_STT_MODELS } = {}) {
   if (kind !== "transcription") return invalid("NanoGPT audio translations are not supported here");
-  const entry = nanogptSttModel(model);
-  if (!entry) return invalid(`Unsupported NanoGPT transcription model: ${model}. Use one of: ${NANOGPT_STT_MODELS.map((m) => m.id).join(", ")}`);
+  const entry = models.find((row) => row.id === model) ?? null;
+  if (!entry) return invalid(`Unsupported NanoGPT transcription model: ${model}. Use one of: ${models.map((m) => m.id).join(", ")}`);
   const file = field(formData, "file");
   if (!file || !isFunction(file.arrayBuffer)) {
     return invalid(field(formData, "url") !== null ? "NanoGPT transcription takes an uploaded file, not a url" : "Missing required field: file");
@@ -147,17 +157,54 @@ function looksLikeJsonDocument(text) {
 
 const textResponse = (text) => new Response(text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", ...CORS } });
 
+/** A subtitle answer: valid SubRip or WebVTT text, or a JSON error envelope. */
+function subtitleResult(text, isJson, responseFormat, accounting) {
+  if (isJson) {
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // The parser's message quotes the body, so it is dropped.
+    }
+    if (isRecord(data) && errorEnvelopeMessage(data)) return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "NanoGPT transcription answered with an error payload");
+    return lostResult(MODALITY, LABEL, `answered without a ${responseFormat} transcript`);
+  }
+  if (!validSubtitles(responseFormat, text)) return lostResult(MODALITY, LABEL, `returned a malformed ${responseFormat} transcript`);
+  // Subtitles carry no usage or audio duration.
+  return {
+    success: true,
+    response: new Response(text, { status: 200, headers: { "Content-Type": NANOGPT_SUBTITLE_CONTENT_TYPES[responseFormat], ...CORS } }),
+    usageValue: undefined,
+    nativeUnits: {},
+    accounting,
+  };
+}
+
 /**
+ * The original adapter: json and text for both models, verbose_json for whisper-1.
+ *
  * @param {object} [options]
  * @param {Function} [options.fetchImpl] - transport, proxyAwareFetch by default; tests inject a mock
  * @param {number} [options.timeoutMs] - deadline for the request and its body
  * @param {number} [options.maxTranscriptBytes]
  */
-export function createNanogptSttAdapter({ fetchImpl, timeoutMs = NANOGPT_STT_TIMEOUT_MS, maxTranscriptBytes = NANOGPT_MAX_TRANSCRIPT_BYTES } = {}) {
+export function createNanogptSttAdapter(options = {}) {
+  return buildSttAdapter(NANOGPT_STT_MODELS, NANOGPT_TRANSCRIPTION_RESPONSE_FORMATS, options);
+}
+
+/**
+ * Every response format NanoGPT documents per model (srt and vtt added for
+ * whisper-1); the adapter registration uses. Same options as createNanogptSttAdapter.
+ */
+export function createNanogptDocumentedSttAdapter(options = {}) {
+  return buildSttAdapter(NANOGPT_DOCUMENTED_STT_MODELS, NANOGPT_DOCUMENTED_TRANSCRIPTION_RESPONSE_FORMATS, options);
+}
+
+function buildSttAdapter(models, responseFormats, { fetchImpl, timeoutMs = NANOGPT_STT_TIMEOUT_MS, maxTranscriptBytes = NANOGPT_MAX_TRANSCRIPT_BYTES } = {}) {
   return {
     provider: NANOGPT_PROVIDER_ID,
-    models: NANOGPT_STT_MODELS,
-    responseFormats: NANOGPT_TRANSCRIPTION_RESPONSE_FORMATS,
+    models,
+    responseFormats,
     /**
      * STT core result contract (sttCore.js): `{ success: true, response,
      * usageValue, nativeUnits, accounting }`, or an error result; `local` marks
@@ -165,7 +212,7 @@ export function createNanogptSttAdapter({ fetchImpl, timeoutMs = NANOGPT_STT_TIM
      * processed and billed.
      */
     async transcribe({ model, formData, credentials, kind, signal }) {
-      const built = await buildNanogptTranscriptionRequest(model, formData, { kind });
+      const built = await buildNanogptTranscriptionRequest(model, formData, { kind, models });
       if (!built.body) return built;
       const token = nanogptToken(credentials);
       if (!token) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, "No usable NanoGPT API key on this connection");
@@ -179,7 +226,8 @@ export function createNanogptSttAdapter({ fetchImpl, timeoutMs = NANOGPT_STT_TIM
       try {
         const contentType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
         const isJson = /(^application\/json$|\+json$)/.test(contentType);
-        if (/html/.test(contentType) || (!isJson && JSON_FORMATS.has(built.responseFormat))) {
+        const subtitles = isSubtitleFormat(built.responseFormat);
+        if (/html/.test(contentType) || (!isJson && JSON_FORMATS.has(built.responseFormat)) || (subtitles && !isJson && !subtitleTypeAllowed(built.responseFormat, contentType))) {
           discard(response);
           return lostResult(MODALITY, LABEL, `answered without a ${built.responseFormat} transcript`);
         }
@@ -193,6 +241,7 @@ export function createNanogptSttAdapter({ fetchImpl, timeoutMs = NANOGPT_STT_TIM
         }
         const accounting = mediaAccounting(null, NANOGPT_PROVIDER_ID, MODALITY);
         accounting.meta = { model: built.body.get("model"), responseFormat: built.responseFormat };
+        if (subtitles) return subtitleResult(text, isJson, built.responseFormat, accounting);
         if (!isJson) {
           // A text answer must be the transcript itself, not a JSON or HTML document.
           if (/^\s*<(!doctype|html)/i.test(text) || looksLikeJsonDocument(text)) {

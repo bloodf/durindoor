@@ -39,6 +39,22 @@ export const NANOGPT_STT_MODELS = freezeAll([
   { id: "gpt-4o-transcription", name: "GPT-4o Transcription", kind: "stt", responseFormats: Object.freeze(["json", "text"]), timestamps: false },
 ]);
 
+/**
+ * Transcription rows with every response_format NanoGPT documents for each
+ * model, used by createNanogptDocumentedSttAdapter. NanoGPT's public audio model
+ * catalog (GET https://nano-gpt.com/api/v1/audio-models?type=stt, row
+ * `whisper-1`) lists `supported_parameters.response_formats` json, text,
+ * verbose_json, srt, vtt and `timestamp_granularities` segment, word. It has no
+ * `gpt-4o-transcription` row (only gpt-4o-mini-transcribe*, json only), so that
+ * model keeps the original subset. No row lists diarized_json, and NanoGPT
+ * documents diarization only for Elevenlabs-STT on its async /api/transcribe
+ * workflow, so diarized_json stays refused for both models.
+ */
+export const NANOGPT_DOCUMENTED_STT_MODELS = freezeAll([
+  { id: "whisper-1", name: "Whisper 1", kind: "stt", responseFormats: Object.freeze(["json", "text", "verbose_json", "srt", "vtt"]), timestamps: true },
+  { id: "gpt-4o-transcription", name: "GPT-4o Transcription", kind: "stt", responseFormats: Object.freeze(["json", "text"]), timestamps: false },
+]);
+
 /** Source default voice (`body.voice || providerConfig.defaultVoice || "alloy"`; nanogpt has no defaultVoice). */
 export const NANOGPT_DEFAULT_VOICE = "alloy";
 /** Source default container (normalizeSpeechResponseFormat: missing -> mp3). */

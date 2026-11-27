@@ -74,12 +74,12 @@ Transcription (`POST https://nano-gpt.com/api/v1/audio/transcriptions`):
 - **Refusals before submit.** These are refused with `local: true` before anything is sent:
   - Unknown models, including chat models.
   - Streaming (`stream`, or a `stream_format` other than `audio`).
-  - `pcm` speech output. It has no signature to check, so the adapter could not tell audio from an error page.
+  - `pcm` speech output, on the original adapter only. The documented adapter accepts it; see [Documented output formats](#documented-output-formats).
   - Unknown speech containers, and two different named containers.
   - A wrong `speed`, `voice` or `instructions` type, or a voice named twice with different values.
   - A speech request body over 256 KiB.
   - Translations. The source registers no translation route for NanoGPT, and `sttConfig.translationModels: []` keeps `supportsSttTranslation` false.
-  - `srt`, `vtt` and `diarized_json` output. The source passes any value through; this subset keeps only formats whose answer can be checked.
+  - `srt` and `vtt` output on the original adapter only; the documented adapter accepts them for `whisper-1`. `diarized_json` stays refused on both, because NanoGPT documents it for neither model.
   - `verbose_json` or timestamps on `gpt-4o-transcription`. This is a conservative restriction: the source does not say NanoGPT returns them for that model.
   - Granularities without `verbose_json`, or values other than `segment` and `word`.
   - A bad `temperature`, or `language` or `prompt` over 4096 characters.
@@ -106,9 +106,9 @@ Transcription (`POST https://nano-gpt.com/api/v1/audio/transcriptions`):
 Integration points, from `registration.json`:
 
 1. In `open-sse/providers/registry/nanogpt.js`, keep every existing field. Set `serviceKinds` to `["llm", "tts", "stt"]`, append the model rows with `kind`, and add `sttConfig` from `NANOGPT_AUDIO_DEFINITION` (with `translationModels: []`). Add no `ttsConfig`, so the generic `openaiCompat` handler can never serve NanoGPT.
-2. In `open-sse/handlers/ttsProviders/index.js`, add `nanogpt: nanogptTtsAdapter` to `TTS_ADAPTERS`.
+2. In `open-sse/handlers/ttsProviders/index.js`, add `nanogpt: nanogptDocumentedTtsAdapter` to `TTS_ADAPTERS`.
 3. In `src/sse/handlers/tts.js`, add `nanogpt` to `NAMED_FORMAT_PROVIDERS`. `recordAcceptedTts` already exists.
-4. In `open-sse/handlers/sttCore.js`, add a `nanogpt` branch before the format switch so `transcribeOpenAICompatible` never serves NanoGPT.
+4. In `open-sse/handlers/sttCore.js`, add a `nanogpt` branch that calls `nanogptDocumentedSttAdapter` before the format switch, so `transcribeOpenAICompatible` never serves NanoGPT.
 5. In `src/sse/handlers/stt.js`, record `result.acceptedJob` once and stop account fallback for it.
 6. In `docs/providers/catalog.mdx`, list the NanoGPT tts and stt kinds.
 
@@ -136,3 +136,102 @@ The tests cover:
 `eslint` and the repository oxlint config (with the anti-slop plugin) report no problems on the changed files.
 
 Passing these tests says nothing about the live NanoGPT service.
+
+## Documented output formats
+
+Follow-up for #2034, also staged and unregistered.
+
+### Why this follow-up exists
+
+The first staging (`4c59a8ea8c`) refused `pcm` speech and `srt` and `vtt`
+transcripts because they were hard to check, not because the source or NanoGPT
+lacks them. This change keeps that original subset in the original factories. It
+adds documented-format factories that accept every format the source forwards
+and NanoGPT documents for these models. `diarized_json` stays refused, now with
+the vendor evidence below.
+
+### Format evidence
+
+| Source | What it says |
+| - | - |
+| OmniRoute `c71f0065a7efe9230ec23b96a12253b050c4d7ad` `open-sse/handlers/audioSpeech.ts` | The default branch sends `normalizeSpeechResponseFormat(body.response_format)`: missing becomes `mp3`, the value is lower-cased, `ogg` becomes `opus`. Any other value, `pcm` included, is forwarded. |
+| OmniRoute `c71f0065…` `open-sse/handlers/audioTranscription.ts` | The default branch forwards `response_format` and `timestamp_granularities[]` and returns the body with NanoGPT's content type. It has no format list for `nanogpt`. |
+| OmniRoute `c71f0065…` `open-sse/config/audioRegistry.ts` | The `nanogpt` rows list models only (tts-1-hd, tts-1; whisper-1, gpt-4o-transcription), with no format fields. |
+| [NanoGPT speech endpoint](https://docs.nano-gpt.com/api-reference/endpoint/speech.md) | "Audio Format Support by Provider": OpenAI (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`) supports `mp3` (default), `opus`, `aac`, `flac`, `wav` and `pcm`. The streaming Content-Type list includes `audio/pcm`. |
+| NanoGPT public model catalog, `GET https://nano-gpt.com/api/v1/audio-models?type=stt` | The `whisper-1` row lists `supported_parameters.response_formats` `json`, `text`, `verbose_json`, `srt` and `vtt`, plus `timestamp_granularities` `segment` and `word`. Its features include "Subtitle format support (SRT, VTT)". There is no `gpt-4o-transcription` row. The `gpt-4o-mini-transcribe*` rows list `json` only and no granularities. No row lists `diarized_json`. |
+| [NanoGPT OpenAI-compatible transcription](https://docs.nano-gpt.com/api-reference/endpoint/audio-transcriptions.md) | Documents no `response_format` values. |
+| [NanoGPT transcribe endpoint](https://docs.nano-gpt.com/api-reference/endpoint/transcribe.md) | `diarize`: "Enable speaker diarization (Elevenlabs-STT only)", on the async `/api/transcribe` workflow. |
+
+The catalog was read with one unauthenticated public GET. No account, key or
+paid request was used.
+
+### Dispositions
+
+| Format | Model | Disposition |
+| - | - | - |
+| `pcm` (speech) | tts-1, tts-1-hd | Added to the documented adapter |
+| `srt` | whisper-1 | Added to the documented adapter |
+| `vtt` | whisper-1 | Added to the documented adapter |
+| `srt`, `vtt`, `verbose_json`, timestamp granularities | gpt-4o-transcription | Still refused. NanoGPT lists no row for this id, and its nearest rows list `json` only. |
+| `diarized_json` | both | Still refused. No catalog row lists it, and NanoGPT documents diarization only for Elevenlabs-STT on `/api/transcribe`. |
+| timestamp granularities with `srt` or `vtt` | whisper-1 | Still refused. Granularities need `verbose_json`, as before. |
+
+### Format validation
+
+#### pcm (`pcm.js`)
+
+Raw PCM has no signature, so the adapter rejects what PCM cannot be. Each rejected answer below is a lost result that may have been billed: status 502 with `acceptedJob` (`jobState: "accepted"`).
+
+- A typed container answer. The type must be `audio/pcm`, octet-stream, or absent.
+- Bytes that start with `ID3`, `OggS`, `fLaC`, `ADIF` or `RIFF…WAVE`. Frame-sync patterns are not checked, because PCM samples can match them.
+- A JSON object or array, or an HTML or XML document.
+- A byte count that does not end on a whole 16-bit frame.
+- `rate` or `channels` parameters that are malformed or out of range.
+
+NanoGPT does not state the sample layout. It names these models as OpenAI's,
+and OpenAI defines PCM as headerless 24 kHz, 16-bit signed little-endian mono.
+The result reports that layout under `pcm` as `source: "openai-pcm-default"`.
+When the answer's `audio/pcm` type names `rate` or `channels`, the result uses
+those values as `source: "content-type"`. The result also reports frames and
+duration.
+
+#### srt and vtt (`subtitles.js`)
+
+Checks are syntax only:
+
+- SubRip needs an index line and `HH:MM:SS,mmm --> HH:MM:SS,mmm` timing.
+- WebVTT needs a `WEBVTT` header, and allows `NOTE`, `STYLE` and `REGION` blocks. It needs optional identifiers and `[HH:]MM:SS.mmm --> [HH:]MM:SS.mmm [settings]` timing.
+- A cue may not end before it starts.
+- CRLF line endings and a byte order mark are allowed.
+- A document with no cues is allowed, for silent audio.
+
+The answer type must be text/plain, a subtitle type or absent. The adapter
+returns the text unchanged, typed `application/x-subrip` or `text/vtt`.
+
+These results count as lost results that may have been billed:
+
+- malformed subtitles
+- an HTML document
+- another media type
+- JSON that is not an error envelope
+
+A JSON error envelope is a 502 refusal, and its text is not quoted.
+
+### What stays the same
+
+- `createNanogptTtsAdapter`, `createNanogptSttAdapter`, `nanogptTtsAdapter` and `nanogptSttAdapter` keep the original subset. The 72 original tests in `tests/unit/native-nanogpt-tts-stt.test.js` are unmodified.
+- Requested-format resolution, `ogg` to `opus`, the mp3 default, and the conflicting-format refusal are unchanged.
+- Auth, the fixed origin, redirect refusal, redaction, abort handling, the deadline, uncertain-billing accounting and the single send without replay are shared `http.js` code and are unchanged.
+- Registration uses `nanogptDocumentedTtsAdapter` and `nanogptDocumentedSttAdapter` (`registration.json` `integrationPoints`, `documentedFormats`).
+
+### Format tests
+
+`tests/unit/nanogpt-native-audio-formats.test.js` covers:
+
+- adapter wire shape and output for `pcm`, `srt` and `vtt`
+- malformed answers recorded as lost results that may have been billed
+- error envelopes, refusals, redaction, abort handling and no replay
+- refusals before submit for the unsupported dispositions
+- the citations in `registration.json`
+
+All tests use closed mocks and make no live requests.

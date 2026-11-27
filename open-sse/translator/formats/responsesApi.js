@@ -44,8 +44,37 @@ export function normalizeStatelessResponseInput(input) {
 }
 
 /**
+ * Inbound Codex agent tasks/replies are new user context, not assistant history
+ * (OmniRoute #21417). Unsupported/opaque content has no lossless Chat equivalent;
+ * represent it as empty reasoning metadata, which the Responses dispatch ignores.
+ */
+function normalizeAgentMessage(item) {
+  if (!item || !isObject(item) || Array.isArray(item) ||
+      (item.type !== RESPONSES_ITEM.AGENT_MESSAGE && item.role !== RESPONSES_ITEM.AGENT_MESSAGE)) return item;
+
+  let text = null;
+  if (isString(item.content)) text = item.content;
+  else if (isString(item.text)) text = item.text;
+  else if (Array.isArray(item.content)) {
+    const parts = [];
+    for (const part of item.content) {
+      if (isString(part)) parts.push(part);
+      else if (part && [RESPONSES_ITEM.INPUT_TEXT, RESPONSES_ITEM.OUTPUT_TEXT, OPENAI_BLOCK.TEXT].includes(part.type) && isString(part.text)) parts.push(part.text);
+      else return { type: RESPONSES_ITEM.REASONING };
+    }
+    text = parts.join("\n");
+  }
+  if (!isString(text) || !text.trim()) return { type: RESPONSES_ITEM.REASONING };
+  const author = isString(item.author) ? item.author : "";
+  const recipient = isString(item.recipient) ? item.recipient : "";
+  const header = author || recipient ? `[Agent message from ${author || "unknown"} to ${recipient || "unknown"}]\n` : "";
+  return { type: RESPONSES_ITEM.MESSAGE, role: ROLE.USER, content: [{ type: RESPONSES_ITEM.INPUT_TEXT, text: header + text }] };
+}
+
+/**
  * Normalize Responses API input to array format.
- * Accepts string or array, returns array of message items.
+ * Accepts string or array, returns array of message items. Native agent items
+ * and ordinary history pass through unchanged; Chat lowering is separate.
  * An empty array is treated like an empty string — providers require at least one user
  * message, so we inject a placeholder rather than forwarding an empty messages[].
  * @param {string|Array} input - raw input from Responses API body
@@ -64,6 +93,11 @@ export function normalizeResponsesInput(input) {
     return input;
   }
   return null;
+}
+
+/** Lower agent context only when converting Responses input to Chat messages. */
+export function normalizeResponsesInputForChat(input) {
+  return normalizeResponsesInput(input)?.map(normalizeAgentMessage) ?? null;
 }
 
 // Strict Responses upstreams reject overlong call_ids with InputValidationError (#393).
@@ -308,7 +342,7 @@ export function convertResponsesApiFormat(body) {
   // serialization contract (tests/unit/responses-file-id-handler.test.js).
   let pendingToolImages = [];
 
-  const inputItems = repairMissingResponsesCallIds(normalizeResponsesInput(body.input));
+  const inputItems = repairMissingResponsesCallIds(normalizeResponsesInputForChat(body.input));
   if (!inputItems) return body;
 
   for (const item of inputItems) {

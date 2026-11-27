@@ -1,3 +1,4 @@
+import { observeClaudeUsageHeaders } from "../services/usage/claude.js";
 import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
@@ -487,14 +488,16 @@ export class BaseExecutor {
         let bodyStr = serialize(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
-        const send = (serializedBody) => {
+        const send = async (serializedBody) => {
           chargeDispatch(urlIndex);
-          return sender.sendRequest(url, {
+          const response = await sender.sendRequest(url, {
             method: "POST", headers, body: serializedBody, signal,
             // Credentials never follow a redirect unless the registry entry says why it must.
             ...(!this.config?.quirks?.allowRedirects && carriesCredential(url, headers, credentials) ? { redirect: "error" } : null),
             ...(directFetch ? { directFetch } : null)
           }, proxyOptions);
+          if (claudeOAuth) observeClaudeUsageHeaders(credentials.accessToken, response.headers);
+          return response;
         };
         let response = await send(bodyStr);
         let responseFormat;

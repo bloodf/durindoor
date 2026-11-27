@@ -599,14 +599,31 @@ describe("staging: native-ocr-foundation is not registered", () => {
     }
   });
 
-  it("is imported by nothing in production", () => {
+  it("is reachable only through enumerated private Vertex siblings, never production", () => {
+    const siblingDir = "open-sse/services/providerParity/native-ocr-vertex-deepseek-ocr";
+    const permittedFoundationConsumers = new Set([
+      `${siblingDir}/adapter.js`,
+      `${siblingDir}/ocr.js`,
+      `${siblingDir}/registration.json`,
+    ]);
     let listed = "";
     try {
-      listed = execFileSync("git", ["grep", "-l", "native-ocr-foundation", "--", "open-sse", "src", "cli"], { cwd: ROOT, encoding: "utf8" });
+      listed = execFileSync("git", ["grep", "-l", "-e", "native-ocr-foundation", "-e", "native-ocr-vertex-deepseek-ocr", "--", "open-sse", "src", "cli"], { cwd: ROOT, encoding: "utf8" });
     } catch (error) {
       if (error.status !== 1) throw error; // 1: no match
     }
     const hits = listed.trim().split("\n").filter(Boolean);
-    expect(hits.every((file) => file.startsWith(`${MODULE_DIR}/`))).toBe(true);
+    const productionConsumers = [];
+    for (const file of hits) {
+      if (file.startsWith(`${MODULE_DIR}/`)) continue;
+      const text = readFileSync(new URL(file, ROOT), "utf8");
+      if (text.includes("native-ocr-foundation")) {
+        if (!permittedFoundationConsumers.has(file)) productionConsumers.push(file);
+      }
+      if (text.includes("native-ocr-vertex-deepseek-ocr")) {
+        if (!file.startsWith(`${siblingDir}/`)) productionConsumers.push(file);
+      }
+    }
+    expect(productionConsumers).toEqual([]);
   });
 });

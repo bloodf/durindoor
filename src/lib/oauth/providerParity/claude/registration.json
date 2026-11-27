@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "module": "./exchange.js",
+  "exports": ["parseClaudeAuthorizationCode", "claudeExchangeFailure"],
+  "integration": "In src/lib/oauth/providers.js claude.exchangeToken, parse code and state before fetch and use claudeExchangeFailure for non-OK responses. Keep flow ownership and state validation in the existing OAuth route."
+}

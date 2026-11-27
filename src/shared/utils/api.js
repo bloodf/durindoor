@@ -1,5 +1,4 @@
 /** Small JSON HTTP client. Empty or non-JSON responses return null. */
-const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
 function throwIfAborted(signal) {
   if (!signal?.aborted) return;
@@ -11,10 +10,13 @@ async function request(method, url, requestOptions, data, jsonParseFallback = nu
   // Mutation wrappers treat null options as omitted.
   const { strictJson = false, defaultHeaders = true, ...options } = requestOptions ?? {};
   throwIfAborted(options.signal);
-  const hasContentType = options.headers && Object.keys(options.headers).some((key) => key.toLowerCase() === "content-type");
-  const headers = { ...(defaultHeaders && !hasContentType ? DEFAULT_HEADERS : null), ...options.headers };
+  // Normalize every Fetch HeadersInit shape and preserve caller content types.
+  const headers = new Headers(options.headers);
+  const addContentType = defaultHeaders && !headers.has("Content-Type");
   const init = { ...options, method };
-  if (Object.keys(headers).length) init.headers = headers;
+  if (addContentType || [...headers].length) {
+    init.headers = { ...(addContentType ? { "Content-Type": "application/json" } : null), ...(options.headers && Object.getPrototypeOf(options.headers) === Object.prototype ? options.headers : Object.fromEntries(headers)) };
+  }
   // Fetch defaults to GET; omit the explicit method for existing read callers.
   if (method === "GET") delete init.method;
   if (data !== undefined) init.body = JSON.stringify(data);

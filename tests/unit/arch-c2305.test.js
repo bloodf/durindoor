@@ -69,6 +69,13 @@ describe("shared HTTP client (#2305)", () => {
     });
   });
 
+  it("preserves caller Headers instances", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+    vi.stubGlobal("fetch", fetchMock);
+    await api.post("/api/items", {}, { headers: new Headers({ "x-9r-password": "pw" }) });
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("x-9r-password")).toBe("pw");
+  });
+
   it("throws one error shape on non-2xx JSON and non-JSON bodies", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 400, statusText: "Bad Request", json: async () => ({ error: "Invalid payload" }) })

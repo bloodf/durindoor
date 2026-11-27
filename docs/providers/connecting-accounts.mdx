@@ -33,6 +33,8 @@ The location on the connection selects the Vertex location inside that project; 
 
 A credential that is a JSON document but not a Google Service Account or ADC file, such as an OAuth client JSON, is rejected with an explanation instead of being sent as an API key.
 
+The same Vertex AI connection also serves Veo video, Gemini speech and transcription, and Lyria music. See [Vertex AI native media](./vertex-media.md) for the supported models and options.
+
 OrcaRouter uses an out-of-band code. Sign in through the link and paste the code shown on its consent page into the modal. It issues a durable API key instead of refreshable OAuth tokens. Operators can configure its auth and API origins through the [environment variables](../reference/environment.mdx).
 
 ## Device code

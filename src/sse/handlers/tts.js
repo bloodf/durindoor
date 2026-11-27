@@ -29,6 +29,10 @@ const CREDENTIALED_PROVIDERS = new Set(
 // Submit-and-poll speech providers: a stored sign-in is refreshed before each job,
 // and the client's named response_format reaches the adapter (never an upstream body).
 const REFRESHED_BEFORE_DISPATCH = new Set(["renderhour"]);
+// Adapters that refuse a response_format they cannot produce: they need the
+// format the client named, not the route's mp3 default. Vertex mints its own
+// Google token per request, so it is not in the refresh set above.
+const NAMED_FORMAT_PROVIDERS = new Set(["renderhour", "vertex"]);
 
 async function handleTtsHandler(request) {
   await captureRequestBillingEpoch(request);
@@ -255,7 +259,7 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
     // A RenderHour plan sign-in is refreshed before its job is submitted.
     const credentials = REFRESHED_BEFORE_DISPATCH.has(provider) ? await checkAndRefreshToken(provider, selected) : selected;
     const dispatch = credentialDispatchSnapshot(credentials);
-    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, ...(REFRESHED_BEFORE_DISPATCH.has(provider) ? { requestedResponseFormat } : null), language, signal: request.signal });
+    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, ...(NAMED_FORMAT_PROVIDERS.has(provider) ? { requestedResponseFormat } : null), language, signal: request.signal });
 
     if (result.success) return { response: await recordSuccess(result, credentials) };
     // A job the provider may bill is recorded once, on this account, and never resubmitted elsewhere.

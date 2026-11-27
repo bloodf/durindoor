@@ -1,4 +1,4 @@
-// Vertex AI Gemini TTS/STT parity, staged. Closed mocks only: every request is
+// Vertex AI Gemini TTS/STT parity, registered on the existing vertex provider. Closed mocks only: every request is
 // answered below, an unexpected request fails the test, token minting is
 // injected, and every credential is synthetic. Passing here says nothing about
 // the live service.
@@ -526,17 +526,18 @@ describe("STT transcriber", () => {
   });
 });
 
-// Isolated staging block: these assert the CURRENT unregistered state only.
-// Registration replaces them with positive registry identity assertions.
-describe("staging (unregistered state)", () => {
-  it("the existing vertex provider has no audio config yet and no TTS adapter is registered", async () => {
+// Isolated registration block: positive registry identity assertions.
+describe("registration state", () => {
+  it("the existing vertex provider carries the audio configs and the canonical TTS adapter", async () => {
     const { default: vertex } = await import("../../open-sse/providers/registry/vertex.js");
+    const { default: speechAdapter } = await import("../../open-sse/services/providerParity/native-vertex-tts-stt/speech.js");
     expect(vertex.id).toBe("vertex");
-    expect(vertex.ttsConfig).toBeUndefined();
-    expect(vertex.sttConfig).toBeUndefined();
-    expect(vertex.serviceKinds).not.toContain("tts");
-    expect(vertex.serviceKinds).not.toContain("stt");
+    expect(vertex.ttsConfig).toMatchObject({ format: "vertex-gemini-tts", models: VERTEX_TTS_CONFIG.models.map(({ id, name }) => ({ id, name })) });
+    expect(vertex.sttConfig).toMatchObject({ format: "vertex-gemini", models: VERTEX_STT_CONFIG.models.map(({ id, name }) => ({ id, name })) });
+    expect(vertex.serviceKinds).toContain("tts");
+    expect(vertex.serviceKinds).toContain("stt");
     const { getTtsAdapter } = await import("../../open-sse/handlers/ttsProviders/index.js");
-    expect(getTtsAdapter("vertex")).toBeFalsy();
+    expect(getTtsAdapter("vertex")).toBe(speechAdapter);
+    expect(getTtsAdapter("vx")).toBe(speechAdapter);
   });
 });

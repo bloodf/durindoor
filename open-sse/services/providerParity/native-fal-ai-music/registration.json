@@ -1,0 +1,80 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/musicRegistry.ts",
+      "open-sse/handlers/musicGeneration.ts",
+      "open-sse/handlers/mediaGeneration/fal.ts",
+      "open-sse/config/falEndpoint.ts",
+      "open-sse/handlers/fal/client.ts",
+      "open-sse/handlers/fal/compatibility.ts",
+      "open-sse/handlers/fal/schema.ts"
+    ],
+    "registryEntry": {
+      "id": "fal-ai",
+      "baseUrl": "https://queue.fal.run",
+      "authType": "apikey",
+      "authHeader": "key",
+      "format": "fal-ai-music"
+    }
+  },
+  "provider": {
+    "canonicalId": "fal-ai",
+    "aliases": ["fal"],
+    "existingDefinition": "open-sse/providers/registry/fal-ai.js (image API-key connection; unchanged)",
+    "serviceKindsToAdd": ["music"],
+    "connectionModes": "unchanged: API key (credentials.apiKey, else credentials.accessToken) sent as `Authorization: Key <key>`; the connection's proxy options are honored",
+    "notCovered": ["fal endpoints other than fal-ai/ace-step", "fal.run direct, stream, realtime and http-websocket transports"]
+  },
+  "models": [
+    { "id": "ace-step", "name": "ACE-Step", "endpoint": "fal-ai/ace-step", "aliases": ["fal-ai/ace-step"], "kind": "music" }
+  ],
+  "endpoints": {
+    "auth": "Authorization: Key <apiKey>",
+    "submit": "POST https://queue.fal.run/fal-ai/ace-step (Content-Type: application/json)",
+    "status": "GET https://queue.fal.run/fal-ai/ace-step/requests/{request_id}/status (or the accept body's status_url, pinned to the queue origin and request id)",
+    "result": "GET https://queue.fal.run/fal-ai/ace-step/requests/{request_id} (or the accept body's response_url, pinned likewise)",
+    "discovery": "GET https://api.fal.ai/v1/models?endpoint_id=fal-ai%2Face-step&expand=openapi-3.0, only for requests with fal_input",
+    "redirects": "refused (submit: manual, reads: error)",
+    "dynamicDiscovery": "OpenAPI 3 input schema from the fal catalog, cached per connection when a definition store is injected"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-fal-ai-music/index.js",
+    "adapter": "default export of adapter.js (also falMusicAdapter from index.js): { async: false, responseFormats: [\"url\"], defaultResponseFormat: \"url\", generate({ model, body, credentials, signal, log }) }",
+    "factory": "createFalMusicAdapter({ definitionStore, timeoutMs, discoveryTimeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxResultBytes, wait, now })",
+    "metadata": "FAL_MUSIC_PROVIDER_METADATA, FAL_MUSIC_MODELS, FAL_MUSIC_MODEL_IDS, FAL_MUSIC_PROVIDER_ID, FAL_MUSIC_PROVIDER_ALIASES, FAL_MUSIC_FORMAT, FAL_MUSIC_RESPONSE_FORMATS, FAL_QUEUE_ORIGIN, FAL_CATALOG_ORIGIN, falMusicModel",
+    "helpers": "buildFalMusicRequest, checkFalMusicEnvelope, falMusicCompatibilityInput, discoverFalDefinition, prepareFalMusicInput, validateFalInput, falInputSchema, falInputProperties, falDiscoveryUrl, runFalMusicJob, falMusicAcceptedJob, falMusicToken, normalizeFalMusicResult, falTrackingUrl, assertFalTarget, isFalRequestId"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/musicGenerationCore.js",
+      "change": "import falMusicAdapter from \"../services/providerParity/native-fal-ai-music/adapter.js\"; in handleMusicGenerationCore, before the cookie-adapter lookup, `if (provider === \"fal-ai\" || provider === \"fal\") return falMusicAdapter.generate({ model, body, credentials, signal })` (MUSIC_ADAPTERS entries are cookie web adapters with a different contract, so do not add it there). The route's requestId (GET poll) path never applies: the adapter is synchronous."
+    },
+    {
+      "file": "src/sse/handlers/music.js",
+      "change": "on a failed result, record result.acceptedJob like src/sse/handlers/video.js does (recordAcceptedJobUsage / accepted unknown-cost row) before markAccountUnavailable; pass quotaExhausted through. Keep fal-ai out of asyncProviders. Confirm resolveTypedMediaModel canonicalizes the `fal` alias to `fal-ai`."
+    },
+    {
+      "file": "open-sse/providers/registry/fal-ai.js",
+      "change": "add \"music\" to serviceKinds, the ace-step model with kind \"music\", and musicConfig { baseUrl: \"https://queue.fal.run\" }"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list fal.ai music (ACE-Step, text-to-music, url response only)"
+    },
+    {
+      "file": "tests/unit/native-fal-ai-music.test.js",
+      "change": "replace the isolated `staging state (pre-registration only)` block with positive identity assertions; leave every other block unchanged"
+    }
+  ],
+  "publicContract": {
+    "route": "POST /v1/music/generations",
+    "accepted": ["prompt | tags (one style description)", "lyrics", "duration (5..240 s)", "seed (integer)", "number_of_steps, granularity_scale, guidance_interval, guidance_interval_decay, tag_guidance_scale, lyric_guidance_scale, minimum_guidance_scale, guidance_scale (numbers)", "scheduler (euler | heun)", "guidance_type (cfg | apg | cfg_star)", "fal_input (object, validated against the discovered schema)", "n = 1", "response_format = url"],
+    "refusedBeforeSubmit": ["missing prompt/tags", "prompt and tags that differ", "out-of-range or non-numeric duration", "unknown scheduler / guidance_type", "media inputs (audio, image, video, mask, references)", "size", "instrumental / make_instrumental = true", "n > 1", "stream", "response_format other than url", "fal_input keys or values the discovered schema rejects", "models other than ace-step"],
+    "response": "{ object: \"music.generation\", provider: \"fal-ai\", model, status: \"completed\", created, data: [{ id, audio_url, url, format, content_type?, file_name?, file_size?, seed? }] }",
+    "accounting": "state complete, nativeUnits.tracks = 1, cost unknown; acceptedJob (costSource accepted-job, meta.jobState submit-unknown | accepted | completed) on every failure that may bill"
+  }
+}

@@ -46,13 +46,37 @@ describe("provider staging", () => {
     }
   });
 
+  // Provider definitions under `dir`: modules with a default export.
+  const definitionFiles = (dir) => fs.readdirSync(path.join(root, dir), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.[cm]?js$/.test(entry.name))
+    .filter((entry) => /export\s+default\b/.test(fs.readFileSync(path.join(entry.parentPath, entry.name), "utf8")))
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
+
+  // The last private definitions, promoted to the registry for #2034 (1127). A
+  // stable fixture: the same scan must find each one in the registry, so an
+  // empty private directory is proven by a scan that does find definitions.
+  const PROMOTED_PRIVATE_1127 = Object.freeze({
+    "open-sse/providers/private/renderhour.js": "renderhour",
+    "open-sse/providers/private/adobe-firefly-api.js": "adobe-firefly-api",
+    "open-sse/providers/private/adobe-firefly-web.js": "adobe-firefly-web",
+  });
+
+  it("promotes the 1127 media definitions to the registry and leaves no stale private copy", () => {
+    const registryFiles = definitionFiles("open-sse/providers/registry");
+    const catalog = new Set(REGISTRY.map(({ id }) => id));
+    for (const [file, id] of Object.entries(PROMOTED_PRIVATE_1127)) {
+      expect(fs.existsSync(path.join(root, file)), file).toBe(false);
+      expect(registryFiles, file).toContain(file.replace("/private/", "/registry/"));
+      expect(catalog.has(id), id).toBe(true);
+      expect(STAGED_PROVIDERS[id], id).toBeUndefined();
+      expect(executorManifest.modules.some(({ provider }) => provider === id), id).toBe(false);
+    }
+  });
+
   it("covers private provider definitions and rejects staged registry entries", async () => {
-    const privateDir = path.join(root, "open-sse/providers/private");
-    const files = fs.readdirSync(privateDir, { recursive: true, withFileTypes: true })
-      .filter((entry) => entry.isFile() && /\.[cm]?js$/.test(entry.name))
-      .filter((entry) => /export\s+default\b/.test(fs.readFileSync(path.join(entry.parentPath, entry.name), "utf8")))
-      .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
-    expect(files.length).toBeGreaterThan(0);
+    const files = definitionFiles("open-sse/providers/private");
+    // Each staged private definition left must be declared; none remain after 1127.
+    expect(files).toEqual(executorManifest.modules.map(({ module }) => module).filter((module) => module.startsWith("open-sse/providers/private/")));
     const catalog = new Set(REGISTRY.flatMap(({ id, alias, aliases }) => [id, alias, ...(aliases || [])]).filter(Boolean));
     for (const file of files) {
       const { default: definition } = await import(path.join(root, file));

@@ -6,13 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import provider, {
   ADOBE_FIREFLY_API_MODEL_IDS,
-  ADOBE_FIREFLY_STAGED_VIDEO,
+  ADOBE_FIREFLY_VIDEO,
   ADOBE_FIREFLY_VIDEO_GENERATE_URL,
   ADOBE_FIREFLY_VIDEO_MODEL_IDS,
   ADOBE_FIREFLY_VIDEO_SECONDS,
   ADOBE_FIREFLY_VIDEO_SIZES,
   ADOBE_IMS_TOKEN_URL,
-} from "../../open-sse/providers/private/adobe-firefly-api.js";
+} from "../../open-sse/providers/registry/adobe-firefly-api.js";
 import defaultVideoAdapter, {
   buildAdobeFireflyVideoRequest,
   createAdobeFireflyApiVideoAdapter,
@@ -20,6 +20,8 @@ import defaultVideoAdapter, {
 import * as video from "../../open-sse/services/adobeFireflyApi/video.js";
 import { createAdobeTokenCache } from "../../open-sse/services/adobeFireflyApi/auth.js";
 import imageAdapter from "../../open-sse/handlers/imageProviders/adobe-firefly-api.js";
+import { getVideoGenerationAdapter } from "../../open-sse/handlers/videoProviders/index.js";
+import { supportsVideoGeneration } from "../../open-sse/handlers/videoGenerationCore.js";
 import { getVideoConfig } from "../../open-sse/handlers/videoCore.js";
 import { PROVIDER_MEDIA } from "../../open-sse/providers/index.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
@@ -141,17 +143,18 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
-describe("adobe-firefly-api video staging", () => {
-  it("keeps the provider's default export image-only and the video slice separate", () => {
-    expect(provider).toMatchObject({ id: "adobe-firefly-api", serviceKinds: ["image"] });
+describe("adobe-firefly-api video registration", () => {
+  it("declares video beside images with each model under its own kind, and no job proxy config", () => {
+    expect(provider).toMatchObject({ id: "adobe-firefly-api", serviceKinds: ["image", "video"] });
     expect(provider).not.toHaveProperty("videoConfig");
-    expect(provider.models.every((model) => model.kind === "image")).toBe(true);
+    expect(provider.models.filter((model) => model.kind === "image").map((model) => model.id)).toEqual(ADOBE_FIREFLY_API_MODEL_IDS);
+    expect(provider.models.filter((model) => model.kind === "video").map((model) => model.id)).toEqual(ADOBE_FIREFLY_VIDEO_MODEL_IDS);
     expect(ADOBE_FIREFLY_VIDEO_MODEL_IDS).toEqual(["video1_standard"]);
     expect(ADOBE_FIREFLY_VIDEO_MODEL_IDS.some((id) => ADOBE_FIREFLY_API_MODEL_IDS.includes(id))).toBe(false);
-    expect(ADOBE_FIREFLY_STAGED_VIDEO).toMatchObject({
+    expect(ADOBE_FIREFLY_VIDEO).toMatchObject({
       serviceKinds: ["video"],
       models: [{ id: "video1_standard", kind: "video" }],
-      videoConfig: { baseUrl: "https://firefly-api.adobe.io/v3/videos/generate" },
+      generateUrl: "https://firefly-api.adobe.io/v3/videos/generate",
     });
     expect(ADOBE_FIREFLY_VIDEO_GENERATE_URL).toBe("https://firefly-api.adobe.io/v3/videos/generate");
     expect(ADOBE_FIREFLY_VIDEO_SECONDS).toBe(5);
@@ -164,10 +167,12 @@ describe("adobe-firefly-api video staging", () => {
     expect(() => imageAdapter.buildUrl("video1_standard", s2s(), {}, {})).toThrow(/Unsupported Adobe Firefly Services image model/);
   });
 
-  it("is reachable from no route: no registry entry and no video config", () => {
-    expect(REGISTRY["adobe-firefly-api"]).toBeUndefined();
-    expect(PROVIDER_MEDIA["adobe-firefly-api"]).toBeUndefined();
+  it("is reachable through the sync video route only: a registry entry, no /v1/videos config", () => {
+    expect(REGISTRY.filter((entry) => entry.id === "adobe-firefly-api")).toEqual([provider]);
+    expect(PROVIDER_MEDIA["adobe-firefly-api"]).not.toHaveProperty("videoConfig");
     expect(getVideoConfig("adobe-firefly-api")).toBeNull();
+    expect(getVideoGenerationAdapter("adobe-firefly-api")).toBe(defaultVideoAdapter);
+    expect(supportsVideoGeneration("adobe-firefly-api")).toBe(true);
     expect(defaultVideoAdapter.async).toBe(true);
     expect(isFunction(defaultVideoAdapter.generate)).toBe(true);
   });

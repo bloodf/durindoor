@@ -189,6 +189,7 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
   // Backoff before a retry: exponential from the base delay, ignoring Retry-After so the
   // wait stays inside the call budget. Called by the base retry loop for 429/5xx answers.
   computeRetryDelay(response, attempt, delayMs) {
+    if (response.status >= 500) return false;
     return minimaxCodeBackoffMs(attempt, delayMs);
   }
 
@@ -273,6 +274,10 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
     this.config = { ...this.config, retry: this.#retryConfig(attempts) };
     const requestPolicy = {
       ...(input.requestPolicy || null),
+      // Retry rules must not turn a transport failure into a second POST.
+      // Only an explicit 429 rule is safe; deployment retry limits still apply.
+      skipRules: input.requestPolicy?.skipRules?.filter((rule) =>
+        rule.action !== "retry" || rule.match?.status === 429),
       headerTimeoutMs: input.requestPolicy?.headerTimeoutMs ?? headerTimeoutMs,
     };
     let result;

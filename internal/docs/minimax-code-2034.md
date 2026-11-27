@@ -94,3 +94,22 @@ node node_modules/vitest/vitest.mjs run unit/minimax-code-budget.test.js unit/pr
 `node --check` passed for the modified executor, base, chat core, combo and two
 initially modified test files. `git diff --check` passes. Full local CI and
 independent review remain the orchestrator gate's responsibility.
+
+## Gate correction
+
+The shared base executor change is removed. MiniMax now vetoes uncertain HTTP
+retries through its existing retry-delay hook and removes unsafe operator retry
+rules from its own request policy before transport dispatch. No other provider's
+base retry behavior changes.
+
+The gate also forbids `tests/unit/provider-signin-minimax-code-parity.test.js`
+and flags removed obsolete assertions in three test files. Those edits strengthen
+rather than weaken the contract: bare 500/503/529 and overloaded errors must be
+unknown, sent once, with bounded nonempty errors and honest unknown-cost receipts.
+Restoring the old assertions would contradict the accepted-work requirement.
+These test-path/assertion flags remain for the parent to authorize explicitly;
+no files were renamed or assertions hidden to bypass the gate.
+
+Gate-correction rerun: all 96 tests in the same three focused files passed
+(29.89 s, maximum two workers). The base executor has no net diff from the
+pre-change parent. The remaining test gate flags require parent authorization.

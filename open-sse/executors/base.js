@@ -334,8 +334,6 @@ export class BaseExecutor {
     // transport-attempt ceiling (see the attempts table in runtimeConfig.js).
     const resolveAttempts = ({ statusKey, errorKind, text }) => {
       const base = resolveRetryEntry(baseRetry[statusKey]);
-      // MiniMax POST uncertainty is terminal before operator retry overrides.
-      if (this.provider === "minimax-code" && (errorKind === "network" || errorKind === "connect_timeout" || Number(statusKey) >= 500)) return { attempts: 0, delayMs: base.delayMs };
       const rule = skipRules ?
       matchSkipRule(this.provider, { status: statusKey, errorKind, text }, skipRules) :
       null;
@@ -650,7 +648,7 @@ export class BaseExecutor {
           };
         }
 
-        if (!(this.provider === "minimax-code" && response.status >= 500) && !antigravityGatewayTimeout && urlIndex + 1 < fallbackCount &&
+        if (!antigravityGatewayTimeout && urlIndex + 1 < fallbackCount &&
           (this.shouldRetry(response.status, urlIndex) || this.shouldFallbackResponse(response, url, errorText))) {
           log?.debug?.("RETRY", `${response.status} on ${url}, trying fallback ${urlIndex + 1}`);
           lastStatus = response.status;
@@ -722,7 +720,7 @@ export class BaseExecutor {
           throw error;
         }
 
-        if (this.provider !== "minimax-code" && urlIndex + 1 < fallbackCount) {
+        if (urlIndex + 1 < fallbackCount) {
           log?.debug?.("RETRY", `Error on ${url}, trying fallback ${urlIndex + 1}`);
           continue;
         }

@@ -46,7 +46,7 @@
     "buildPollinationsSpeechRequest": "(model, text, options) -> source speech body; throws status 400",
     "buildPollinationsTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData, responseFormat } or a 400 error result with local: true",
     "resolvePollinationsContainer": "(requested, gatewayFormat) -> container; throws status 400",
-    "matchesContainer": "(container, bytes) leading-byte check for mp3, opus (Ogg), aac (ADTS/ADIF), flac, wav",
+    "matchesContainer": "(container, bytes) leading-byte check for mp3, opus (Ogg), aac (ADTS/ADIF/M4A ftyp), flac, wav; the original (bytes, container) order is also accepted",
     "pollinationsAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
     "pollinationsUploadFileName": "source upload file name rule",
     "POLLINATIONS_AUDIO_DEFINITION": "audio fields to merge into the existing pollinations registry entry (addServiceKinds, ttsConfig, sttConfig)",

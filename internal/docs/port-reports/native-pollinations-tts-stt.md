@@ -102,3 +102,40 @@ Run from tests:
 Full CI is intentionally deferred to integration.
 
 Focused result: 78 tests passed. Scoped ESLint and git diff --check passed.
+
+## Original-suite restoration
+
+`tests/unit/pollinations-audio-original-contract.test.js` restores the 72-case
+suite from 0c3ed6702c (`git show 0c3ed6702c:tests/unit/native-pollinations-tts-stt.test.js`)
+and runs it on the current exports beside the rewritten 78-case suite, which
+stays byte-identical. On first run 66 of 72 cases passed. Four failures were
+runtime regressions and are fixed in the staged code:
+
+- A voice with CR/LF or other control characters, from `voice` or a model/voice
+  suffix, was sent upstream. It is refused locally with a 400 again.
+- aac rejected M4A (`ftyp` box at offset 4) audio. The aac signature accepts
+  M4A again, alongside ADTS and ADIF.
+- `matchesContainer` swapped its arguments from `(bytes, container)` to
+  `(container, bytes)`. Either order is accepted now, and the name is unchanged.
+- Accepted-job records had lost `meta.authScope: "apikey"`. It is restored.
+
+There are two source-supported intentional differences. Each is marked in the file:
+
+- The `default/nova` refusal row is removed. OmniRoute takes the voice only from
+  `body.voice` (audioSpeech.ts default branch), but this fork's TTS adapters
+  read `model` as `modelId/voiceId` (`open-sse/handlers/ttsProviders/_base.js`
+  parseModelVoice). The rewritten suite pins this behavior. A replacement case
+  checks the underlying regression: the suffixed string is never sent as the
+  model, and a control-character suffix, an unknown model prefix, and an
+  empty suffix are each refused before submit.
+- STT success accounting no longer has `meta.authScope`. The frozen suite pins
+  that meta to exactly `{ model, responseFormat }`. Nothing outside this
+  directory reads `authScope`. Accepted-job records still carry it.
+
+All other original cases run unchanged. These include credential redaction,
+format defaults, OGG/JSON normalization, bounded M4A/MP3 input and output,
+body deadlines with cancellation and accepted billing, multipart filenames,
+fallback and refusal, two selected accounts, and no replay. One independent
+case is added: a stalled STT 200 body returns 504 with an accepted job, cancels
+the body, and sends exactly one request.
+Focused result: 73 + 78 = 151 tests passed.

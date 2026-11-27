@@ -25,6 +25,7 @@ const MAX_SPEED = 4.0;
 const MAX_ENVELOPE_BYTES = 16 * 1024;
 const AUDIO_MIME = /^(audio\/[a-z0-9.+-]+|application\/ogg|application\/octet-stream|binary\/octet-stream)$/;
 
+const CONTROL = /[\u0000-\u001f\u007f]/;
 const reject = (message) => Object.assign(new Error(message), { status: HTTP_STATUS.BAD_REQUEST });
 const ascii = (bytes, start, text) => bytes.length >= start + text.length && bytes.subarray(start, start + text.length).toString("latin1") === text;
 
@@ -32,13 +33,18 @@ const ascii = (bytes, start, text) => bytes.length >= start + text.length && byt
 const SIGNATURES = Object.freeze({
   mp3: (b) => ascii(b, 0, "ID3") || (b.length >= 2 && b[0] === 0xff && (b[1] & 0xe0) === 0xe0 && (b[1] & 0x06) === 0x02),
   opus: (b) => ascii(b, 0, "OggS"),
-  aac: (b) => ascii(b, 0, "ADIF") || (b.length >= 2 && b[0] === 0xff && (b[1] & 0xf6) === 0xf0),
+  // ADTS, ADIF, or an MP4/M4A box (`ftyp` at offset 4), which Pollinations may return for aac.
+  aac: (b) => ascii(b, 0, "ADIF") || ascii(b, 4, "ftyp") || (b.length >= 2 && b[0] === 0xff && (b[1] & 0xf6) === 0xf0),
   flac: (b) => ascii(b, 0, "fLaC"),
   wav: (b) => ascii(b, 0, "RIFF") && ascii(b, 8, "WAVE"),
 });
 
-/** Whether bytes start like the named container. */
-export function matchesContainer(container, bytes) {
+/**
+ * Whether bytes start like the named container. Takes `(container, bytes)`; the
+ * first staged `(bytes, container)` order is still accepted.
+ */
+export function matchesContainer(first, second) {
+  const [container, bytes] = isString(first) ? [first, second] : [second, first];
   const check = SIGNATURES[container];
   return Boolean(check && check(bytes));
 }
@@ -100,6 +106,7 @@ export function buildPollinationsSpeechRequest(model, text, options = {}) {
   }
   if (options.voice !== undefined && options.voice !== null && !isString(options.voice)) throw reject("Pollinations speech voice must be a string");
   const requestedVoice = isString(options.voice) ? options.voice.trim() : "";
+  if (CONTROL.test(requestedVoice) || (modelVoice && CONTROL.test(modelVoice))) throw reject("Pollinations speech voice has control characters");
   if (modelVoice && requestedVoice && requestedVoice !== modelVoice) throw reject("Pollinations speech voice is named twice with different values");
   const speed = options.speed ?? null;
   if (speed !== null && (!isNumber(speed) || !Number.isFinite(speed) || speed < MIN_SPEED || speed > MAX_SPEED)) {

@@ -67,9 +67,13 @@ export function createDashscopeVariantVideoAdapter(providerId, options = {}) {
           ...result.accounting.meta,
           jobId: result.taskId,
           nativeUnitsSource: "returned-videos",
-          ...(regional ? { region: result.region, pollTimeoutMs: polling.timeoutMs, pollIntervalMs: polling.pollIntervalMs } : {}),
         },
       };
+      if (regional) {
+        accounting.meta.region = result.region;
+        accounting.meta.pollTimeoutMs = polling.timeoutMs;
+        accounting.meta.pollIntervalMs = polling.pollIntervalMs;
+      }
       const payload = { created: Math.floor(now() / 1000), data: [{ url: result.url, format: "mp4" }] };
       return { success: true, accounting, response: jsonResponse(payload) };
     },

@@ -35,7 +35,7 @@ import {
   ALIBABA_VIDEO_TIMEOUT_MS,
   alibabaVideoResultUrl,
 } from "../../alibabaVideo/job.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { resolveDashscopeConnectionRegion } from "../native-dashscope-image/regions.js";
 import {
   DASHSCOPE_VIDEO_ACCEPTED_REGIONS,
@@ -98,8 +98,9 @@ export function dashscopeVariantConnectionMismatch(credentials) {
 function callerMs(body, field) {
   const value = body?.[field];
   if (value === undefined || value === null) return null;
-  const n = isString(value) && /^\s*\d+(\.\d+)?\s*$/.test(value) ? Number(value) : value;
-  if (typeof n !== "number" || !Number.isFinite(n) || Math.floor(n) < 1) {
+  const numeric = isNumber(value) || (isString(value) && /^\s*\d+(\.\d+)?\s*$/.test(value));
+  const n = numeric ? Number(value) : Number.NaN;
+  if (!Number.isFinite(n) || Math.floor(n) < 1) {
     throw Object.assign(new Error(`DashScope video ${field} must be a positive number of milliseconds`), { status: HTTP_STATUS.BAD_REQUEST });
   }
   return Math.floor(n);

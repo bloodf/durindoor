@@ -22,5 +22,7 @@ saved-combo requests retain their normal diagnostics. The agentic provider
 requires an absolute `CLI_DEVIN_BIN`, while the credentialed CLI also supports
 its normal executable discovery and `PATH`. On Windows, where the credentialed CLI
 runs through the command shell, the check follows `PATH` and `PATHEXT`, so
-`CLI_DEVIN_BIN=devin` matches `devin.exe`. The binary may still become
+`CLI_DEVIN_BIN=devin` matches `devin.exe`. A path that contains spaces must keep its quotes in the variable value, as
+`set CLI_DEVIN_BIN="C:\Program Files\Devin\devin.exe"` does in `cmd`; values the shell would split,
+expand, or redirect are reported as unavailable. The binary may still become
 unavailable between the check and dispatch.

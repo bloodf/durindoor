@@ -12,6 +12,9 @@ import { antigravityAgeRestrictionError, antigravityOnboardOperationError, extra
 import { readBoundedResponseText } from "../../../open-sse/utils/error.js";
 
 import { generatePKCE, generateState } from "./utils/pkce.js";
+import { parseClaudeAuthorizationCode, claudeExchangeFailure } from "./providerParity/claude/exchange.js";
+import { withCodexAuthorizeDelta, codexDevicePollError, exchangeCodexCode } from "./providerParity/codex/index.js";
+import { exchangeGeminiCode } from "./providerParity/gemini-cli/index.js";
 import {
   CLAUDE_CONFIG,
   CODEX_CONFIG,
@@ -516,14 +519,14 @@ const PROVIDERS = {
       return `${config.authorizeUrl}?${params.toString()}`;
     },
     exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
-      // Parse code - may contain state after #
-      let authCode = code;
-      let codeState = "";
-      if (authCode.includes("#")) {
-        const parts = authCode.split("#");
-        authCode = parts[0];
-        codeState = parts[1] || "";
+      let parsed;
+      try {
+        parsed = parseClaudeAuthorizationCode(code, state);
+      } catch (error) {
+        error.code = "OAUTH_VALIDATION_FAILED";
+        throw error;
       }
+      const { code: authCode, state: codeState } = parsed;
 
       const response = await fetch(config.tokenUrl, {
         method: "POST",
@@ -533,7 +536,7 @@ const PROVIDERS = {
         },
         body: JSON.stringify({
           code: authCode,
-          state: codeState || state,
+          state: codeState,
           grant_type: "authorization_code",
           client_id: config.clientId,
           redirect_uri: redirectUri,
@@ -542,10 +545,7 @@ const PROVIDERS = {
         proxyOptions
       });
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token exchange failed: ${error}`);
-      }
+      if (!response.ok) throw claudeExchangeFailure();
 
       return await response.json();
     },
@@ -603,44 +603,9 @@ const PROVIDERS = {
       const queryString = Object.entries(params).
       map(([key, value]) => `${key}=${encodeURIComponent(value)}`).
       join("&");
-      return `${config.authorizeUrl}?${queryString}`;
+      return withCodexAuthorizeDelta(`${config.authorizeUrl}?${queryString}`);
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
-      const buildRequest = (nextProxyOptions) => ({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          client_id: config.clientId,
-          code: code,
-          redirect_uri: redirectUri,
-          code_verifier: codeVerifier
-        }).toString(),
-        proxyOptions: nextProxyOptions
-      });
-
-      let response = await fetch(config.tokenUrl, buildRequest(proxyOptions));
-      if (!response.ok) {
-        const error = await response.text();
-        if (
-        isCloudflareHtmlBadRequest(response.status, error) &&
-        proxyOptions?.disableEnvProxy !== true &&
-        proxyOptions?.strictProxy !== true)
-        {
-          response = await fetch(config.tokenUrl, buildRequest({ disableEnvProxy: true }));
-          if (response.ok) return await response.json();
-          const directError = await response.text();
-          throw new Error(`Token exchange failed: ${directError}`);
-        }
-        throw new Error(`Token exchange failed: ${error}`);
-      }
-
-      return await response.json();
-    },
+    exchangeToken: exchangeCodexCode,
     mapTokens: (tokens) => {
       const info = extractCodexAccountInfo(tokens.id_token);
       const mapped = {
@@ -751,8 +716,7 @@ const PROVIDERS = {
           return {
             ok: false,
             data: {
-              error: data.error || "device_token_failed",
-              error_description: data.error_description || text || response.statusText
+              ...codexDevicePollError(response.status)
             }
           };
         }
@@ -802,8 +766,7 @@ const PROVIDERS = {
           return {
             ok: false,
             data: {
-              error: tokens.error || "code_exchange_failed",
-              error_description: tokens.error_description || tokenText || tokenResponse.statusText
+              ...codexDevicePollError(tokenResponse.status)
             }
           };
         }
@@ -1032,30 +995,7 @@ const PROVIDERS = {
       });
       return `${config.authorizeUrl}?${params.toString()}`;
     },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state, meta, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json"
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          client_id: config.clientId,
-          client_secret: config.clientSecret,
-          code: code,
-          redirect_uri: redirectUri
-        }),
-        proxyOptions
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token exchange failed: ${error}`);
-      }
-
-      return await response.json();
-    },
+    exchangeToken: exchangeGeminiCode,
     postExchange: async (tokens, proxyOptions) => {
       // Fetch user info
       const userInfoRes = await fetch(`${GEMINI_CONFIG.userInfoUrl}?alt=json`, {
@@ -2196,10 +2136,6 @@ const PROVIDERS = {
 // Center device flow); only the stored provider id differs.
 PROVIDERS["amazon-q"] = PROVIDERS.kiro;
 
-function isCloudflareHtmlBadRequest(status, body) {
-  return status === 400 && /<html/i.test(body || "") && /cloudflare/i.test(body || "");
-}
-
 /**
  * Get provider handler
  */
@@ -2289,7 +2225,7 @@ export async function exchangeTokens(providerName, code, redirectUri, codeVerifi
   provider.config;
 
   const exchangeArgs = [config, code, redirectUri, codeVerifier, state, meta || {}, proxyOptions];
-  const tokens = providerName === "antigravity" ?
+  const tokens = ["antigravity", "codex", "gemini-cli"].includes(providerName) ?
     await provider.exchangeToken(...exchangeArgs, signal) :
     await provider.exchangeToken(...exchangeArgs);
 

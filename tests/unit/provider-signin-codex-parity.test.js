@@ -284,7 +284,7 @@ describe("Codex refresh ownership (production)", () => {
     let calls = 0;
     mocks.proxyAwareFetch.mockImplementation(async (url, init, proxy) => {
       calls += 1;
-      const { refresh_token: token } = JSON.parse(init.body);
+      const { refresh_token: token } = Object.fromEntries(new URLSearchParams(init.body));
       expect(url).toBe(CODEX_CONFIG.tokenUrl);
       return jsonResponse({
         access_token: `new-at-${token}`, refresh_token: `next-${token}`, expires_in: 3600,
@@ -302,10 +302,10 @@ describe("Codex refresh ownership (production)", () => {
     expect(a1).toEqual(a2);
     expect(a1).toMatchObject({ accessToken: "new-at-rt-par-a", refreshToken: "next-rt-par-a" });
     expect(b).toMatchObject({ accessToken: "new-at-rt-par-b", refreshToken: "next-rt-par-b" });
-    const sent = mocks.proxyAwareFetch.mock.calls.map(([, init, proxy]) => [JSON.parse(init.body).refresh_token, proxy.tag]);
+    const sent = mocks.proxyAwareFetch.mock.calls.map(([, init, proxy]) => [Object.fromEntries(new URLSearchParams(init.body)).refresh_token, proxy.tag]);
     expect(sent.sort()).toEqual([["rt-par-a", "a"], ["rt-par-b", "b"]]);
     for (const [, init] of mocks.proxyAwareFetch.mock.calls) {
-      expect(JSON.parse(init.body)).toMatchObject({ client_id: CLIENT_ID, grant_type: "refresh_token" });
+      expect(Object.fromEntries(new URLSearchParams(init.body))).toMatchObject({ client_id: CLIENT_ID, grant_type: "refresh_token" });
       expect(init.redirect).toBe("error");
       expect(init.signal).toBeInstanceOf(AbortSignal);
     }
@@ -532,8 +532,8 @@ describe("dead Codex CLI service path", () => {
 });
 
 // Staging only. Everything below describes the unregistered helper and the
-// production gaps it closes; flip these when ./registration.json slots land.
-describe("staged Codex parity helper (not registered)", () => {
+// production slots it closes; the frozen manifest retains its staging label.
+describe("Codex parity exports and registered web slots", () => {
   it("lists exactly the exports the module provides", async () => {
     const helper = await import("../../src/lib/oauth/providerParity/codex/index.js");
     const registration = JSON.parse(readFileSync(new URL("../../src/lib/oauth/providerParity/codex/registration.json", import.meta.url), "utf8"));
@@ -541,18 +541,18 @@ describe("staged Codex parity helper (not registered)", () => {
     expect(registration.status).toBe("staged");
   });
 
-  it("adds prompt=login, which production authorize URLs still lack", async () => {
+  it("adds prompt=login, on production authorize URLs", async () => {
     const { withCodexAuthorizeDelta } = await import("../../src/lib/oauth/providerParity/codex/index.js");
     const { generateAuthData } = await import("../../src/lib/oauth/providers.js");
     const { authUrl } = await generateAuthData("codex", "http://localhost:1455/auth/callback", null, null);
-    expect(new URL(authUrl).searchParams.has("prompt")).toBe(false);
+    expect(new URL(authUrl).searchParams.get("prompt")).toBe("login");
     const staged = new URL(withCodexAuthorizeDelta(authUrl));
     expect(staged.searchParams.get("prompt")).toBe("login");
     expect(staged.searchParams.get("state")).toBe(new URL(authUrl).searchParams.get("state"));
     expect(new URL(withCodexAuthorizeDelta(staged.href)).searchParams.getAll("prompt")).toEqual(["login"]);
   });
 
-  it("builds the form refresh both sources send, where production sends JSON", async () => {
+  it("builds the form refresh both sources send, through production refresh", async () => {
     const { buildCodexRefreshRequest } = await import("../../src/lib/oauth/providerParity/codex/index.js");
     const omni = buildCodexRefreshRequest({ refreshToken: "rt", clientId: CLIENT_ID });
     expect(omni.url).toBe("https://auth.openai.com/oauth/token");
@@ -569,10 +569,10 @@ describe("staged Codex parity helper (not registered)", () => {
     await refreshCodexToken("rt-staging-probe", null, null);
     const [url, init] = mocks.proxyAwareFetch.mock.calls[0];
     expect(url).toBe(CODEX_CONFIG.tokenUrl);
-    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
   });
 
-  it("reduces device poll failures to a fixed message, where production returns the body", async () => {
+  it("reduces device poll failures to a fixed message, on the public route", async () => {
     const { codexDevicePollError } = await import("../../src/lib/oauth/providerParity/codex/index.js");
     expect(codexDevicePollError(500)).toEqual({
       error: "device_token_failed", error_description: "Codex device authorization failed (HTTP 500)",
@@ -585,7 +585,8 @@ describe("staged Codex parity helper (not registered)", () => {
     });
     const started = await postRoute("codex", "device-code", { proxyMode: "direct" });
     const failed = await postRoute("codex", "poll", { flowId: started.body.flowId });
-    expect(failed.body.errorDescription).toContain(UPSTREAM_SECRET);
+    expect(failed.body.errorDescription).toBe("Codex device authorization failed (HTTP 500)");
+    expect(JSON.stringify(failed.body)).not.toContain(UPSTREAM_SECRET);
   });
 
   it("fails unsupported login modes before any network call", async () => {

@@ -1,3 +1,4 @@
+import { assertCodexLoginMode } from "@/lib/oauth/providerParity/codex/index.js";
 import { isHosted } from "@/shared/utils/deploymentMode";
 import "open-sse/utils/proxyFetch.js";
 
@@ -303,6 +304,7 @@ function oauthErrorResponse(error, operation) {
 }
 
 async function beginAuthorization(provider, input) {
+  if (provider === "codex") assertCodexLoginMode(input.loginMode ?? "browser");
   const providerData = requireOAuthProvider(provider);
   if (provider === "devin-cli" && !providerData.supportsBrowserPkce) {
     throw oauthRouteError("OAUTH_VALIDATION_FAILED", "Devin CLI requires the import-token action");
@@ -367,6 +369,7 @@ async function beginAuthorization(provider, input) {
 }
 
 async function beginDeviceCode(provider, input) {
+  if (provider === "codex") assertCodexLoginMode(input.loginMode ?? "device");
   const providerData = requireOAuthProvider(provider);
   if (!providerSupportsDeviceCode(providerData)) {
     throw oauthRouteError(

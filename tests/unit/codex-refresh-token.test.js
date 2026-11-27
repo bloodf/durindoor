@@ -60,18 +60,18 @@ describe("Codex Refresh Token", () => {
       expect(result.accessToken).toBe("new-access");
       expect(result.idToken).toBe("new-id-token");
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://auth.openai.com/api/accounts/oauth/token",
+        "https://auth.openai.com/oauth/token",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
             Accept: "application/json",
           }),
-          body: JSON.stringify({
+          body: new URLSearchParams({
             client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
             grant_type: "refresh_token",
             refresh_token: "old-refresh-token",
-          }),
+          }).toString(),
         })
       );
     });
@@ -108,7 +108,7 @@ describe("Codex Refresh Token", () => {
 
       expect(result.accessToken).toBe("strict-access");
       expect(proxyAwareFetchMock).toHaveBeenCalledWith(
-        "https://auth.openai.com/api/accounts/oauth/token",
+        "https://auth.openai.com/oauth/token",
         expect.objectContaining({ method: "POST" }),
         proxyOptions
       );

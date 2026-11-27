@@ -8,7 +8,7 @@
 - Head: `fix/19803-private-cache-diagnostics`, `b75d5990dddd5143229332779bf8687d66fdf829`.
 - Upstream source pin: the base and head SHAs above, the title, and the changed-file list come from the first report's `gh api` reads of `repos/cheaper-inference/OmniRoute/pulls/21326` and `.../files`. **This correction did not independently re-fetch upstream; all upstream behavior below is carried from that first report.**
 - Local comparison points: `origin/main` at `29490b783e83176d4d6a4162f76ee3dc79db66ea` and frozen train tree `32a783d76d45d90bf0517015442f43fadd96106c`. Local worktree HEAD at correction time: `e380276ed9`.
-- Existing ledger entry: [2026-11-27 full parity refresh, O0077](2026-11-27-full-parity-refresh.md#L1745) marks this exact head “Unrecorded at this head; review required.” No other report or active ownership claim for #21326 was found. The listed auth and sync claims do not overlap this feature's CLI-private diagnostics scope.
+- Existing ledger entry: [2026-11-27 full parity refresh, O0077](2026-11-27-full-parity-refresh.md) marks this exact head “Unrecorded at this head; review required.” No other report or active ownership claim for #21326 was found. The listed auth and sync claims do not overlap this feature's CLI-private diagnostics scope.
 
 ## Upstream behavior reviewed
 

@@ -110,9 +110,9 @@ token-saver, translator, usage`.
 
 DurinDoor's key-management page is `src/app/(dashboard)/dashboard/keys/`. Its create and update
 payloads carry `isAdmin` but no scope array:
-[`KeysPageClient.jsx:449`](../../../src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#L449)
+[`KeysPageClient.jsx:449`](https://github.com/bloodf/durindoor/blob/dc624113dc5728c04a01c1dd49e37f9a1dd80c4b/src/app/%28dashboard%29/dashboard/keys/KeysPageClient.jsx#L449)
 sends `{ name, allowedCombos, dailyLimitTokens, expiresAt, policy, providerConnectionIds, isAdmin }`,
-and [`KeysPageClient.jsx:574`](../../../src/app/(dashboard)/dashboard/keys/KeysPageClient.jsx#L574)
+and [`KeysPageClient.jsx:574`](https://github.com/bloodf/durindoor/blob/dc624113dc5728c04a01c1dd49e37f9a1dd80c4b/src/app/%28dashboard%29/dashboard/keys/KeysPageClient.jsx#L574)
 sets `payload.isAdmin = isAdmin`.
 
 ### 2. There is no API-key scope array
@@ -239,7 +239,7 @@ pre-existing scopes, and DurinDoor's key model has no place to record them.
 Checked before concluding, to avoid duplicating or contradicting a lane:
 
 - **Prior disposition in this repo.** `grep -rn "21319" internal/` matches exactly one line:
-  row `O0080` of [2026-11-27-full-parity-refresh.md:1748](2026-11-27-full-parity-refresh.md#L1748),
+  row `O0080` of [2026-11-27-full-parity-refresh.md:1748](2026-11-27-full-parity-refresh.md),
   "Unrecorded at this head; review required". No prior report covers this PR, and
   `grep -rn "mcp:connect" internal/` and `grep -rn "read:compression" internal/` return nothing.
   No unchanged prior disposition was re-derived.

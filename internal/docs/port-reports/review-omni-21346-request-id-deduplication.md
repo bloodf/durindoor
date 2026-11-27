@@ -16,7 +16,7 @@ The PR preserves a valid client `X-Request-Id` through `CLIENT_API` authz and re
 
 ## DurinDoor disposition
 
-The unchanged prior disposition is recorded in [omni-review-transport.md](omni-review-transport.md#L180): request-identity/idempotency feature, out of scope for that transport census. The broader [2026-11-27 full parity refresh](2026-11-27-full-parity-refresh.md#L1731) lists this head as requiring review; this note resolves that inventory row and does not reopen the prior transport disposition.
+The unchanged prior disposition is recorded in [omni-review-transport.md](omni-review-transport.md): request-identity/idempotency feature, out of scope for that transport census. The broader [2026-11-27 full parity refresh](2026-11-27-full-parity-refresh.md) lists this head as requiring review; this note resolves that inventory row and does not reopen the prior transport disposition.
 
 The local gateway does not have the upstream `src/server/authz/pipeline.ts` surface. Local `src/sse/utils/requestCorrelation.js` creates or reuses a server-side request ID and uses a stricter provider-ID validator; local `src/sse/handlers/chat.js` captures that ID into `clientRawRequest`. Local `open-sse/handlers/chatCore.js` contains no request idempotency cache or client `Idempotency-Key` replay path (the nearby “local idempotency” comment at line 1407 concerns request lifecycle cleanup). The local request-ID/correlation path exists in both the frozen train tree `32a783d76d45d90bf0517015442f43fadd96106c` and `origin/main` `29490b783e83176d4d6a4162f76ee3dc79db66ea`; their only `chatCore.js` differences in this area are a Claude thinking-intent port, unrelated to request identity or replay. No changed behavior here supersedes the prior disposition.
 

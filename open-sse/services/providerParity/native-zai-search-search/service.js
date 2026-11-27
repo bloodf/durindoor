@@ -71,7 +71,7 @@ async function readRpcResponse(response, id, interrupted) {
     let found = null;
     await readIncremental(response, { maxBytes: MAX_SUCCESS_BYTES, interrupted, onText(chunk, done) {
       buffer += chunk;
-      const { messages, rest, malformed } = drainSseEvents(done ? `${buffer}\n\n` : buffer);
+      const { messages, rest, malformed } = drainSseEvents(buffer, done);
       buffer = rest;
       if (malformed) throw new StepError(502, "Invalid Z.AI search response", { unreadable: true });
       found = findResponse(messages, id);

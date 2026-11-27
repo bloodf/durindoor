@@ -136,3 +136,5 @@ node node_modules/oxlint/dist/cli.js -c .oxlintrc.json \
   open-sse/services/providerParity/native-codex-search-search tests/unit/native-codex-search-search.test.js
 # exit 0
 ```
+
+Shared SSE framing (Refs #2034): the native adapter uses `open-sse/utils/sseFrames.js` for LF, CRLF and CR boundaries, comments, optional field spaces and joined data lines. This keeps framing consistent with the gateway while retaining provider payload validation, result filtering, errors and bounds. Final unterminated events are accepted at end of input. The wire contract remains attributed to OmniRoute `c71f0065a7efe9230ec23b96a12253b050c4d7ad`, `open-sse/handlers/search.ts` (Codex additionally `open-sse/handlers/search/codexSearch.ts`); framing is shared local infrastructure.

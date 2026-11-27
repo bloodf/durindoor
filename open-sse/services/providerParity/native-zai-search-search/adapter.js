@@ -3,6 +3,7 @@
 // The source drives @modelcontextprotocol/sdk over Streamable HTTP; this module
 // holds the pure JSON-RPC envelopes, input validation and result normalization.
 import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { extractCompleteSseFrames, parseSseFrame } from "../../../utils/sseFrames.js";
 import {
   searchConfig, ZAI_SEARCH_ID, ZAI_SEARCH_TOOL, MCP_CLIENT_INFO, MCP_PROTOCOL_VERSION,
 } from "./config.js";
@@ -95,18 +96,17 @@ export function buildToolCallRequest(id, params) {
  * Split complete SSE events out of a buffer. Returns parsed JSON-RPC messages from
  * `data:` fields and the unconsumed remainder. Unparseable events are reported.
  */
-export function drainSseEvents(buffer) {
+export function drainSseEvents(buffer, final = false) {
   const messages = [];
   let malformed = false;
-  const normalized = buffer.replace(/\r\n?/g, "\n");
-  const parts = normalized.split("\n\n");
-  const rest = parts.pop();
-  for (const event of parts) {
-    const data = event.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).replace(/^ /, "")).join("\n");
+  const { frames, remainder: rest } = extractCompleteSseFrames(buffer);
+  if (final && rest) frames.push(rest);
+  for (const event of frames) {
+    const { data } = parseSseFrame(event);
     if (!data) continue;
     try { messages.push(JSON.parse(data)); } catch { malformed = true; }
   }
-  return { messages, rest, malformed };
+  return { messages, rest: final ? "" : rest, malformed };
 }
 
 /** Pick the JSON-RPC response for `id` from a JSON body (object or batch array). */

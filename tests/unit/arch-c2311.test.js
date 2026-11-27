@@ -183,3 +183,18 @@ describe("shared helpers", () => {
     expect(executor.storedCookie({ providerSpecificData: { cookie: "uid=9" } })).toBe("uid=9");
   });
 });
+
+import { readStreamLines } from "../../open-sse/executors/websession-utils.js";
+
+it("cancels a pending stream read on abort", async () => {
+  const cancel = vi.fn();
+  const body = new ReadableStream({ pull() { return new Promise(() => {}); }, cancel });
+  const controller = new AbortController();
+  const reading = readStreamLines(body, { signal: controller.signal }).next();
+  const assertion = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+  const timer = setTimeout(() => controller.abort(), 100);
+  try {
+    await assertion;
+    expect(cancel).toHaveBeenCalledOnce();
+  } finally { clearTimeout(timer); }
+}, 1000);

@@ -53,6 +53,7 @@ Both IDs return a fixed 501 with `unavailable: true`. The response comes before 
   - A `data:` source is uploaded with the source's exact multipart form: `files`, named `source.png`, plus `destination=uploaded`, `check_duplicates=true` and an empty `model_type`. The adapter reads the URL from `files[0].url`, or `data.files[0].url` as a fallback.
   - The adapter creates the chat with `{ title, scope: "image" }`. The title is the whitespace-collapsed prompt, cut to 60 characters.
   - The generate request is `{ chat_uuid, prompt, settings }`. `settings` holds `model_type` and `image_url: [url]`. It also holds `scale_factor` and `creativity` when they were sent as numbers, and `mode: "upscale"` for Ideogram. The prompt defaults to `"upscale"`.
+  - These are SYNTX wire options, not dashboard settings. The local `providerOptions` name keeps that namespace distinct while the parser and outgoing payload retain the `settings` key.
   - Polling starts at 2 s and grows 1.5× per round up to 5 s, with a 600 s deadline. Five consecutive non-2xx answers fail the job. The adapter waits for the latest assistant message (`author_id` −1) to complete, then returns the first image URL. If the chat holds no media, it falls back to URLs from the generate answer.
   - With `url`, the result URL is returned as-is. With `b64_json`, the image is downloaded with a limit of 3 redirects and 50 MiB.
 - **Envelope.** The response is `{ created, data: [{ url } | { b64_json }], upscale: { provider, model, factor, … } }`.

@@ -136,6 +136,18 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__Secure-better-auth.session_token"],
     cookiePrefixes: [],
   },
+  "poe-web": {
+    label: "Poe Web",
+    origin: "https://www.poe.com",
+    cookieNames: ["p-b"],
+    cookiePrefixes: [],
+  },
+  "v0-vercel-web": {
+    label: "v0 Vercel Web",
+    origin: "https://v0.dev",
+    cookieNames: ["__vercel_session"],
+    cookiePrefixes: [],
+  },
   // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
   "tinycms-web": {
     label: "TinyCMS Web",

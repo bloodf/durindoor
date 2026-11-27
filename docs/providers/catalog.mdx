@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 400 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 404 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -201,6 +201,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Inception | `inception` | apikey | 1 | [site](https://docs.inceptionlabs.ai) |
 | Inference.net | `inference-net` | apikey | 3 | [site](https://inference.net) |
 | Inner.ai | `inner-ai` | apikey | 19 | [site](https://app.innerai.com) |
+| Inner.ai Web | `inner-ai-web` | cookie | 19 | [site](https://app.innerai.com) |
 | InternLM (Intern-S1) | `internlm` | apikey | 5 | [site](https://internlm.intern-ai.org.cn/) |
 | Inworld TTS | `inworld` | apikey | 2 | [site](https://inworld.ai) |
 | JembatanAI | `jembatanai` | apikey | 5 | [site](https://jembatanai.com) |
@@ -310,6 +311,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | PLaMo | `plamo` | apikey | 1 | [site](https://plamo.preferredai.jp/api) |
 | PlayHT | `playht` | apikey | 2 | [site](https://play.ht) |
 | Poe | `poe` | apikey | 3 | [site](https://creator.poe.com/api-reference) |
+| Poe Web | `poe-web` | cookie | 8 | [site](https://poe.com) |
 | Poixe AI | `poixe-ai` | apikey | 0 |  |
 | Pollinations | `pollinations` | apikey | 31 | [site](https://pollinations.ai) |
 | Poolside | `poolside` | apikey | 3 | [site](https://poolside.ai) |
@@ -385,7 +387,9 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | UnoRouter | `unorouter` | apikey | 0 |  |
 | Upstage | `upstage` | apikey | 2 | [site](https://www.upstage.ai) |
 | v0 (Vercel) | `v0-vercel` | apikey | 3 | [site](https://v0.dev) |
+| v0 Vercel Web | `v0-vercel-web` | cookie | 1 | [site](https://v0.dev) |
 | Venice AI | `venice` | apikey | 18 | [site](https://venice.ai) |
+| Venice Web | `venice-web` | cookie | 5 | [site](https://venice.ai) |
 | Veo AI Free Web | `veoaifree-web` | none | 2 | [site](https://veoaifree.com) |
 | Vercel AI Gateway | `vercel-ai-gateway` | apikey | 0 | [site](https://vercel.com/ai-gateway) |
 | Vertex AI | `vertex` | freeTier | 5 | [site](https://cloud.google.com/vertex-ai) |

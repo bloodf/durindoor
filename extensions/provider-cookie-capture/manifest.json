@@ -30,6 +30,8 @@
     "https://app.blackbox.ai/*",
     "https://conol.ai/*",
     "https://site.tinycms.xyz/*",
+    "https://www.poe.com/*",
+    "https://v0.dev/*",
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*",

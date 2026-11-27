@@ -1,6 +1,5 @@
-// Venice Web: a signed-in venice.ai browser session. STAGED: nothing in the
-// registry or the executor map imports this module yet, so it is unavailable to
-// users. See docs/providers/venice-web.md.
+// Venice Web: a signed-in venice.ai browser session, registered with the
+// `venice-web` executor. See docs/providers/venice-web.md.
 //
 // Origins, the cookie name, endpoints and the model list come from
 // cheaper-inference/OmniRoute at 9671192011beb2d7f83979f40be488c5da8772b9

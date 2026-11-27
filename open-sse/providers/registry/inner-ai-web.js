@@ -1,6 +1,5 @@
-// Inner.ai Web: a signed-in app.innerai.com session. STAGED: nothing in the
-// registry or the executor map imports this module yet, so it is unavailable to
-// users. See docs/providers/inner-ai-web.md.
+// Inner.ai Web: a signed-in app.innerai.com session, registered with the
+// `inner-ai-web` executor. See docs/providers/inner-ai-web.md.
 //
 // Origins, the cookie name, endpoints and the fallback catalog come from
 // cheaper-inference/OmniRoute at 9671192011beb2d7f83979f40be488c5da8772b9

@@ -12,6 +12,8 @@
 // its image registry, and that flow has no native Arena transport (see
 // ../native-lmarena-image and internal/docs/port-reports/native-lmarena-image.md).
 
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
+
 export const LMARENA_CHAT_PROVIDER_ID = "lmarena";
 export const LMARENA_CHAT_PROVIDER_ALIASES = Object.freeze(["lma"]);
 /** Model prefixes the source strips before resolution (resolveLmarenaArenaId, stripLMArenaModelPrefix). */
@@ -103,8 +105,12 @@ export const LMARENA_CHAT_MODEL_IDS = Object.freeze(LMARENA_CHAT_MODELS.map((mod
  * The source registry `models` (LMARENA_DIRECT_MODELS): { id, name, supportsVision? }.
  * The source declares no context length for any Arena row.
  */
-export const LMARENA_CHAT_SOURCE_REGISTRY_MODELS = Object.freeze(LMARENA_CHAT_MODELS.map((model) =>
-  Object.freeze({ id: model.id, name: model.name, ...(model.vision ? { supportsVision: true } : {}) })));
+function sourceRegistryModel(model) {
+  const out = { id: model.id, name: model.name };
+  if (model.vision) out.supportsVision = true;
+  return Object.freeze(out);
+}
+export const LMARENA_CHAT_SOURCE_REGISTRY_MODELS = Object.freeze(LMARENA_CHAT_MODELS.map(sourceRegistryModel));
 
 /**
  * Registry rows for the integration change. Source rows in source order; for an
@@ -115,12 +121,12 @@ export const LMARENA_CHAT_SOURCE_REGISTRY_MODELS = Object.freeze(LMARENA_CHAT_MO
  */
 export function buildLmarenaChatRegistryModels(localModels = []) {
   const local = new Map((Array.isArray(localModels) ? localModels : [])
-    .filter((model) => model && typeof model.id === "string")
+    .filter((model) => model && isString(model.id))
     .map((model) => [model.id, model]));
   return LMARENA_CHAT_SOURCE_REGISTRY_MODELS.map((model) => {
     const existing = local.get(model.id);
     const out = { ...model };
-    if (existing && typeof existing.name === "string" && existing.name) out.name = existing.name;
+    if (existing && isString(existing.name) && existing.name) out.name = existing.name;
     if (existing && Number.isFinite(existing.contextLength)) out.contextLength = existing.contextLength;
     return out;
   });

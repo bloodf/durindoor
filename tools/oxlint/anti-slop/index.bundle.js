@@ -1,4 +1,4 @@
-// ../../../../../../../../srv/biwin/home-cortexos/pnpm-store/v11/links/@oxlint/plugins/1.83.0/6f6f3b7ed7b38d95da121f9a5e52e6a0da379d1d3ea6396d9fe74df0887d0d26/node_modules/@oxlint/plugins/index.js
+// node_modules/.pnpm/@oxlint+plugins@1.83.0/node_modules/@oxlint/plugins/index.js
 function defineRule(rule) {
   return rule;
 }

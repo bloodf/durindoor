@@ -26223,6 +26223,66 @@
       "unresolvedHistoricalScenarioIds": []
     },
     {
+      "id": "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.jsx#FireflyBrowserPanel",
+      "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.jsx",
+      "symbol": "FireflyBrowserPanel",
+      "sourceSha256": "ccc163ae0e1fea2997f45789bb501e3cdfdf3788c7c73d2d440d1d53ce2119f9",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Owned static CSF scenarios for disabled configuration and synthetic stored connections. Independent source review and browser evidence remain pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [
+        "production-providers-fireflybrowserpanel--disabled",
+        "production-providers-fireflybrowserpanel--configured"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-providers-fireflybrowserpanel--disabled",
+          "storyId": "production-providers-fireflybrowserpanel--disabled",
+          "runtimeArtifactId": "production-providers-fireflybrowserpanel--disabled",
+          "axes": [
+            "disabled",
+            "experimental",
+            "operator-mapped",
+            "mock-only",
+            "live-unknown"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.jsx": "ccc163ae0e1fea2997f45789bb501e3cdfdf3788c7c73d2d440d1d53ce2119f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.stories.jsx": "4b4cb56914e491d62b0000d407ddf24f1d69cc7bae030a90322d59a29f6cb093"
+          },
+          "proposedSourceEvidence": "Current production component imported by its owned CSF. Synthetic connections only; no browser or live provider verification.",
+          "expectedVisibleText": "Adobe Firefly experimental browser"
+        },
+        {
+          "id": "production-providers-fireflybrowserpanel--configured",
+          "storyId": "production-providers-fireflybrowserpanel--configured",
+          "runtimeArtifactId": "production-providers-fireflybrowserpanel--configured",
+          "axes": [
+            "configured",
+            "experimental",
+            "operator-mapped",
+            "mock-only",
+            "live-unknown"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.jsx": "ccc163ae0e1fea2997f45789bb501e3cdfdf3788c7c73d2d440d1d53ce2119f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.stories.jsx": "4b4cb56914e491d62b0000d407ddf24f1d69cc7bae030a90322d59a29f6cb093"
+          },
+          "proposedSourceEvidence": "Current production component imported by its owned CSF. Synthetic connections only; no browser or live provider verification.",
+          "expectedVisibleText": "Adobe Firefly experimental browser"
+        }
+      ],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx#InferenceStatus",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.jsx",
       "symbol": "InferenceStatus",
@@ -29114,7 +29174,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#ProviderDetailSections",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
       "symbol": "ProviderDetailSections",
-      "sourceSha256": "ddc5636cf346a1a59ad2454e847f9c3498445264962ceb282bd352b275ff0b8f",
+      "sourceSha256": "620e0cc0121460b5037a249028ec8217366ccf31760c905086b1469494881bdf",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -29134,7 +29194,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#autoSyncPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
       "symbol": "autoSyncPanel",
-      "sourceSha256": "ddc5636cf346a1a59ad2454e847f9c3498445264962ceb282bd352b275ff0b8f",
+      "sourceSha256": "620e0cc0121460b5037a249028ec8217366ccf31760c905086b1469494881bdf",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -29481,7 +29541,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/ApiKeyProviderCard.js": "a7d7e68f2eb58f15be688f96618b6782c7f66ee77fc3a8b953937f8712a99dc2"
           },
@@ -30531,7 +30591,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/ProviderCard.js": "ddc6c66b80050476da26832f98eb2ddadbf10e90be26f409e87a37553943c5fa"
           },
@@ -30612,7 +30672,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/ProviderTestResultsView.js": "9968d1e7bb556b24ed6f2fec297067fa6154ac23503ab451d9d30fa64c6c9da1"
           },
@@ -30694,7 +30754,7 @@
           ],
           "proposedSourceEvidence": "Inventory fixture has active OpenAI Production connection; getStatusDisplay produces its visible status, but no load-bearing play yet. Extracted component source now src/app/(dashboard)/dashboard/providers/components/getStatusDisplay.js; scenario still exercises the real mounted providers page. Pending review.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/getStatusDisplay.js": "66ab129f21c42463710f5914dfc93de604a20721736be4f2693c9507230fdd67"
           },
@@ -30712,7 +30772,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/getStatusDisplay.js": "66ab129f21c42463710f5914dfc93de604a20721736be4f2693c9507230fdd67"
           },
@@ -30731,7 +30791,7 @@
           ],
           "proposedSourceEvidence": "Current parent play selects Not configured; helper returns the visible No connections fallback. Extracted component source now src/app/(dashboard)/dashboard/providers/components/getStatusDisplay.js; scenario still exercises the real mounted providers page. Pending review.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0",
             "src/app/(dashboard)/dashboard/providers/components/getStatusDisplay.js": "66ab129f21c42463710f5914dfc93de604a20721736be4f2693c9507230fdd67"
           },
@@ -30822,7 +30882,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/page.js#ProvidersPage",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/page.js",
       "symbol": "ProvidersPage",
-      "sourceSha256": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+      "sourceSha256": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -30843,7 +30903,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0"
           },
           "proposedSourceEvidence": "Inventory mounts live ProvidersPage with OpenAI Production fixture; no play verifies visible inventory text.",
@@ -30858,7 +30918,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0"
           },
           "proposedSourceEvidence": "StatusFiltering play selects live status option and proves status trigger text Not configured.",
@@ -30874,7 +30934,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/page.js": "d48a39948d0ca0f7a0da1a8fd8d1a9563ed7ec786015e152e9d76fcb90a5a6f8",
+            "src/app/(dashboard)/dashboard/providers/page.js": "3e1a5a2230faab9a6d902f65a720b1ddff7b40af0b9017ff4fee1856e40bad0e",
             "src/app/(dashboard)/dashboard/providers/page.stories.jsx": "68fd2985e809d11982519e0238d47e9cc13da51299ac86aa24f77e3665522af0"
           },
           "proposedSourceEvidence": "AllStatusScenarios exercises live ProvidersPage batch-test flow and proves result panel.",

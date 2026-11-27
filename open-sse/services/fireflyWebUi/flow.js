@@ -27,7 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { createErrorResult } from "../../utils/error.js";
 import { mediaAccounting } from "../../handlers/mediaAccounting.js";
-import { ADOBE_FIREFLY_WEB_ID, ADOBE_FIREFLY_WEB_ORIGIN } from "../../providers/private/adobe-firefly-web.js";
+import { ADOBE_FIREFLY_WEB_ID, ADOBE_FIREFLY_WEB_ORIGIN } from "../../providers/registry/adobe-firefly-web.js";
 import { parseFireflyWebUiConfig, prepareFireflyWebUiRequest } from "./config.js";
 import { acquireProfile, assertConnectionId, resolveProfile } from "./profile.js";
 import { GENERATION_LAUNCH_OPTIONS, launchOwnedContext, playwrightLauncher } from "./browser.js";

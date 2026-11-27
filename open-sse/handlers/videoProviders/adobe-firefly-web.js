@@ -1,5 +1,5 @@
-// Adobe Firefly consumer web UI, video (#2034). STAGED: not in VIDEO_GENERATION_ADAPTERS,
-// so unavailable to users. See docs/providers/adobe-firefly-web.md.
+// Adobe Firefly consumer web UI: registered experimental video adapter.
+// See docs/providers/adobe-firefly-web.md.
 //
 // The adapter runs the guarded browser flow in services/fireflyWebUi through
 // the `.generate({ model, body, credentials, signal, log })` contract and
@@ -21,6 +21,7 @@ const defaultDataDir = async () => (await import("../../../src/lib/dataDir.js"))
 export function createAdobeFireflyWebVideoAdapter(deps = {}) {
   return {
     async: true,
+    defaultResponseFormat: RESPONSE_FORMAT,
     responseFormats: [RESPONSE_FORMAT],
     generate: ({ model, body, credentials, signal, log }) => runFireflyWebUiGeneration({
       kind: "video", model, body, credentials, signal, log, deps: { dataDir: defaultDataDir, ...deps },

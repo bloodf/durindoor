@@ -1,3 +1,4 @@
+import { FIREFLY_WEB, saveFireflyConnection } from "@/lib/fireflyWebUiConnection.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { globalCircuitManager } from "@/lib/routing/connectionCircuitState.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
@@ -350,6 +351,8 @@ export async function PUT(request, { params }) {
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
+
+    if (existing.provider === FIREFLY_WEB) return saveFireflyConnection(request, body, existing);
 
     if (existing.provider === "devin-cli-agentic" && apiKey) {
       return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });

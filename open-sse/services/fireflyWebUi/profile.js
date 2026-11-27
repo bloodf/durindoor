@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { ADOBE_FIREFLY_WEB_ID } from "../../providers/private/adobe-firefly-web.js";
+import { ADOBE_FIREFLY_WEB_ID } from "../../providers/registry/adobe-firefly-web.js";
 import { PROFILE_HANDLE_PATTERN, reject } from "./config.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 

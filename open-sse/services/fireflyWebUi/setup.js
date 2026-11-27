@@ -1,5 +1,5 @@
-// Operator setup helpers for the staged Firefly web UI flow (#2034), exported
-// for a later registration change. Nothing routes to them yet.
+// Operator setup helpers for the registered experimental Firefly web UI flow.
+// The dashboard connection route supplies authentication and stored ownership.
 //
 // A setup session opens the connection's private profile in an ordinary,
 // headed Chromium on the fixed Firefly origin, so the operator can sign in,
@@ -13,7 +13,7 @@
 // human's context stays open until the operator closes it here or closes the
 // window; generation never touches it.
 import { randomUUID } from "node:crypto";
-import { ADOBE_FIREFLY_WEB_ORIGIN } from "../../providers/private/adobe-firefly-web.js";
+import { ADOBE_FIREFLY_WEB_ORIGIN } from "../../providers/registry/adobe-firefly-web.js";
 import { FIREFLY_WEB_UI_KEY, assertNoSuppliedSecrets, parseFireflyWebUiConfig, reject } from "./config.js";
 import { acquireProfile, assertConnectionId, initializeProfile, resolveProfile } from "./profile.js";
 import { SETUP_LAUNCH_OPTIONS, launchOwnedContext, playwrightLauncher } from "./browser.js";
@@ -79,3 +79,18 @@ export function closeFireflyWebUiSetup(setupId) {
 }
 
 export const openFireflyWebUiSetupIds = () => [...sessions.keys()];
+
+/** Status is local browser ownership only, never a claim of successful sign-in. */
+export function fireflySetupStatus(connectionId) {
+  const open = [...sessions.values()].some((session) => session.connectionId === connectionId);
+  return { open, outcome: open ? "needs_operator" : "unknown", liveVerified: false };
+}
+
+/** Close only sessions owned by the route's stored connection. */
+export function closeConnectionFireflySetup(connectionId) {
+  let closed = false;
+  for (const session of sessions.values()) {
+    if (session.connectionId === connectionId) { session.finish(); closed = true; }
+  }
+  return closed;
+}

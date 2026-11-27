@@ -76,9 +76,11 @@ const PROMOTED_1127_FIXTURE = Object.freeze([
 const PROMOTED_MEDIA_1127 = Object.freeze({
   renderhour: Object.freeze({ image: true, video: true, tts: true }),
   "adobe-firefly-api": Object.freeze({ image: true, video: true, tts: false }),
+  "adobe-firefly-web": Object.freeze({ image: true, video: true, tts: false }),
 });
 const PROMOTED_MEDIA_1127_FIXTURE = Object.freeze([
   ["open-sse/providers/private/adobe-firefly-api.js", "adobe-firefly-api"],
+  ["open-sse/providers/private/adobe-firefly-web.js", "adobe-firefly-web"],
   ["open-sse/providers/private/renderhour.js", "renderhour"],
 ].map(([module, provider]) => Object.freeze({ module, provider })));
 

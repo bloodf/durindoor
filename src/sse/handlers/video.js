@@ -19,7 +19,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import * as log from "../utils/logger.js";
 import { isString } from "@/shared/utils/typeChecks.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import { supportsVideoGeneration } from "open-sse/handlers/videoGenerationCore.js";
 import {
   wantsDefaultRoute,
@@ -162,6 +162,9 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
         endpoint: "/v1/video/generations", modality: "video", comboName,
         apiKeyId,
       });
+      const headers = new Headers(result.response.headers);
+      headers.set(ACCEPTED_JOB_HEADER, "1");
+      return new Response(result.response.body, { status: result.response.status, headers });
     }
     return result.response;
   }

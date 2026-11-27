@@ -100,6 +100,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `9router` | openai | apikey | `http://127.0.0.1:20130/v1` |
 | `adapta-web` | openai | webCookie | `https://agent.adapta.one/api/chat/stream/v1` |
 | `adobe-firefly-api` |  | apikey | `` |
+| `adobe-firefly-web` |  | apikey | `` |
 | `agentrouter` | claude | apikey | `https://agentrouter.org/v1/messages` |
 | `agnes` |  | apikey | `https://apihub.agnes-ai.com/v1/chat/completions` |
 | `agnes-cn` |  | apikey | `https://api.agnes-ai.cn/v1/chat/completions` |

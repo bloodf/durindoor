@@ -1,0 +1,11 @@
+{
+  "status": "staged",
+  "module": "./index.js",
+  "exports": ["GROK_BROWSER_SCOPE", "GROK_BROWSER_REDIRECT_URI", "buildGrokBrowserAuthUrl", "exchangeGrokBrowserCode", "mapGrokImportedToken"],
+  "integration": [
+    "src/lib/oauth/providers.js: add Grok CLI browser PKCE capability and import mapping without replacing the device provider",
+    "src/app/api/oauth/[provider]/[action]/route.js: route browser and import actions through existing flow ownership, state, PKCE and connection storage guards",
+    "OAuth dashboard: expose explicit browser and selected-account import choices",
+    "src/lib/oauth/redirectUri.js and loopback callback handling: register the distinct 56122 callback with the existing flow store"
+  ]
+}

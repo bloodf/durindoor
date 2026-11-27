@@ -100,3 +100,212 @@ describe("CLI device response", () => {
     await expect(new GitHubService().getDeviceCode()).rejects.toThrow("Invalid GitHub device response");
   });
 });
+
+// ---------------------------------------------------------------------------
+// GHE connection binding: real adapter, helper, executor and proxy transport;
+// only the bottom network transport and the proxy dispatchers are fixtures.
+// ---------------------------------------------------------------------------
+const proxyFetchModule = await import("../../open-sse/utils/proxyFetch.js");
+const ghe = await import("../../src/lib/oauth/providerParity/copilot/gheConnection.js");
+const { GheCopilotExecutor } = await import("../../open-sse/executors/ghe-copilot.js");
+const { PROVIDERS } = await import("../../open-sse/config/providers.js");
+
+const TENANTS = ["alpha", "beta"];
+const origin = (tenant) => `https://${tenant}.example.test`;
+const proxyFor = (tenant) => ({ connectionProxyEnabled: true, connectionProxyUrl: `http://proxy-${tenant}.invalid:8080` });
+
+function installTransport(handler) {
+  const calls = [];
+  const dispatchers = Object.fromEntries(TENANTS.map((tenant) => [tenant, { tenant }]));
+  for (const tenant of TENANTS) proxyFetchModule.__setProxyDispatcherForTesting(proxyFor(tenant).connectionProxyUrl, dispatchers[tenant]);
+  const restore = proxyFetchModule.__setOriginalFetchForTesting(async (url, init = {}) => {
+    const call = { url: String(url), init, proxy: init.dispatcher?.tenant ?? null };
+    calls.push(call);
+    return handler(call);
+  });
+  return { calls, restore };
+}
+
+const headerOf = (init, name) => new Headers(init.headers).get(name);
+const tenantOf = (url) => new URL(url).hostname.split(".").at(-3);
+
+describe("GHE connection binding", () => {
+  let network;
+  afterEach(() => {
+    network?.restore();
+    network = null;
+    proxyFetchModule.__clearProxyDispatchersForTesting();
+  });
+
+  it("keeps two concurrent enterprise sign-ins on their own origin, client, proxy and endpoints", async () => {
+    network = installTransport(async ({ url, init }) => {
+      const tenant = tenantOf(url);
+      const path = new URL(url).pathname;
+      if (path === "/login/device/code") return Response.json({ device_code: `device-${tenant}`, user_code: "CODE", verification_uri: `${origin(tenant)}/login/device`, expires_in: 900, interval: 5, extra: "dropped" });
+      if (path === "/login/oauth/access_token") return Response.json({ access_token: `oauth-${tenant}`, refresh_token: `refresh-${tenant}` });
+      if (path === "/api/v3/copilot_internal/v2/token") {
+        expect(headerOf(init, "authorization")).toBe(`Bearer oauth-${tenant}`);
+        const api = tenant === "alpha" ? "https://copilot-api.alpha.example.test" : "https://collector.attacker.test";
+        return Response.json({ token: `session-${tenant}`, expires_at: 4102444800, endpoints: { api } });
+      }
+      if (path === "/api/v3/user") return Response.json({ id: tenant.length, login: tenant, site_admin: true });
+      throw new Error(`unexpected ${url}`);
+    });
+    const signIn = async (tenant) => {
+      const config = { clientId: `client-${tenant}`, scopes: "read:user" };
+      const started = await gheCopilot.requestDeviceCode(config, null, { gheUrl: origin(tenant) }, proxyFor(tenant));
+      const poll = await gheCopilot.pollToken(config, started.device_code, null, { _gheUrl: started._gheUrl }, proxyFor(tenant));
+      const extra = await gheCopilot.postExchange(poll.data, proxyFor(tenant), { _gheUrl: started._gheUrl });
+      return { started, tokens: gheCopilot.mapTokens(poll.data, extra) };
+    };
+    const [alpha, beta] = await Promise.all(TENANTS.map(signIn));
+
+    expect(alpha.started).toEqual({ device_code: "device-alpha", user_code: "CODE", verification_uri: `${origin("alpha")}/login/device`, expires_in: 900, interval: 5, _gheUrl: origin("alpha") });
+    expect(alpha.tokens.providerSpecificData).toMatchObject({ gheUrl: origin("alpha"), copilotToken: "session-alpha", copilotApiUrl: "https://copilot-api.alpha.example.test", githubLogin: "alpha" });
+    expect(beta.tokens.providerSpecificData).toMatchObject({ gheUrl: origin("beta"), copilotToken: "session-beta", copilotApiUrl: undefined, githubLogin: "beta" });
+    expect(network.calls).toHaveLength(8);
+    for (const { url, init, proxy } of network.calls) {
+      const tenant = tenantOf(url);
+      expect(new URL(url).origin).toBe(origin(tenant));
+      expect(proxy).toBe(tenant);
+      expect(init.redirect).toBe("manual");
+      if (init.body) expect(new URLSearchParams(init.body).get("client_id")).toBe(`client-${tenant}`);
+    }
+  });
+
+  it("refuses an enterprise redirect without following it", async () => {
+    network = installTransport(async () => new Response("synthetic-secret", { status: 307, headers: { location: "https://other.example.test/login/device/code" } }));
+    const failure = gheCopilot.requestDeviceCode({ clientId: "client", scopes: "read:user" }, null, { gheUrl: origin("alpha") }, proxyFor("alpha"));
+    await expect(failure).rejects.toMatchObject({ code: "redirect_refused" });
+    await expect(failure).rejects.not.toThrow(/synthetic-secret/);
+    expect(network.calls.map(({ url }) => url)).toEqual([`${origin("alpha")}/login/device/code`]);
+  });
+
+  it("refuses foreign, look-alike, port-shifted and metadata origins before network access", async () => {
+    network = installTransport(async () => Response.json({}));
+    const binding = ghe.bindGheConnection({ gheUrl: origin("alpha"), clientId: "client" });
+    for (const url of ["https://beta.example.test/api/v3/user", "https://alpha.example.test.attacker.test/x", "https://copilot-api.alpha.example.test:8443/models", "http://alpha.example.test/x"]) {
+      await expect(ghe.gheBoundFetch(binding, url, { headers: { Authorization: "Bearer synthetic" } })).rejects.toMatchObject({ code: "foreign_origin" });
+    }
+    await expect(ghe.gheBoundFetch(ghe.bindGheConnection({ gheUrl: "https://169.254.169.254" }), "https://169.254.169.254/api/v3/user")).rejects.toThrow(/metadata/i);
+    expect(() => ghe.bindGheConnection({ gheUrl: "https://user:pw@alpha.example.test" })).toThrow(/https/);
+    expect(network.calls).toHaveLength(0);
+    expect(ghe.isTrustedGheEndpoint(binding, "https://copilot-api.alpha.example.test")).toBe(true);
+    expect(ghe.isTrustedGheEndpoint(binding, "https://api.business.githubcopilot.com")).toBe(true);
+    expect(ghe.isTrustedGheEndpoint(binding, "https://copilot-api.alpha.example.test/?x=1")).toBe(false);
+  });
+
+  it("cancels before submission and propagates an in-flight abort from refresh", async () => {
+    let release;
+    network = installTransport(({ init }) => new Promise((_resolve, reject) => {
+      release = () => reject(init.signal.reason);
+      init.signal.addEventListener("abort", release, { once: true });
+    }));
+    const binding = ghe.bindGheConnection({ gheUrl: origin("alpha"), clientId: "client" });
+    const early = new AbortController();
+    early.abort();
+    await expect(ghe.gheBoundFetch(binding, `${origin("alpha")}/api/v3/user`, { signal: early.signal })).rejects.toThrow();
+    expect(network.calls).toHaveLength(0);
+
+    const controller = new AbortController();
+    const pending = ghe.refreshBoundGheCopilotCredentials({ accessToken: "oauth", refreshToken: "refresh", providerSpecificData: { gheUrl: origin("alpha") } }, null, null, { signal: controller.signal });
+    const assertion = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(network.calls).toHaveLength(1));
+    controller.abort();
+    await assertion;
+    expect(network.calls).toHaveLength(1);
+  });
+
+  it("rejects an expired session, refreshes the OAuth token once and keeps each account's proxy", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
+    const now = Date.now() / 1000;
+    const log = { error: vi.fn(), warn: vi.fn() };
+    network = installTransport(async ({ url, init }) => {
+      const tenant = tenantOf(url);
+      const auth = headerOf(init, "authorization");
+      if (url.endsWith("/login/oauth/access_token")) {
+        expect(new URLSearchParams(init.body).get("refresh_token")).toBe(`refresh-${tenant}`);
+        return Response.json({ access_token: `oauth2-${tenant}`, expires_in: 28800 });
+      }
+      if (auth === `token oauth-${tenant}`) return Response.json({ token: "stale", expires_at: now - 1, endpoints: { api: "https://collector.attacker.test" } });
+      if (auth === `token oauth2-${tenant}`) return Response.json({ token: `session2-${tenant}`, expires_at: now + 1800, endpoints: { api: `https://copilot-api.${tenant}.example.test`, proxy: "https://collector.attacker.test" } });
+      return new Response("synthetic-secret", { status: 401 });
+    });
+    const results = await Promise.all(TENANTS.map((tenant) => ghe.refreshBoundGheCopilotCredentials({
+      accessToken: `oauth-${tenant}`, refreshToken: `refresh-${tenant}`, providerSpecificData: { gheUrl: origin(tenant) }
+    }, log, proxyFor(tenant))));
+    TENANTS.forEach((tenant, i) => expect(results[i]).toEqual({
+      accessToken: `oauth2-${tenant}`, refreshToken: `refresh-${tenant}`, expiresIn: 28800,
+      copilotToken: `session2-${tenant}`, copilotTokenExpiresAt: now + 1800,
+      providerSpecificData: { copilotApiUrl: `https://copilot-api.${tenant}.example.test` }
+    }));
+    expect(network.calls).toHaveLength(6);
+    for (const { url, proxy } of network.calls) expect(proxy).toBe(tenantOf(url));
+
+    network.restore();
+    network = installTransport(async () => new Response("synthetic-secret", { status: 401 }));
+    const rejected = await new GheCopilotExecutor().refreshCredentials({ accessToken: "oauth-alpha", refreshToken: "refresh-alpha", providerSpecificData: { gheUrl: origin("alpha") } }, log, proxyFor("alpha"));
+    expect(rejected).toBeNull();
+    expect(network.calls).toHaveLength(2);
+    expect(JSON.stringify(log.error.mock.calls)).not.toContain("synthetic-secret");
+  });
+
+  it("routes requests and streams only to the connection's trusted API host", async () => {
+    const executor = new GheCopilotExecutor();
+    const psd = (copilotApiUrl) => ({ providerSpecificData: { gheUrl: origin("alpha"), copilotApiUrl, copilotToken: "session-alpha" } });
+    expect(executor.endpointUrl("baseUrl", psd("https://collector.attacker.test"))).toBe(`${origin("alpha")}/chat/completions`);
+    expect(executor.endpointUrl("messagesUrl", psd("https://copilot-api.alpha.example.test/"))).toBe("https://copilot-api.alpha.example.test/v1/messages");
+    expect(executor.endpointUrl("responsesUrl", psd("https://api.enterprise.githubcopilot.com"))).toBe("https://api.enterprise.githubcopilot.com/responses");
+    expect(PROVIDERS["ghe-copilot"].countTokensUrl).toBeUndefined();
+
+    const sse = 'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+    network = installTransport(async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
+    const result = await executor.execute({
+      model: "gpt-4.1", stream: true, body: { model: "gpt-4.1", stream: true, messages: [{ role: "user", content: "hello" }] },
+      credentials: { connectionId: "alpha", ...psd("https://collector.attacker.test") }, proxyOptions: proxyFor("alpha")
+    });
+    expect(network.calls).toHaveLength(1);
+    const [{ url, init, proxy }] = network.calls;
+    expect(url).toBe(`${origin("alpha")}/chat/completions`);
+    expect(headerOf(init, "authorization")).toBe("Bearer session-alpha");
+    expect(init.redirect).toBe("error");
+    expect(proxy).toBe("alpha");
+    expect(await result.response.text()).toContain('"content":"hi"');
+  });
+
+  it("supports bound model discovery through the staged discovery slot", async () => {
+    network = installTransport(async ({ url }) => url.endsWith("/models")
+      ? Response.json({ data: [{ id: "tenant-model" }] })
+      : new Response(null, { status: 302, headers: { location: "https://other.example.test" } }));
+    const data = { gheUrl: origin("beta"), copilotApiUrl: "https://collector.attacker.test", copilotToken: "session-beta" };
+    const binding = ghe.bindGheConnection({ gheUrl: data.gheUrl, proxyOptions: proxyFor("beta") });
+    const base = ghe.resolveBoundGheApiBase(data);
+    expect(base).toBe(origin("beta"));
+    const response = await ghe.gheBoundFetch(binding, `${base}/models`, { headers: { Authorization: `Bearer ${data.copilotToken}` } });
+    expect(await response.json()).toEqual({ data: [{ id: "tenant-model" }] });
+    await expect(ghe.gheBoundFetch(binding, `${base}/redirect`)).rejects.toMatchObject({ code: "redirect_refused" });
+    expect(network.calls.map(({ proxy }) => proxy)).toEqual(["beta", "beta"]);
+  });
+});
+
+// Staging-only assertions. Replace with positive registration checks when the
+// auth batch wires the central callsites listed in registration.json.
+describe("staged Copilot registration manifest", () => {
+  it("lists real exports and existing central callsites", async () => {
+    const { readFileSync } = await import("node:fs");
+    const root = new URL("../../", import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL("src/lib/oauth/providerParity/copilot/registration.json", root), "utf8"));
+    expect(manifest.status).toBe("staged");
+    for (const [file, names] of Object.entries(manifest.modules)) {
+      const mod = await import(new URL(file, root).href);
+      expect(Object.keys(mod).sort()).toEqual([...names].sort());
+    }
+    expect(manifest.integrationSlots).toHaveLength(4);
+    for (const { callsite } of manifest.integrationSlots) {
+      const [, file, line, needle] = callsite.match(/^(\S+):(\d+) (.+)$/);
+      const source = readFileSync(new URL(file, root), "utf8").split("\n")[Number(line) - 1];
+      expect(source).toContain(needle.split(" ")[0].replace(/^github\./, ""));
+    }
+  });
+});

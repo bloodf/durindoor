@@ -1,6 +1,6 @@
 // One bounded submit per call: no refresh, retry, failover or chat fallback.
 // A lost or unreadable POST may already have consumed Firecrawl credits.
-import { isRecord } from "../../../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { createErrorResult, readBoundedResponseText, parseRateLimitEvidence } from "../../../utils/error.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
@@ -75,7 +75,7 @@ async function submit({ payload, credentials, signal, timeoutMs, fetchImpl }) {
       const status = response.status;
       const code = raw?.error?.code ?? raw?.code;
       if (status >= 500) return unknown(createErrorResult(502, "Firecrawl search outcome unknown"));
-      if (status === 402 || (status === 403 && typeof code === "string" && QUOTA_CODES.test(code))) {
+      if (status === 402 || (status === 403 && isString(code) && QUOTA_CODES.test(code))) {
         return { ...createErrorResult(402, "Firecrawl connection quota exhausted"), quotaExhausted: true };
       }
       const evidence = status === 429 ? parseRateLimitEvidence({
@@ -103,7 +103,7 @@ async function submit({ payload, credentials, signal, timeoutMs, fetchImpl }) {
  * plus `acceptedJob` on failures that may already be billed.
  */
 export async function handleFirecrawlSearchNative({ body, provider, credentials, signal, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = proxyAwareFetch, now = () => Date.now() }) {
-  const providerId = typeof provider === "string" ? provider : provider?.id;
+  const providerId = isString(provider) ? provider : provider?.id;
   if (providerId !== undefined && providerId !== FIRECRAWL_ID) return createErrorResult(400, "Unsupported Firecrawl service");
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) return createErrorResult(400, "Invalid Firecrawl deadline");
   let payload;

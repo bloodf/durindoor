@@ -1,22 +1,49 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Closed network only: every account and gateway call below reaches the mocked transport, and
+// every token is synthetic. A private data directory is created before any module loads.
+const privateRoot = vi.hoisted(() => {
+  const { mkdtempSync, mkdirSync } = process.getBuiltinModule("node:fs");
+  const { join } = process.getBuiltinModule("node:path");
+  const { tmpdir } = process.getBuiltinModule("node:os");
+  const root = mkdtempSync(join(tmpdir(), "minimax-code-parity-"));
+  mkdirSync(join(root, "home"), { recursive: true });
+  process.env.DATA_DIR = join(root, "data");
+  process.env.HOME = join(root, "home");
+  process.env.DURINDOOR_DATABASE_ENGINE = "sqlite";
+  for (const key of ["DURINDOOR_PG_URL", "DURINDOOR_PG_SSLMODE", "DURINDOOR_DATABASE_ENV_SOURCE_JSON"]) delete process.env[key];
+  return root;
+});
 const transport = vi.hoisted(() => vi.fn());
-const storage = vi.hoisted(() => ({ create: vi.fn() }));
+// The device-route block stubs connection storage; the chat-route block uses the real store.
+const storage = vi.hoisted(() => ({ create: vi.fn(), realDb: false }));
+const usage = vi.hoisted(() => ({ saveRequestUsage: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}) }));
 vi.mock("next/server", () => ({
   NextResponse: { json: (body, init) => ({ status: init?.status || 200, body }) },
 }));
 vi.mock("@/lib/network/initOutboundProxy", () => ({ ensureOutboundProxyInitialized: vi.fn(async () => {}) }));
-vi.mock("@/lib/localDb", () => ({
-  createProviderConnection: storage.create,
-  getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProxyPoolById: vi.fn(),
+vi.mock("@/lib/localDb", async (importOriginal) => {
+  const actual = await importOriginal();
+  const stubbed = { createProviderConnection: storage.create, getProviderConnectionById: vi.fn(), updateProviderConnection: vi.fn(), getProxyPoolById: vi.fn() };
+  const pick = (name) => (...args) => (storage.realDb ? actual[name] : stubbed[name])(...args);
+  return { ...actual, ...Object.fromEntries(Object.keys(stubbed).map((name) => [name, pick(name)])) };
+});
+vi.mock("@/lib/usageDb.js", async (importOriginal) => ({
+  ...(await importOriginal()), appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(),
+  saveRequestDetail: usage.saveRequestDetail, saveRequestUsage: usage.saveRequestUsage,
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false, connectionProxyUrl: "", vercelRelayUrl: "" })),
 }));
-vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: transport }));
+vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: transport }));
 import { minimaxCodeOAuthProvider as provider } from "../../src/lib/oauth/services/minimax-code.js";
 
 beforeEach(() => { transport.mockReset(); });
+afterAll(async () => {
+  await global._dbAdapter?.instance?.close?.();
+  const { rmSync } = await import("node:fs");
+  rmSync(privateRoot, { recursive: true, force: true });
+});
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
 describe("MiniMax Code provider transport contract", () => {
@@ -156,6 +183,194 @@ describe("MiniMax Code refresh and account deadline", () => {
     await assertion;
     expect(transport.mock.calls).toHaveLength(1);
     expect(transport.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+});
+
+const GATEWAY_URL = "https://agent.minimax.io/mavis/api/v1/llm/v1/messages";
+const SECRET = "upstream-secret-sk-synthetic-0000";
+const anthropicOk = (text = "hello") => Response.json({ id: "msg_synthetic", type: "message", role: "assistant", model: "MiniMax-M3", content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 3, output_tokens: 2 } });
+const gatewayError = (status, headers = {}) => new Response(JSON.stringify({ type: "error", error: { type: status === 429 ? "rate_limit_error" : "api_error", message: `${SECRET} at /internal/node-7` } }), { status, headers: { "content-type": "application/json", ...headers } });
+const transportError = (code) => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(`${code} ${SECRET}`), { code }) });
+const bearerOf = (init) => new Headers(init.headers).get("authorization");
+const gatewaySends = () => transport.mock.calls.filter(([url]) => String(url) === GATEWAY_URL);
+
+describe("MiniMax Code gateway replay and disclosure contract", () => {
+  let MinimaxCodeExecutor;
+  beforeEach(async () => {
+    vi.stubEnv("MINIMAX_CODE_GATEWAY_RETRIES", "1");
+    ({ MinimaxCodeExecutor } = await import("../../open-sse/executors/minimax-code.js"));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
+
+  const credentials = (token, region = "en") => ({ accessToken: token, providerSpecificData: { enableSessionDispatch: true, region } });
+  const run = (extra = {}) => new MinimaxCodeExecutor({ retryBaseMs: 1 }).execute({
+    model: "MiniMax-M3", body: { model: "MiniMax-M3", messages: [{ role: "user", content: "ping" }] }, stream: false, credentials: credentials("access-synthetic"), ...extra,
+  });
+  const errorOf = async (result) => (await result.response.json()).error;
+
+  it.each([429, 500, 503, 529])("replays only a definite %i refusal, and never echoes its body", async (status) => {
+    transport.mockResolvedValue(gatewayError(status, { "retry-after": "17" }));
+    const result = await run();
+    expect(gatewaySends()).toHaveLength(2);
+    expect(result.response.status).toBe(status);
+    const text = await result.response.text();
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toContain("/internal/");
+    if (status === 429) expect(result.response.headers.get("retry-after")).toBe("17");
+  });
+
+  it.each([502, 504])("sends a %i once and reports the outcome as unknown", async (status) => {
+    transport.mockResolvedValue(gatewayError(status));
+    const result = await run();
+    expect(gatewaySends()).toHaveLength(1);
+    expect(result.response.status).toBe(status);
+    const error = await errorOf(result);
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(JSON.stringify(error)).not.toContain(SECRET);
+  });
+
+  it.each(["ECONNRESET", "EPIPE", "UND_ERR_SOCKET", "ETIMEDOUT"])("never replays a connection lost after sending (%s)", async (code) => {
+    transport.mockRejectedValueOnce(transportError(code)).mockResolvedValue(anthropicOk());
+    const result = await run();
+    expect(gatewaySends()).toHaveLength(1);
+    expect(result.response.status).toBe(502);
+    const error = await errorOf(result);
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(JSON.stringify(error)).not.toContain(SECRET);
+  });
+
+  it("treats a transport error without a proven code as possibly accepted", async () => {
+    transport.mockRejectedValueOnce(new TypeError("fetch failed")).mockResolvedValue(anthropicOk());
+    expect((await errorOf(await run())).code).toBe("upstream_outcome_unknown");
+    expect(gatewaySends()).toHaveLength(1);
+  });
+
+  it("retries a provably unsent connection on the same token and proxy, then stops", async () => {
+    const proxyOptions = { connectionProxyEnabled: true, connectionProxyUrl: "http://proxy-a.invalid" };
+    transport.mockRejectedValueOnce(transportError("ECONNREFUSED")).mockResolvedValue(anthropicOk());
+    expect((await run({ proxyOptions })).response.status).toBe(200);
+    expect(gatewaySends().map(([, init, proxy]) => [bearerOf(init), proxy])).toEqual([
+      ["Bearer access-synthetic", proxyOptions], ["Bearer access-synthetic", proxyOptions],
+    ]);
+    transport.mockReset();
+    transport.mockRejectedValue(transportError("ENOTFOUND"));
+    const unreachable = await run();
+    expect(gatewaySends()).toHaveLength(2);
+    expect(unreachable.response.status).toBe(503);
+    const error = await errorOf(unreachable);
+    expect(error.code).toBe("gateway_unreachable");
+    expect(JSON.stringify(error)).not.toContain(SECRET);
+  });
+
+  it("preserves cancellation during the unsent-retry backoff", async () => {
+    vi.useFakeTimers();
+    transport.mockRejectedValue(transportError("ECONNREFUSED"));
+    const controller = new AbortController();
+    const pending = new MinimaxCodeExecutor({ retryBaseMs: 10_000 }).execute({
+      model: "MiniMax-M3", body: { model: "MiniMax-M3", messages: [{ role: "user", content: "ping" }] }, stream: false, credentials: credentials("access-synthetic"), signal: controller.signal,
+    });
+    const settled = pending.then(() => "resolved", () => "rejected");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(gatewaySends()).toHaveLength(1);
+    controller.abort(new DOMException("client went away", "AbortError"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(await settled).toBe("rejected");
+    expect(gatewaySends()).toHaveLength(1);
+  });
+
+  it("maps 4xx, context and 200 error envelopes to fixed public messages", async () => {
+    for (const [status, body, expected] of [
+      [400, { type: "error", error: { type: "invalid_request_error", message: `context window exceeds limit ${SECRET}` } }, [413, "context_length_exceeded"]],
+      [403, { type: "error", error: { type: "permission_error", message: SECRET } }, [403, "gateway_error"]],
+      [200, { type: "error", error: { type: "rate_limit_error", message: SECRET } }, [429, "quota_exceeded"]],
+      [200, { type: "error", error: { type: "api_error", message: SECRET } }, [500, "gateway_error"]],
+    ]) {
+      transport.mockReset();
+      transport.mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "retry-after": `${SECRET}` } }));
+      const result = await run();
+      expect([result.response.status, (await result.response.clone().json()).error.code]).toEqual(expected);
+      expect(result.response.headers.get("retry-after")).toBeNull();
+      expect(await result.response.text()).not.toContain(SECRET);
+      expect(gatewaySends()).toHaveLength(1);
+    }
+  });
+
+  it("keeps concurrent accounts on their own token and proxy route", async () => {
+    transport.mockImplementation(async (_url, init) => anthropicOk(bearerOf(init)));
+    const proxies = [{ connectionProxyUrl: "http://proxy-a.invalid" }, { connectionProxyUrl: "http://proxy-b.invalid" }];
+    const results = await Promise.all(["access-a", "access-b"].map((token, i) => run({ credentials: credentials(token), proxyOptions: proxies[i] })));
+    expect(await Promise.all(results.map(async (result) => (await result.response.json()).content[0].text))).toEqual(["Bearer access-a", "Bearer access-b"]);
+    const sent = gatewaySends().map(([, init, proxy]) => [bearerOf(init), proxy]).sort(([a], [b]) => a.localeCompare(b));
+    expect(sent).toEqual([["Bearer access-a", proxies[0]], ["Bearer access-b", proxies[1]]]);
+  });
+});
+
+describe("MiniMax Code chat route never replays possibly accepted work", () => {
+  let handleChat, repo;
+  beforeEach(async () => {
+    storage.realDb = true;
+    vi.stubEnv("MINIMAX_CODE_GATEWAY_RETRIES", "1");
+    usage.saveRequestUsage.mockClear();
+    ({ handleChat } = await import("../../src/sse/handlers/chat.js"));
+    repo = await import("../../src/lib/db/repos/connectionsRepo.js");
+    for (const [name, token] of [["mmc-a", "access-a"], ["mmc-b", "access-b"]]) {
+      await repo.createProviderConnection({
+        provider: "minimax-code", authType: "oauth", name, accessToken: token, refreshToken: `refresh-${token}`, isActive: true,
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(), providerSpecificData: { authKind: "oauth", region: "en", enableSessionDispatch: true },
+      });
+    }
+  });
+  afterEach(async () => {
+    for (const row of await repo.getProviderConnections({ provider: "minimax-code" })) await repo.deleteProviderConnection(row.id);
+    storage.realDb = false;
+    vi.unstubAllEnvs();
+  });
+
+  const chat = () => handleChat(new Request("http://gateway.invalid/v1/chat/completions", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "mmcode/MiniMax-M3", messages: [{ role: "user", content: "ping" }] }),
+  }));
+
+  it.each([
+    ["a connection lost after sending", () => Promise.reject(transportError("ECONNRESET")), 502],
+    ["an intermediary 504", async () => gatewayError(504), 504],
+    ["an intermediary 502", async () => gatewayError(502), 502],
+  ])("submits exactly once on %s, with no sibling replay and no invented usage", async (_name, answer, status) => {
+    transport.mockImplementation(answer);
+    const response = await chat();
+    expect(response.status).toBe(status);
+    const text = await response.text();
+    expect(text).not.toContain(SECRET);
+    expect(text).not.toMatch(/"usage"/);
+    expect(gatewaySends()).toHaveLength(1);
+    expect(usage.saveRequestUsage).not.toHaveBeenCalled();
+    // The account that may have done the work is not cooled down on a guess.
+    const rows = await repo.getProviderConnections({ provider: "minimax-code" });
+    expect(rows.every((row) => row.testStatus !== "unavailable" && !Object.entries(row).some(([key, value]) => key.startsWith("modelLock_") && value))).toBe(true);
+  });
+
+  it("submits exactly once when the response headers never arrive", async () => {
+    vi.stubEnv("MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS", "50");
+    transport.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    const response = await chat();
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(gatewaySends()).toHaveLength(1);
+    expect(usage.saveRequestUsage).not.toHaveBeenCalled();
+  });
+
+  it("lets a sibling serve a request the first account provably never sent", async () => {
+    transport.mockImplementation(async (_url, init) => {
+      if (bearerOf(init) === "Bearer access-a") throw transportError("ECONNREFUSED");
+      return anthropicOk("from-b");
+    });
+    const response = await chat();
+    expect(response.status).toBe(200);
+    expect((await response.json()).choices[0].message.content).toBe("from-b");
+    const bearers = gatewaySends().map(([, init]) => bearerOf(init));
+    expect(bearers.filter((bearer) => bearer === "Bearer access-b")).toHaveLength(1);
+    expect(bearers.every((bearer) => ["Bearer access-a", "Bearer access-b"].includes(bearer))).toBe(true);
   });
 });
 

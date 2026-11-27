@@ -31,6 +31,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
 - [NoTrack developer API provider (#2034)](./notrack-2034.md)
 - [Firefly consumer browser contract (#2034)](./firefly-consumer-browser-contract.md)
+- [AI Horde native images on the existing provider (#2034)](./aihorde-images-2034.md)
 - [Session capture storage and retention (#1131)](./session-capture-1131.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.

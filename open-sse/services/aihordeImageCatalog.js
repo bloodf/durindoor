@@ -1,6 +1,7 @@
-// AI Horde public image-model catalog (#2034). STAGED: only the staged image
-// adapter (open-sse/handlers/imageProviders/aihorde.js) imports it, and that
-// adapter is not in IMAGE_ADAPTERS. See internal/docs/aihorde-images-2034.md.
+// AI Horde public image-model catalog. The registered image adapter
+// (open-sse/handlers/imageProviders/aihorde.js) checks it before every submit,
+// and model discovery lists its served models as `image` rows of the existing
+// `aihorde` provider (listHordeImageModelRows).
 //
 // Ported from cheaper-inference/OmniRoute at
 // c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT, Copyright (c) 2026 Cheaper
@@ -22,7 +23,7 @@ import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 export const AI_HORDE_API_BASE = "https://aihorde.net/api";
 export const AI_HORDE_ANONYMOUS_KEY = "0000000000";
 // AI Horde asks clients to identify as `name:version:contact`.
-export const AI_HORDE_CLIENT_AGENT = "DurinDoor:staged:https://github.com/bloodf/durindoor";
+export const AI_HORDE_CLIENT_AGENT = "DurinDoor:4:https://github.com/bloodf/durindoor";
 export const AI_HORDE_CATALOG_URL = `${AI_HORDE_API_BASE}/v2/status/models?type=image`;
 export const AI_HORDE_CATALOG_POLL_MS = 30_000;
 export const AI_HORDE_CATALOG_FETCH_TIMEOUT_MS = 15_000;
@@ -231,3 +232,23 @@ export class HordeImageCatalog {
 }
 
 export const aiHordeImageCatalog = new HordeImageCatalog();
+
+// How long a model listing waits for a catalog refresh. The shared refresh
+// keeps running under its own bound; this caller just stops waiting.
+export const AI_HORDE_LISTING_WAIT_MS = 3_000;
+
+/**
+ * Image model rows for model discovery: only models with at least one worker
+ * in a fresh, error-free snapshot. A failed or slow refresh lists nothing
+ * rather than a stale snapshot, so no listing claims workers it cannot see.
+ * Row ids are the exact Horde model names (they may contain spaces).
+ */
+export async function listHordeImageModelRows({ catalog = aiHordeImageCatalog, waitMs = AI_HORDE_LISTING_WAIT_MS } = {}) {
+  try {
+    await catalog.ensureFresh(undefined, { signal: AbortSignal.timeout(waitMs) });
+  } catch {
+    return [];
+  }
+  if (!catalog.hasSnapshot() || catalog.stale) return [];
+  return catalog.listModels().map(({ name }) => ({ id: name, name, kind: "image", owned_by: "aihorde" }));
+}

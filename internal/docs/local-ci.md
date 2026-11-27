@@ -197,15 +197,32 @@ reports it as the cleanup step's `verification`:
 - `procfs` (Linux, and any host with a readable `/proc/self/stat`): each
   process must run as this uid, carry `WEBSITE_TRANSIENT_OWNER=<token>` in
   `/proc/<pid>/environ`, and keep its kernel start time until the signal.
-- `darwin-ps` (macOS): one `/bin/ps -axww -E -o pid=,ppid=,uid=,pgid=,stat=,lstart=,command=`
-  snapshot per scan, run with `LC_ALL=C`, a minimal `PATH`, no shard token and
-  a 10-second timeout. A process is owned when it runs as this uid and either
-  carries the exact `WEBSITE_TRANSIENT_OWNER=<token>` word or descends by ppid
-  from a process that does. Zombies, this runner and the `ps` process itself are
-  excluded. Identity is PID plus `lstart` (one-second resolution). Each signal
-  round takes a fresh snapshot and skips any PID that is no longer owned or has
-  a different start time. macOS serves a process environment only to its own
-  uid, the only uid this guard signals.
+- `darwin-ps` (macOS): each scan reads three `/bin/ps -axww` snapshots, run
+  with `TZ=UTC0`, `LC_ALL=C`, a minimal `PATH`, no shard token and a 10-second
+  timeout: arguments only, arguments plus environment (`-E`), then arguments
+  only again. `ps -E` prints the environment after the arguments with no
+  separator, so the token counts only when both arguments-only reads agree
+  (no exec in between) and the `-E` line is exactly those arguments followed
+  by an environment region holding the `WEBSITE_TRANSIENT_OWNER=<token>`
+  word. A token that is only in a process's arguments is never ownership.
+  A process is owned when it runs as this uid and proves the token, matches
+  an identity owned in an earlier scan, descends by ppid from an owned
+  process, or sits in a process group an owned process led that still holds
+  an owned member. Identities persist for the whole cleanup, so a tokenless
+  child stays owned after its parent exits. Identity is PID plus `lstart`
+  (one-second resolution). It is trusted only for a process observed at
+  least 1.5 seconds after its start: a recycled PID starts after that
+  observation and cannot share the start second. Younger processes wait
+  (bounded) before they are signalled. A wall clock seen stepping backwards
+  fails the scan. Every signal is preceded by a fresh `ps -p <pid>` read that
+  must match the tracked identity, uid and group. Members of a group already
+  signalled in that round are not signalled again. A same-uid process in a
+  group this shard once owned that can no longer be proven, an identity that
+  changed uid, and their children are reported as unverified. They are never
+  signalled, and cleanup fails while they live. macOS serves a process
+  environment only to its own uid, and hides it for Apple platform binaries
+  such as `/bin/sh`. The shard's server tree is Node processes, whose
+  environment is visible.
 - none (Linux with `/proc` missing or unreadable, other platforms): nothing is
   signalled and cleanup fails, even when the port is free.
 
@@ -214,6 +231,10 @@ process or owned descendant. An enumeration error (`ps` missing, timed out,
 killed, non-zero exit, empty output, or a line that does not parse) fails
 cleanup instead of reading as "nothing left", and local CI stops the remaining
 shards. A listener without ownership is reported as foreign and never signalled.
-Platform-independent tests inject the macOS process table and a mocked `kill`,
+Limits on macOS: a same-uid process that deliberately puts the token text
+inside one of its own environment values cannot be told apart, because
+`ps -E` joins variables with spaces. A tokenless process that left this
+shard's process groups before any scan saw it is invisible, as it is on
+Linux. Platform-independent tests inject the macOS process table and a mocked `kill`,
 so they never signal real processes. A real-`ps` integration test runs only on
 macOS hosts; Linux evidence does not establish macOS `ps -E` behavior.

@@ -182,6 +182,26 @@ export async function handleImageGenerationCore({
     );
   }
 
+  // An adapter that declares its output formats refuses any other before anything
+  // is sent or billed, instead of answering in a different format afterwards.
+  if (Array.isArray(adapter.responseFormats)) {
+    const requested = binaryOutput ? "binary" : body.response_format ?? adapter.defaultResponseFormat ?? "url";
+    if (!adapter.responseFormats.includes(requested)) {
+      return createErrorResult(
+        HTTP_STATUS.BAD_REQUEST,
+        `Provider '${provider}' supports response_format ${adapter.responseFormats.join(", ")} only`
+      );
+    }
+  }
+
+  // Guarded synchronous adapters own serialization and uncertain-submit receipts.
+  if (isFunction(adapter.generate)) {
+    if (streamToClient) return createErrorResult(400, "This provider does not support streaming");
+    const result = await adapter.generate({ model, body, credentials, signal, log });
+    if (result.success && onRequestSuccess) await onRequestSuccess();
+    return result;
+  }
+
   // Executor-delegating adapters: skip manual URL/headers/body, use the proven executor flow
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {
@@ -430,6 +450,20 @@ export async function handleImageGenerationCore({
   // and classifies the response before any reset can reach account health.
   const parseImageError = (response) => parseUpstreamError(response, provider === "codex" && response.status === 429 ? executor : null, { provider });
   if (redirectRefused(providerResponse)) return refuseRedirect(providerResponse);
+  // Optional adapter-owned refusal: an adapter that knows its provider's
+  // documented error headers (adobe-firefly-api) describes a refused submit
+  // itself. Its body is cancelled unread, so no upstream text is repeated; only
+  // the adapter's own message, a bounded reset and a resetless-quota flag are.
+  if (!providerResponse.ok && isFunction(adapter.describeSubmitError)) {
+    const refusal = adapter.describeSubmitError(providerResponse);
+    if (refusal) {
+      void providerResponse.body?.cancel().catch(() => {});
+      log?.debug?.("IMAGE", `${provider.toUpperCase()} | submit refused (${refusal.status})`);
+      const evidence = refusal.rateLimitEvidence ?? null;
+      const failed = createErrorResult(refusal.status, refusal.message, evidence?.resetAtMs, undefined, evidence);
+      return refusal.quotaExhausted === true ? { ...failed, quotaExhausted: true } : failed;
+    }
+  }
   let upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
   const fallbackBody = upstreamError && adapter.buildFallbackBody?.(
     requestBody, upstreamError.statusCode, upstreamError.message

@@ -1,11 +1,10 @@
 // Adobe Firefly Services API (developer.adobe.com/firefly-services): image
-// generation, plus a separately staged text-to-video slice. STAGED: nothing in
-// the registry, the image adapter map or the video core imports this module
-// yet, so it is unavailable to users. See docs/providers/adobe-firefly-api.md.
+// generation and Adobe's native text-to-video. Registered for #2034 (1127):
+// images run through the shared image core and video through
+// /v1/video/generations. See docs/providers/adobe-firefly-api.md.
 //
-// The default export describes the image service only. Video constants are
-// separate named exports (ADOBE_FIREFLY_STAGED_VIDEO and friends) so image and
-// video models never mix; registering video is left to the shared batch.
+// Image and video models are separate lists with their own kind, and each
+// adapter refuses the other kind's models.
 //
 // This is the operator-entitled Services API, authenticated with an Adobe
 // Developer Console OAuth Server-to-Server credential. It is not the consumer
@@ -72,14 +71,16 @@ export const ADOBE_FIREFLY_VIDEO_SIZES = Object.freeze([
   [1080, 1080], [720, 720], [540, 540],
 ].map((size) => Object.freeze(size)));
 
-// Staged video description, for the registration batch. Not part of the
-// default export, whose serviceKinds stay ["image"].
-export const ADOBE_FIREFLY_STAGED_VIDEO = Object.freeze({
+// Video description. There is deliberately no videoConfig on the default
+// export: the shared /v1/videos proxy forwards the client body to a base URL
+// and cannot mint IMS tokens, so video runs only through the synchronous
+// /v1/video/generations adapter (handlers/videoProviders/adobe-firefly-api.js).
+export const ADOBE_FIREFLY_VIDEO = Object.freeze({
   serviceKinds: Object.freeze(["video"]),
   models: Object.freeze(VIDEO_MODELS.map(([id, name]) => Object.freeze({
     id, name, kind: "video", params: Object.freeze(["size", "seconds", "seed"]),
   }))),
-  videoConfig: Object.freeze({ baseUrl: ADOBE_FIREFLY_VIDEO_GENERATE_URL }),
+  generateUrl: ADOBE_FIREFLY_VIDEO_GENERATE_URL,
 });
 
 export default {
@@ -93,14 +94,18 @@ export default {
     textIcon: "FS",
     website: "https://developer.adobe.com/firefly-services/docs/firefly-api/",
     notice: {
-      text: "Image generation only. Needs a Firefly Services API entitlement and an OAuth Server-to-Server credential from Adobe Developer Console. A Firefly or Creative Cloud subscription alone does not grant API access.",
+      text: "Text-to-image and Adobe's native five-second text-to-video. Needs a Firefly Services API entitlement and an OAuth Server-to-Server credential from Adobe Developer Console: its client ID plus either its client secret or an access token issued to it. A Firefly or Creative Cloud subscription alone does not grant API access. Results are pre-signed URLs (response_format url).",
       apiKeyUrl: "https://developer.adobe.com/console",
     },
   },
   category: "apikey",
   authType: "apikey",
   transport: null,
-  models: MODELS.map(([id, name]) => ({ id, name, params: ["size", "n"], kind: "image" })),
-  serviceKinds: ["image"],
+  authHint: "Client secret of an Adobe Developer Console OAuth Server-to-Server credential, or an access token issued to it; its client ID goes in the Client ID field.",
+  models: [
+    ...MODELS.map(([id, name]) => ({ id, name, params: ["size", "n"], kind: "image" })),
+    ...ADOBE_FIREFLY_VIDEO.models.map((model) => ({ ...model, params: [...model.params] })),
+  ],
+  serviceKinds: ["image", "video"],
   imageConfig: { baseUrl: ADOBE_FIREFLY_GENERATE_URL },
 };

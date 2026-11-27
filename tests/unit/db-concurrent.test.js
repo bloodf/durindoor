@@ -70,6 +70,9 @@ describe("DB Concurrency — atomic safety", () => {
       const list = await db.getRequestDetails({ provider: "openai", pageSize: 500 });
       return list.pagination.totalItems;
     }, { timeout: 10000 }).toBeGreaterThanOrEqual(N);
+
+    const list = await db.getRequestDetails({ provider: "openai", pageSize: 500 });
+    expect(list.pagination.totalItems).toBeGreaterThanOrEqual(N);
   }, 15000);
 
   it("mixed concurrent: usage + details + connections + aliases", async () => {

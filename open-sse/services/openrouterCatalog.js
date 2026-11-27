@@ -4,6 +4,7 @@ import { readBoundedResponseText } from "../utils/error.js";
 import { extractLiveModelLimits } from "./modelMetadata.js";
 import { createCatalogCache } from "./catalogCache.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { LIVE_CATALOG_WAIT_MS } from "../../src/shared/models/catalogDeadline.js";
 
 /**
  * OpenRouter's public model catalogs:
@@ -26,13 +27,19 @@ export const OPENROUTER_DECISIONS_MODELS_URL = `${OPENROUTER_MODELS_URL}?output_
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FAILURE_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
-// How long a merged lookup waits for the secondary decisions listing after the
-// primary catalog is ready. Model-list callers give the whole lookup
-// LIVE_CATALOG_WAIT_MS (3s, src/shared/models/catalogDeadline.js); waiting the
-// full FETCH_TIMEOUT_MS here would turn a fast primary answer into a static
-// fallback. A slower decisions fetch keeps running (still capped by
-// FETCH_TIMEOUT_MS) and fills the per-route cache for later lookups.
+// Model-list callers give the whole OpenRouter lookup LIVE_CATALOG_WAIT_MS
+// (3s, src/shared/models/catalogDeadline.js) and fall back to static rows when
+// it runs out. A merged lookup therefore waits for the secondary decisions
+// listing only while both limits hold: at most DECISIONS_WAIT_MS after the
+// primary catalog is ready, and never past the lookup budget, which is measured
+// from the start of the lookup and keeps a margin for the caller's own work.
+// A slow primary leaves less (or no) time for decisions, so a successful
+// primary is still returned before the caller's deadline. A slower decisions
+// fetch keeps running (still capped by FETCH_TIMEOUT_MS) and fills the
+// per-route cache for later lookups.
 const DECISIONS_WAIT_MS = 1000;
+const LOOKUP_DEADLINE_MARGIN_MS = 250;
+export const OPENROUTER_LOOKUP_BUDGET_MS = LIVE_CATALOG_WAIT_MS - LOOKUP_DEADLINE_MARGIN_MS;
 // The full catalog is ~0.7 MiB / ~450 models today; the caps leave headroom
 // while bounding a hostile or corrupted response.
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -232,17 +239,21 @@ async function loadDecisionModelsBounded(routeKey, transport, waitMs) {
  * `output_modalities=decisions` listing and merges its entries with the
  * primary catalog; a failed secondary request leaves the primary catalog
  * usable. The secondary request is awaited for at most `decisionsWaitMs`
- * after the primary catalog is ready; a slower one continues in the
- * background and is merged on a later call. `freeOnly` keeps only free models (plus `systemone` decision models
- * when `includeDecisions` is true).
+ * after the primary catalog is ready, and never past `deadlineAt` (an epoch-ms
+ * time; by default OPENROUTER_LOOKUP_BUDGET_MS after this call starts). A
+ * slower one continues in the background and is merged on a later call.
+ * `freeOnly` keeps only free models (plus `systemone` decision models when
+ * `includeDecisions` is true).
  */
 export async function resolveOpenRouterModels({
   freeOnly = false,
   includeDecisions = false,
   decisionsWaitMs = DECISIONS_WAIT_MS,
+  deadlineAt = null,
   proxyOptions = null,
   fetchImpl = null
 } = {}) {
+  const lookupDeadline = isNumber(deadlineAt) ? deadlineAt : Date.now() + OPENROUTER_LOOKUP_BUDGET_MS;
   const routeKey = cacheKeyFor(proxyOptions);
   const transport = await resolveTransport(fetchImpl, proxyOptions);
   await catalogCache.load(routeKey, async () => {
@@ -256,7 +267,10 @@ export async function resolveOpenRouterModels({
 
   let models = primary;
   if (includeDecisions) {
-    const decisions = await loadDecisionModelsBounded(routeKey, transport, decisionsWaitMs);
+    // Out of budget still starts (or joins) the background fetch and merges a
+    // decisions listing that is already cached; it just does not wait for I/O.
+    const waitMs = Math.max(0, Math.min(decisionsWaitMs, lookupDeadline - Date.now()));
+    const decisions = await loadDecisionModelsBounded(routeKey, transport, waitMs);
     models = mergeOpenRouterCatalogs(primary, decisions || []);
   }
 

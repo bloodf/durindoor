@@ -1,0 +1,88 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (nebius: baseUrl https://api.tokenfactory.nebius.com/v1/images/generations, fallbackUrl https://api.studio.nebius.com/v1/images/generations, authType apikey, authHeader bearer, format openai, one placeholder model, supportedSizes [1024x1024], comment 'Curruntly no models serving')",
+      "open-sse/handlers/imageGeneration.ts (format openai -> handleOpenAIImageGeneration; fallbackUrl retried on 404/410/502/503)",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts (deadline covers body read; 2xx without b64_json/url -> 502)",
+      "open-sse/handlers/imageGeneration/result.ts (usage kept internal)",
+      "src/app/api/providers/[id]/models/discovery/providerModelsConfig.ts (nebius: GET https://api.tokenfactory.nebius.com/v1/models, Bearer, data.data || data.models)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no nebius key on this branch or origin/main fdbb72865a; open-sse/providers/registry/nebius.js declares serviceKinds [\"llm\", \"embedding\"] with no imageConfig, and no file names api.tokenfactory.nebius.com/v1/images/generations or api.studio.nebius.com.",
+    "genericAdapter": "createOpenAIAdapter('nebius') would read PROVIDER_MEDIA.nebius.imageConfig (absent) and has no fallback host, no fixed-origin/redirect refusal and no uncertain-submit handling, so it is not used here.",
+    "sourceStatus": "the source registry lists the entry under 'Curruntly no models serving' with the model named 'No Model yet'; the entry is visible and reachable through handleImageGeneration, so the wire contract is ported but no model is claimed to be served."
+  },
+  "module": "open-sse/services/providerParity/native-nebius-image/index.js",
+  "exports": {
+    "nebiusImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createNebiusImageAdapter": "factory; options { fetchImpl, submitTimeoutMs, timeoutMs, now } for tests",
+    "buildNebiusImageRequest": "(model, body) -> { model, prompt, output_format?, n?, size?, quality?, response_format?, style? } in source order; throws status 400 before any network call",
+    "resolveNebiusImageModel": "strip nebius/ and pass any safe model id through (source parity); null for unsafe ids",
+    "resolveNebiusImageCredential": "source credentials.apiKey || credentials.accessToken",
+    "normalizeNebiusImageItems": "usable items: public https url or base64 png/jpeg/webp -> { items, formats, unsafe }",
+    "nebiusPublicUrl": "https on a public literal host without userinfo, or null",
+    "nebiusAcceptedJob": "accepted-job accounting for an uncertain submit",
+    "discoverNebiusModels": "bounded GET /v1/models with the selected key, manual redirects; returns every safe model id (not image-classified)",
+    "parseNebiusModelList": "source parseResponse data.data || data.models, safe de-duplicated ids",
+    "isSafeNebiusModelId": "model id syntax check"
+  },
+  "provider": {
+    "canonicalId": "nebius",
+    "aliases": [],
+    "serviceKinds": ["image"],
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken"],
+      "sentTo": ["https://api.tokenfactory.nebius.com", "https://api.studio.nebius.com"]
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions for submit and discovery"
+  },
+  "models": [
+    { "id": "black-forest-labs/flux-schnell", "name": "No Model yet", "sizes": ["1024x1024"], "note": "source placeholder; any safe model id passes through" }
+  ],
+  "modelAliases": {},
+  "request": {
+    "accepted": ["model", "prompt", "n (1..10)", "size (WxH, sides 64..2048)", "quality (short word)", "style (short word)", "response_format url | b64_json", "output_format png | jpeg | webp", "user (not sent)", "stream false"],
+    "refused": ["unsafe model id", "image / image_url / mask / input images", "background", "frame_count / frame_duration_ms", "output_compression", "partial_images", "output_format gif | svg", "streaming", "any other non-null field"],
+    "responseFormats": ["url", "b64_json"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://api.tokenfactory.nebius.com/v1/images/generations", "body": "{ model, prompt, ... }", "answer": "{ created, data: [{ url } | { b64_json }], usage? }", "billable": true, "redirect": "manual (refused)" },
+    "fallback": { "method": "POST", "url": "https://api.studio.nebius.com/v1/images/generations", "when": "primary answered 404 or 410 (source also 502/503; not replayed here)", "billable": true, "redirect": "manual (refused)" },
+    "discovery": { "method": "GET", "url": "https://api.tokenfactory.nebius.com/v1/models", "billable": false, "redirect": "manual (refused)" }
+  },
+  "bounds": { "submitTimeoutMs": 120000, "totalTimeoutMs": 180000, "discoveryTimeoutMs": 10000, "responseMaxBytes": 41943040, "discoveryMaxBytes": 2097152, "maxResults": 16 },
+  "accounting": {
+    "success": "nativeUnits.images = returned usable items; upstream usage (if any) recorded as internal tokens; cost unknown unless usage carries a USD receipt",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, foreign-origin answer; accepted: a 2xx that is unreadable or without a usable image. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed; no acceptedJob",
+    "redirect": "3xx -> 502, never followed"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add nebius: nebiusImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore calls adapter.generate and records success)"
+    },
+    {
+      "file": "open-sse/providers/registry/nebius.js",
+      "change": "serviceKinds [\"llm\", \"embedding\", \"image\"], imageConfig { baseUrl: https://api.tokenfactory.nebius.com/v1/images/generations } and the image model entry; keep authType apikey, chat transport and embeddingConfig unchanged"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list image for nebius with the supported subset"
+    },
+    {
+      "file": "tests/unit/native-nebius-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

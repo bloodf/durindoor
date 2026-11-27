@@ -28,8 +28,12 @@ export function ideogramToken(credentials) {
 
 export const ideogramSecrets = (credentials) => ({ apiKey: credentials?.apiKey });
 
-/** The source's header set: JSON body and the selected key in `Api-Key`. */
-export const ideogramHeaders = (token) => ({ "Content-Type": "application/json", [IDEOGRAM_AUTH_HEADER]: token });
+/**
+ * The selected key in `Api-Key` (the documented ApiKeyAuth scheme), plus a JSON
+ * content type for the JSON operation. A multipart body sets its own boundary.
+ */
+export const ideogramHeaders = (token, { json = true } = {}) =>
+  (json ? { "Content-Type": "application/json", [IDEOGRAM_AUTH_HEADER]: token } : { [IDEOGRAM_AUTH_HEADER]: token });
 
 /** Accounting for work Ideogram may have taken (and may bill) whose outcome is not known. */
 export function ideogramAcceptedJob(modality, jobState = "accepted", meta = {}) {

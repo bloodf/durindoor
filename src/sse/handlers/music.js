@@ -133,6 +133,16 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       return result.response;
     }
 
+    // A synchronous call the provider may have billed (Vertex Lyria) is recorded
+    // once on this account with unknown cost and never resubmitted elsewhere.
+    if (result.acceptedJob) {
+      await recordAcceptedJobUsage(apiKey, { ...usage(result.acceptedJob), apiKeyId });
+      if (!request.signal?.aborted) {
+        await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
+      }
+      return abortedResponse(request.signal) || result.response || errorResponse(result.status, result.error);
+    }
+
     const abortedAttempt = abortedResponse(request.signal);
     if (abortedAttempt) return abortedAttempt;
 

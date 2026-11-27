@@ -1,0 +1,95 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/job.ts",
+      "open-sse/handlers/videoGeneration/pollRetry.ts",
+      "open-sse/utils/pollBounds.ts",
+      "tests/unit/services/openrouter-video-job.test.ts"
+    ],
+    "registryFields": {
+      "id": "openrouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "format": "openrouter-video-job"
+    }
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/openrouter.js: alias openrouter, apikey, Bearer, serviceKinds [llm, embedding, tts, imageToText, rerank, systemone], no video kind, no videoConfig",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('openrouter') is null; VIDEO_GENERATION_ADAPTERS has alibaba, ali, renderhour, adobe-firefly-api, adobe-firefly-web)",
+    "asyncVideoConfig": "none (PROVIDER_MEDIA.openrouter has no videoConfig, so the /v1/videos proxy in videoCore.js cannot reach it)",
+    "otherVideosUse": "none; nothing in open-sse or src sends to openrouter.ai/api/v1/videos or reads unsigned_urls"
+  },
+  "module": "open-sse/services/providerParity/native-openrouter-video/index.js",
+  "exports": {
+    "openrouterVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [b64_json])",
+    "createOpenrouterVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, contentTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "buildOpenrouterVideoRequest": "(model, body) -> { model, prompt, duration?: integer, aspect_ratio? }; throws status 400",
+    "resolveOpenrouterTiming": "(body) -> { pollIntervalMs, maxPolls } from poll_interval_ms / max_polls within the 600 s window; throws status 400",
+    "runOpenrouterVideoJob": "submit + bounded poll + bounded content read; { success, bytes, job, jobId } or error result with acceptedJob",
+    "openrouterAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "openrouterContentUrl": "(url, jobId) same-origin content URL check for unsigned_urls[0]",
+    "OPENROUTER_VIDEO_MODELS": "video catalog metadata (id, name, kind)",
+    "OPENROUTER_VIDEO_URL": "https://openrouter.ai/api/v1/videos",
+    "OPENROUTER_VIDEO_FORMAT": "openrouter-video-job"
+  },
+  "provider": {
+    "canonicalId": "openrouter",
+    "aliases": ["openrouter"],
+    "existingRegistryEntry": "open-sse/providers/registry/openrouter.js",
+    "existingServiceKinds": ["llm", "embedding", "tts", "imageToText", "rerank", "systemone"],
+    "addServiceKinds": ["video"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "extraHeaders": "none; the registry's HTTP-Referer / X-Title belong to chat, TTS, image, embedding and System One configs and were not sent on video by the source"
+  },
+  "models": {
+    "video": [
+      { "id": "google/veo-3.1", "name": "Veo 3.1" },
+      { "id": "google/veo-3.1-fast", "name": "Veo 3.1 Fast" },
+      { "id": "google/veo-3.1-lite", "name": "Veo 3.1 Lite" },
+      { "id": "openai/sora-2-pro", "name": "Sora 2 Pro" },
+      { "id": "kwaivgi/kling-v3.0-pro", "name": "Kling 3.0 Pro" },
+      { "id": "kwaivgi/kling-v3.0-std", "name": "Kling 3.0 Standard" },
+      { "id": "bytedance/seedance-2.5", "name": "Seedance 2.5" },
+      { "id": "bytedance/seedance-2.0", "name": "Seedance 2.0" },
+      { "id": "minimax/hailuo-3-max", "name": "Hailuo 3 Max" },
+      { "id": "minimax/hailuo-3", "name": "Hailuo 3" },
+      { "id": "alibaba/wan-3.0", "name": "Wan 3.0" },
+      { "id": "alibaba/wan-3.0-prime", "name": "Wan 3.0 Prime" },
+      { "id": "x-ai/grok-imagine-video-1.5", "name": "Grok Imagine Video 1.5" },
+      { "id": "runway/gen-4.5", "name": "Runway Gen-4.5" }
+    ],
+    "rawIds": "none; only the 14 source slugs are sent (the registry's passthroughModels applies to chat, not this adapter)",
+    "modelIdParsing": "slugs contain one slash; openrouter/google/veo-3.1 splits on the first slash into provider openrouter and model google/veo-3.1",
+    "dynamicDiscovery": "none in the source for video; static list only. The provider's modelsFetcher (https://openrouter.ai/api/v1/models, type openrouter-free) lists chat models and must not feed video"
+  },
+  "endpoints": {
+    "submit": { "method": "POST", "url": "https://openrouter.ai/api/v1/videos", "headers": ["Content-Type", "Authorization"], "jobField": "id" },
+    "status": { "method": "GET", "url": "https://openrouter.ai/api/v1/videos/{id}", "headers": ["Content-Type", "Authorization"] },
+    "content": { "method": "GET", "url": "https://openrouter.ai/api/v1/videos/{id}/content[?index=N]", "headers": ["Content-Type", "Authorization"], "from": "unsigned_urls[0]" }
+  },
+  "responseFormats": { "video": ["b64_json"] },
+  "serviceKinds": ["video"],
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { openrouterVideoAdapter } and add `openrouter: openrouterVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/openrouter.js",
+      "change": "append \"video\" to serviceKinds and the 14 video model rows (kind: video) from OPENROUTER_VIDEO_MODELS; keep alias, apikey auth, Bearer transport, chat headers, modelsFetcher and passthroughModels; no videoConfig (no async /v1/videos ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the OpenRouter video kind after registration"
+    }
+  ]
+}

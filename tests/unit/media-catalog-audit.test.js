@@ -123,10 +123,14 @@ describe("/v1/models/{kind} for connected media providers", () => {
     expect(listed.filter((m) => routeOf(m.id).provider === "aws-polly")).toEqual([]);
   });
 
-  it("lists no video models for chat-only Agnes and Pollinations", async () => {
+  it("lists no video models for chat-only Pollinations and only the native Agnes video models", async () => {
     connect(["agnes", "pollinations"]);
     const listed = await buildModelsList(["video"], null, { exposeComboOnly: false });
-    expect(listed.filter((m) => ["agnes", "pollinations"].includes(routeOf(m.id).provider))).toEqual([]);
+    expect(listed.filter((m) => ["pollinations"].includes(routeOf(m.id).provider))).toEqual([]);
+    // Agnes serves native video on its existing connection (OmniRoute c71f006 videoRegistry.ts).
+    const agnes = listed.filter((m) => routeOf(m.id).provider === "agnes");
+    expect(agnes.map((m) => m.id).sort()).toEqual(["agnes/agnes-video-2.5", "agnes/agnes-video-2.5-flash", "agnes/agnes-video-v2.0"]);
+    expect(agnes.every((m) => m.kind === "video")).toBe(true);
   });
 });
 

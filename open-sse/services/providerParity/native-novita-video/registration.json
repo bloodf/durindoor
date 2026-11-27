@@ -1,0 +1,72 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/novita.ts",
+      "open-sse/handlers/videoGeneration/novitaHandler.ts",
+      "open-sse/utils/pollBounds.ts"
+    ]
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/novita.js: apikey, default Bearer, chat transport https://api.novita.ai/openai/v1/chat/completions, validateUrl /openai/v1/models, no serviceKinds/hiddenKinds, four chat models",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('novita') is null; VIDEO_GENERATION_ADAPTERS has alibaba, ali, renderhour, adobe-firefly-api, adobe-firefly-web)",
+    "asyncVideoConfig": "none (no novita entry for /v1/videos)",
+    "otherV3AsyncUse": "none; nothing in open-sse or src sends to api.novita.ai/v3/async"
+  },
+  "module": "open-sse/services/providerParity/native-novita-video/index.js",
+  "exports": {
+    "novitaVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createNovitaVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now } for tests",
+    "buildNovitaVideoRequest": "(model, body) -> { prompt, negative_prompt?, duration?, width?, height? }; throws status 400",
+    "resolveNovitaTiming": "(body) -> { timeoutMs, pollIntervalMs } from timeout_ms / poll_interval_ms with source ceilings; throws status 400",
+    "runNovitaVideoTask": "submit + bounded poll; { success, url, taskId, accounting } or error result with acceptedJob",
+    "novitaAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "novitaPublicUrl": "public https URL check used for results",
+    "NOVITA_VIDEO_MODELS": "video catalog metadata (id, name, kind)",
+    "NOVITA_ASYNC_BASE_URL": "https://api.novita.ai/v3/async",
+    "NOVITA_TASK_RESULT_URL": "https://api.novita.ai/v3/async/task-result",
+    "NOVITA_VIDEO_FORMAT": "novita-video"
+  },
+  "provider": {
+    "canonicalId": "novita",
+    "aliases": ["novita"],
+    "existingRegistryEntry": "open-sse/providers/registry/novita.js",
+    "existingServiceKinds": null,
+    "addServiceKinds": ["llm", "video"],
+    "serviceKindsNote": "the entry declares no serviceKinds today, which src/shared/constants/providers.js defaults to [\"llm\"]; registration sets [\"llm\", \"video\"] so chat stays listed",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "video": [
+      { "id": "wan-t2v", "name": "Wan 2.1 Text-to-Video" },
+      { "id": "kling-v1.6-t2v", "name": "Kling V1.6 Text-to-Video" }
+    ],
+    "dynamicDiscovery": "none in the source; static list only. The provider's existing /openai/v1/models discovery lists chat models and must not feed video"
+  },
+  "endpoints": {
+    "submit": { "method": "POST", "url": "https://api.novita.ai/v3/async/{model}" },
+    "status": { "method": "GET", "url": "https://api.novita.ai/v3/async/task-result?task_id={task_id}" }
+  },
+  "responseFormats": { "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { novitaVideoAdapter } and add `novita: novitaVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/novita.js",
+      "change": "set serviceKinds [\"llm\", \"video\"] and add the two video model rows (kind: video) from NOVITA_VIDEO_MODELS; keep alias novita, authType apikey, Bearer transport, chat baseUrl and validateUrl; no videoConfig (no async /v1/videos ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Novita video kind after registration"
+    }
+  ]
+}

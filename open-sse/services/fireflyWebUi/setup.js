@@ -70,41 +70,87 @@ export async function openFireflyWebUiSetup({ credentials, operator, deps = {} }
   }
 }
 
+/**
+ * Launch, navigate and register one setup browser.
+ *
+ * Failed-start resource ownership: once a context exists it is owned by a
+ * session record (see `ownSetupContext`) that holds the profile lock until the
+ * browser is confirmed closed, by a successful `context.close()` or by the
+ * context's own `close` event. When page creation or navigation fails, the
+ * record is registered before any close attempt, so a concurrent or later
+ * deletion still finds it after the pending-launch entry clears. The start
+ * then tries one bounded close: on confirmation the record and lock are
+ * released (exactly once) and the start reports 502; when the close fails or
+ * times out the record and lock are kept, status stays `open`, a deletion
+ * refuses with 502 `close_failed`, and a later explicit close or delete
+ * retries. A launch that rejects before any context exists owns nothing.
+ */
 async function launchSetup(connectionId, config, deps) {
   const dir = resolveProfile({ dataDir: await resolveDataDir(deps), connectionId, profileHandle: config.profileHandle });
   const release = acquireProfile(dir, "setup");
-  let owned = null;
+  const failed = () => reject(502, "Adobe Firefly web UI setup browser could not open the Firefly site", "failed");
+  let context;
   try {
-    owned = await launchOwnedContext(deps.launcher ?? playwrightLauncher, dir, SETUP_LAUNCH_OPTIONS);
-    const page = owned.context.pages?.()[0] ?? (await owned.context.newPage());
+    ({ context } = await launchOwnedContext(deps.launcher ?? playwrightLauncher, dir, SETUP_LAUNCH_OPTIONS));
+  } catch {
+    release();
+    throw failed();
+  }
+  const session = ownSetupContext(connectionId, context, release);
+  try {
+    const page = context.pages?.()[0] ?? (await context.newPage());
     await page.goto(`${ADOBE_FIREFLY_WEB_ORIGIN}/`, { waitUntil: "domcontentloaded", timeout: config.limits.navigationTimeoutMs });
   } catch {
-    if (owned) await owned.close();
-    release();
-    throw reject(502, "Adobe Firefly web UI setup browser could not open the Firefly site", "failed");
+    session.register();
+    // Bounded: a close that fails or hangs leaves the session and lock held.
+    await withTimeout(session.finish(), CLOSE_TIMEOUT_MS).catch(() => {});
+    throw failed();
   }
+  session.register();
+  return { setupId: session.setupId, origin: ADOBE_FIREFLY_WEB_ORIGIN };
+}
+
+/**
+ * Track ownership of a launched setup context. `register()` adds it to the
+ * session map (no-op once confirmed closed). `finish()` closes it, awaiting
+ * the context close itself (not the error-swallowing helper) so a failure is
+ * visible; a close still in flight is reused, and a failed close can be
+ * retried. Only a confirmed close (successful `close()` or the context `close`
+ * event, which also covers the operator closing the window) removes the
+ * session and releases the profile lock, exactly once.
+ */
+function ownSetupContext(connectionId, context, release) {
   const setupId = randomUUID();
   let closing = null;
-  // Await the context close itself (not the error-swallowing helper) so a
-  // failure is visible. The profile lock and session entry are released only
-  // after the browser really closed; a failed close keeps both so status stays
-  // truthful and the close can be retried. A close still in flight is reused.
-  const finish = () => {
-    closing ??= Promise.resolve()
-      .then(() => owned.context.close())
-      .then(() => {
-        if (sessions.get(setupId)?.finish === finish) sessions.delete(setupId);
-        release();
-      }, (error) => {
-        closing = null;
-        throw error;
-      });
-    return closing;
+  let confirmed = false;
+  let signalClosed;
+  const closedSignal = new Promise((resolve) => { signalClosed = resolve; });
+  const confirm = () => {
+    if (confirmed) return;
+    confirmed = true;
+    if (sessions.get(setupId)?.finish === finish) sessions.delete(setupId);
+    release();
+    signalClosed();
   };
-  sessions.set(setupId, { connectionId, finish, closing: () => closing !== null });
-  // The operator closing the window ends the session too.
-  owned.context.on?.("close", () => { finish().catch(() => {}); });
-  return { setupId, origin: ADOBE_FIREFLY_WEB_ORIGIN };
+  function finish() {
+    if (confirmed) return Promise.resolve();
+    closing ??= Promise.resolve()
+      .then(() => context.close())
+      .then(confirm, (error) => {
+        closing = null;
+        // A close event already proved the browser closed despite the error.
+        if (!confirmed) throw error;
+      });
+    return Promise.race([closing, closedSignal]);
+  }
+  context.on?.("close", confirm);
+  return {
+    setupId,
+    finish,
+    register() {
+      if (!confirmed) sessions.set(setupId, { connectionId, finish, closing: () => closing !== null });
+    },
+  };
 }
 
 /** Close a setup session this process opened. Returns whether one was open and not already closing. */

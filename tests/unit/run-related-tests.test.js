@@ -7,7 +7,12 @@ import { expect, it } from "vitest";
 
 const runner = fileURLToPath(new URL("../../scripts/run-related-tests.mjs", import.meta.url));
 
-function runFixture({ testCount, failFirstBatch = false }) {
+function runFixture({
+  testCount,
+  failFirstBatch = false,
+  changedFiles = ["open-sse/utils/sseFrames.js"],
+  discoveryError = false,
+}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "related-runner-test-")));
   try {
     const scripts = join(root, "scripts");
@@ -18,7 +23,7 @@ function runFixture({ testCount, failFirstBatch = false }) {
     mkdirSync(scripts);
     mkdirSync(join(pkg, "dist"), { recursive: true });
     copyFileSync(runner, join(scripts, "run-related-tests.mjs"));
-    writeFileSync(changed, "open-sse/utils/sseFrames.js\n");
+    writeFileSync(changed, changedFiles.map((file) => `${file}\n`).join(""));
     writeFileSync(join(pkg, "dist/node.js"), `
       import { appendFileSync } from "node:fs";
       export async function createVitest(_mode, options) {
@@ -37,6 +42,7 @@ function runFixture({ testCount, failFirstBatch = false }) {
         return {
           specifications,
           getRelevantTestSpecifications: async function() {
+            if (${discoveryError}) throw new Error("simulated discovery failure");
             await Promise.all(Array.from({ length: ${testCount} }, () => this.specifications.getTestDependencies({})));
             appendFileSync(process.env.MAX_CONCURRENCY, String(this.specifications.maxActive));
             return Array.from({ length: ${testCount} }, (_, index) => ({
@@ -63,8 +69,9 @@ function runFixture({ testCount, failFirstBatch = false }) {
       root,
       status: result.status,
       stderr: result.stderr,
+      stdout: result.stdout,
       calls: readFileSync(calls, "utf8").trim().split("\n").map(JSON.parse),
-      maxActive: Number(readFileSync(maxConcurrency, "utf8")),
+      maxActive: discoveryError ? 0 : Number(readFileSync(maxConcurrency, "utf8")),
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -86,4 +93,39 @@ it("fails an empty related-file selection", () => {
   expect(status).toBe(1);
   expect(stderr).toContain("Vitest selected zero related test files");
   expect(calls).toHaveLength(1);
+});
+
+const browserOnly = ["website/tests/docs.spec.mjs", "website/tests/sitemap-inventory.mjs"];
+
+it("passes an empty selection when every changed file is a browser test under website/tests", () => {
+  const { root, status, stdout, calls } = runFixture({ testCount: 0, changedFiles: browserOnly });
+  expect(status).toBe(0);
+  expect(stdout).toContain("browser suite covers");
+  expect(calls).toEqual([{ related: browserOnly.map((file) => join(root, file)) }]);
+});
+
+it.each([
+  ["mixed browser and app files", [...browserOnly, "open-sse/utils/sseFrames.js"]],
+  ["website source outside website/tests", ["website/src/app/page.js"]],
+  ["a sibling directory sharing the prefix", ["website/tests-extra/helper.mjs"]],
+  ["a path escaping website/tests", ["website/tests/../src/app/page.js"]],
+  ["the website/tests directory itself", ["website/tests"]],
+])("fails an empty selection for %s", (_label, changedFiles) => {
+  const { status, stderr, calls } = runFixture({ testCount: 0, changedFiles });
+  expect(status).toBe(1);
+  expect(stderr).toContain("Vitest selected zero related test files");
+  expect(calls).toHaveLength(1);
+});
+
+it("fails a browser-only change when related-test discovery errors", () => {
+  const { status, stderr, calls } = runFixture({ testCount: 0, changedFiles: browserOnly, discoveryError: true });
+  expect(status).toBe(1);
+  expect(stderr).toContain("simulated discovery failure");
+  expect(calls).toHaveLength(1);
+});
+
+it("runs and fails selected tests for a browser-only change", () => {
+  const { status, calls } = runFixture({ testCount: 2, changedFiles: browserOnly, failFirstBatch: true });
+  expect(status).toBe(1);
+  expect(calls.slice(1).map((batch) => batch.length)).toEqual([2]);
 });

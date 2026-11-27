@@ -16,4 +16,23 @@ Both variants accept an embedded callback locally and fall back to the configure
 
 Production exchange currently accepts a decoded tokenless object and includes the upstream response body in opaque-code exchange errors. The unregistered `providerParity/cline/exchange.js` exports `validateClineTokens` and `clineExchangeFailure` for both provider exchange implementations. The unregistered `headers.js` exports `applyClineTaskIdentity` for the shared executor's final header layer: it removes stale task IDs and propagates only a bounded, safe caller-supplied ID. `registration.json` lists the precise integration slots. No staged helper affects production until the ordered shared wiring is applied; existing route ownership and storage must be retained.
 
-The new closed-network tests exercise real provider objects, the OAuth route, refresh service, model service and executor with synthetic credentials and mocked transports. They cover state mismatch and replay, device rejection, opaque and embedded callbacks, separate concurrent account credentials, rejection without refresh-body leakage, and the public ClinePass catalog. Existing regression files remain unchanged. Coverage does not establish live upstream behavior, proxy identity across concurrent accounts, deadline handling, or production safety of the unregistered exchange helper. The existing production exchange error-body issue remains until integration. No real accounts or secret stores were used.
+## Test coverage
+
+`tests/unit/provider-signin-cline-parity.test.js` holds 28 closed-network cases. They run the real provider objects, OAuth route, refresh service, model service, `DefaultExecutor` and `handleChatCore` with synthetic credentials. Transports are replaced only at `fetch` or at the `proxyFetch` test seams (`__setOriginalFetchForTesting`, `__setProxyDispatcherForTesting`). Request logging and usage persistence are stubbed.
+
+Production behavior (passes today, no staging dependency):
+
+- Sign-in: state-bound authorization URL without PKCE, embedded and opaque callbacks, device flow rejected before network, route state mismatch, single consumption and replay `410`.
+- Refresh: concurrent accounts stay distinct, and a rejected refresh returns no credential and does not log the body. Concurrent refreshes of the same token are coalesced by the existing `dedupRefresh`, so only one grant is sent. Opaque access tokens are stored as issued; only JWT-shaped tokens get the `workos:` prefix.
+- Selected-proxy identity: concurrent Cline and ClinePass requests and refreshes each leave through their own connection proxy dispatcher, with their own bearer or refresh token. No send falls back to direct egress, and credentialed sends refuse redirects. A strict connection with no usable proxy fails without any send. The executor still runs its network-error retry delays for that configuration error; the test advances them on a fake clock. Concurrent opaque-code exchanges pass each flow's own `proxyOptions` to the patched global `fetch`. That boundary is asserted; proxy routing behind it is covered by the executor and refresh cases.
+- Deadlines and cancellation: an aborted signal stops `exchangeTokens` and `execute` before transport. A caller abort during a send propagates as `AbortError` (`errorKind: "aborted"`) after one dispatch. A stalled upstream ends at the header deadline (`FETCH_CONNECT_TIMEOUT_MS`, fake clock) with `errorKind: "connect_timeout"` and one dispatch.
+- Request and stream translation: an Anthropic Messages client is translated to the OpenAI chat wire with `stream: true` and the `cline-pass/` model namespace. The system prompt becomes a system message, and the Cline SSE comes back as a JSON `message` or as Anthropic stream events without `[DONE]`. A stream that fails after Cline accepted it is not resubmitted, and the upstream error text and API key do not reach the client body.
+- Catalog: the ClinePass public tier is fetched without an `Authorization` header and keeps its wire IDs.
+
+Staged only (one isolated `staged web integration` block): `applyClineTaskIdentity`, `validateClineTokens` and `clineExchangeFailure`. These tests pass against the helpers but do not prove production behavior until auth04 wires the slots in `registration.json`.
+
+## Known gaps
+
+- The production exchange checks its abort signal only before the request. It does not pass the signal to `fetch`, so an in-flight opaque-code exchange cannot be cancelled and has no deadline of its own.
+- The production exchange accepts a tokenless decoded object and puts the upstream response body in its error message. The staged helpers close both gaps once they are wired in.
+- No live upstream behavior was exercised. No real accounts, secret stores or browser launches were used. Existing regression files are unchanged.

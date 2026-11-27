@@ -1,0 +1,13 @@
+# OmniRoute #21392 review: RTK structural git diff
+
+**Verdict: concrete missing opt-in behavior; low severity.** OmniRoute PR #21392 is still open. At review time its exact base is `9671192011beb2d7f83979f40be488c5da8772b9` and head is `e7dcf4927da4fcbff234cd5444bc4425a76447a2`. The candidate adds a feature-flagged structural renderer for unified `git diff` tool output, retaining every changed line when the diff can be parsed faithfully and otherwise returning the original text.
+
+DurinDoor `origin/main` is `29490b783e83176d4d6a4162f76ee3dc79db66ea`; the frozen train head `train/2` is `32a783d76d45d90bf0517015442f43fadd96106c`. At both snapshots `open-sse/rtk/filters/gitDiff.js` is byte-identical (SHA-256 `6e8d89628be5fc3f902c9631ccd549ef80761b35667eeb12af3b7d8f12ca0d36`). Its implementation caps each hunk at 100 emitted lines and truncates the overall output at 500 lines (`gitDiff.js:14,44-73`); therefore it can omit changed lines. It does not implement the candidate's all-changed-lines structural path or its opt-in renderer flag.
+
+Reproducible source/test trace: `git show origin/main:tests/unit/compression/rtk-stack.test.js` defines a 200-added-line diff (`:49-53`) and explicitly expects output to contain `lines truncated` and omit `UNIQUE_PADDING_150` (`:138-144`). The filter logic is at `open-sse/rtk/filters/gitDiff.js:44-87`; compression routes detected diffs through `autoDetectFilter` and `compressText` at `open-sse/rtk/index.js:195-219`, with diff detection at `open-sse/rtk/autodetect.js:18-38`. This is intentional current truncation behavior, but establishes the missing candidate behavior rather than a false parity claim based on feature naming.
+
+The upstream patch changes `open-sse/services/compression/engines/rtk/{index.ts,renderers/gitDiff.ts,renderers/structural.ts,structuralFlag.ts}`, compression dispatch/memoization and feature-flag wiring, documentation, and `tests/unit/compression/rtk-structural-diff.test.ts` plus related fixtures and error-preservation tests. The report is limited to the structural git-diff behavior; no implementation is proposed here.
+
+Ownership check: open issue #2289 discusses compression pipeline architecture generally, and #1062 is the compression parity epic. Neither claims this structural-diff slice or names an owner for it. No matching open review claim was found. This does not overlap the sync-lane issues or 9router #5884/#5904 listed in the review request.
+
+**Scope note:** this is an optional, disabled-by-default capability in an open upstream PR. The evidence establishes a parity gap for that opt-in behavior, not a regression in DurinDoor's current RTK contract or a recommendation to enable it by default.

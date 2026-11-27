@@ -1,12 +1,12 @@
 ---
 title: RenderHour
-description: Staged and unavailable. RenderHour image generation with an rh_ API key, its job flow, errors and limits.
+description: Staged and unavailable. RenderHour image, text-to-video and text-to-speech jobs with an rh_ API key, their job flow, errors and limits.
 status: unreleased
 ---
 
 > **Staged and unavailable.** The code exists, but the provider is not registered. You cannot add a RenderHour connection or send requests to it yet. A later change has to register it.
 
-RenderHour (`renderhour`) generates images through an asynchronous job API at [renderhour.com](https://renderhour.com). It has been tested only against mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
+RenderHour (`renderhour`) generates images, videos and speech through one asynchronous job API at [renderhour.com](https://renderhour.com). It has been tested only against mocks. No real account or RenderHour endpoint has been contacted, so there is no claim that it works against the live service.
 
 ## Scope
 
@@ -14,7 +14,10 @@ RenderHour (`renderhour`) generates images through an asynchronous job API at [r
 | --- | --- |
 | Image generation from a text prompt, with an `rh_` API key | Staged, covered by mocks |
 | Reference images and image editing | Not supported. The request is refused |
-| Video and speech | Not supported |
+| Video from a text prompt, with an `rh_` API key | Staged as a standalone adapter, covered by mocks. No route reaches it |
+| Image-to-video (start frame, end frame, reference images) | Not supported. The request is refused |
+| Speech from text, with an `rh_` API key | Staged as a standalone adapter, covered by mocks. No route reaches it |
+| Voice selection | Not supported. RenderHour picks each speech model's voice |
 | Subscription OAuth sign-in | Not supported |
 | Chat | Not part of this provider. It has no chat transport or fallback |
 
@@ -28,10 +31,11 @@ Use an API key that starts with `rh_`. It is sent as `Authorization: Bearer rh_.
 | --- | --- |
 | `POST https://renderhour.com/v1/generations` | Submit one job. Sent with a new `Idempotency-Key` |
 | `GET https://renderhour.com/v1/generations/{id}` | Read that job |
+| `GET` the finished speech file, on `renderhour.com` or a subdomain | Speech only. Sent without the key |
 
 Connection settings cannot change these addresses. Neither request follows a redirect. A redirected submit is refused with `502` and the key is never sent to the new address. That failure records no accepted job, so another connection may try.
 
-The submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `config` when present:
+For images, the submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `config` when present:
 
 - `n` becomes `count`, kept between 1 and 4. A value that is not a number counts as 1.
 - `aspect_ratio` is sent as given. Otherwise a `size` such as `1792x1024` becomes the nearest of `1:1`, `3:4`, `4:3`, `4:5`, `9:16` and `16:9`.
@@ -39,9 +43,53 @@ The submit body holds `model`, `prompt` and `count`, plus `aspect_ratio` and `co
 
 ## Models
 
-`nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2`, `gpt-image-2`, `seedream-5.0-pro`, `seedream-5.0-flash`, `flux-3-image`, `flux-2-pro`, `grok-imagine-image-2.0`, `z-image` and `recraft-v4.1`. Any other id is refused with `400` before submission. This is a fixed list copied from the source. There is no model discovery, and your account may not offer every model.
+Every model id belongs to exactly one task. A model of another task, or any id RenderHour does not list (a chat model, for example), is refused with `400` before submission, and the message names the task the id belongs to. A chat-shaped body (`messages`, `tools`) is refused too.
+
+Image: `nano-banana-pro`, `nano-banana-2.1`, `nano-banana-2`, `gpt-image-2`, `seedream-5.0-pro`, `seedream-5.0-flash`, `flux-3-image`, `flux-2-pro`, `grok-imagine-image-2.0`, `z-image` and `recraft-v4.1`.
+
+Video: `seedance-2.5`, `seedance-2.0`, `seedance-2.0-fast`, `seedance-2.0-mini`, `kling-3.0`, `kling-3.0-turbo`, `veo-3.1`, `grok-imagine-video-1.5`, `grok-imagine-video-1.5-lite`, `happyhorse-1.1`, `gemini-omni-flash`, `flux-3-video`, `flux-3-max`, `wan-3.0`, `minimax-h3` and `hailuo-2.3`.
+
+Speech: `eleven-v4`, `eleven-v4-turbo` and `minimax-speech-2.8-hd`.
+
+These are fixed lists copied from the source.
+
+### Discovery
+
+`discoverRenderHourModels(credentials, { task })` returns the models of one task, or of all three, for the selected connection. It is static. The source says its list mirrors RenderHour's `GET /v1/models`, but it ships no client for that endpoint and does not document the response, so nothing is fetched. The call only checks that the connection holds an `rh_` key (otherwise `401`). It answers `accountVerified: false`: whether that account can use each model is unknown. The result is built per call, so one account never sees another's.
+
+## Video
+
+A video request is the OpenAI-style JSON body. The submit body holds `model` and `prompt`, plus these when present:
+
+- `duration_s`, from `duration_s`, `duration` or `seconds` (`8`, `"8"` or `"8s"`), rounded to whole seconds. A value that is not a positive number is refused with `400`.
+- `aspect_ratio`: `aspect_ratio` (or `ratio`) if it is `16:9`, `9:16` or `1:1`, otherwise `400`. Without one, a `size` such as `1280x720` becomes the nearest of those three.
+- `config`: `resolution`, `quality`, `mode`, `audio` and `duration_s` from `config`, plus the top-level `resolution`, `mode` and `audio`. Other `config` keys are dropped.
+
+`image`, `image_url`, `start_image`, `first_frame`, `end_image`, `last_frame`, `reference_images`, `image_urls`, `input_reference` and their spellings are refused with `400`. The source would upload them first, which this slice does not.
+
+The job is read every 5 seconds for up to 15 minutes. The result is `{ created, data: [{ url, format }] }` with up to 4 files. Each must be an MP4, WebM or QuickTime file with an HTTPS URL that has no embedded credentials and does not contain the key. URLs are returned without being downloaded, also for `response_format: "b64_json"`. Usage counts the videos returned. Duration and cost are unknown.
+
+## Speech
+
+The speech adapter follows the speech core contract. The text input becomes the job's `text`, trimmed. `voice` and `response_format` are not sent, because RenderHour picks the voice. A `model/voice` id is refused with `400`. The job is read every 2 seconds for up to 3 minutes.
+
+The first finished file is downloaded and returned as audio in the container RenderHour produced (MP3, WAV, Ogg, Opus, AAC, FLAC, MP4 or WebM audio). The download:
+
+- goes only to `renderhour.com` or one of its subdomains, over HTTPS;
+- carries no `Authorization` header and never the key;
+- does not follow redirects;
+- uses the selected connection's proxy;
+- is limited to 25 MiB and 60 seconds.
+
+Usage counts the input characters, as for every speech provider. Cost is unknown. Whether RenderHour file URLs work without a key, whether they redirect and which content types RenderHour really reports have not been verified. Any of those can make a real speech job fail here.
+
+## Video and speech submits
+
+The video and speech adapters cannot use the shared image core, so `services/renderhour/media.js` applies the same submit policy as the image core: one bounded submit with a new `Idempotency-Key`, a refused redirect, no resubmission, and the same accepted-job rules. Its results use the core shape. An error result has `acceptedJob` (`modality: "video"` or `"tts"`, unknown cost) whenever RenderHour may have taken the job.
 
 ## Polling and results
+
+These rules apply to images. Video and speech use the same poll, retry and size bounds, with the intervals and deadlines given above.
 
 The job is read every 2 seconds for up to 5 minutes. A single status request or response body has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. The submit itself waits at most 30 seconds. At that deadline, or when the client disconnects, the outgoing request is aborted, not only abandoned, and the body of any answer that still arrives is cancelled. The 5 minutes start when the submit is answered.
 
@@ -59,7 +107,7 @@ A submit that may have reached RenderHour but got no answer is handled the same 
 
 | Situation | Status | Accepted job recorded |
 | --- | --- | --- |
-| Bad key format, unsupported model or reference image | 401 or 400 | No, nothing sent |
+| Bad key format, unsupported or other-task model, chat body, reference image or image-to-video input | 401 or 400 | No, nothing sent |
 | Submit refused, such as 401, 403 or 429 | Same as RenderHour | No |
 | Submit redirected | 502 | No. The redirect is not followed |
 | Submit timed out after 30 seconds | 504 | Yes, as `submit-unknown` |
@@ -76,6 +124,10 @@ A submit that may have reached RenderHour but got no answer is handled the same 
 | Cancelled after the submit was accepted | 499 | Yes |
 | Cancelled before the submit is sent | 499 | No, nothing sent |
 | Cancelled while the submit is in flight | 499 | Yes, as `submit-unknown`, on the connection that sent it |
+| Speech file off RenderHour's hosts, refused, redirected, empty, too large or timed out | 502 or 504 | Yes |
+| Cancelled during the speech download | 499 | Yes |
+
+The table holds for all three tasks. Job error messages name the task, for example `RenderHour video job failed: moderation`.
 
 A job that RenderHour reports as failed is treated as a normal failure, so the shared account fallback policy decides whether another connection tries a new job. Whether RenderHour charges for failed jobs is unknown. Errors raised while following a job do not repeat RenderHour's text, and only the four failure reasons above are named. A refused submit's message can come from RenderHour, but the selected connection's key is removed from it and from the error body, including on `401` and `403`. A `429` message is always replaced.
 
@@ -83,9 +135,17 @@ When a refused submit is `429` with a `Retry-After` header, either in seconds or
 
 ## Before registration
 
-The three gaps that offline runs found in the shared image handler are closed: submit redirects, an echoed key in submit errors, and a dropped `Retry-After`. Each one is covered by closed-network tests through the shared handler and the image route.
+Video and speech are not wired anywhere. Registration needs:
 
-Registration still needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. Until then, the tests have to substitute the adapter lookup. A live check with a real account is separate and has not happened. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
+- The provider catalog entry declaring `RENDERHOUR_STAGED_MEDIA.serviceKinds` and `.models` from `providers/private/renderhour.js`, in place of the image-only default export. The image staging test then needs updating.
+- The speech adapter map: `renderhour` in `TTS_ADAPTERS` (`handlers/ttsProviders/index.js`), mapped to the default export of `handlers/ttsProviders/renderhour.js`.
+- The speech route must record `acceptedJob` from a failed speech result, as the image route does. It does not today.
+- A video route branch that calls `createRenderHourVideoAdapter().generate({ model, body, credentials, signal, log })` (the default export of `handlers/videoProviders/renderhour.js`) and records `acceptedJob`. The shared `/v1/videos` proxy in `videoCore.js` passes job ids back to the client and has no accepted-job ledger, so RenderHour should not get a `videoConfig` for it.
+- Model listing through `discoverRenderHourModels` from `services/renderhour/media.js`, and the usual generated indexes and dashboard files.
+
+For images, the three gaps that offline runs found in the shared image handler are closed: submit redirects, an echoed key in submit errors, and a dropped `Retry-After`. Each one is covered by closed-network tests through the shared handler and the image route.
+
+Image registration still needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. Until then, the tests have to substitute the adapter lookup. A live check with a real account is separate and has not happened for any task. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
 
 ## Source
 
@@ -94,6 +154,8 @@ Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/
 - [`registry/renderhour/mediaModels.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/renderhour/mediaModels.ts)
 - [`handlers/mediaGeneration/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/mediaGeneration/renderhour.ts)
 - [`handlers/imageGeneration/providers/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/imageGeneration/providers/renderhour.ts)
+- [`handlers/videoGeneration/renderhourHandler.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/renderhourHandler.ts)
+- [`handlers/renderhourSpeech.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/renderhourSpeech.ts)
 - [`handlers/videoGeneration/pollRetry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/pollRetry.ts)
 
-Differences from the source: only `rh_` keys and images; fixed addresses with no base URL override; no reference uploads; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.
+Differences from the source: only `rh_` keys; no OAuth sign-in; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.

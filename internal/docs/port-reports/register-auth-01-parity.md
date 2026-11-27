@@ -10,7 +10,8 @@ The preserved provider reports pin MIT sources CLIProxyAPI
 `b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523`. Relevant files are CPA
 `internal/auth/codex/openai_auth.go`, `sdk/auth/codex_device.go`,
 `internal/auth/claude/anthropic_auth.go`, and OmniRoute
-`src/lib/oauth/providers/{codex,claude,gemini-cli}.ts`.
+`src/lib/oauth/providers/{codex,claude}.ts`. Gemini CLI source boundaries
+are recorded separately below and in its preserved profile report.
 EasyCLIProxyAPI `29567ead8164a00724dfdc2087f02a23895636ee` delegates to CPA;
 it supplies no additional provider wire protocol.
 
@@ -33,8 +34,9 @@ it supplies no additional provider wire protocol.
 - ChatGPT plan: remains a separate owner-operated, hidden provider. No SIWC
   credentials are admitted into Codex and no enrollment guards are changed.
 
-Manifests and staged modules remain untouched under the explicit forbidden-path
-rule. Their historical `staged` status is therefore not the runtime truth;
+The batch 1 manifests and staged source modules remain untouched under the
+explicit forbidden-path rule. The later Copilot line-offset-only metadata
+exception is recorded below. Their historical `staged` status is therefore not the runtime truth;
 production imports and positive public-route assertions establish registration.
 The original form-refresh staging probe now checks production form encoding;
 the original fresh-login and device-body probes now check positive wiring.
@@ -51,8 +53,12 @@ and both buffered and streamed OpenAI/Anthropic requests with usage.
 The existing seven helper/protocol tests remain; they are not treated as full
 public-route coverage.
 
-Gemini CLI's pinned profile is a confidential Google authorization-code client
-without PKCE or device authorization. Antigravity has S256 in DurinDoor but no
+DurinDoor's Gemini CLI profile uses its existing operator-configured confidential
+Google authorization-code client without PKCE or device authorization. The
+three pinned projects do not establish an active native Gemini CLI wire contract:
+CPA tests plugin OAuth storage/callbacks, EasyCLIProxyAPI lists API-key setup,
+and OmniRoute marks Gemini CLI discontinued. The staged helpers repair
+DurinDoor configuration/transport wiring; they do not invent plugin protocols. Antigravity has S256 in DurinDoor but no
 device or refresh-token import slot. Codex supports browser, device and CLI
 credential import; ChatGPT plan SIWC remains separate. Cookie/session capture
 is not a supported mode for these OAuth identities and is not synthesized.
@@ -135,3 +141,56 @@ local dependency links into the private run directory. No dependencies installed
 The requested commit subject follows the repository contract; the installed
 package inventory has no commitlint CLI, so its attempted invocation is retained
 in `commitlint.log` rather than downloading a new dependency.
+
+
+## Gate follow-up on f7f9edaf6b
+
+The rejected gate identifies prior candidate `f7f9edaf6b41cdba05b259a533098d7a0b30d17b`
+in the explicit local repository's `register-auth-01/gate-*.json`. This retry
+retains that complete candidate and every test. No reset, replacement suite or
+baseline edit occurred.
+
+The discovery route fixture mocked `GEMINI_CONFIG` as empty and mocked the
+old four-argument SSE refresher. Configure both fixture files through synthetic canonical
+`GEMINI_OAUTH_CLIENT_ID`/`GEMINI_OAUTH_CLIENT_SECRET` before module imports,
+restore their previous values afterward, and load the actual OAuth config.
+Mock only the actual raw five-argument refresh service. Preserve the same
+401 → refresh → successful retry scenario, exact bearer replacement, two
+fetches and selected-proxy assertions. Assert the canonical config's exact
+client identity, null logger and proxy in argument five. The project-normalization
+suite gets synthetic canonical client environment variables before module
+initialization; all project/protocol/request scenarios remain intact. Production's
+configured-client refusal stays unchanged.
+
+Copilot's unchanged static source-location test requires exact line references.
+Only the two shifted JSON offsets are corrected (`github.pollToken` 1372 → 1312;
+GHE discovery 671 → 674). All four slots, exports, status and all 19 protected
+Copilot tests stay unchanged. No Copilot auth behavior is registered here.
+
+The gate's removal-count flags are source-backed replacements, not scenario
+removal: two pending Storybook SHA-256 values replace stale source digests;
+the refresh test replaces only the explicitly authorized endpoint literals,
+Content-Type and serialization while keeping all fields/assertions; Codex
+positive wiring assertions replace the permitted staging-negative assertions,
+with every protocol/security/usage scenario retained. Approval fields,
+historical Storybook evidence, guard/disposition providers and failure baselines
+are unchanged. These facts are recorded for review, with no gate override.
+
+Retry verification on the final fixture/config changes: **10 files, 158 tests
+passed** in 20.14 seconds, two workers. This includes the original five-file
+acceptance inventory, the complete 27/23 Codex parity/refresh suites, exchange
+suite, both corrected Gemini fixture suites and the unchanged 19-case Copilot
+suite. Final evidence is retained in
+`/var/tmp/register-auth-01-retry-pfxav5ft/reports/final-contracts.log`;
+`canonical-fixtures.log` also records the focused 16-case real-config run.
+Scoped ESLint and anti-slop pass (`lint.log`, `anti-slop.log`); diff whitespace
+checks pass. A byte comparison against f7f9edaf6b verifies all prior parity and
+refresh suites remain identical. A structured comparison verifies only two
+Copilot manifest offsets changed, with all other metadata identical.
+
+No installs, full CI, browser/e2e/Docker/provider calls, pushes or overrides.
+The broad orchestrator gate has not been rerun here; its concrete failed
+contracts are covered by the scoped checks above. All commands used a new
+umask-077 private run directory and env-i HOME, DATA_DIR, TMPDIR, caches,
+npm cache and pnpm store, with five-minute limits. Prior candidate evidence
+and the complete implementation are preserved.

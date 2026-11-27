@@ -1,4 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// Configure the existing confidential client before provider modules initialize.
+const previousClient = vi.hoisted(() => {
+  const previous = { id: process.env.GEMINI_OAUTH_CLIENT_ID, secret: process.env.GEMINI_OAUTH_CLIENT_SECRET };
+  process.env.GEMINI_OAUTH_CLIENT_ID = "synthetic-gemini-client";
+  process.env.GEMINI_OAUTH_CLIENT_SECRET = "synthetic-gemini-secret";
+  return previous;
+});
+afterAll(() => {
+  if (previousClient.id === undefined) delete process.env.GEMINI_OAUTH_CLIENT_ID;
+  else process.env.GEMINI_OAUTH_CLIENT_ID = previousClient.id;
+  if (previousClient.secret === undefined) delete process.env.GEMINI_OAUTH_CLIENT_SECRET;
+  else process.env.GEMINI_OAUTH_CLIENT_SECRET = previousClient.secret;
+});
+
 import { exchangeTokens, generateAuthData } from "../../src/lib/oauth/providers.js";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({

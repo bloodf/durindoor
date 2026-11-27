@@ -1,4 +1,18 @@
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterAll, beforeEach, describe, it, expect, vi } from "vitest";
+
+// Bind discovery to the canonical sign-in client before config initialization.
+const previousClient = vi.hoisted(() => {
+  const previous = { id: process.env.GEMINI_OAUTH_CLIENT_ID, secret: process.env.GEMINI_OAUTH_CLIENT_SECRET };
+  process.env.GEMINI_OAUTH_CLIENT_ID = "synthetic-gemini-client";
+  process.env.GEMINI_OAUTH_CLIENT_SECRET = "synthetic-gemini-secret";
+  return previous;
+});
+afterAll(() => {
+  if (previousClient.id === undefined) delete process.env.GEMINI_OAUTH_CLIENT_ID;
+  else process.env.GEMINI_OAUTH_CLIENT_ID = previousClient.id;
+  if (previousClient.secret === undefined) delete process.env.GEMINI_OAUTH_CLIENT_SECRET;
+  else process.env.GEMINI_OAUTH_CLIENT_SECRET = previousClient.secret;
+});
 
 const routedFetch = vi.hoisted(() => vi.fn());
 const resolveConnectionProxyConfig = vi.hoisted(() => vi.fn());
@@ -22,13 +36,14 @@ vi.mock("@/shared/constants/providers", async () => {
   };
 });
 
-vi.mock("@/lib/oauth/constants/oauth", () => ({
-  GEMINI_CONFIG: {},
-}));
-
 vi.mock("@/sse/services/tokenRefresh", () => ({
   refreshGoogleToken: vi.fn(),
   updateProviderCredentials: vi.fn(),
+}));
+
+vi.mock("open-sse/services/tokenRefresh/providers.js", async (original) => ({
+  ...(await original()),
+  refreshGoogleToken: vi.fn(),
 }));
 
 vi.mock("open-sse/services/kiroModels.js", () => ({
@@ -50,7 +65,8 @@ vi.mock("open-sse/services/qoderModels.js", () => ({
 import { getProviderConnectionById } from "@/lib/localDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
-import { refreshGoogleToken } from "@/sse/services/tokenRefresh";
+import { refreshGoogleToken } from "open-sse/services/tokenRefresh/providers.js";
+import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { GET } from "../../src/app/api/providers/[id]/models/route.js";
 
 function getRequest(connectionId) {
@@ -182,6 +198,7 @@ describe("GET /api/providers/[id]/models - registry modelsFetcher fallback", () 
   });
 
   it("keeps OAuth config resolver fetch, refresh, and retry on one route", async () => {
+    expect(GEMINI_CONFIG).toMatchObject({ clientId: "synthetic-gemini-client", clientSecret: "synthetic-gemini-secret" });
     const proxyOptions = {
       connectionProxyEnabled: true,
       connectionProxyUrl: "http://proxy.internal:8080",
@@ -214,8 +231,9 @@ describe("GET /api/providers/[id]/models - registry modelsFetcher fallback", () 
     expect(res.status).toBe(200);
     expect(refreshGoogleToken).toHaveBeenCalledWith(
       "google-refresh",
-      process.env.GEMINI_CLIENT_ID,
-      process.env.GEMINI_CLIENT_SECRET,
+      GEMINI_CONFIG.clientId,
+      GEMINI_CONFIG.clientSecret,
+      null,
       proxyOptions
     );
     expect(routedFetch).toHaveBeenCalledTimes(2);

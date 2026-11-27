@@ -32,7 +32,7 @@
   ],
   "integrationSlots": [
     {
-      "callsite": "src/lib/oauth/providers.js:1372 github.pollToken",
+      "callsite": "src/lib/oauth/providers.js:1312 github.pollToken",
       "change": "Replace the JSON.parse/error_description fallback with decodeCopilotPollResponse(await response.text())."
     },
     {
@@ -40,7 +40,7 @@
       "change": "Call refreshBoundGheCopilotCredentials(c, log, p) instead of refreshGheCopilotCredentials(c, log, p). Surface reauthentication_needed and unsupported_ghe_oauth_peer; merge rotated gheSession/canonical API and token/expiry fields with the existing connection without replacing gheBinding."
     },
     {
-      "callsite": "src/app/api/providers/[id]/models/modelsConfig.js:671 \"ghe-copilot\" customResolver",
+      "callsite": "src/app/api/providers/[id]/models/modelsConfig.js:674 \"ghe-copilot\" customResolver",
       "change": "Use gheRequestContext(connectionCredentials, proxyOptions) before discovery; send only context.token to context.base + /models via gheBoundFetch(context.binding, ...). Never construct a binding from a caller API URL or substitute accessToken."
     },
     {

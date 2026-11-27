@@ -1,0 +1,73 @@
+{
+  "registered": false,
+  "canonicalId": "codex-search",
+  "aliases": ["codex_search"],
+  "sourceAliases": ["codex_search"],
+  "aliasConflicts": {
+    "codex": "local canonical LLM provider id (open-sse/providers/registry/codex.js); the source also refuses to resolve `codex` as a search provider, it is only the credential provider"
+  },
+  "credentialProviders": ["codex"],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/handlers/search/codexSearch.ts",
+      "src/shared/constants/providers/search.ts",
+      "src/app/api/v1/search/route.ts",
+      "tests/unit/codex-search-provider.test.ts"
+    ]
+  },
+  "localEquivalents": {
+    "src/sse/handlers/codexAlphaSearch.js": "NOT equivalent: POST https://chatgpt.com/backend-api/codex/alpha/search with a caller-supplied native SearchRequest JSON body/response; codex-search is a /v1/search provider that drives a streamed Responses turn with tool_choice required web_search",
+    "open-sse/providers/registry/codex.js": "same wire endpoint (codex/responses) but a chat transport; it has no searchConfig and no searchViaChat"
+  },
+  "exports": {
+    "config.js": ["CODEX_SEARCH_ID", "CODEX_SEARCH_ALIASES", "CODEX_SEARCH_CREDENTIAL_PROVIDERS", "CODEX_SEARCH_ORIGIN", "CODEX_SEARCH_URL", "CODEX_SEARCH_DEFAULT_MODEL", "CODEX_SEARCH_EFFORTS", "CODEX_SEARCH_TIME_RANGES", "CODEX_SEARCH_CLIENT_VERSION", "CODEX_SEARCH_LOCK_KEY", "searchConfig", "codexSearchProviderDefinition", "codexSearchMetadata"],
+    "adapter.js": ["CodexSearchInputError", "CodexSearchError", "CODEX_SEARCH_MAX_BYTES", "resolveCodexSearchProviderId", "sanitizeCodexQuery", "buildCodexSearchParams", "buildCodexSearchHints", "buildCodexSearchBody", "codexSearchHeaders", "upstreamStatus", "safeResultUrl", "parseCodexSearchSse", "makeCodexSearchResult", "codexSearchAdapter"],
+    "service.js": ["MAX_TIMEOUT_MS", "handleCodexSearchNative"],
+    "index.js": "public staging exports (config.js, adapter.js, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "defaultModel": "gpt-6-luna",
+  "searchTypes": ["web", "news"],
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "connectionModes": ["oauth (codex connection accessToken)", "apikey"],
+    "accountHeader": "chatgpt-account-id from resolveCodexAccountId(providerSpecificData, idToken) when present",
+    "identity": "selected connection only; no token refresh, credential mutation, replay, chat fallback or failover inside the adapter"
+  },
+  "endpoints": {
+    "search": "POST https://chatgpt.com/backend-api/codex/responses",
+    "discovery": null
+  },
+  "envelope": {
+    "request": "{ model, instructions: hint lines, input: [{ role: 'user', content: [{ type: 'input_text', text: query }] }], tools: [{ type: 'web_search' }], tool_choice: 'required', include: ['web_search_call.action.sources'], reasoning: { effort }, stream: true, store: false }",
+    "requestHeaders": "User-Agent codex_cli_rs/<cliVersion>, originator codex_cli_rs, Version <cliVersion>, Authorization Bearer, Content-Type application/json, Accept text/event-stream, optional chatgpt-account-id",
+    "response": "{ provider: 'codex-search', query, results: SearchResult[] (local normalizers.js makeResult shape), answer: null, usage: { queries_used: tool_usage.web_search.num_requests || web_search_call count, search_cost_usd: 0 }, metrics, errors: [] } rebuilt from grounded SSE snapshots"
+  },
+  "integration": {
+    "provider": "new open-sse/providers/registry/codex-search.js from codexSearchProviderDefinition (category apikey, serviceKinds ['webSearch'], searchConfig, fallbackOnly) plus alias 'codex_search'; codex.js stays unchanged",
+    "credentials": "resolve credentials from the 'codex' provider (source SEARCH_CREDENTIAL_FALLBACKS) with the selected connection's OAuth accessToken run through checkAndRefreshToken by the caller; honor search lock key 'websearch:codex' so search cooldowns never block or clear Codex chat",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleCodexSearchNative for provider 'codex-search' before tryDedicatedProvider; global timeout default must rise to 60s for this provider only (source resolveGlobalTimeoutMs)",
+    "selection": "never auto-selected: explicit provider only (source CODEX_SEARCH_AUTO_FALLBACK_ENABLED off by default; fallbackOnly true)",
+    "cooldown": "on rateLimited/quotaExhausted results lock lockConnectionId under lockKey for at most 60s (source coolDown cap)",
+    "accounting": "result.accounting tokens from response.usage; costStatus unknown (subscription quota); acceptedJob marks failures after a possible spend",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "search_type 'web' or 'news' only; time_range any/day/week/month/year and domain_filter are instruction hints, not hard filters (as the source)",
+    "country, language, offset, content_options, unknown fields, provider_options other than model/reasoning_effort (including baseUrl) and unknown effort values are refused before submission",
+    "reasoning_effort minimal/none clamp to low as the source does (upstream rejects them with web_search)",
+    "max_results positive integer, clamped to 10; query at most 2000 characters after normalization; domain_filter at most 20 hostnames",
+    "results without a public http(s) URL (private/loopback/metadata hosts, userinfo, other schemes) are dropped; only rows grounded by observed sources/citations are returned",
+    "60s default and maximum total deadline, 4MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed",
+    "no answer synthesis, no streaming to the caller, no model discovery (the source exposes none for this provider)"
+  ]
+}

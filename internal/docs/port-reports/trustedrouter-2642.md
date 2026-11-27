@@ -17,6 +17,14 @@ Successful chat discovery merges the curated embedding rows so authoritative
 model sync retains their kinds and dimensions. An empty or malformed chat
 catalog stays empty, allowing the existing sync failure path to retain prior data.
 
+Discovered rows carry the canonical `vision`, `tools` and `reasoning` booleans read
+by the shared `extractApiCapabilities`. A review found that the original
+`supportsVision`/`supportsThinking` aliases were dropped by synced discovery.
+Only advertised support is emitted. An unadvertised capability stays unknown, so
+curated static metadata keeps precedence during materialization. The regression
+test runs a mixed catalog through `fetchConnectionModels`,
+`normalizeSyncedModels`, `mergeSyncedCatalog` and `materializeSyncedModel`.
+
 Vendor model IDs stay intact under the outer TrustedRouter provider prefix.
 Local identity parsing already splits only the outer provider component; it does
 not use the upstream global bare-model registration mechanism. Upstream

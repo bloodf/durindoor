@@ -8,7 +8,12 @@ export function parseTrustedRouterModels(data) {
   return [...chat, ...trustedrouter.embeddingConfig.models.map((model) => ({ ...model, kind: "embedding" }))];
 }
 
-/** Parse the public mixed catalog; only explicitly visible chat rows are routable here. */
+/**
+ * Parse the public mixed catalog; only explicitly visible chat rows are routable here.
+ * Capabilities use the canonical `vision`/`tools`/`reasoning` booleans that
+ * `extractApiCapabilities` reads. Only advertised support is emitted: an absent
+ * flag stays unknown so curated static metadata is not overridden with `false`.
+ */
 export function parseTrustedRouterChatModels(data) {
   if (!Array.isArray(data?.data)) return [];
   return data.data.filter((row) => {
@@ -25,9 +30,9 @@ export function parseTrustedRouterChatModels(data) {
     const result = { id: row.id, name: isString(row.name) && row.name ? row.name : row.id };
     if (positive(context)) result.contextLength = context;
     if (positive(output)) result.outputTokenLimit = output;
-    if (Array.isArray(modalities) && modalities.includes("image")) result.supportsVision = true;
-    if (params.includes("tools")) result.supportsTools = true;
-    if (params.includes("reasoning")) result.supportsThinking = true;
+    if (Array.isArray(modalities) && modalities.includes("image")) result.vision = true;
+    if (params.includes("tools")) result.tools = true;
+    if (params.includes("reasoning")) result.reasoning = true;
     return result;
   });
 }

@@ -32,3 +32,12 @@ batch testing and inference adapters are outside this change.
 No upstream implementation was ported. Validation uses offline mocked transport,
 the real validation route and rendered dashboard forms. No live provider account,
 inference request or browser is needed. Stories are unchanged.
+
+## Scoped gate follow-up
+
+The related settings-schema coverage check mistook SYNTX's local `settings`
+object for application settings. Its read scanner now resolves lexical bindings:
+constant object payloads are excluded, while stored settings, getSettings spreads,
+parameters and reassigned bindings remain checked. Regression cases cover a
+local media object shadowing real application settings in the same file.
+The SYNTX implementation and protected credential assertions are unchanged.

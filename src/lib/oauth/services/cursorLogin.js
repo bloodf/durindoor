@@ -20,15 +20,20 @@ export function createCursorLoginSession() {
 
 export function cancelCursorLoginSession(id) { return sessions.delete(id); }
 
-/** Serialize polls so a successful verifier cannot be persisted twice. */
-export async function pollCursorLoginSession(id) {
+/**
+ * Serialize polls so a successful verifier cannot be persisted twice.
+ * `options.signal` lets a caller abandon one poll; the session stays usable.
+ */
+export async function pollCursorLoginSession(id, { signal: callerSignal } = {}) {
   const session = sessions.get(id);
   if (!session || session.expiresAt <= Date.now()) { sessions.delete(id); return { status: "expired" }; }
+  if (callerSignal?.aborted) return { status: "error" };
   if (session.polling) return { status: "pending" };
   session.polling = true;
   try {
     const query = new URLSearchParams({ uuid: session.uuid, verifier: session.verifier });
-    const signal = AbortSignal.timeout(15000);
+    const timeout = AbortSignal.timeout(15000);
+    const signal = callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
     const response = await fetch(`https://api2.cursor.sh/auth/poll?${query}`, { redirect: "error", signal });
     if (!response.ok) void response.body?.cancel().catch(() => {});
     if (response.status === 404) return { status: "pending" };

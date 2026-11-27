@@ -23,6 +23,26 @@ export function isAuth0Subject(value) {
   return isString(value) && /^auth0\|user_/i.test(value);
 }
 
+export const CURSOR_FALLBACK_TOKEN_TTL_SECONDS = 86400;
+
+/**
+ * Seconds until an imported access token's JWT `exp`; opaque tokens get the
+ * 24-hour estimate. A zero or negative result means the token already expired.
+ * Mirrors OmniRoute `resolveCursorTokenTtlSeconds` in
+ * src/lib/oauth/services/cursor.ts @ b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523 (MIT).
+ */
+export function resolveCursorTokenTtlSeconds(accessToken, nowMs = Date.now()) {
+  const parts = isString(accessToken) ? accessToken.split(".") : [];
+  if (parts.length !== 3) return CURSOR_FALLBACK_TOKEN_TTL_SECONDS;
+  try {
+    const exp = JSON.parse(Buffer.from(parts[1], "base64url").toString())?.exp;
+    if (!Number.isFinite(exp)) return CURSOR_FALLBACK_TOKEN_TTL_SECONDS;
+    return Math.floor((exp * 1000 - nowMs) / 1000);
+  } catch {
+    return CURSOR_FALLBACK_TOKEN_TTL_SECONDS;
+  }
+}
+
 export class CursorService {
   constructor() {
     this.config = CURSOR_CONFIG;
@@ -122,13 +142,17 @@ export class CursorService {
       throw new Error("Invalid machine ID format. Expected UUID format.");
     }
 
-    // Note: We don't validate against API because Cursor uses complex protobuf.
-    // Token will be validated when used for actual requests.
+    // No provider call: imported tokens are checked when first used. A JWT
+    // that has already expired cannot be refreshed, so it is rejected here.
+    const expiresIn = resolveCursorTokenTtlSeconds(accessToken);
+    if (expiresIn <= 0) {
+      throw new Error("Cursor token has expired. Sign in to Cursor again, then re-import.");
+    }
 
     return {
       accessToken,
       machineId,
-      expiresIn: 86400, // Cursor tokens typically last 24 hours
+      expiresIn,
       authMethod: "imported"
     };
   }

@@ -3,6 +3,7 @@ import { STREAM_FIRST_CHUNK_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS } from "../confi
 import { dbg, isDebugEnabled } from "./debugLog.js";
 import { SSE_COMMENT_KEEPALIVE } from "./sseConstants.js";
 import { sanitizeErrorMessage } from "./error.js";
+import { createSseFrameDispatcher } from "./sseFrames.js";
 import { colorStreamStatus } from "./streamStatusColor.js";
 
 // Get HH:MM:SS timestamp
@@ -154,18 +155,40 @@ function isCommentKeepalive(value) {
 export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0) {
   const reader = transformStream.readable.getReader();
   let terminalEmitted = false;
-  const decoder = terminalTracker ? new TextDecoder() : null;
+  const frames = terminalTracker || onClientBytes ? createSseFrameDispatcher([
+    (frame) => terminalTracker?.observeParsedClientFrame?.(frame),
+  ]) : null;
   let keepaliveTimer = null;
   let clientBytesStarted = false;
 
   // Forward raw client bytes to the timeline tap (if any), fail-open, then
   // enqueue unconditionally — a broken tap must never drop client bytes.
-  const forward = (controller, bytes) => {
-    try { onClientBytes?.(bytes); } catch { /* fail-open */ }
+  const combineBatches = (first, second) => first ? {
+    text: first.text + (second?.text ?? ""),
+    frames: [...first.frames, ...(second?.frames ?? [])],
+  } : second;
+  const forward = (controller, bytes, trailingBatch) => {
+    let batch;
+    try { batch = frames?.push(bytes); } catch { /* observers must not drop client bytes */ }
+    if (terminalTracker && !terminalTracker.observeParsedClientFrame && batch?.text) {
+      terminalTracker.observeClientFrame(batch.text);
+    }
+    try { onClientBytes?.(bytes, combineBatches(trailingBatch, batch)); } catch { /* fail-open */ }
     controller.enqueue(bytes);
   };
-  const end = () => { try { onClientEnd?.(); } catch { /* fail-open */ } };
-  const abort = () => { try { onClientAbort?.(); } catch { /* fail-open */ } };
+  const flushFrames = () => {
+    let batch;
+    try { batch = frames?.flush(); } catch { /* fail-open */ }
+    if (terminalTracker && !terminalTracker.observeParsedClientFrame && batch?.text) {
+      terminalTracker.observeClientFrame(batch.text);
+    }
+    return batch;
+  };
+  const end = (batch) => { try { onClientEnd?.(batch); } catch { /* fail-open */ } };
+  const abort = (trailingBatch) => {
+    const batch = combineBatches(trailingBatch, flushFrames());
+    try { onClientAbort?.(batch); } catch { /* fail-open */ }
+  };
   const stopKeepalive = () => {
     if (!keepaliveTimer) return;
     clearInterval(keepaliveTimer);
@@ -188,20 +211,24 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   };
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
-  const emitTerminal = (controller) => {
-    if (terminalEmitted || !onAbortTerminal) return;
+  const emitTerminal = (controller, trailingBatch) => {
+    if (terminalEmitted || !onAbortTerminal) return false;
     terminalEmitted = true;
     try {
       const bytes = onAbortTerminal();
-      if (bytes) forward(controller, bytes);
+      if (bytes) {
+        forward(controller, bytes, trailingBatch);
+        return true;
+      }
     } catch { /* best-effort terminal */ }
+    return false;
   };
-  const emitClientRecovery = (controller, drop = false) => {
+  const emitClientRecovery = (controller, drop = false, trailingBatch) => {
     if (terminalEmitted || !terminalTracker) return false;
     const bytes = terminalTracker.buildRecoveryBytes(drop ? { drop: true } : undefined);
     if (!bytes) return false;
     terminalEmitted = true;
-    forward(controller, bytes);
+    forward(controller, bytes, trailingBatch);
     return true;
   };
 
@@ -222,14 +249,13 @@ export function createDisconnectAwareStream(transformStream, streamController, o
 
         if (done) {
           stopKeepalive();
-          const trailingFrame = decoder?.decode();
-          if (trailingFrame) terminalTracker.observeClientFrame(trailingFrame);
-          if (emitClientRecovery(controller)) {
+          const trailingFrames = flushFrames();
+          if (emitClientRecovery(controller, false, trailingFrames)) {
             streamController.handleError(new Error("upstream stream ended before client terminal"));
             abort();
           } else {
             streamController.handleComplete();
-            end();
+            end(trailingFrames);
           }
           controller.close();
           return;
@@ -239,7 +265,6 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           clientBytesStarted = true;
           stopKeepalive();
         }
-        terminalTracker?.observeClientFrame(decoder.decode(value, { stream: true }));
         forward(controller, value);
       } catch (error) {
         stopKeepalive();
@@ -279,9 +304,12 @@ export function createDisconnectAwareStream(transformStream, streamController, o
           // when the client format has a recovery frame (upstream #3860).
           const refusedStream = code === "invalid_sse_payload" || code === "incomplete_upstream_stream";
           if (!wasConnected || isNetworkClose || onAbortTerminal || (refusedStream && terminalTracker)) {
-            if (terminalTracker) emitClientRecovery(controller, true);
-            else emitTerminal(controller);
-            abort();
+            // A final marker without its delimiter still counts on disconnect.
+            const trailingFrames = flushFrames();
+            let recovered = false;
+            if (terminalTracker) recovered = emitClientRecovery(controller, true, trailingFrames);
+            else recovered = emitTerminal(controller, trailingFrames);
+            abort(recovered ? undefined : trailingFrames);
             controller.close();
           } else {
             abort();

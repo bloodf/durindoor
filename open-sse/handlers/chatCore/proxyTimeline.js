@@ -4,7 +4,7 @@ import {
   record as recordRepo,
   startTrace as startTraceRepo,
 } from "@/lib/db/repos/proxyTimelineRepo.js";
-import { createClientFrameFramer } from "./proxyTimelineFrame.js";
+import { createTimelineFrameObserver } from "../../utils/proxyTimeline.js";
 import { isOtelEnabled, isOtelOnlySpan, otelEvent, otelFinish, otelFirstByte, otelStart } from "../../services/otelTracing.js";
 
 // OTel-only ids (timeline persistence disabled) are flagged on the bounded
@@ -40,13 +40,13 @@ export function attachClientFrameTap(traceId, format) {
   if (isOtelOnlySpan(traceId)) {
     return { onClientBytes() { otelFirstByte(traceId); }, onClientEnd() {}, onClientAbort() {} };
   }
-  const framer = createClientFrameFramer({
+  const framer = createTimelineFrameObserver({
     format,
     onFrame: (payload) => record(traceId, { type: "sse_chunk", direction: "out", payload }),
   });
   return {
-    onClientBytes(chunk) { try { framer.push(chunk); } catch {} },
-    onClientEnd() { try { framer.flush(); } catch {} },
-    onClientAbort() { try { framer.flush(); } catch {} },
+    onClientBytes(chunk, batch) { try { framer.push(chunk, batch); } catch {} },
+    onClientEnd(batch) { try { framer.flush(batch); } catch {} },
+    onClientAbort(batch) { try { framer.flush(batch); } catch {} },
   };
 }

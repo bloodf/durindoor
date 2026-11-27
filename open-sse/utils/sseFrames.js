@@ -167,28 +167,63 @@ export function formatClaudeSseError(error) {
   return `event: error\ndata: ${JSON.stringify({ type: "error", error })}\n\n`;
 }
 
+// Guard output consists of complete frames. Retain their observations without
+// putting metadata on client bytes or retaining completed streams globally.
+const observedChunks = new WeakMap();
+
+export function encodeObservedSseFrames(text, frames) {
+  const bytes = sharedEncoder.encode(text);
+  observedChunks.set(bytes, { text, frames });
+  return bytes;
+}
+
 /**
- * Decode a byte stream once and fan complete frames out to synchronous observers.
- * Own one dispatcher per byte-stream stage: translated bytes need a new one.
- * The caller retains and forwards the original bytes without re-encoding them.
+ * Decode each byte chunk once and fan parsed frames out to synchronous observers.
+ * A batch returned by push/flush also supplies decoded text to legacy line taps.
+ * Complete frames forwarded by the empty-terminal guard reuse its observations.
  */
 export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder() } = {}) {
   const reader = createSseFrameReader({ preserveWire: true });
-  const dispatch = (frames) => {
+  let decodedBytes = false;
+  const observe = (frames) => {
     for (const frame of frames) {
-      let payload;
-      if (frame.hasData && frame.data.trim() !== "[DONE]") {
-        try { payload = JSON.parse(frame.data); } catch { /* non-JSON SSE data */ }
-      }
-      const observation = { ...frame, wire: frame.wire ?? frame.raw, payload };
-      for (const observe of observers) observe(observation);
+      for (const callback of observers) callback(frame);
     }
+    return frames;
   };
+  const parse = (frames) => frames.map((frame) => {
+    let payload;
+    let linePayloads;
+    if (frame.hasData && frame.data.trim() !== "[DONE]") {
+      try { payload = JSON.parse(frame.data); } catch {
+        // Legacy passthrough can emit independent data lines without blank
+        // delimiters. Parse those once too, after trying valid multiline JSON.
+        if (frame.dataLines.length > 1) {
+          linePayloads = frame.dataLines.map((line) => {
+            if (line.trim() === "[DONE]") return undefined;
+            try { return JSON.parse(line); } catch { return undefined; }
+          });
+          payload = linePayloads[0];
+        }
+      }
+    }
+    return { ...frame, wire: frame.wire ?? frame.raw, payload, linePayloads };
+  });
   return {
-    push(bytes) { dispatch(reader.push(decoder.decode(bytes, { stream: true }))); },
+    push(bytes) {
+      const cached = observedChunks.get(bytes);
+      if (cached) {
+        observe(cached.frames);
+        return cached;
+      }
+      decodedBytes = true;
+      const text = decoder.decode(bytes, { stream: true });
+      return { text, frames: observe(parse(reader.push(text))) };
+    },
     flush() {
-      dispatch(reader.push(decoder.decode()));
-      dispatch(reader.flush());
+      const text = decodedBytes ? decoder.decode() : "";
+      decodedBytes = false;
+      return { text, frames: observe(parse([...reader.push(text), ...reader.flush()])) };
     },
   };
 }

@@ -1,0 +1,9 @@
+{
+  "status": "staged",
+  "module": "./guards.js",
+  "exports": ["gitlabDeploymentSecret", "gitlabRequestError"],
+  "integration": [
+    "In open-sse/services/tokenRefresh/providers.js refreshGitLabDuoToken, use gitlabDeploymentSecret with the selected base URL, configured default base URL and deployment secret before adding client_secret. Preserve per-connection refresh and proxy identity.",
+    "In open-sse/executors/gitlab.js execute, replace the provider-body-derived error with gitlabRequestError(response.status) while preserving status and dispatch settlement."
+  ]
+}

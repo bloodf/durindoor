@@ -7,7 +7,7 @@
 // The foundation never invents provider auth. An adapter turns the selected
 // connection's credentials into headers itself; when it returns null the
 // request is refused before anything is sent.
-import { isFunction, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isFunction, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { OCR_DOCUMENT_TYPES, OCR_INLINE_MEDIA_TYPES, OCR_POLL_INTERVAL_MS, OCR_POLL_MAX_ATTEMPTS } from "./config.js";
 
 /** Poll states an adapter's pollState may return. */
@@ -91,7 +91,7 @@ export function defineOcrAdapter(spec) {
     : Array.isArray(spec.inlineMediaTypes) && !spec.inlineMediaTypes.length ? Object.freeze([])
       : subset(id, "inlineMediaTypes", spec.inlineMediaTypes, OCR_INLINE_MEDIA_TYPES);
   const acceptsUrl = spec.acceptsUrl ?? true;
-  if (typeof acceptsUrl !== "boolean") fail(id, "acceptsUrl must be a boolean");
+  if (!isBoolean(acceptsUrl)) fail(id, "acceptsUrl must be a boolean");
   if (!acceptsUrl && !inlineMediaTypes.length) fail(id, "accepts neither URLs nor inline documents");
 
   return Object.freeze({

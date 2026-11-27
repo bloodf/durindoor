@@ -9,7 +9,7 @@ import { createErrorResult } from "../../../utils/error.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
 import { isBlockedHost } from "../../../../src/shared/utils/ssrfGuard.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
   OCR_MAX_ERROR_BYTES, OCR_MAX_MODEL_CHARS, OCR_MAX_PAGES, OCR_MAX_RESPONSE_BYTES, OCR_MODALITY, OCR_TIMEOUT_MS,
 } from "./config.js";
@@ -21,7 +21,7 @@ import { validateOcrRequest } from "./request.js";
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const HEADER_NAME_RE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
-const USAGE_VALUE = (value) => (typeof value === "number" && Number.isFinite(value)) || (isString(value) && value.length <= 256) || typeof value === "boolean";
+const USAGE_VALUE = (value) => (isNumber(value) && Number.isFinite(value)) || (isString(value) && value.length <= 256) || isBoolean(value);
 
 /** Credential values the error sanitizer must redact. */
 const secretsOf = (credentials) => ({ apiKey: credentials?.apiKey, accessToken: credentials?.accessToken });

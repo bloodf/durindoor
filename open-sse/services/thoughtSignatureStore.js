@@ -14,6 +14,11 @@
 // One prune cap covers both. An alias names its `primary` row, is not counted
 // against the cap, and is evicted together with that row.
 //
+// Account provenance: an Antigravity capture with a known selected account also
+// records `account` on its rows. Such rows are readable only by the
+// account-aware reader (`getProvenThoughtSignature`), never by another account,
+// another session, or the session/keyed bare-id fallback.
+//
 // Legacy rows: both old key shapes are still read. A connection-keyed row without
 // `createdAt` is rewritten with its alias on first keyed read; until then the
 // session API cannot find it by bare id.
@@ -72,6 +77,7 @@ function remember(key, value) {
     signature: value.signature,
     family: value.family || null,
     owner: value.owner || null,
+    account: value.account || null,
     expiresAt: Math.min(value.expiresAt || Infinity, Date.now() + MEMORY_TTL_MS),
   });
 }
@@ -148,8 +154,8 @@ export function scopedSignatureKey(scope, toolCallId) {
 
 // The only writer: synchronous once the adapter is open, otherwise async.
 // `alias: false` writes only the scoped row, so no other scope can read it by bare id.
-function writeSignature(toolCallId, signature, { scope = null, owner = null, family = null, expiresAt, now, alias = true }) {
-  const value = { signature, family, createdAt: now, expiresAt };
+function writeSignature(toolCallId, signature, { scope = null, owner = null, account = null, family = null, expiresAt, now, alias = true }) {
+  const value = { signature, family, createdAt: now, expiresAt, ...(account && { account }) };
   const primary = scopedSignatureKey(scope, toolCallId);
   const rows = primary ?
   alias ? [[primary, value], [toolCallId, { ...value, primary, ...(owner && { owner }) }]] : [[primary, value]] :
@@ -169,16 +175,26 @@ function writeSignature(toolCallId, signature, { scope = null, owner = null, fam
   } catch {/* response translation must not fail when persistence does */}
 }
 
+// A usable selected-account id, or null ("unknown" is the gateway's placeholder).
+function knownAccount(accountId) {
+  return isString(accountId) && accountId && accountId !== "unknown" ? accountId : null;
+}
+
+// Rows bound to an account are not part of the shared bare-id fallback.
+const accountBound = (entry) => Boolean(entry?.account);
+
 /**
  * Store a thought signature for a tool_call_id with optional sessionId namespace (RAM + SQLite).
  * `model` is the model that produced the signature; lookups for another model family skip it.
+ * `accountId` (Antigravity capture) binds both rows to the selected account: only
+ * `getProvenThoughtSignature` for that account can read them.
  */
-export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null, model = null) {
+export function storeGeminiThoughtSignature(toolCallId, signature, sessionId = null, model = null, accountId = null) {
   if (!isString(toolCallId) || !toolCallId) return;
   if (!isString(signature) || !signature) return;
 
   const now = Date.now();
-  writeSignature(toolCallId, signature, { scope: sessionId, family: signatureFamily(model), expiresAt: now + SESSION_TTL_MS, now });
+  writeSignature(toolCallId, signature, { scope: sessionId, account: knownAccount(accountId), family: signatureFamily(model), expiresAt: now + SESSION_TTL_MS, now });
 }
 
 /**
@@ -198,7 +214,7 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null, mo
       if (!row) continue;
       if (!liveEntry(row)) {
         signatureKv.remove(key).catch(() => {});
-      } else if (isCompatible(row, family)) {
+      } else if (isCompatible(row, family) && !accountBound(row)) {
         remember(key, row);
         return row.signature;
       }
@@ -221,7 +237,7 @@ export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null, mode
 
   for (const key of [scopedSignatureKey(sessionId, toolCallId), toolCallId]) {
     const entry = key && recall(key);
-    if (entry && isCompatible(entry, family)) return entry.signature;
+    if (entry && isCompatible(entry, family) && !accountBound(entry)) return entry.signature;
   }
   return null;
 }
@@ -274,6 +290,57 @@ export async function getAccountThoughtSignature(toolCallId, accountId, model) {
   }
 }
 
+// Candidate keys for a selected account's replay, each with its provenance rule:
+// 1. the account + family row (nonstream capture, OmniRoute PR 21439);
+// 2. the exact client-session row, unless another account captured it;
+// 3. the bare alias, only when it records this same account.
+// A bare row without recorded provenance (legacy, sessionless or another
+// provider's capture) is never borrowed.
+function provenCandidates(toolCallId, accountId, sessionId, model) {
+  if (!isString(toolCallId) || !toolCallId) return [];
+  const account = knownAccount(accountId);
+  const family = signatureFamily(model);
+  const candidates = [];
+  const accountKey = scopedSignatureKey(accountSignatureScope(account, model), toolCallId);
+  if (accountKey) candidates.push([accountKey, () => true]);
+  const sessionKey = scopedSignatureKey(sessionId, toolCallId);
+  if (sessionKey) candidates.push([sessionKey, (entry) => isCompatible(entry, family) && (!entry.account || entry.account === account)]);
+  if (account) candidates.push([toolCallId, (entry) => isCompatible(entry, family) && entry.account === account]);
+  return candidates;
+}
+
+/** Provenance-checked RAM read for a selected account (Antigravity executor). */
+export function getProvenThoughtSignatureSync(toolCallId, { accountId = null, sessionId = null, model = null } = {}) {
+  const candidates = provenCandidates(toolCallId, accountId, sessionId, model);
+  if (candidates.length === 0) return null;
+  pruneMemoryExpired();
+  for (const [key, accepts] of candidates) {
+    const entry = recall(key);
+    if (entry && accepts(entry)) return entry.signature;
+  }
+  return null;
+}
+
+/** Provenance-checked read with SQLite fallback for a cold RAM cache. */
+export async function getProvenThoughtSignature(toolCallId, scope = {}) {
+  const cached = getProvenThoughtSignatureSync(toolCallId, scope);
+  if (cached) return cached;
+  const { accountId = null, sessionId = null, model = null } = scope;
+  try {
+    for (const [key, accepts] of provenCandidates(toolCallId, accountId, sessionId, model)) {
+      const row = await signatureKv.get(key);
+      if (!row) continue;
+      if (!liveEntry(row)) {
+        signatureKv.remove(key).catch(() => {});
+      } else if (accepts(row)) {
+        remember(key, row);
+        return row.signature;
+      }
+    }
+  } catch {/* fail-open */}
+  return null;
+}
+
 // Connection ids carry no ":", tool call ids may, so split at the first one.
 function splitKey(key) {
   const at = key.indexOf(":");
@@ -311,7 +378,8 @@ export function getKeyedThoughtSignature(key) {
 
   for (const candidate of parts.scope ? [key, parts.toolCallId] : [key]) {
     const exact = candidate === key;
-    const usable = (entry) => entry && isCompatible(entry, KEYED_FAMILY) && (exact || !entry.owner || entry.owner === parts.scope);
+    const usable = (entry) => entry && isCompatible(entry, KEYED_FAMILY) && (exact || !entry.owner || entry.owner === parts.scope) &&
+    (!accountBound(entry) || entry.account === parts.scope);
     const cached = recall(candidate);
     if (usable(cached)) return cached.signature;
     if (!db) continue;

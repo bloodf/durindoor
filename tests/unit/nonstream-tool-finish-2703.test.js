@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 import { handleNonStreamingResponse } from "../../open-sse/handlers/chatCore/nonStreamingHandler.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
-import { OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
+import { CLAUDE_STOP, OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
 import { ROLE } from "../../open-sse/translator/schema/roles.js";
 
 vi.mock("@/lib/usageDb.js", () => ({
@@ -33,6 +33,9 @@ describe.each([["JSON", false], ["JSON-to-SSE", true]])("tool finish reasons in 
   it.each([
     [OPENAI_FINISH.LENGTH, OPENAI_FINISH.LENGTH],
     [OPENAI_FINISH.CONTENT_FILTER, OPENAI_FINISH.CONTENT_FILTER],
+    [CLAUDE_STOP.MAX_TOKENS, OPENAI_FINISH.LENGTH],
+    [CLAUDE_STOP.MODEL_CONTEXT_WINDOW_EXCEEDED, OPENAI_FINISH.LENGTH],
+    [CLAUDE_STOP.REFUSAL, OPENAI_FINISH.CONTENT_FILTER],
     [OPENAI_FINISH.TOOL_CALLS, OPENAI_FINISH.TOOL_CALLS],
     [OPENAI_FINISH.STOP, OPENAI_FINISH.TOOL_CALLS],
     ["other", OPENAI_FINISH.TOOL_CALLS],

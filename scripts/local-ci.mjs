@@ -186,6 +186,21 @@ export function selectWebsiteBrowserShards(inventory, count = WEBSITE_BROWSER_SH
   }));
 }
 
+// Playwright owns grouping semantics (including serial suites and projects).
+// Probe its real shard listings rather than approximating groups from test count.
+export async function planWebsiteBrowserShards(inventory, listShard, count = WEBSITE_BROWSER_SHARD_COUNT) {
+  const candidates = selectWebsiteBrowserShards(inventory, count);
+  for (let total = candidates.length; total >= 1; total--) {
+    const shards = selectWebsiteBrowserShards(inventory, total);
+    const results = [];
+    for (const shard of shards) results.push({ entries: await listShard(shard) });
+    if (results.some((result) => !result.entries.length)) continue;
+    verifyWebsiteBrowserCoverage(inventory, results);
+    return shards;
+  }
+  throw new Error("Playwright produced no non-empty shard plan");
+}
+
 export function websiteBrowserInventoryCommand(web, browser, reportFile) {
   for (const [label, value] of [["web", web], ["browser", browser], ["reportFile", reportFile]]) {
     if (!isString(value) || !path.isAbsolute(value)) throw new Error(`website browser ${label} must be an absolute path`);
@@ -809,7 +824,18 @@ if (!websiteRun) {
           throw new Error("missing or stale website browser inventory report");
         }
         const discovered = collectWebsiteBrowserInventory(JSON.parse(readFileSync(inventoryFile, "utf8")));
-        const shards = selectWebsiteBrowserShards(discovered.tests);
+        const shards = await planWebsiteBrowserShards(discovered.tests, async (shard) => {
+          const reportFile = path.join(browserReportRoot, `plan-${shard.total}-${shard.index}.json`);
+          rmSync(reportFile, { force: true });
+          const [id, cmd, args, options] = websiteBrowserInventoryCommand(web, browser, reportFile);
+          const step = await run(`${id}-plan-${shard.total}-${shard.index}`, "website-build", cmd,
+            [...args, `--shard=${shard.shard}`], options);
+          if (!ok(step)) throw new Error("website browser shard planning failed");
+          if (!existsSync(reportFile) || statSync(reportFile).mtimeMs < Date.parse(step.startedAt) - 1000) {
+            throw new Error("missing or stale website browser shard plan");
+          }
+          return extractPlaywrightTests(JSON.parse(readFileSync(reportFile, "utf8")));
+        });
         const shardCommands = websiteBrowserShardCommands(web, shards, {
           browser,
           outputRoot: browserOutputRoot,

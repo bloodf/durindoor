@@ -1,7 +1,9 @@
-import { existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import {
+  reserveLoopbackPort,
+  TRANSIENT_PORT_ENV,
   TRANSIENT_OWNER_ENV,
   TRANSIENT_RUNNER_ENV,
   TRANSIENT_STATE_ENV,
@@ -19,9 +21,20 @@ import {
 // `reuseExistingServer: false` makes an occupied port a hard failure instead
 // of a silent attach. local-ci gives each shard its own free port, private
 // state file and owner token through WEBSITE_TRANSIENT_*; a direct run falls
-// back to port 3100, a per-process state file and a fresh token. Workers load
+// back to a fresh loopback port, a per-process state file and a fresh token. Workers load
 // this file again, so the chosen values are pinned into process.env once.
+// Pin values before workers reload the config. Occupied explicit ports still fail.
+if (!process.env[TRANSIENT_PORT_ENV]) process.env[TRANSIENT_PORT_ENV] = String(await reserveLoopbackPort());
 const plan = transientServerPlan();
+// Chromium uses Unix sockets below TMPDIR; long checkpoint paths exceed their
+// kernel limit. Keep browser scratch private and short, independently of reports.
+// Only the Playwright runner owns it: workers inherit it, and test tooling that
+// merely imports this file (Vitest) must not create a directory it cannot reap.
+if (process.env.TEST_WORKER_INDEX === undefined && !process.env.VITEST) {
+  const scratch = mkdtempSync("/tmp/dd-pw-");
+  process.env.TMPDIR = scratch;
+  process.on("exit", () => rmSync(scratch, { recursive: true, force: true }));
+}
 process.env[TRANSIENT_OWNER_ENV] = plan.owner;
 const stateFile = process.env[TRANSIENT_STATE_ENV] || transientStatePath();
 process.env[TRANSIENT_STATE_ENV] = stateFile;
@@ -44,6 +57,7 @@ const useOptions = { baseURL: plan.baseURL, trace: "retain-on-failure", viewport
 if (process.env.WEBSITE_CHROMIUM_EXECUTABLE) useOptions.launchOptions = { executablePath: process.env.WEBSITE_CHROMIUM_EXECUTABLE };
 
 export default defineConfig({
+  forbidOnly: true,
   testDir: "./tests",
   testMatch: ["docs.spec.mjs", "marketing.spec.mjs", "public-verification.spec.mjs"],
   timeout: 60_000,

@@ -115,13 +115,13 @@ export function procfsAvailable(procRoot = "/proc") {
   }
 }
 
-export function findOwnedProcesses(owner, { procRoot = "/proc", euid = process.geteuid(), selfPid = process.pid } = {}) {
+export function findOwnedProcesses(owner, { procRoot = "/proc", euid = process.geteuid(), selfPid = process.pid, readDirectory = readdirSync } = {}) {
   const owned = [];
   let entries;
   try {
-    entries = readdirSync(procRoot);
-  } catch {
-    return owned;
+    entries = readDirectory(procRoot);
+  } catch (error) {
+    throw new Error(`cannot enumerate owned processes: ${error.code || error.message}`);
   }
   for (const entry of entries) {
     if (!/^\d+$/.test(entry)) continue;
@@ -201,6 +201,7 @@ export async function cleanupShardServer({
   euid = process.geteuid(),
   kill = process.kill.bind(process),
   probe = isPortListening,
+  readDirectory = readdirSync,
 } = {}) {
   if (!isShardOwnerToken(owner)) throw new Error("invalid shard owner token");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("invalid shard port");
@@ -225,7 +226,7 @@ export async function cleanupShardServer({
 
   // The /proc scan is the authority: every process of the shard's tree
   // inherits the owner token. The state file is only cleaned up at the end.
-  const scan = () => findOwnedProcesses(owner, { procRoot, euid });
+  const scan = () => findOwnedProcesses(owner, { procRoot, euid, readDirectory });
 
   const waitGone = async (ms) => {
     const deadline = Date.now() + ms;
@@ -255,7 +256,8 @@ export async function cleanupShardServer({
     }
   } catch (error) {
     result.reason = `shard server signal failed: ${error.code || error.message}`;
-    result.survivors = scan().map((p) => p.pid);
+    try { result.survivors = scan().map((p) => p.pid); }
+    catch { /* Enumeration failure leaves survivors unknown and ok false. */ }
     return result;
   }
   if (remaining.length) {

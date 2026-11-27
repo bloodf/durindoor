@@ -14,7 +14,7 @@
 // the submit is accepted, anything short of a reported job failure is an unknown
 // outcome, so the gateway does not resubmit a job that may still bill.
 import { jobOutcomeUnknown, readJobBody, sleep } from "../../handlers/imageProviders/_base.js";
-import { RENDERHOUR_GENERATIONS_URL } from "../../providers/private/renderhour.js";
+import { RENDERHOUR_GENERATIONS_URL } from "../../providers/registry/renderhour.js";
 import { resolveCredentialProxyOptions } from "../oauthCredentialManager.js";
 import { readBoundedResponseText } from "../../utils/error.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
@@ -84,6 +84,11 @@ async function readJob(response, { signal, timeoutMs }) {
 }
 
 // The connection's key must never come back inside a result URL, raw or encoded.
+// The secret this job's polls carry, read from its Authorization value.
+function bearerSecret(authorization) {
+  return isString(authorization) && authorization.startsWith("Bearer ") ? authorization.slice(7) || null : null;
+}
+
 function carriesSecret(href, secret) {
   if (!secret) return false;
   return href.includes(secret) || href.includes(encodeURIComponent(secret));
@@ -156,7 +161,7 @@ export async function awaitRenderHourJob(submitted, {
   let delay = pollIntervalMs;
   let retries = 0;
   let rejected = 0;
-  const secret = isString(credentials?.apiKey) ? credentials.apiKey : null;
+  const secret = bearerSecret(authorization) ?? (isString(credentials?.apiKey) ? credentials.apiKey : null);
   let files = settle(job, task, count, secret);
 
   while (!files) {

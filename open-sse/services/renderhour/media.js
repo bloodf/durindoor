@@ -1,7 +1,6 @@
 // RenderHour video and speech jobs: credential check, one bounded submit, the
-// shared bounded poll (./job.js) and accepted-job accounting. STAGED: only the
-// standalone adapters in handlers/videoProviders/renderhour.js and
-// handlers/ttsProviders/renderhour.js import this, and no router imports them.
+// shared bounded poll (./job.js) and accepted-job accounting, for the adapters
+// in handlers/videoProviders/renderhour.js and handlers/ttsProviders/renderhour.js.
 //
 // Ported from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper
@@ -15,8 +14,8 @@
 // a redirect is refused, the submit is bounded and never retried, a submit that
 // may have been sent counts as a possibly billed job, and a refused submit's
 // Retry-After reaches account cooldown. Fork deviations from the source are the
-// same as for images: an `rh_` key only, a fixed origin, no uploads, and no
-// upstream text in job errors.
+// same as for images: an `rh_` key or a stored plan sign-in only, a fixed
+// origin, no uploads, and no upstream text in job errors.
 import { randomUUID } from "node:crypto";
 import { createErrorResult, formatProviderError, parseUpstreamError } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
@@ -27,9 +26,10 @@ import {
   RENDERHOUR_GENERATIONS_URL,
   RENDERHOUR_ID,
   RENDERHOUR_MODELS_BY_TASK,
-  RENDERHOUR_STAGED_MEDIA,
+  RENDERHOUR_MEDIA,
   renderHourTaskOf,
-} from "../../providers/private/renderhour.js";
+} from "../../providers/registry/renderhour.js";
+import { renderHourOAuthAuthorization } from "./oauth.js";
 import { awaitRenderHourJob, RENDERHOUR_MAX_MEDIA_OUTPUTS, RENDERHOUR_REQUEST_TIMEOUT_MS } from "./job.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
@@ -47,11 +47,28 @@ const CHAT_FIELDS = ["messages", "input_messages", "tools", "tool_choice"];
 
 const reject = (message, status = HTTP_STATUS.BAD_REQUEST) => Object.assign(new Error(message), { status });
 
-/** The Authorization value for an `rh_` key. Throws a 401 error otherwise; the key is never quoted. */
+/**
+ * The Authorization value for the selected connection: its stored plan access
+ * token for an `oauth` connection, otherwise its `rh_` key. Throws a 401 error
+ * when the connection has neither; the secret is never quoted.
+ */
 export function renderHourAuthorization(credentials) {
+  if (credentials?.authType === "oauth") {
+    try {
+      return renderHourOAuthAuthorization(credentials);
+    } catch {
+      throw reject("RenderHour sign-in has no usable access token; sign in again", 401);
+    }
+  }
   const key = credentials?.apiKey;
   if (!isString(key) || !RENDERHOUR_API_KEY_RE.test(key)) throw reject("RenderHour needs an rh_ API key", 401);
   return `Bearer ${key}`;
+}
+
+/** The secret the selected connection sends, so results that echo it are refused. */
+export function renderHourSecret(credentials) {
+  const secret = credentials?.authType === "oauth" ? credentials?.accessToken : credentials?.apiKey;
+  return isString(secret) && secret ? secret : null;
 }
 
 /**
@@ -86,7 +103,7 @@ export function discoverRenderHourModels(credentials, { task } = {}) {
   if (task !== undefined && !RENDERHOUR_MODELS_BY_TASK[task]) {
     return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Unknown RenderHour task");
   }
-  const data = RENDERHOUR_STAGED_MEDIA.models
+  const data = RENDERHOUR_MEDIA.models
     .filter((model) => task === undefined || renderHourTaskOf(model.id) === task)
     .map(({ id, name, kind }) => ({ id, name, kind, task: renderHourTaskOf(id), owned_by: PROVIDER }));
   return { success: true, source: "static", accountVerified: false, data };

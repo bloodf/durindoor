@@ -1,0 +1,60 @@
+{
+  "registered": false,
+  "canonicalId": "firecrawl",
+  "aliases": ["firecrawl"],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/searchRegistry.ts",
+      "open-sse/handlers/search.ts",
+      "open-sse/handlers/search/firecrawlSearch.ts",
+      "open-sse/handlers/search/reportedCost.ts"
+    ]
+  },
+  "localBaseline": {
+    "provider": "open-sse/providers/registry/firecrawl.js has serviceKinds ['webFetch'] and fetchConfig (POST https://api.firecrawl.dev/v2/scrape) only; no searchConfig or searchViaChat",
+    "dispatch": "open-sse/handlers/search/callers.js and normalizers.js have no firecrawl builder/normalizer; /v1/search answers 'Provider firecrawl does not support web search'",
+    "firecrawl_custom": "self-hosted webFetch only; not a search equivalent and out of scope"
+  },
+  "exports": {
+    "config.js": ["FIRECRAWL_ID", "FIRECRAWL_ALIASES", "FIRECRAWL_ORIGIN", "FIRECRAWL_SEARCH_URL", "FIRECRAWL_SEARCH_TYPES", "FIRECRAWL_TIME_RANGES", "searchConfig", "firecrawlSearchMetadata"],
+    "adapter.js": ["firecrawlSearchAdapter", "buildFirecrawlSearchBody", "normalizeFirecrawlSearch", "firecrawlSearchHeaders", "sanitizeQuery", "safePublicUrl", "resultBlocks", "estimatedSearchCostUsd", "MAX_QUERY_CHARS", "MAX_DOMAIN_FILTERS", "invalid"],
+    "service.js": ["handleFirecrawlSearchNative", "DEFAULT_TIMEOUT_MS", "MAX_TIMEOUT_MS"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["webSearch"],
+  "models": {},
+  "searchTypes": ["web", "news"],
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay or failover; existing firecrawl apikey connection mode preserved"
+  },
+  "endpoints": {
+    "search": "https://api.firecrawl.dev/v2/search",
+    "discovery": "none (model-less search provider; the source registry declares no model list or discovery endpoint)"
+  },
+  "envelope": {
+    "request": "POST { query, limit, sources: ['web'|'news'], country? (lowercased ISO-2), lang?, tbs? (qdr:d|w|m|y), includeDomains?, excludeDomains? } with Content-Type application/json and Authorization: Bearer <key>",
+    "response": "v2 { success, data: { web?: [...], news?: [...] }, creditsUsed? }; hits rebuilt into the local unified SearchResult shape with source field precedence; unsafe URLs dropped",
+    "result": "{ provider: 'firecrawl', query, results, answer: null, usage: { queries_used: 1, search_cost_usd: 0.002 * max(1, ceil(results/10)) }, metrics, errors }"
+  },
+  "integration": {
+    "provider": "existing open-sse/providers/registry/firecrawl.js: append 'webSearch' to serviceKinds and add firecrawlSearchMetadata.searchConfig as searchConfig; preserve fetchConfig, auth and display",
+    "search": "open-sse/handlers/search/index.js handleSearchCore: dispatch handleFirecrawlSearchNative({ body, provider, credentials, signal, timeoutMs: min(30000, remaining global) }) for provider 'firecrawl' before the generic buildSearchRequest path (which has no firecrawl builder)",
+    "publicHandler": "src/sse/handlers/search.js recordSuccess: accounting.nativeUnits.operations is the returned-result block count, priced at searchConfig.costPerQuery as an estimate; acceptedJob on failures should be recorded as unknown-cost accepted work and never retried",
+    "catalog": "docs/providers/catalog.mdx, open-sse/AGENT-INDEX.md and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "hosted origin only: source FIRECRAWL_BASE_URL / params.baseUrl / providerSpecificData.baseUrl overrides are not ported; provider_options must be absent or empty",
+    "search_type web|news only; time_range any|day|week|month|year; max_results integer 1..100 (default 5); country ISO-2; offset/content_options refused (source silently drops them)",
+    "query at most 2000 characters after NFKC/whitespace normalization; at most 50 domain_filter entries, valid hostnames only",
+    "30s default and maximum per-call deadline; 4MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed; redirects and foreign-origin responses are refused",
+    "no scrapeOptions/markdown content, images source, streaming, polling, browser or WebSocket protocol",
+    "cost stays unknown in accounting; search_cost_usd is the source list-price estimate, creditsUsed is retained as native credits only"
+  ]
+}

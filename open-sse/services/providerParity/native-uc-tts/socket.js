@@ -173,7 +173,7 @@ export function runUcTtsSocket({
         if (!isRecord(parsed)) continue;
         if (parsed.type === "usage_update") {
           if (isNumber(parsed.usage_percent) && Number.isFinite(parsed.usage_percent)) usagePercent = parsed.usage_percent;
-          if (typeof parsed.threshold_crossed === "boolean") thresholdCrossed = parsed.threshold_crossed;
+          if (parsed.threshold_crossed === true || parsed.threshold_crossed === false) thresholdCrossed = parsed.threshold_crossed;
           continue;
         }
         if (!isString(parsed.data) || !parsed.data) continue;

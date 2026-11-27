@@ -20,7 +20,7 @@ import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { UC_CLERK_FAPI, UC_CLERK_JS_VERSION, UC_MAX_JWT_LENGTH, UC_MAX_MINT_BYTES, UC_MINT_TIMEOUT_MS, UC_ORIGIN } from "./config.js";
 import { cookieHeader, uidFromSessionJwt } from "./credentials.js";
 
-const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
+const SESSION_JWT_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const discard = (response) => void response?.body?.cancel?.().catch(() => {});
 
 export const ucMintUrl = (sid) => `${UC_CLERK_FAPI}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${UC_CLERK_JS_VERSION}`;
@@ -84,7 +84,7 @@ export async function mintUcSessionToken(credential, { signal, timeoutMs = UC_MI
     // The parser's message quotes the body, so it is dropped.
   }
   const jwt = isRecord(parsed) ? (isString(parsed.jwt) ? parsed.jwt : isString(parsed.token) ? parsed.token : "") : "";
-  if (!jwt || jwt.length > UC_MAX_JWT_LENGTH || !JWT_SHAPE.test(jwt)) return failed("malformed");
+  if (!jwt || jwt.length > UC_MAX_JWT_LENGTH || !SESSION_JWT_PATTERN.test(jwt)) return failed("malformed");
   const claimed = uidFromSessionJwt(jwt);
   if (claimed && claimed !== credential.uid) return failed("identity");
   return { ok: true, jwt };

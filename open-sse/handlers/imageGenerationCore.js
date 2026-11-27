@@ -8,7 +8,7 @@ import { getImageAdapter } from "./imageProviders/index.js";
 import { fetchImageAsBase64, detectImageMime } from "../translator/concerns/image.js";
 import { isFunction, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { normalizeImageOutput } from "./imageProviders/outputFormat.js";
-import { imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
+import { cancelledAccounting, headerOnlyCancel, imageToolUsage, mediaAccounting, returnedImageUnits } from "./mediaAccounting.js";
 
 // Transport failures that happen before a connection exists: nothing was sent.
 const PRE_CONNECT_ERROR_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
@@ -83,9 +83,20 @@ function imageFailureMessage(body) {
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
- * @param {function} [options.onStreamComplete] - Awaited once with ({status, accounting, error}, response).
+ * @param {function} [options.onUpstreamDispatch] - Called synchronously with (sentCredentials, dispatchedAt)
+ * each time the provider answers a dispatch, including the retry after a 401/403 refresh. The
+ * credentials are a copy taken before the send, so later refreshes cannot change them.
+ * @param {function} [options.onStreamComplete] - Awaited once with ({status, statusCode, accounting, error}, response); statusCode carries a classified terminal provider failure.
  * Codex completion resolves (never rejects) after this callback and upstream cleanup.
  * Status is success, failure, or abort; only success has complete accounting.
+ * A client cancel after 2xx headers carries `cancelledUsage` (#2647) only when a
+ * provider usage receipt was read before the cancel. A 2xx status alone is not
+ * evidence (the unread body may be an error envelope), so it carries only
+ * `cancelledAfterHeaders: true`, which no ledger records.
+ * A Codex `tool_usage.image_gen` count read before the cancel is such a receipt.
+ * An upstream abort (client still connected) carries the same evidence, tagged
+ * `meta.upstreamAborted`; the caller records it and keeps its fallback rules.
+ * Streams report it on the abort outcome; buffered bodies return 499 with it.
  * Callback rejection resolves failure with failed accounting and a client error event.
  * @returns {Promise<{ success: boolean, response: Response, accounting?: object, completion?: Promise<object>, status?: number, error?: string }>}
  */
@@ -100,6 +111,7 @@ export async function handleImageGenerationCore({
   refreshCredentials,
   onRequestSuccess,
   onStreamComplete,
+  onUpstreamDispatch,
   signal
 }) {
   const { provider, model } = modelInfo;
@@ -110,6 +122,21 @@ export async function handleImageGenerationCore({
   // Client disconnects are not provider failures: callers must not cool down the account.
   const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
   const abortedResult = () => createErrorResult(499, "Image generation request aborted");
+  // Report a dispatch only once the provider answered it. A transport error is
+  // not an answer; an executor error tagged with an HTTP status is.
+  const dispatchUpstream = async (send) => {
+    const sent = { ...credentials };
+    const dispatchedAt = Date.now();
+    const answered = () => { if (isFunction(onUpstreamDispatch)) onUpstreamDispatch(sent, dispatchedAt); };
+    try {
+      const value = await send();
+      answered();
+      return value;
+    } catch (error) {
+      if (!isAbort(error) && Number.isInteger(Number(error?.status))) answered();
+      throw error;
+    }
+  };
   // A 2xx async submit means the provider took the job and may bill it, whatever we
   // observe afterwards. No measured units or receipt exist, so the cost stays unknown.
   const withAcceptedJob = (result, jobState = "accepted") => ({
@@ -159,7 +186,7 @@ export async function handleImageGenerationCore({
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {
       log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..." (executor)`);
-      const execute = () => adapter.executeViaExecutor(model, body, credentials, log, proxyOptions, signal, onCredentialsRefreshed);
+      const execute = () => dispatchUpstream(() => adapter.executeViaExecutor(model, body, credentials, log, proxyOptions, signal, onCredentialsRefreshed));
       let responseBody;
       try {
         responseBody = await execute();
@@ -315,7 +342,7 @@ export async function handleImageGenerationCore({
 
   let providerResponse;
   try {
-    providerResponse = await sendSubmit();
+    providerResponse = await dispatchUpstream(sendSubmit);
   } catch (error) {
     return submitFailure(error);
   }
@@ -352,7 +379,7 @@ export async function handleImageGenerationCore({
     headers = nextHeaders;
     log?.info?.("TOKEN", `${provider.toUpperCase()} | submit retried once with a new token`);
     try {
-      providerResponse = await sendSubmit();
+      providerResponse = await dispatchUpstream(sendSubmit);
     } catch (error) {
       return submitFailure(error);
     }
@@ -388,7 +415,7 @@ export async function handleImageGenerationCore({
         requestBody = await adapter.buildBody(model, body, adapterOptions);
         headers = adapter.buildHeaders(credentials, requestBody, model, body);
         url = adapter.buildUrl(model, credentials, body, adapterOptions);
-        providerResponse = await sendSubmit();
+        providerResponse = await dispatchUpstream(sendSubmit);
       } catch (error) {
         if (adapter.submitOutcomeUnknown) return submitFailure(error);
         if (isAbort(error)) return abortedResult();
@@ -411,7 +438,7 @@ export async function handleImageGenerationCore({
     try {
       requestBody = fallbackBody;
       headers = adapter.buildHeaders(credentials, requestBody, model, body);
-      providerResponse = await sendSubmit();
+      providerResponse = await dispatchUpstream(sendSubmit);
       if (redirectRefused(providerResponse)) return refuseRedirect(providerResponse);
       upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
     } catch (error) {
@@ -448,6 +475,18 @@ export async function handleImageGenerationCore({
   const attachToolUsage = () => {
     if (toolUsage) accounting.meta.imageToolUsage = toolUsage;
   };
+  // A 2xx status line proves neither acceptance nor completion: a provider can
+  // answer 200 with an error envelope, and the unread body decides. Only a usage
+  // receipt actually read before the cancel is evidence of billable work.
+  // Codex's hosted image-tool counts (`tool_usage.image_gen`) are such a
+  // receipt even when the event carries no general usage: they prove the tool
+  // ran. They stay metadata (see imageToolUsage), never host-model tokens.
+  // The cause tag says who ended the read: the client, or the upstream body.
+  const cancelEvidence = (byClient = signal?.aborted) => {
+    if (!hasReceipt && !toolUsage) return undefined;
+    attachToolUsage();
+    return cancelledAccounting(accounting, byClient ? "client" : "upstream");
+  };
   try {
     if (adapter.parseResponse) {
       parsed = await adapter.parseResponse(providerResponse, {
@@ -473,6 +512,13 @@ export async function handleImageGenerationCore({
           attachToolUsage();
           if (outcome.status === "success") returnedImageUnits(accounting, outcome.value);
           outcome.accounting = accounting;
+          if (outcome.status === "abort") {
+            // The SSE body cancelled by its reader is a client cancel even
+            // before the request signal fires.
+            const byClient = Boolean(outcome.clientCancelled || signal?.aborted);
+            outcome.cancelledUsage = cancelEvidence(byClient);
+            if (!outcome.cancelledUsage && byClient) headerOnlyCancel(outcome, log, provider, model);
+          }
           try {
             // Clear account health before the ledger write, so a health failure
             // cannot turn an already-persisted operation into a failed completion.
@@ -496,7 +542,17 @@ export async function handleImageGenerationCore({
       parsed = await providerResponse.json();
     }
   } catch (parseError) {
-    if (isAbort(parseError)) return adapter.async ? withAcceptedJob(abortedResult()) : abortedResult();
+    if (isAbort(parseError)) {
+      if (adapter.async) return withAcceptedJob(abortedResult());
+      // The unread body held the outcome and usage. Keep any receipt read so far
+      // and invent nothing; see cancelEvidence for when there is evidence at all.
+      // An upstream abort with a live client keeps its receipt too: the caller
+      // records it, then account health and fallback treat the 499 as before.
+      const cancelledUsage = cancelEvidence();
+      if (cancelledUsage) return { ...abortedResult(), cancelledUsage };
+      if (!signal?.aborted) return abortedResult();
+      return headerOnlyCancel(abortedResult(), log, provider, model);
+    }
     // An adapter may tag a parse/validation error with an explicit HTTP status
     // (e.g. 422 for a per-request content rejection) to distinguish it from a
     // generic upstream failure. Only honor a sane client/server error status;

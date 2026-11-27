@@ -110,6 +110,7 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
   return runMediaAccounts({
     provider,
     model,
+    signal: request.signal,
     selectionOptions: { apiKeyId },
     buildExhaustedResponse(credentials, { lastError, lastStatus, attempted }) {
       if (credentials?.providerDisabled) {
@@ -133,6 +134,7 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
         jsonBody,
         modelInfo: { provider, model },
         credentials: toExecutorCredentials({ ...credentials }),
+        signal: request.signal,
         log,
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model, dispatch);

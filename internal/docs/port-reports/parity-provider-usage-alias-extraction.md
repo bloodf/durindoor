@@ -1,5 +1,47 @@
 # Provider usage alias extraction
 
+## Gate correction: stale nested cache creation
+
+The first correction (`dac72fae503af4ee908154a6f92167b2ca9a0b7c`)
+failed the broader selected gate: 1 failed and 542 passed across 43 files.
+Reproduced the unchanged failing file in a private credential-free environment:
+
+```sh
+cd tests
+timeout 300 node node_modules/vitest/vitest.mjs run unit/responses-usage-detail-translation.test.js --maxWorkers=2
+```
+
+The parity fixture has exclusive input 100, output 50, read 10 and stale nested
+creation 7. Direct canonicalization incorrectly folded nested creation after
+the first patch, producing prompt 117/write 7. Responses translation correctly
+removed the stale detail and produced prompt 110/write 0, total 160.
+
+The exclusive branch now resolves only canonical creation, `cache_write_tokens`
+and validated `cache_creation_tokens`. Inclusive usage still permits nested
+fallback. Added a literal stale-detail regression without changing the existing
+parity test or the failure baseline. The reported alias receipt still yields
+prompt 150/write 30; exclusive stale nested creation yields prompt 110/write 0.
+
+Focused verification exited 0: 9 files, 282 tests, including the original
+Responses parity test and Responses stream-to-JSON tests. Exact command:
+
+```sh
+cd tests
+timeout 300 node node_modules/vitest/vitest.mjs run unit/exclusive-cache-read-alias.test.js unit/responses-usage-detail-translation.test.js unit/responses-stream-to-json-usage.test.js unit/provider-usage-alias-extraction.test.js unit/parity-stream-cache-creation-alias.test.js unit/claude-openai-cache-usage.test.js unit/cached-token-usage.test.js unit/omni-cache-write-usage-alias.test.js unit/usage-cost-total.test.js --maxWorkers=2
+```
+
+The repository selector (`node scripts/checks-select.mjs`) selected 43 unique
+test files from this task's changed paths. Ran its complete union of `tests`
+and `related` with `timeout 300 node node_modules/vitest/vitest.mjs run
+<selected-files> --maxWorkers=2` from `tests/`, without empty-collection bypass.
+It exited 0: 43 files, 544 tests passed. Selection and raw output are private
+run evidence under `/tmp/durindoor-exclusive-evidence/selection.json` and
+`selected-green.log`. This includes the previously failing parity assertion.
+
+Scoped Oxlint again exited 0 with zero diagnostics (one production file;
+repository configuration excludes tests). Private environment and 300-second
+command ceilings are unchanged.
+
 ## Exclusive cache-read alias correction, 2026-11-27
 
 Integration base: `97c5b58b6f6f9ba5251c3bf79973b5c871c1c40e`.
@@ -38,8 +80,9 @@ canonical tuples `(prompt, completion, total, read, write)` were:
 | OpenAI chunk then canonicalize | (100, 5, 105, 20, 30) | (100, 5, 105, 20, 30) |
 
 The exclusive branch previously ignored the already resolved `cacheWrite`.
-It now uses that value, leaving the exclusive discriminator and total policy
-unchanged. Explicit canonical numeric zero and positive values retain nullish
+It now resolves canonical creation and top-level aliases in that branch,
+leaving the exclusive discriminator and total policy unchanged. Nested
+inclusive details remain excluded from exclusive creation accounting. Explicit canonical numeric zero and positive values retain nullish
 precedence. The top-level alias still requires a finite nonnegative number.
 Exclusive totals are recomputed after folding; inclusive explicit totals stay
 authoritative. No provider arithmetic or extraction behavior changed.

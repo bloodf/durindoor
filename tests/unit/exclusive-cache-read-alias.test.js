@@ -65,3 +65,12 @@ it("keeps direct OpenAI details inclusive and preserves an authoritative total",
     prompt_tokens_details: { cached_tokens: 20 }, cache_creation_input_tokens: null, cache_creation_tokens: 30,
   })).toEqual({ prompt_tokens: 100, completion_tokens: 5, total_tokens: 110, cached_tokens: 20, cache_creation_input_tokens: 30 });
 });
+
+// Nested details can survive translation from an older receipt. An exclusive
+// flat read makes them stale; they must not supply an absent flat creation.
+it("ignores stale nested creation alongside exclusive reads", () => {
+  expect(canonicalizeUsage({ input_tokens: 100, output_tokens: 50,
+    cache_read_input_tokens: 10, input_tokens_details: { cache_creation_tokens: 7 },
+  })).toEqual({ prompt_tokens: 110, completion_tokens: 50, total_tokens: 160,
+    cached_tokens: 10, cache_creation_input_tokens: 0 });
+});

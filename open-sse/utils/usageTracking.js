@@ -314,8 +314,11 @@ export function canonicalizeUsage(usage) {
   usage.cache_creation_input_tokens != null &&
   usage.cached_tokens === undefined &&
   inputDetails?.cache_creation_tokens === undefined);
-  // Flat exclusive reads also make the resolved creation count exclusive.
-  const cacheCreation = num(cacheWrite);
+  // Exclusive flat counters override stale nested inclusive details. Resolve only
+  // top-level creation aliases here; nested fallback belongs to inclusive usage.
+  const cacheCreation = hasExclusiveCache ?
+  num(usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias) :
+  num(cacheWrite);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);
   let cached;

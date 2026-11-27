@@ -166,13 +166,68 @@ function writeSignature(toolCallId, signature, { scope = null, owner = null, acc
 
   const db = dbOrNull();
   if (!db) {
-    for (const [key, row] of rows) signatureKv.set(key, row).catch(() => {});
+    for (const [key, row] of rows) persistLater(key, row);
     return;
   }
   try {
-    for (const [key, row] of rows) db.run(UPSERT, [SCOPE, key, stringifyJson(row)]);
+    for (const [key, row] of rows) {
+      db.run(UPSERT, [SCOPE, key, stringifyJson(row)]);
+      unpersisted.delete(key);
+    }
     prunePersisted(db, now);
-  } catch {/* response translation must not fail when persistence does */}
+  } catch {
+    // Response translation must not fail when persistence does; keep the rows
+    // for the next persisted read to retry instead of dropping them.
+    for (const [key, row] of rows) if (!readRowOrNull(db, key)) persistLater(key, row, false);
+  }
+}
+
+// Write-behind rows not yet confirmed in SQLite, by key. A capture made before
+// this process opened the adapter is persisted asynchronously, and that open can
+// fail transiently (another process migrating the same file reports "database is
+// locked"; the next getAdapter() retries the open). A row stays here until a
+// write succeeds, so a persisted (cold) read awaits the in-flight write, retries
+// a failed one, and never misses the capture (#2034). Bounded like the RAM cache.
+const unpersisted = new Map();
+
+function persistLater(key, row, writeNow = true) {
+  const entry = { row, write: null };
+  unpersisted.delete(key);
+  unpersisted.set(key, entry);
+  while (unpersisted.size > MAX_SIGNATURES) unpersisted.delete(unpersisted.keys().next().value);
+  if (writeNow) entry.write = persistEntry(key, entry);
+}
+
+async function persistEntry(key, entry) {
+  try {
+    await signatureKv.set(key, entry.row);
+    if (unpersisted.get(key) === entry) unpersisted.delete(key);
+  } catch {/* kept for the next persisted read */}
+}
+
+function readRowOrNull(db, key) {
+  try {return readRow(db, key);} catch {return null;}
+}
+
+// The persisted boundary of every async read: settle the key's pending write
+// (retrying it once if it failed) before querying SQLite. A row SQLite still
+// cannot take is returned as written, so provenance and expiry checks apply to
+// it exactly as to a persisted row.
+async function readPersisted(key) {
+  const entry = unpersisted.get(key);
+  if (entry) {
+    await entry.write;
+    if (unpersisted.get(key) === entry) {
+      entry.write = persistEntry(key, entry);
+      await entry.write;
+    }
+    if (unpersisted.get(key) === entry) {
+      if (liveEntry(entry.row)) return entry.row;
+      unpersisted.delete(key);
+      return null;
+    }
+  }
+  return signatureKv.get(key);
 }
 
 // A usable selected-account id, or null ("unknown" is the gateway's placeholder).
@@ -210,7 +265,7 @@ export async function getGeminiThoughtSignature(toolCallId, sessionId = null, mo
   try {
     for (const key of [scopedSignatureKey(sessionId, toolCallId), toolCallId]) {
       if (!key) continue;
-      const row = await signatureKv.get(key);
+      const row = await readPersisted(key);
       if (!row) continue;
       if (!liveEntry(row)) {
         signatureKv.remove(key).catch(() => {});
@@ -277,7 +332,7 @@ export async function getAccountThoughtSignature(toolCallId, accountId, model) {
   const key = scopedSignatureKey(accountSignatureScope(accountId, model), toolCallId);
   if (!key) return null;
   try {
-    const row = await signatureKv.get(key);
+    const row = await readPersisted(key);
     if (!row) return null;
     if (!liveEntry(row)) {
       signatureKv.remove(key).catch(() => {});
@@ -328,7 +383,7 @@ export async function getProvenThoughtSignature(toolCallId, scope = {}) {
   const { accountId = null, sessionId = null, model = null } = scope;
   try {
     for (const [key, accepts] of provenCandidates(toolCallId, accountId, sessionId, model)) {
-      const row = await signatureKv.get(key);
+      const row = await readPersisted(key);
       if (!row) continue;
       if (!liveEntry(row)) {
         signatureKv.remove(key).catch(() => {});
@@ -399,6 +454,7 @@ export function getKeyedThoughtSignature(key) {
 
 export async function clearThoughtSignatures() {
   memorySignatures.clear();
+  unpersisted.clear();
   writesSincePrune = 0;
   try {await (await getAdapter()).run("DELETE FROM kv WHERE scope = ?", [SCOPE]);} catch {/* test cleanup without DB remains valid */}
 }

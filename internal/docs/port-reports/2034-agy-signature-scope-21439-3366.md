@@ -4,13 +4,6 @@ Base: `6affc064d889273ebded78cb307f463ecbe05567`, which already contains the
 Gemini replay unit (`69fdd78e537a0a666bc30ca2af98a7a4c58b1412`,
 `4b1737339975876d3b9c01cf5b41d13da14a4749`). Its fixes and suites are unchanged.
 
-> **Correction.** Item 1 below is too broad. Before this unit, the OpenAI nonstream
-> body already gave the client the signature through the transport ID (#2518, see
-> `1073-gemini-nonstream-pending-thought-signature-2518.md`). Only the store write
-> was missing. The "fallback-ID change does not apply" note is superseded: the
-> same-millisecond collision was real, and the executor's bare-alias fallback still
-> crossed accounts. See `2034-agy-signature-isolation-21439.md`.
-
 ## Sources (MIT, read-only, both pull requests open)
 
 | Project | Pull request | Head used | Files read |

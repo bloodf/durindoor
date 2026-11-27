@@ -1,0 +1,118 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/config/grokBuildEndpoints.ts",
+      "open-sse/config/grokBuild.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/xaiGrokImagineHandler.ts",
+      "open-sse/handlers/grokMedia.ts"
+    ],
+    "sourceRegistryEntry": {
+      "id": "grok-cli",
+      "alias": "gc",
+      "baseUrl": "${GROK_BUILD_PROXY_BASE_URL}/videos",
+      "statusUrl": "${GROK_BUILD_PROXY_BASE_URL}/videos",
+      "GROK_BUILD_PROXY_BASE_URL": "https://cli-chat-proxy.grok.com/v1",
+      "authType": "oauth",
+      "authHeader": "bearer",
+      "format": "xai-video",
+      "models": [{ "id": "grok-imagine-video", "name": "Grok Imagine Video (OAuth)" }]
+    },
+    "comparedReference": {
+      "repository": "CLIProxyAPI",
+      "commit": "47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e",
+      "files": [
+        "internal/runtime/executor/xai_executor_media.go",
+        "internal/runtime/executor/xai_executor_request.go",
+        "internal/api/server_routes.go"
+      ],
+      "note": "OAuth xAI video goes to the cli-chat-proxy base with /videos/generations, /videos/edits, /videos/extensions and GET /videos/{request_id}; it applies the generic xAI headers (no x-xai-token-auth), not the CLI chat identity. Only the OmniRoute generations + poll contract is ported here."
+    }
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/grok-cli.js: OAuth device code only (authModes [oauth]), alias gb, aliases gcli and grok-build, Responses transport https://cli-chat-proxy.grok.com/v1/responses, no serviceKinds (defaults to [llm]), no videoConfig, no video models",
+    "asyncVideoProxy": "open-sse/handlers/videoCore.js serves only providers with a registry videoConfig; grok-cli has none, so /v1/videos refuses it. Its buildHeaders sends Authorization/Content-Type/Idempotency-Key only, so adding a bare videoConfig would omit the source X-XAI-Token-Auth and x-grok-client-* headers and is not an equivalent",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('grok-cli') is null)",
+    "apiKeyEquivalent": "open-sse/providers/registry/xai.js videoConfig https://api.x.ai/v1/videos through videoCore.js (API key, raw byte passthrough of generations/edits/extensions and GET /videos/{id}). That is the source `xai` entry, a different origin and credential; it is not changed here",
+    "aliasConflict": "the source alias gc is the local Gemini CLI alias; it is not adopted"
+  },
+  "module": "open-sse/services/providerParity/native-grok-cli-video/index.js",
+  "exports": {
+    "grokCliVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createGrokCliVideoAdapter": "factory; options { timeoutMs, pollIntervalMs, maxPolls, submitTimeoutMs, requestTimeoutMs, wait, now } for tests",
+    "buildGrokCliVideoRequest": "(model, body) -> { model, prompt, image?, reference_images?, duration?, aspect_ratio?, resolution? }; throws status 400",
+    "resolveGrokCliTiming": "(body) -> { timeoutMs, pollIntervalMs, maxPolls } from timeout_ms / poll_interval_ms / max_polls with source ranges; throws status 400",
+    "runGrokCliVideoJob": "create + bounded poll; { success, url, requestId, accounting } or error result with acceptedJob",
+    "grokCliToken": "(credentials, now) -> { token } | { error }; OAuth accessToken only, expired token refused",
+    "grokCliMediaHeaders": "(token) -> source grokMediaHeaders shape",
+    "grokCliAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "grokCliPublicUrl": "public https URL check used for results",
+    "GROK_CLI_VIDEO_MODELS": "video catalog metadata (id, name, kind)",
+    "GROK_CLI_VIDEOS_URL": "https://cli-chat-proxy.grok.com/v1/videos",
+    "GROK_CLI_VIDEO_GENERATIONS_URL": "https://cli-chat-proxy.grok.com/v1/videos/generations",
+    "GROK_CLI_VIDEO_FORMAT": "xai-video"
+  },
+  "provider": {
+    "canonicalId": "grok-cli",
+    "aliases": ["gb", "gcli", "grok-build"],
+    "sourceAliasNotAdopted": "gc",
+    "existingRegistryEntry": "open-sse/providers/registry/grok-cli.js",
+    "existingServiceKinds": null,
+    "addServiceKinds": ["llm", "video"],
+    "serviceKindsNote": "the entry declares no serviceKinds today, which src/shared/constants/providers.js defaults to [\"llm\"]; registration sets [\"llm\", \"video\"] so chat stays listed",
+    "authModes": ["oauth"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["accessToken"],
+      "ignoredCredentialFields": ["apiKey"],
+      "extraHeaders": {
+        "X-XAI-Token-Auth": "xai-grok-cli",
+        "x-grok-client-identifier": "grok-shell",
+        "x-grok-client-mode": "headless",
+        "x-grok-client-version": "GROK_CLI_VERSION (open-sse/config/grokCli.js)",
+        "User-Agent": "GROK_CLI_SHELL_USER_AGENT (open-sse/config/grokCli.js)"
+      },
+      "refresh": "not performed by the adapter; the route refreshes the selected connection before dispatch (see integrationPoints)"
+    },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "video": [{ "id": "grok-imagine-video", "name": "Grok Imagine Video (OAuth)" }],
+    "dynamicDiscovery": "none in the source for video; static list only. The provider's existing /v1/models discovery lists chat models and must not feed video"
+  },
+  "endpoints": {
+    "create": { "method": "POST", "url": "https://cli-chat-proxy.grok.com/v1/videos/generations" },
+    "status": { "method": "GET", "url": "https://cli-chat-proxy.grok.com/v1/videos/{request_id}" }
+  },
+  "notPorted": {
+    "edits": "POST /videos/edits is not in the OmniRoute grok-cli contract",
+    "extensions": "POST /videos/extensions is not in the OmniRoute grok-cli contract",
+    "asyncProxy": "/v1/videos (videoCore.js) for grok-cli would need Grok media headers in videoCore buildHeaders; not part of this staging",
+    "content": "no content download; the result URL is returned, never fetched"
+  },
+  "responseFormats": { "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { grokCliVideoAdapter } and add `\"grok-cli\": grokCliVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/grok-cli.js",
+      "change": "set serviceKinds [\"llm\", \"video\"] and add the video model row (kind: video) from GROK_CLI_VIDEO_MODELS; keep alias gb, aliases gcli/grok-build, authModes [oauth], chat transport and modelsUrl; no videoConfig"
+    },
+    {
+      "file": "src/sse/handlers/video.js",
+      "change": "in the /v1/video/generations handler, refresh grok-cli like renderhour (`checkAndRefreshToken`) before the dispatch snapshot so the adapter receives a live token for the selected connection"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Grok CLI video kind after registration"
+    }
+  ]
+}

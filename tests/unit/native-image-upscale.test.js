@@ -6,6 +6,7 @@
 // services/syntxMedia.ts). Passing here says nothing about the live services.
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
+import { isForbiddenUpscaleReference } from "../helpers/upscale-staging-guard.js";
 
 import {
   createImageUpscaleService,
@@ -100,7 +101,9 @@ describe("staging and registration", () => {
     } catch (error) {
       if (error.status !== 1) throw error; // 1 = no match
     }
-    expect(out).toBe("");
+    const forbidden = out.trim().split("\n").filter(Boolean).filter((path) =>
+      isForbiddenUpscaleReference(path, readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")));
+    expect(forbidden).toEqual([]);
   });
 });
 

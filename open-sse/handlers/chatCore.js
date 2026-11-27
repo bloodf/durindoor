@@ -1467,9 +1467,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => {});
       saveRequestDetail(buildRequestDetail({
         comboNoLog,
-        provider, model: cleanModel, connectionId,
+          provider, model: cleanModel, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
-        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+          tokens: { prompt_tokens: 0, completion_tokens: 0 },
         request: extractRequestConfig(body, stream),
         providerRequest: translatedBody || null,
         response: { error: errMsg, status: HTTP_STATUS.BAD_REQUEST, thinking: null },
@@ -1611,16 +1611,21 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   // Unknown MiniMax POST outcomes are billable uncertainty, never successful usage.
   // Numeric token placeholders satisfy the frozen row shape; metadata says unmeasured.
+  // A ledger failure is logged, never turned into a second request or a lost error answer.
   const recordMinimaxUnknown = async () => {
-    await saveRequestUsage({
-      provider, model: cleanModel, modality: "chat", connectionId,
-      apiKey, apiKeyId, billingEpoch, usageEventId: activeSessionRequestId,
-      endpoint: clientRawRequest?.endpoint || null,
-      comboId, comboName, usageAttribution: clientRawRequest?.usageAttribution,
-      tokens: { prompt_tokens: 0, completion_tokens: 0 },
-      cost: null, costStatus: "unknown", costSource: "minimax-unknown-outcome",
-      status: "error", meta: { outcome: "unknown", tokenStatus: "unknown" },
-    });
+    try {
+      await saveRequestUsage({
+        provider, model: cleanModel, modality: "chat", connectionId,
+        apiKey, apiKeyId, billingEpoch, usageEventId: activeSessionRequestId,
+        endpoint: clientRawRequest?.endpoint || null,
+        comboId, comboName, usageAttribution: clientRawRequest?.usageAttribution,
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        cost: null, costStatus: "unknown", costSource: "minimax-unknown-outcome",
+        status: "error", meta: { outcome: "unknown", tokenStatus: "unknown" },
+      });
+    } catch (error) {
+      log?.warn?.("USAGE", `minimax-code unknown-outcome receipt not recorded: ${error?.name || "Error"}`);
+    }
   };
 
   let claudeRequestScoped = false;

@@ -54,7 +54,7 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 | `MINIMAX_CODE_GATEWAY_RETRIES` | `1` | Retries of an explicit 429 refusal or a proven unsent DNS/connect failure. `0` turns the retry off; values above `3` are capped at `3`; a non-numeric value keeps the default. |
 
 - **Input ceiling.** Before sending, DurinDoor estimates the input tokens of the messages, the system prompt and the tool catalog, weighing CJK at one token per character, Cyrillic at two characters and other text at three. The estimate is deliberately pessimistic. A request over the ceiling is refused with HTTP 413 `context_length_exceeded` ("too large for the managed gateway transport", with the estimate and the limit) and nothing is sent to MiniMax. The status is 413, not 400, so the refusal is not read as an outage of the model.
-- **Call budget.** A call that outlives `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` is stopped and answers HTTP 500 `gateway_timeout`. It is not a 504, so a slow answer does not take the model out of fallback combos.
+- **Call budget.** A call that outlives `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` is stopped and answers HTTP 500 `gateway_timeout`. The gateway may already have accepted the request, so this is an unknown outcome: it is not retried and no other account or combo model receives the request.
 - **Retry with backoff.** Only an explicit 429 refusal or a proven unsent DNS/connect failure is retried, using the selected connection and proxy. Backoff grows from 1 second, capped at 30 seconds, inside the whole-call budget. A 401 retains its separate refresh path; other request/auth refusals are not retried. Bare 500/503/529 responses, 502/504, dropped connections and header/call deadlines do not prove that no work or billing occurred. These return an unknown outcome after one submission. Operator retry rules, account fallback and combos cannot replay them. Check the conversation before submitting again. An unknown-outcome receipt records the selected connection with unknown tokens and cost, without reporting successful usage or confirmed zero spend.
 
 ## Errors
@@ -67,10 +67,11 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 | No access token stored | 401 `minimax_code_not_signed_in` |
 | Gateway 401 after a failed refresh, or a revoked sign-in | 401 `invalid_credentials`, "sign in again". The token is never echoed |
 | Request over the input ceiling | 413 `context_length_exceeded`, no upstream call |
-| Call outlives the time budget | 500 `gateway_timeout` |
-| Gateway 429, or a 200 body with a rate-limit, quota or overloaded error | 429 `quota_exceeded`, with `Retry-After` when the gateway sends it |
+| Call outlives the time budget | 500 `gateway_timeout`, outcome unknown, sent once |
+| Gateway 429, or a 200 body with a rate-limit or quota error | 429 `quota_exceeded`, with `Retry-After` when the gateway sends it |
+| Gateway 5xx (including 500, 502, 503, 504 and 529), a 200 body with an overloaded or other server error, a connection lost after sending, or no response headers in time | The same status (500 for a 200 body, 502 for a lost connection or header deadline) with `upstream_outcome_unknown`, sent once |
+| DNS or connect failure that proves nothing was sent | Retried on the same connection; then 503 `gateway_unreachable`, and another account may serve the request |
 | Context-window refusal (gateway 400, or in a 200 body) | 413 `context_length_exceeded`, so it is not read as a model outage |
-| Other error inside a 200 body | 500 |
 | Any other gateway status | The same status |
 
 A 4xx that belongs to the request keeps a request-scoped status so it does not lock the model out of fallback combos.

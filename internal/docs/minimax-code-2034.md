@@ -48,68 +48,77 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 
 ## Accepted-work follow-up (Refs #2034)
 
-The previous transport inherited an unsafe assumption: HTTP 500/503/529 meant
-no work was done. Neither the pinned first-party sources above nor the pinned
-OmniRoute gateway transport establishes a no-work/no-billing guarantee for those
-statuses. A transport retry implementation is not such a guarantee. Until an
-explicit primary-source contract supplies that evidence, all bare 5xx outcomes
-are uncertain and terminal. No new vendor guarantee is asserted here.
+The earlier transport assumed that HTTP 500, 503 and 529 meant the gateway did
+no work. Neither the pinned first-party sources above nor the pinned OmniRoute
+gateway transport documents a no-work or no-billing refusal for those statuses.
+A retry in OmniRoute's transport is a design choice, not a vendor guarantee. With
+no explicit primary-source refusal evidence, every bare 5xx is an unknown outcome.
+This change asserts no new vendor guarantee.
 
-MiniMax classification now precedes base operator retry overrides. Only 429 and
-proven unsent DNS/connect failures retain automatic retry; token refresh follows
-explicit authentication rejection. Unknown outcomes retain one error receipt on
-the selected connection through the existing usage ledger, with null cost and
-unknown cost/token/outcome provenance. Frozen numeric token columns use zero
-placeholders, explicitly marked unmeasured; they are not successful usage or a
-zero-cost assertion. Other providers and Codex quota handling are unchanged.
+Behavior (MiniMax Code only; other providers and Codex quota handling unchanged):
 
-Focused coverage strengthens the obsolete bare-500/503/529 retry assertions,
-keeps proven ECONNREFUSED fallback, and adds dropped/5xx uncertainty and operator
-override cases. The real handleChat/two-account SQLite tests assert the receipt,
-selected connection, unknown provenance and absence of sibling replay.
+- **Retry.** Only an explicit 429 and a transport error whose code proves the
+  request never left (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`,
+  `EHOSTUNREACH`, `UND_ERR_CONNECT_TIMEOUT`, `ERR_PROXY_CONNECTION_FAILED`) are
+  resent, on the same token, proxy route and caller signal. A 401 keeps its
+  refresh path; other 4xx are not resent.
+- **Unknown outcome.** Any 5xx (500, 502, 503, 504, 529), a 200 envelope with an
+  overloaded or other server error, a connection lost after sending, the header
+  deadline and the whole-call timeout are sent once and answered with
+  `upstream_outcome_unknown` (or `gateway_timeout`) and a fixed, bounded public
+  message. Gateway text is read only to classify and is never echoed.
+- **Operator rules.** `computeRetryDelay` vetoes every HTTP retry except 429, and
+  `execute()` drops non-429 `retry` rules from its own request policy before the
+  base loop sees them. An operator rule therefore cannot resend a 5xx, network
+  or header-deadline outcome. `skip` rules and `maxTransportAttempts` still apply.
+- **Account, outer retry and combo.** `processAttemptResult` makes the outcome
+  terminal (no sibling account, no outer transient retry, no cooldown). The combo
+  loop returns it instead of trying the next model, and for MiniMax awaits the
+  executor's own cancellation at the combo deadline instead of racing past it.
+- **Receipt.** `chatCore` writes one `saveRequestUsage` row on the selected
+  connection: `cost: null`, `costStatus: "unknown"`,
+  `costSource: "minimax-unknown-outcome"`, `status: "error"`, and
+  `meta.outcome`/`meta.tokenStatus` `"unknown"`. The zero token columns are
+  frozen-schema placeholders, not measurements, and no success usage is
+  reported. The receipt is keyed by the request's usage event id. A ledger error
+  is logged and does not change the answer or trigger a resend. A client abort
+  after dispatch also records the receipt; an abort during the unsent backoff
+  does not, because nothing was sent.
 
-Validation uses the explicitly supplied Node v24.22.3 path and existing dependency
-links from the repository checkout after matching package manifests and lockfiles.
-No installs, full suite, provider traffic or real account data were used. The first
-focused run passed 95/96 tests; the old overloaded-error-to-429 assertion failed
-because overload is now uncertain. That assertion is strengthened to require the
-unknown-outcome code and a nonempty bounded public message. The pinned sources
-above supply no no-work guarantee for that error either.
+### Test changes
 
-The combo executor also honors the terminal response marker before fallback and
-awaits MiniMax cancellation at its own deadline, so the race cannot start another
-model before uncertainty is recorded. Added mock cases cover combo terminality,
-whole-call deadline and dispatched cancellation. `git diff --check` passes.
-The parent supplied the repository author identity for command-scoped Git variables;
-no global configuration or real-home configuration was read or copied.
+Three existing files changed. The parent reviewed the changes and authorized
+them as stronger contracts:
 
-Focused rerun: **96 tests passed in 3 files** (17.58 s), using at most two
-workers, with the explicit private environment and no installs:
+- `tests/unit/provider-signin-minimax-code-parity.test.js`: 500/503/529 moved
+  from "replays a definite refusal" to "sends once, unknown outcome". The no-usage
+  assertions now require exactly one durable unknown-cost receipt in SQLite on the
+  connection whose token was sent. A 200 `api_error` envelope is unknown instead
+  of `gateway_error`. New cases cover operator retry rules, combo no-advance,
+  whole-call deadline and abort after dispatch. Every earlier scenario remains.
+- `tests/unit/minimax-code-budget.test.js`: the retry-success, retry-then-surface,
+  retry-count and backoff cases use 429 instead of 500/503. New cases cover
+  500/503/529/502/504/drop single sends and operator `network`,
+  `connect_timeout`, status and 429 rules.
+- `tests/unit/minimax-code-provider.test.js`: a 200 `overloaded_error` envelope
+  is now a 500 unknown outcome with a nonempty, bounded message instead of 429.
+
+### Validation
+
+The run used a private `HOME`, `DATA_DIR`, `TMPDIR`, XDG and npm/pnpm store
+under `/var/tmp`, `env -i`, umask 077, no installs and no network. Dependencies
+were linked read-only from a sibling worktree whose manifests and lockfiles match
+byte for byte:
 
 ```sh
 cd tests
-node node_modules/vitest/vitest.mjs run unit/minimax-code-budget.test.js unit/provider-signin-minimax-code-parity.test.js unit/minimax-code-provider.test.js --maxWorkers=2 --silent
+node node_modules/vitest/vitest.mjs run unit/minimax-code-budget.test.js unit/provider-signin-minimax-code-parity.test.js unit/minimax-code-provider.test.js --maxWorkers=2
 ```
 
-`node --check` passed for the modified executor, base, chat core, combo and two
-initially modified test files. `git diff --check` passes. Full local CI and
-independent review remain the orchestrator gate's responsibility.
-
-## Gate correction
-
-The shared base executor change is removed. MiniMax now vetoes uncertain HTTP
-retries through its existing retry-delay hook and removes unsafe operator retry
-rules from its own request policy before transport dispatch. No other provider's
-base retry behavior changes.
-
-The gate also forbids `tests/unit/provider-signin-minimax-code-parity.test.js`
-and flags removed obsolete assertions in three test files. Those edits strengthen
-rather than weaken the contract: bare 500/503/529 and overloaded errors must be
-unknown, sent once, with bounded nonempty errors and honest unknown-cost receipts.
-Restoring the old assertions would contradict the accepted-work requirement.
-These test-path/assertion flags remain for the parent to authorize explicitly;
-no files were renamed or assertions hidden to bypass the gate.
-
-Gate-correction rerun: all 96 tests in the same three focused files passed
-(29.89 s, maximum two workers). The base executor has no net diff from the
-pre-change parent. The remaining test gate flags require parent authorization.
+First run: 96/96 passed. In the second run, after the operator-rule cases were
+added, 101/102 passed. The header-deadline case returned 500 `gateway_timeout`
+because, with only `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS` set, the call
+budget takes the same 40 ms value. The case now pins
+`MINIMAX_CODE_GATEWAY_TIMEOUT_MS` so the header deadline is the only trigger.
+The two-run limit left this change unrerun; the gate's suite must confirm it.
+`node --check` and `git diff --check` pass.

@@ -147,6 +147,35 @@ export async function readTextStream(body, signal) {
   }
 }
 
+/**
+ * Each line of a streamed body, decoded as UTF-8 across chunk boundaries. A
+ * final line without a newline is yielded unless `tail` is false. A consumer
+ * that stops early cancels the body; a body read to the end is released.
+ */
+export async function* readStreamLines(body, { signal, tail = true } = {}) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let finished = false;
+  try {
+    while (true) {
+      if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      yield* lines;
+    }
+    pending += decoder.decode();
+    finished = true;
+    if (tail && pending) yield pending;
+  } finally {
+    if (finished) reader.releaseLock();
+    else await reader.cancel().catch(() => {});
+  }
+}
+
 export function extractTextFromContent(content) {
   if (isString(content)) return content.trim();
   if (!Array.isArray(content)) return "";

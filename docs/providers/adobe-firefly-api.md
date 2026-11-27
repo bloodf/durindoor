@@ -62,7 +62,10 @@ grant_type=client_credentials&client_id=…&client_secret=…&scope=openid,Adobe
 - A token is minted again 5 minutes before `expires_in` runs out. A lifetime longer than 24 hours is cut to 24 hours.
 - A failed mint is not cached.
 - When a status request returns `401`, the token is dropped and one new token is minted for that job.
-- After a submit `401` or `403`, the image core retries only if the caller injects a refresher. `createAdobeFireflyRefresher` in `open-sse/services/adobeFireflyApi/auth.js` provides one. See [Before registration](#before-registration).
+- When the submit returns `401`, the token it carried is dropped from the cache. In client-credentials mode one new token is minted (bounded by the 15-second IMS timeout and the client's disconnect) and the refused submit is sent once more. A `401` is a refusal, so that submit was never accepted. A second `401` stands, and its token is dropped too. Nothing is resent after a submit that may have been accepted.
+- A pasted access token is never refreshed: a submit `401` stands and nothing is minted.
+- A submit `403` (entitlement or quota) is not retried and keeps the cached token.
+- The adapter does this itself through the image core's `onSubmitAuthRejected` hook. Nothing is merged into the connection credentials, `onCredentialsRefreshed` is not called and nothing is persisted. An injected `refreshCredentials` is not used for this provider.
 
 ## What is sent, and where
 
@@ -75,7 +78,23 @@ grant_type=client_credentials&client_id=…&client_secret=…&scope=openid,Adobe
 
 Firefly requests carry `Authorization: Bearer <token>` and `x-api-key: <client ID>`. No browser, cookie or fingerprint header is sent.
 
-Connection settings and upstream answers cannot change these addresses. The `statusUrl` and `cancelUrl` fields of the submit answer are **ignored**. The status and cancel URLs are built from the validated `jobId` on the fixed origin. Token, status and cancel requests refuse redirects. The submit is sent by the shared image core, which does not refuse redirects yet. A submit answer that was redirected is not trusted: its token is dropped and the job is recorded as an unknown outcome.
+Connection settings and upstream answers cannot change these addresses. The `statusUrl` and `cancelUrl` fields of the submit answer are **ignored**. The status and cancel URLs are built from the validated `jobId` on the fixed origin. Token, status and cancel requests refuse redirects.
+
+The submit is sent by the shared image core with `redirect: "manual"`. A `3xx` answer or an opaque redirect is refused with `502` and its body is cancelled. The redirect is never followed, so neither the token nor the body reaches its target. Adobe did not accept the job, so no accepted job is recorded and the next account may be tried. As a second guard, a submit answer that reports it was redirected is not trusted: its token is dropped and the job is recorded as an unknown outcome.
+
+### Submit deadline and disconnects
+
+The submit has 30 seconds. Its fetch gets one signal that aborts at the deadline or when the client disconnects, so the transport itself is torn down. The wait also ends then even if a transport ignores its signal, and an answer that still arrives is cancelled unread.
+
+| Submit transport outcome | Status | Accepted job recorded |
+| --- | --- | --- |
+| Client disconnected before anything was sent | 499 | No |
+| Connection never made (`ECONNREFUSED`, DNS failure, connect timeout) | 502, next account may be tried | No |
+| Deadline passed after sending | 504 | Yes, `submit-unknown`, on the selected account |
+| Client disconnected after sending | 499 | Yes, `submit-unknown`, on the selected account |
+| Other transport failure after sending (for example a reset) | 502 | Yes, `submit-unknown`, on the selected account |
+
+A `submit-unknown` job has unknown cost. The route records it on the account that sent it and does not resubmit it to another account.
 
 The submit body holds `prompt` and `numVariations`, plus these when present:
 
@@ -88,7 +107,7 @@ The prompt must be 1–1024 characters. Other OpenAI fields such as `quality` ar
 
 ## Polling and results
 
-The job is read every 2 seconds for up to 5 minutes. A single status request has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. The submit is never retried by this provider. `pending`, `running` and `cancel_pending` keep polling.
+The job is read every 2 seconds for up to 5 minutes. A single status request has at most 30 seconds, and a response is limited to 64 KiB. On status `429` or `503`, polling backs off, honoring `Retry-After`, with waits capped at 30 seconds, for at most 5 consecutive retries. An accepted or possibly accepted submit is never retried by this provider. Only a submit Adobe refused with `401` is resent, once, with a fresh token. `pending`, `running` and `cancel_pending` keep polling.
 
 A result is returned as `data: [{ "url": ... }]`. Every output must have an HTTPS URL without embedded credentials, at most 2083 characters, and there must not be more outputs than requested. Otherwise the whole result is rejected. The pre-signed URLs are returned **without being downloaded**, and never fetched with your credentials. Binary output (`response_format=binary`) makes the shared handler fetch the first URL without any credential, through its public-address guard. How long Adobe's pre-signed URLs last has not been verified.
 
@@ -107,7 +126,9 @@ After a submit is accepted (any 2xx answer), the job may consume your entitlemen
 | IMS refuses the credential (`invalid_client`, `invalid_scope`, …) | 401 (403 if IMS says 403) | No, nothing submitted |
 | IMS rate limit / server error / unusable answer / timeout | 429 / 502 / 502 / 504 | No, nothing submitted |
 | Client disconnects while the token is minted | 499 | No, nothing submitted |
-| Submit `401`, `403` or `429` | Kept as is | No |
+| Submit `401` after one fresh token, or with a pasted token | 401 | No |
+| Submit `403` or `429` | Kept as is. A `429` `Retry-After` sets the account cooldown | No |
+| Submit redirect (`3xx` or opaque redirect) | 502, not followed | No |
 | Status `401` after one re-mint, `401` with a pasted token, `403`, `429` after retries | Kept as is | Yes |
 | Status `404`, `500` or other | 502 | Yes |
 | Job `failed` with `validation_error`, `bad_request`, `invalid_content_type`, `empty_input_body` | 422 | No |
@@ -117,18 +138,20 @@ After a submit is accepted (any 2xx answer), the job may consume your entitlemen
 | Local 5-minute deadline or status request timeout | 504, with a cancel request | Yes |
 | Client disconnects during polling | 499, with a cancel request | Yes |
 
-Upstream messages, IMS error descriptions and transport error text are never repeated. Only the documented codes above are.
+Upstream messages, IMS error descriptions and transport error text are never repeated. Only the documented codes above are. The connection's secret and pasted token, and the temporary token minted for the submit, are redacted from submit error messages.
 
 The `x-access-error` header that Adobe documents on a submit `403` (`quota_exhausted`, `user_non_entitled`, `user_profile_denied`, `invalid_ims_scope`) is not yet read by the shared core, so a quota `403` is not turned into a quota cooldown.
 
 ## Offline evidence
 
-`tests/unit/adobe-firefly-api.test.js` drives the real `handleImageGenerationCore` with this adapter, a fetch mock that contacts nothing and only synthetic credentials. Its only substitution is the adapter-map lookup, because the provider is not registered. It covers token minting and its form body, the cache's reuse, expiry and 24-hour cap, account separation, single-flight minting, secret rotation, refusals, IMS errors and timeouts, submit `401`/`403`/`429`, the injected refresher, redirected submits, unusable job ids, poll `401` re-mint, `403`, `429`/`Retry-After`, malformed status answers, reported failures, the local deadline, request timeouts, client disconnects, cancel requests and credential redaction.
+`tests/unit/adobe-firefly-api.test.js` drives the real `handleImageGenerationCore` with this adapter, a fetch mock that contacts nothing and only synthetic credentials. Its only substitution is the adapter-map lookup, because the provider is not registered. `tests/unit/adobe-firefly-submit.test.js` drives the real core and the real image route (`src/sse/handlers/imageGeneration.js`) with only account storage, the usage ledger and the adapter-map lookup substituted. It covers `3xx` and opaque redirects with zero forwarding to the target, the submit deadline and caller abort with transport cancellation and late-body cleanup, `submit-unknown` jobs recorded on the selected account without a second submit, pre-connect fallback, submit `401` token eviction and the single fresh-token resend, terminal `401`, pasted tokens, `403`, `Retry-After` and redaction.
+
+The first file covers token minting and its form body, the cache's reuse, expiry and 24-hour cap, account separation, single-flight minting, secret rotation, refusals, IMS errors and timeouts, submit `401`/`403`/`429`, the submit `401` re-mint and resend, redirected submits, unusable job ids, poll `401` re-mint, `403`, `429`/`Retry-After`, malformed status answers, reported failures, the local deadline, request timeouts, client disconnects, cancel requests and credential redaction.
 
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/adobe-firefly-api.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/adobe-firefly-api.test.js unit/adobe-firefly-submit.test.js --maxWorkers=2
 ```
 
 Mocks show only that the code follows Adobe's published contract. They do not show that a live account is entitled, that Adobe accepts these exact requests or that the documented scopes are enough.
@@ -139,9 +162,8 @@ A later change has to:
 
 - register `adobe-firefly-api` in the provider registry and add its adapter to `IMAGE_ADAPTERS`
 - add an auth form with a client ID field (`providerSpecificData.clientId`), a secret field (`apiKey`, stored like other API keys) and an optional pasted access token with an expiry
-- inject `createAdobeFireflyRefresher(credentials)` as `refreshCredentials` in the image route, without persisting what it returns
-- make the shared submit refuse redirects
-- read `x-access-error` and `retry-after` on submit `403`/`429` for account cooldowns
+- keep the image route's `refreshCredentials` unset for this provider (today `leasedAntigravityRefresher` returns `undefined` for it). The adapter handles a submit `401` itself and must not have a minted token merged or persisted
+- read `x-access-error` on a submit `403` for quota cooldowns
 - run one owner-authorized live check with a real Firefly Services credential before any claim of live support
 
 ## Sources

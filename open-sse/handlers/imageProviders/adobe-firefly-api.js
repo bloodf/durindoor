@@ -17,8 +17,12 @@ import {
   ADOBE_FIREFLY_API_MODEL_IDS,
   ADOBE_FIREFLY_GENERATE_URL,
 } from "../../providers/private/adobe-firefly-api.js";
-import { defaultAdobeTokenCache, resolveAdobeFireflyAuth } from "../../services/adobeFireflyApi/auth.js";
-import { ADOBE_FIREFLY_MAX_IMAGES, awaitAdobeFireflyImages } from "../../services/adobeFireflyApi/job.js";
+import { defaultAdobeTokenCache, refreshAdobeFireflyToken, resolveAdobeFireflyAuth } from "../../services/adobeFireflyApi/auth.js";
+import {
+  ADOBE_FIREFLY_MAX_IMAGES,
+  ADOBE_FIREFLY_REQUEST_TIMEOUT_MS,
+  awaitAdobeFireflyImages,
+} from "../../services/adobeFireflyApi/job.js";
 import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS = new Set(ADOBE_FIREFLY_API_MODEL_IDS);
@@ -56,13 +60,41 @@ function optionalText(value, label) {
  * @param {object} [options.cache] - IMS token cache; one per process by default
  * @param {object} [options.polling] - poll bounds and clock, for tests; see awaitAdobeFireflyImages
  * @param {function} [options.now] - clock for pasted-token expiry checks
+ * @param {number} [options.submitTimeoutMs] - submit bound, for tests
  */
-export function createAdobeFireflyApiImageAdapter({ cache = defaultAdobeTokenCache, polling = {}, now = Date.now } = {}) {
+export function createAdobeFireflyApiImageAdapter({
+  cache = defaultAdobeTokenCache,
+  polling = {},
+  now = Date.now,
+  submitTimeoutMs = ADOBE_FIREFLY_REQUEST_TIMEOUT_MS,
+} = {}) {
   const callCredentials = new WeakMap();
   const requestAuth = new WeakMap();
 
   return {
     async: true,
+    // Submit policy read by imageGenerationCore: a redirect is refused before
+    // anything is forwarded, never followed with the token; the submit is
+    // bounded and torn down on deadline or caller abort; a transport failure
+    // after dispatch is a possibly billed job, so no other account resubmits
+    // it; a refused submit's Retry-After reaches account cooldown.
+    submitRedirect: "manual",
+    submitTimeoutMs,
+    submitOutcomeUnknown: true,
+    retryAfterResets: true,
+    // A submit 401 drops the token it carried. With `retry`, one new token is
+    // minted (client-credentials mode only) so the core may resend the refused,
+    // never accepted submit once. The token stays in the in-memory cache only.
+    onSubmitAuthRejected: async ({ status, credentials, requestBody, signal, retry }) => {
+      const auth = requestAuth.get(requestBody);
+      if (!auth || status !== 401) return false;
+      return refreshAdobeFireflyToken(auth, { cache, credentials, signal, retry });
+    },
+    // The temporary token is redacted from error text like stored credentials.
+    submitSecrets: (requestBody) => {
+      const auth = requestAuth.get(requestBody);
+      return auth ? { accessToken: auth.token } : null;
+    },
     buildUrl: (model, credentials, _body, options) => {
       if (!MODELS.has(model)) throw reject("Unsupported Adobe Firefly Services image model");
       if (isRecord(options)) callCredentials.set(options, credentials);

@@ -238,26 +238,28 @@ export async function resolveAdobeFireflyAuth(credentials, { cache = defaultAdob
 }
 
 /**
- * A `refreshCredentials` for the image core, for a later integration to inject.
- * After a submit 401/403 it drops the cached token and mints a new one. It
- * returns the token only so the core retries once; the caller must not
- * persist it. Pasted tokens cannot be refreshed, so it returns null.
+ * Handle a submit 401 for one request's auth. In client-credentials mode the
+ * rejected token is dropped from the cache (a newer one is kept); with `retry`,
+ * one new token is minted, bounded by the IMS request timeout and the caller's
+ * signal, and true is returned when it differs from the rejected one, so the
+ * image core may resend the refused submit once. The new token lives only in
+ * the in-memory cache: nothing is returned to merge into or persist on the
+ * connection. A pasted token has nothing to drop or refresh, so it is false.
+ * A failed mint is false; a caller abort rejects.
+ *
+ * @param {{ credential: object, token: string }} auth - from resolveAdobeFireflyAuth
+ * @returns {Promise<boolean>}
  */
-export function createAdobeFireflyRefresher(credentials, { cache = defaultAdobeTokenCache, signal, now = Date.now } = {}) {
-  return async () => {
-    let credential;
-    try {
-      credential = readAdobeFireflyCredential(credentials, now);
-    } catch {
-      return null;
-    }
-    if (credential.mode !== "client_credentials") return null;
-    cache.invalidate(credential);
-    try {
-      return { accessToken: await cache.get(credential, { credentials, signal }) };
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      return null;
-    }
-  };
+export async function refreshAdobeFireflyToken(auth, { cache = defaultAdobeTokenCache, credentials, signal, retry = true } = {}) {
+  if (auth?.credential?.mode !== "client_credentials") return false;
+  cache.invalidate(auth.credential, auth.token);
+  if (!retry) return false;
+  let fresh;
+  try {
+    fresh = await cache.get(auth.credential, { credentials, signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return false;
+  }
+  return fresh !== auth.token;
 }

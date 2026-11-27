@@ -39,7 +39,7 @@ DurinDoor excluded these for this work: browser sign-in, device fingerprinting, 
 
 [CLIProxyAPI at `47f18e4`](https://github.com/router-for-me/CLIProxyAPI/tree/47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e), the other pinned source, adds no Firefly contract. A search for `firefly` and `adobe` found only Adobe file types in its MIME table.
 
-Adobe's separately documented Firefly Services API uses a different credential and contract. It was not examined here. Supporting it would be a separate provider decision.
+Adobe's separately documented Firefly Services API uses a different credential and contract: an operator-entitled OAuth Server-to-Server credential from Adobe Developer Console and the published [AdobeDocs/ffs-firefly-api](https://github.com/AdobeDocs/ffs-firefly-api/tree/1027f559cdb1509a61b34e2f2da9618ec431f2cb) contract. That separate decision is the staged [Adobe Firefly Services API](./adobe-firefly-api.md) provider (`adobe-firefly-api`). It does not reuse this web-app route, its client IDs, cookies or browser headers, and it does not make `adobe-firefly` or `firefly` known IDs.
 
 ## What DurinDoor does today
 

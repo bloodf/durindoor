@@ -222,7 +222,8 @@ export async function handleImageGenerationCore({
   // visible so it is refused here instead of followed with the credential;
   // `submitTimeoutMs` bounds the submit; `submitOutcomeUnknown` marks a submit
   // whose transport failed after it may have been sent as a possibly billed job,
-  // so account fallback does not send a second one.
+  // so account fallback does not send a second one; `onSubmitAuthRejected` and
+  // `submitSecrets` let an adapter own its temporary token (see below).
   const boundedSubmit = Number.isFinite(adapter.submitTimeoutMs);
   const submitInit = (fetchSignal) => ({
     method: "POST",
@@ -319,9 +320,57 @@ export async function handleImageGenerationCore({
     return submitFailure(error);
   }
 
-  // Handle 401/403 — try token refresh (skipped for noAuth providers)
   const executor = getExecutor(provider);
-  if (
+  const authRejected = (response) => response.status === HTTP_STATUS.UNAUTHORIZED || response.status === HTTP_STATUS.FORBIDDEN;
+  // Optional adapter-owned submit auth: an adapter that mints its own temporary
+  // token (e.g. adobe-firefly-api) is told about a 401/403 submit so it can drop
+  // the rejected token. When it answers true, the submit, which the provider
+  // refused and so did not accept, is rebuilt and sent once more. Nothing is
+  // merged into the credentials or persisted. A second refusal is reported to
+  // the adapter with `retry: false` and stands.
+  const adapterAuthRetry = async () => {
+    const tell = async (retry) => {
+      try {
+        return await adapter.onSubmitAuthRejected({ status: providerResponse.status, credentials, requestBody, signal, retry }) === true;
+      } catch (error) {
+        if (isAbort(error)) throw error;
+        return false;
+      }
+    };
+    if (!(await tell(true))) return null;
+    let nextBody;
+    let nextHeaders;
+    try {
+      nextBody = await adapter.buildBody(model, body, adapterOptions);
+      nextHeaders = adapter.buildHeaders(credentials, nextBody, model, body);
+    } catch (error) {
+      if (isAbort(error)) throw error;
+      return null;
+    }
+    void providerResponse.body?.cancel().catch(() => {});
+    requestBody = nextBody;
+    headers = nextHeaders;
+    log?.info?.("TOKEN", `${provider.toUpperCase()} | submit retried once with a new token`);
+    try {
+      providerResponse = await sendSubmit();
+    } catch (error) {
+      return submitFailure(error);
+    }
+    if (authRejected(providerResponse)) await tell(false);
+    return null;
+  };
+
+  if (isFunction(adapter.onSubmitAuthRejected) && authRejected(providerResponse)) {
+    try {
+      const failed = await adapterAuthRetry();
+      if (failed) return failed;
+    } catch {
+      // Only an abort escapes: nothing new was sent.
+      void providerResponse.body?.cancel().catch(() => {});
+      return abortedResult();
+    }
+  } else if (
+  // Handle 401/403 — try token refresh (skipped for noAuth providers)
   !executor?.noAuth &&
   !adapter.noAuth && (
   providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
@@ -381,8 +430,10 @@ export async function handleImageGenerationCore({
     // An adapter may trust the provider's own Retry-After on a refused submit.
     const retryAfterReset = adapter.retryAfterResets === true && evidence?.source === "retry_after";
     const provenReset = (codexReset || retryAfterReset) && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    // The selected connection's credential values are redacted from the message.
-    return createErrorResult(statusCode, errMsg, provenReset?.resetAtMs, undefined, provenReset, credentials);
+    // The selected connection's credential values are redacted from the message,
+    // and so is any temporary token the adapter minted for this submit.
+    const redacted = isFunction(adapter.submitSecrets) ? { credentials, submit: adapter.submitSecrets(requestBody) } : credentials;
+    return createErrorResult(statusCode, errMsg, provenReset?.resetAtMs, undefined, provenReset, redacted);
   }
 
   // Parse provider response — adapter may override (codex SSE / async polling / binary)

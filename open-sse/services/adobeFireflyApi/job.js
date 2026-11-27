@@ -137,8 +137,9 @@ export async function awaitAdobeFireflyImages(submitted, {
   let token = auth.token;
   const headers = () => ({ Authorization: `Bearer ${token}`, "x-api-key": auth.clientId, Accept: "application/json" });
 
-  // The submit went to the fixed origin. A followed redirect means another host
-  // saw it, so the job and the token are both in doubt.
+  // The submit went to the fixed origin with manual redirects, which the core
+  // refuses before this runs. Should an answer still report a followed redirect,
+  // another host saw it, so the job and the token are both in doubt.
   let submittedOrigin = ADOBE_FIREFLY_API_ORIGIN;
   try {
     if (submitted.url) submittedOrigin = new URL(submitted.url).origin;

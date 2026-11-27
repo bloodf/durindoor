@@ -1,4 +1,4 @@
-import { advancePendingSseLineBytes } from "../../utils/pendingSseLine.js";
+import { createSseFrameReader } from "../../utils/sseFrames.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 import { InnerAiWebError, malformedReply } from "./errors.js";
 
@@ -9,10 +9,9 @@ const QUOTA_EVENTS = {
   rate_limit_longer_reached: "Inner.ai Web rate limit reached",
 };
 
-/** One upstream line as `{ text }`, `{ end: true }` or null (nothing to relay). */
-function readLine(line) {
-  if (!line.startsWith("data:")) return null;
-  const data = line.slice(5).trim();
+/** One parsed SSE frame as `{ text }`, `{ end: true }` or null (nothing to relay). */
+function readFrame(frame) {
+  const data = frame.data.trim();
   if (!data || data === "[DONE]") return null;
   let event;
   try {
@@ -29,24 +28,28 @@ function readLine(line) {
 }
 
 /**
- * Yield the answer's text deltas. Only `end_stream` completes it: a body that
- * simply stops is a truncated answer and throws.
+ * Yield the answer's text deltas. Frames are read by the shared SSE reader,
+ * which bounds the pending frame size. Only `end_stream` completes the answer:
+ * a body that simply stops is a truncated answer and throws.
  */
-export async function* innerAiWebText(reader) {
+export async function* innerAiWebText(reader, { maxBytes } = {}) {
   const decoder = new TextDecoder();
-  let pending = "";
-  let pendingBytes = 0;
+  const frames = createSseFrameReader(maxBytes === undefined ? undefined : { maxBytes });
   let open = true;
   while (open) {
     const { done, value } = await reader.read();
     open = !done;
-    if (value) pendingBytes = advancePendingSseLineBytes(pendingBytes, value);
-    if (pendingBytes === null) throw malformedReply("an oversized stream event");
-    pending += done ? `${decoder.decode()}\n` : decoder.decode(value, { stream: true });
-    const lines = pending.split(/\r?\n/);
-    pending = lines.pop();
-    for (const line of lines) {
-      const event = readLine(line);
+    let batch;
+    try {
+      batch = done
+        ? [...frames.push(decoder.decode()), ...frames.flush()]
+        : frames.push(decoder.decode(value, { stream: true }));
+    } catch (error) {
+      if (error?.code === "invalid_sse_payload") throw malformedReply("an oversized stream event");
+      throw error;
+    }
+    for (const frame of batch) {
+      const event = readFrame(frame);
       if (event?.end) return;
       if (event) yield event.text;
     }

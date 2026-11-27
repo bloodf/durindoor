@@ -56,7 +56,7 @@ A synced Claude model is listed with the `thinking_levels` it supports. A client
 
 Otherwise the ID is sent to the provider unchanged. The suffix is a default, not an override. Precedence, highest first:
 
-1. A provider thinking setting of `none` or `off`. The suffix's effort is never applied, even though `none` first removes the request's `thinking`, `reasoning_effort` and `reasoning` fields.
+1. A provider thinking setting of `none` or `off`. The suffix's effort is never applied, even though `none` first removes every thinking and effort field of the request, including `output_config.effort`. See [Provider thinking setting](../reference/model-limits.mdx#provider-thinking-setting).
 2. A thinking or reasoning field in the request body, or an effort level chosen as the provider's thinking setting.
 3. The effort from the suffix.
 

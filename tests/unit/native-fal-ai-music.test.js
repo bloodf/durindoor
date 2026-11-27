@@ -115,15 +115,18 @@ afterEach(() => {
 // Isolated staging block: the only assertions that depend on the adapter being
 // unregistered. The registration change replaces these with positive registry
 // identity checks; every other block holds staged and registered alike.
-describe("staging state (pre-registration only)", () => {
-  it("is not registered: the public music dispatch and the fal-ai registry have no music", async () => {
+describe("canonical registration (isolated)", () => {
+  it("dispatches canonical and alias native music separately from cookie adapters", async () => {
     expect(MUSIC_ADAPTERS["fal-ai"]).toBeUndefined();
     expect(MUSIC_ADAPTERS.fal).toBeUndefined();
-    expect(falRegistry.serviceKinds).not.toContain("music");
-    const res = await handleMusicGenerationCore({ provider: "fal-ai", model: "ace-step", body: { prompt: PROMPT }, credentials: { apiKey: KEY_A } });
-    expect(res.success).toBe(false);
-    expect(res.status).toBe(400);
-    expect(calls).toHaveLength(0);
+    expect(falRegistry.serviceKinds).toContain("music");
+    serve(result(), result());
+    for (const provider of ["fal-ai", "fal"]) {
+      const res = await handleMusicGenerationCore({ provider, model: "ace-step", body: { prompt: PROMPT }, credentials: { apiKey: KEY_A } });
+      expect(res.success).toBe(true);
+      expect(res.response.status).toBe(200);
+    }
+    expect(calls).toHaveLength(2);
   });
 });
 

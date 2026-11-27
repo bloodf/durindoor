@@ -1,3 +1,4 @@
+import { kieImageAdapter } from "../../services/providerParity/native-kie-video-image/index.js";
 import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // Image provider adapter registry
 import createOpenAIAdapter from "./openai.js";
@@ -27,6 +28,7 @@ import { agnesImageAdapter as agnes } from "../../services/providerParity/native
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
+  kie: kieImageAdapter,
   openai: createOpenAIAdapter("openai"),
   // Dedicated adapter (OmniRoute #7108): MiniMax image_generation is not
   // OpenAI-compatible (aspect_ratio request, data.image_urls response).

@@ -13,6 +13,12 @@
       "provider": "cliproxyapi",
       "catalogProvider": "cliproxyapi",
       "reason": "Only handlers/chatCore/executorProxy.js imports it, and no production module imports executorProxy.js."
+    },
+    {
+      "module": "open-sse/providers/private/adobe-firefly-web.js",
+      "staged": true,
+      "provider": "adobe-firefly-web",
+      "reason": "Private definition of the guarded Firefly web UI browser flow; neither the registry nor any media adapter map imports it."
     }
   ]
 }

@@ -3,7 +3,9 @@ title: Adobe Firefly
 description: Not available. Why the pinned source gives no bearer-only image contract, and what would have to change.
 ---
 
-> **Not available.** DurinDoor has no Adobe Firefly provider. There is no adapter, staged or registered. You cannot add a connection or send requests to it.
+> **Not available.** DurinDoor has no Adobe Firefly bearer-token provider. You cannot add a connection or send requests to it.
+
+The IDs `adobe-firefly` and `firefly` have no adapter, staged or registered. A separate, staged and unavailable browser-UI flow exists under its own ID, [`adobe-firefly-web`](./adobe-firefly-web.md); it uses an operator-owned browser profile, not a pasted bearer token, and does not change anything on this page.
 
 For Adobe's own API, use the separate, registered [Adobe Firefly Services API](./adobe-firefly-api.md) provider (`adobe-firefly-api`). It needs a Firefly Services API entitlement, not a consumer subscription.
 

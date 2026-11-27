@@ -209,7 +209,9 @@ function buildSseResponse(providerResponse, log, onComplete, onReceipt, credenti
         controller.close();
       } catch (error) {
         if (cancelled) return;
-        await finish({ status: error?.name === "AbortError" ? "abort" : "failure", error });
+        // Preserve the classified HTTP status for account health after headers
+        // have already been sent; the client still receives an in-band error.
+        await finish({ status: error?.name === "AbortError" ? "abort" : "failure", statusCode: error?.status, error });
         if (!cancelled) {
           send("error", { message: sanitizeErrorMessageWithSecrets(error?.message || "Stream failed", [credentials?.apiKey, credentials?.accessToken, credentials?.refreshToken, credentials?.idToken]) });
           controller.close();
@@ -218,7 +220,7 @@ function buildSseResponse(providerResponse, log, onComplete, onReceipt, credenti
     },
     async cancel(reason) {
       cancelled = true;
-      if (!terminal) await finish({ status: "abort", error: reason });
+      if (!terminal) await finish({ status: "abort", error: reason, clientCancelled: true });
       else await finishing;
     }
   }, { highWaterMark: 0 });

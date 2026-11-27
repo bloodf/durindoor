@@ -371,6 +371,22 @@ describe("media usage in the existing usageHistory ledger", () => {
     expect([...readUsageDailyRollups(adapter)][0].day).toMatchObject({ requests: 2, cost: 0.25, unknownCostRequests: 1 });
   });
 
+  it("stores a cancelled image the provider accepted as an unknown-cost request, even with an image tariff (#2647)", async () => {
+    // A per-image tariff must not price an image that was never returned.
+    await database.updatePricing({ "media-fixture": { "paid-image": { native: { unit: "image", rate: 5 } } } });
+    const usage = event({ nativeUnits: {}, cost: null, costStatus: "unknown", costSource: "client-cancelled", meta: { clientCancelled: "after-upstream-headers" } });
+    await policy.recordCancelledUsage(secret, usage);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ status: "cancelled", cost: null });
+    expect(JSON.parse(rows()[0].meta)).toMatchObject({
+      costStatus: "unknown", costSource: "client-cancelled", nativeUnits: {}, clientCancelled: "after-upstream-headers",
+    });
+    await expectCounters(1, 0, 0, 0, 1);
+    // A ledger failure is logged, never thrown at a client that has gone.
+    await expect(policy.recordCancelledUsage(secret, { ...usage, usageEventId: "bad", tokens: null })).resolves.toBeUndefined();
+    expect(rows()).toHaveLength(1);
+  });
+
   it("does not charge validation failures, policy denials or upstream failures", async () => {
     for (const status of [400, 403, 429, 500, 502]) {
       const response = new Response(null, { status });

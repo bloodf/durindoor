@@ -103,9 +103,9 @@ export function redirected(response) {
 }
 
 /**
- * A refused answer, by HTTP status. Xiaomi MiMo's text is never quoted. A 5xx other
- * than 503 may have come after Xiaomi MiMo did the work, so its outcome is unknown
- * and it carries `acceptedJob`.
+ * A refused answer, by HTTP status. Xiaomi MiMo's text is never quoted.
+ * Every speech 5xx may follow billable work. A 503 keeps its status and bounded
+ * Retry-After, but still carries an unknown-cost job to prevent account replay.
  */
 export function refusal(status, { modality, label, secrets, retryAfter = null }) {
   if (status >= 500 && status !== 503) {
@@ -126,7 +126,8 @@ export function refusal(status, { modality, label, secrets, retryAfter = null })
   if (status === 429 || status === 503) {
     const evidence = parseRateLimitEvidence({ status: 429, headers: new Headers({ "retry-after": retryAfter ?? "" }), now: Date.now() });
     const usable = evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(status, `Xiaomi MiMo ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    const failed = createErrorResult(status, `Xiaomi MiMo ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    return status === 503 ? withAcceptedJob(failed, modality, "submit-unknown") : failed;
   }
   const passed = status >= 400 && status < 500 ? status : HTTP_STATUS.BAD_GATEWAY;
   return createErrorResult(passed, `Xiaomi MiMo refused the ${label} request with ${status}`, undefined, undefined, null, secrets);

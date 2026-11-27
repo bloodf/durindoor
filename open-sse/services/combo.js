@@ -342,21 +342,30 @@ function taskWeight(level) {
   return TASK_LEVEL_WEIGHT[level] || TASK_LEVEL_WEIGHT.standard;
 }
 
+// Shared across module copies in one process; this state is not shared between processes.
+const comboRuntimeState = globalThis.__durindoorComboRuntime ??= {
+  rotation: new Map(),
+  weightedRotation: new Map(),
+  affinity: new Map(),
+  affinityScopeCounts: new Map(),
+  scoring: new Map(),
+};
+
 /**
  * Track rotation state per combo (for round-robin strategy)
  * @type {Map<string, { index: number, consecutiveUseCount: number }>}
  */
-const comboRotationState = new Map();
-const comboWeightedRotationState = new Map();
+const comboRotationState = comboRuntimeState.rotation;
+const comboWeightedRotationState = comboRuntimeState.weightedRotation;
 
 /**
  * Keep chat-like traffic on the same first model so provider-side prompt caches
  * keep hitting. New conversations still use round-robin for distribution.
  * @type {Map<string, { index: number, lastUsed: number }>}
  */
-const comboConversationAffinity = new Map();
+const comboConversationAffinity = comboRuntimeState.affinity;
 export { comboConversationAffinity }; // test access to round-robin sticky pin state (#6733)
-const affinityScopeCounts = new Map();
+const affinityScopeCounts = comboRuntimeState.affinityScopeCounts;
 const CONVERSATION_AFFINITY_TTL_MS = 60 * 60 * 1000;
 const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
 /**
@@ -364,7 +373,7 @@ const MAX_CONVERSATION_AFFINITY_ENTRIES = 1000;
  * Persists only in memory (resets on server restart — intentional).
  * @type {Map<string, Map<string, { score: number, lastSuccessMs: number|null, lastErrorMs: number|null }>>}
  */
-const comboScoringState = new Map();
+const comboScoringState = comboRuntimeState.scoring;
 
 const SCORE_CFG = {
   initial: 100,

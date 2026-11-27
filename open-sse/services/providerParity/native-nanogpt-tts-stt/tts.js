@@ -18,6 +18,10 @@
 // voice or instructions, and an oversized request are refused before submit;
 // the answer must be bounded audio whose leading bytes match the requested
 // container, not JSON or HTML.
+//
+// createNanogptDocumentedTtsAdapter (the instance registration uses) also
+// accepts `pcm`, which NanoGPT documents for tts-1 and tts-1-hd (see ./pcm.js);
+// createNanogptTtsAdapter keeps the original subset unchanged.
 import { Buffer } from "node:buffer";
 import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
@@ -29,6 +33,7 @@ import {
   NANOGPT_MAX_TTS_REQUEST_BYTES, NANOGPT_PROVIDER_ID, NANOGPT_SPEECH_URL, NANOGPT_TTS_MODELS, NANOGPT_TTS_TIMEOUT_MS,
 } from "./config.js";
 import { discard, invalid, lostResult, nanogptToken, sendOnce, withAcceptedJob } from "./http.js";
+import { checkNanogptPcm, pcmTypeAllowed } from "./pcm.js";
 
 const MODALITY = "tts";
 const LABEL = "speech";
@@ -36,6 +41,10 @@ const LABEL = "speech";
 export const NANOGPT_SPEECH_CONTAINERS = Object.freeze(["mp3", "opus", "aac", "flac", "wav"]);
 /** Every response_format value accepted from a client: the containers, the `ogg` alias and the gateway's json wrapper. */
 export const NANOGPT_SPEECH_RESPONSE_FORMATS = Object.freeze([...NANOGPT_SPEECH_CONTAINERS, "ogg", "json"]);
+/** Containers NanoGPT documents for tts-1 and tts-1-hd: the verified set plus raw `pcm`. */
+export const NANOGPT_DOCUMENTED_SPEECH_CONTAINERS = Object.freeze([...NANOGPT_SPEECH_CONTAINERS, "pcm"]);
+/** Every response_format the documented adapter accepts. */
+export const NANOGPT_DOCUMENTED_SPEECH_RESPONSE_FORMATS = Object.freeze([...NANOGPT_DOCUMENTED_SPEECH_CONTAINERS, "ogg", "json"]);
 const MIN_SPEED = 0.25;
 const MAX_SPEED = 4.0;
 const MAX_ENVELOPE_BYTES = 16 * 1024;
@@ -70,15 +79,16 @@ const normalize = (value) => {
  * gateway's query-string format (mp3 when the client named none). `json`
  * names the gateway wrapper, not a container. Throws a 400 error.
  */
-export function resolveNanogptContainer(requested, gatewayFormat = null) {
+export function resolveNanogptContainer(requested, gatewayFormat = null, { allowPcm = false } = {}) {
+  const accepted = allowPcm ? NANOGPT_DOCUMENTED_SPEECH_RESPONSE_FORMATS : NANOGPT_SPEECH_RESPONSE_FORMATS;
   const named = [];
   for (const value of [requested, gatewayFormat]) {
     if (value === null || value === undefined || value === "") continue;
     if (!isString(value)) throw reject("NanoGPT speech response_format must be a string");
     const format = normalize(value);
-    if (format === "pcm") throw reject("NanoGPT speech pcm output is not supported here; use mp3, opus, aac, flac or wav");
-    if (!NANOGPT_SPEECH_RESPONSE_FORMATS.includes(format)) {
-      throw reject(`NanoGPT speech supports response_format ${NANOGPT_SPEECH_RESPONSE_FORMATS.join(", ")}`);
+    if (format === "pcm" && !allowPcm) throw reject("NanoGPT speech pcm output is not supported here; use mp3, opus, aac, flac or wav");
+    if (!accepted.includes(format)) {
+      throw reject(`NanoGPT speech supports response_format ${accepted.join(", ")}`);
     }
     if (format !== "json") named.push(format);
   }
@@ -107,8 +117,10 @@ function resolveModel(model) {
  * @param {string} model - `modelId` or `modelId/voice`
  * @param {string} text - the speech input
  * @param {object} [options] - the rest of the speech request; `container` is the resolved container
+ * @param {object} [profile] - gateway-side settings, never client fields
+ * @param {readonly string[]} [profile.containers] - containers this adapter may request
  */
-export function buildNanogptSpeechRequest(model, text, options = {}) {
+export function buildNanogptSpeechRequest(model, text, options = {}, { containers = NANOGPT_SPEECH_CONTAINERS } = {}) {
   const { modelId, voice: modelVoice } = resolveModel(model);
   if (!isString(text) || !text.trim()) throw reject("NanoGPT speech needs input text");
   if (options.stream === true || (options.stream_format !== undefined && options.stream_format !== "audio")) {
@@ -124,7 +136,7 @@ export function buildNanogptSpeechRequest(model, text, options = {}) {
   const instructions = options.instructions ?? null;
   if (instructions !== null && !isString(instructions)) throw reject("NanoGPT speech instructions must be a string");
   const container = options.container ?? NANOGPT_DEFAULT_CONTAINER;
-  if (!NANOGPT_SPEECH_CONTAINERS.includes(container)) throw reject(`NanoGPT speech container must be one of ${NANOGPT_SPEECH_CONTAINERS.join(", ")}`);
+  if (!containers.includes(container)) throw reject(`NanoGPT speech container must be one of ${containers.join(", ")}`);
   const request = {
     model: modelId,
     input: text,
@@ -162,17 +174,34 @@ async function envelopeOrLost(response, signal, container) {
   return lostResult(MODALITY, LABEL, `answered without ${container} audio`);
 }
 
+const ORIGINAL_PROFILE = Object.freeze({ allowPcm: false, containers: NANOGPT_SPEECH_CONTAINERS, responseFormats: NANOGPT_SPEECH_RESPONSE_FORMATS });
+const DOCUMENTED_PROFILE = Object.freeze({ allowPcm: true, containers: NANOGPT_DOCUMENTED_SPEECH_CONTAINERS, responseFormats: NANOGPT_DOCUMENTED_SPEECH_RESPONSE_FORMATS });
+
 /**
+ * The original adapter: mp3, opus (ogg), aac, flac and wav; pcm is refused.
+ *
  * @param {object} [options]
  * @param {Function} [options.fetchImpl] - transport, proxyAwareFetch by default; tests inject a mock
  * @param {number} [options.timeoutMs] - deadline for the request and its body
  * @param {number} [options.maxAudioBytes]
  */
-export function createNanogptTtsAdapter({ fetchImpl, timeoutMs = NANOGPT_TTS_TIMEOUT_MS, maxAudioBytes = NANOGPT_MAX_AUDIO_BYTES } = {}) {
+export function createNanogptTtsAdapter(options = {}) {
+  return buildTtsAdapter(ORIGINAL_PROFILE, options);
+}
+
+/**
+ * Every container NanoGPT documents for tts-1 and tts-1-hd, pcm included; the
+ * adapter registration uses. Same options as createNanogptTtsAdapter.
+ */
+export function createNanogptDocumentedTtsAdapter(options = {}) {
+  return buildTtsAdapter(DOCUMENTED_PROFILE, options);
+}
+
+function buildTtsAdapter(profile, { fetchImpl, timeoutMs = NANOGPT_TTS_TIMEOUT_MS, maxAudioBytes = NANOGPT_MAX_AUDIO_BYTES } = {}) {
   return {
     provider: NANOGPT_PROVIDER_ID,
     models: NANOGPT_TTS_MODELS,
-    responseFormats: NANOGPT_SPEECH_RESPONSE_FORMATS,
+    responseFormats: profile.responseFormats,
     /**
      * TTS adapter contract (ttsCore.js): `{ base64, format, accounting }` on
      * success, or a full error result; `local` marks caller input errors and
@@ -183,8 +212,8 @@ export function createNanogptTtsAdapter({ fetchImpl, timeoutMs = NANOGPT_TTS_TIM
       let payload;
       try {
         const requested = options.requestedResponseFormat ?? options.response_format ?? null;
-        const container = resolveNanogptContainer(requested, responseFormat ?? null);
-        payload = buildNanogptSpeechRequest(model, text, { ...options, container });
+        const container = resolveNanogptContainer(requested, responseFormat ?? null, { allowPcm: profile.allowPcm });
+        payload = buildNanogptSpeechRequest(model, text, { ...options, container }, { containers: profile.containers });
       } catch (error) {
         return invalid(error.message);
       }
@@ -205,6 +234,11 @@ export function createNanogptTtsAdapter({ fetchImpl, timeoutMs = NANOGPT_TTS_TIM
           discard(response);
           return lostResult(MODALITY, LABEL, `answered without ${container} audio`);
         }
+        // Raw pcm has no signature: a typed container answer is not pcm.
+        if (container === "pcm" && !pcmTypeAllowed(type)) {
+          discard(response);
+          return lostResult(MODALITY, LABEL, "audio is not pcm");
+        }
         let bytes;
         try {
           bytes = await readBounded(response.body, maxAudioBytes, fetchSignal, HTTP_STATUS.BAD_GATEWAY);
@@ -214,11 +248,18 @@ export function createNanogptTtsAdapter({ fetchImpl, timeoutMs = NANOGPT_TTS_TIM
           return lostResult(MODALITY, LABEL, "audio was unreadable or too large");
         }
         if (bytes.length === 0) return lostResult(MODALITY, LABEL, "audio was empty");
-        if (!matchesContainer(container, bytes)) return lostResult(MODALITY, LABEL, `audio is not ${container}`);
+        let pcm = null;
+        if (container === "pcm") {
+          const checked = checkNanogptPcm(bytes, response.headers.get("content-type"));
+          if (checked.error) return lostResult(MODALITY, LABEL, checked.error);
+          pcm = checked.pcm;
+        } else if (!matchesContainer(container, bytes)) {
+          return lostResult(MODALITY, LABEL, `audio is not ${container}`);
+        }
         // NanoGPT reports no usage on this route; the cost stays unknown.
         const accounting = mediaAccounting(null, NANOGPT_PROVIDER_ID, MODALITY);
-        accounting.meta = { nativeUnitsSource: "input-characters", model: payload.model };
-        return { base64: bytes.toString("base64"), format: container, accounting };
+        accounting.meta = { nativeUnitsSource: "input-characters", model: payload.model, ...(pcm ? { pcm } : null) };
+        return { base64: bytes.toString("base64"), format: container, accounting, ...(pcm ? { pcm } : null) };
       } finally {
         sent.clear();
       }

@@ -1,7 +1,7 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
-import { isNumber, isRecord, isString } from "../../shared/utils/typeChecks.js";
+import { isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
   removeConnection } from
@@ -32,8 +32,6 @@ import {
 import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities.js";
 import { hasCodexIdentityClaims } from "open-sse/services/usage/codexCredentialBinding.js";
 import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
-
-import { validatedRefreshUpdates } from "../../shared/services/providerCredentials.js";
 
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
@@ -100,44 +98,6 @@ function isStorableSecret(value) {
   value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
-/** Keep legacy malformed-secret filtering while rejecting unsafe refresh lifetimes. */
-function validateRawRefresh(result) {
-  for (const value of [result.expiresIn, result.copilotTokenExpiresAt, result.providerSpecificData?.copilotTokenExpiresAt]) {
-    if (isNumber(value) && value > 8640000000000) throw new Error("Malformed refresh expiry");
-  }
-  const filtered = withoutMalformedCopilotFields(result.providerSpecificData);
-  validatedRefreshUpdates({ providerSpecificData: result.existingProviderSpecificData }, {
-    ...result,
-    expiresIn: isPositiveTime(result.expiresIn) ? result.expiresIn : undefined,
-    expiresAt: toIsoTime(result.expiresAt) || undefined,
-    lastRefreshAt: toIsoTime(result.lastRefreshAt) || undefined,
-    accessToken: isStorableSecret(result.accessToken) ? result.accessToken : "validation-only",
-    refreshToken: isStorableSecret(result.refreshToken) ? result.refreshToken : undefined,
-    idToken: isStorableSecret(result.idToken) ? result.idToken : undefined,
-    copilotToken: isStorableSecret(result.copilotToken) ? result.copilotToken : undefined,
-    providerSpecificData: filtered || undefined,
-    copilotTokenExpiresAt: isPositiveTime(result.copilotTokenExpiresAt) ? result.copilotTokenExpiresAt : undefined
-  });
-}
-
-/** A finite, positive time (epoch number or parseable timestamp string). */
-function isPositiveTime(value) {
-  if (isNumber(value)) return Number.isFinite(value) && value > 0;
-  return isString(value) && value.trim() !== "" && Number.isFinite(new Date(value).getTime()) &&
-  new Date(value).getTime() > 0;
-}
-
-/** Copy of provider data without malformed Copilot token or expiry fields. */
-function withoutMalformedCopilotFields(data) {
-  if (!isRecord(data)) return null;
-  const { copilotToken, copilotTokenExpiresAt, ...rest } = data;
-  return {
-    ...rest,
-    ...(isStorableSecret(copilotToken) ? { copilotToken } : null),
-    ...(isPositiveTime(copilotTokenExpiresAt) ? { copilotTokenExpiresAt } : null)
-  };
-}
-
 /**
  * Non-blocking: fetch and persist a missing project ID after token refresh.
  * Stored project IDs survive access-token rotation because Google binds them
@@ -190,14 +150,11 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
  * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
  *   The write is refused when the stored token is neither this one nor its replacement.
- * @param {string} [options.presentedAccessToken] Access token at refresh start, when available.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
-    // Validate raw lifetime and metadata before legacy field filtering.
-    validateRawRefresh(newCredentials);
     // Persist only the cookie, and only while the sending session is current.
     if (isString(rotatedApiKey) && rotatedApiKey) {
       if (expectedRefreshContext?.authType !== "cookie" ||
@@ -227,21 +184,17 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
         updates.expiresIn = Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
       }
     }
-    const providerSpecificData = withoutMalformedCopilotFields(newCredentials.providerSpecificData);
-    if (providerSpecificData) {
+    if (newCredentials.providerSpecificData) {
       updates.providerSpecificData = {
         ...(newCredentials.existingProviderSpecificData || {}),
-        ...providerSpecificData
+        ...newCredentials.providerSpecificData
       };
     }
-    const copilotToken = isStorableSecret(newCredentials.copilotToken) ? newCredentials.copilotToken : null;
-    const copilotTokenExpiresAt = isPositiveTime(newCredentials.copilotTokenExpiresAt) ?
-    newCredentials.copilotTokenExpiresAt : null;
-    if (copilotToken || copilotTokenExpiresAt) {
+    if (newCredentials.copilotToken || newCredentials.copilotTokenExpiresAt) {
       updates.providerSpecificData = {
         ...(updates.providerSpecificData || newCredentials.existingProviderSpecificData || {}),
-        ...(copilotToken ? { copilotToken } : null),
-        ...(copilotTokenExpiresAt ? { copilotTokenExpiresAt } : null)
+        ...(newCredentials.copilotToken ? { copilotToken: newCredentials.copilotToken } : null),
+        ...(newCredentials.copilotTokenExpiresAt ? { copilotTokenExpiresAt: newCredentials.copilotTokenExpiresAt } : null)
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
@@ -249,12 +202,10 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };
     } else if (presentedRefreshToken) {
-      // An unchanged refresh token must not let a stale access token overwrite a winner.
+      // Compare only the token: request credentials do not mirror the stored row.
       guard = {
-        shouldCommitConnection: (stored) => (stored.refreshToken === presentedRefreshToken ||
-        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken) &&
-        (!isStorableSecret(presentedAccessToken) || !isStorableSecret(stored.accessToken) ||
-          stored.accessToken === presentedAccessToken)
+        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken ||
+        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
       };
     }
     // The repo compares rotated identity claims with the stored row under its write lock.
@@ -350,11 +301,6 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
     }
 
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
-      try {
-        validateRawRefresh(newCreds);
-      } catch {
-        return creds;
-      }
       const mergedCreds = {
         ...newCreds,
         // Persist saved configuration, not proxy values resolved for this request.
@@ -364,7 +310,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
-        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken: credentials.accessToken });
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
       // Never dispatch a Codex token whose identity the store did not accept.
       if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
 

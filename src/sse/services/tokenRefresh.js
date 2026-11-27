@@ -33,6 +33,8 @@ import { refreshCapabilities } from "open-sse/services/tokenRefresh/capabilities
 import { hasCodexIdentityClaims } from "open-sse/services/usage/codexCredentialBinding.js";
 import { providerRefreshContext } from "../../shared/utils/providerCredentialContext.js";
 
+import { validatedRefreshUpdates } from "../../shared/services/providerCredentials.js";
+
 export const TOKEN_EXPIRY_BUFFER_MS = BUFFER_MS;
 
 // ─── Re-exports wrapped with local logger ─────────────────────────────────────
@@ -221,6 +223,11 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
+    // Preserve legacy field filtering, then enforce the shared refresh bounds.
+    // Project-ID-only writes are not token refresh results.
+    if (updates.accessToken) validatedRefreshUpdates({
+      providerSpecificData: newCredentials.existingProviderSpecificData
+    }, updates);
     let guard = null;
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };

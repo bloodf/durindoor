@@ -4,6 +4,16 @@
 
 **Open design. Not safe for implementation.** An independent safety review of the first draft (bcc6d30616) found that its "proposed guarantee" was not established. That draft reaped the identity-pinning child too early. It also used a circular completion test, ignored the real Playwright topology and treated a free port as proof of cleanup. This revision replaces that guarantee with explicit open questions, then gives the disposable fixtures that must pass before any guarantee is claimed.
 
+A second independent review (of ddeef28035) found five further errors, corrected here:
+
+1. The draft allowed a blocking `waitpid` after a bounded failure, while the leader could still be alive. H now reaps only after it has observed the leader's exit; otherwise it reports failure and sends nothing more (requirement 1).
+2. The draft offered `proc_listpgrppids` as a session-wide enumeration. It covers one process group. Session evidence is now described as conditional on no escape, never as proof of a full tree (requirement 2).
+3. The draft let a helper call `setsid()` after Playwright's shell started it. If the shell `exec`s the helper, the helper leads its group and `setsid()` fails. That placement now needs an explicitly designed fork/exec arrangement, or it is rejected (requirement 3).
+4. The draft let a port probe "classify a foreign listener". A probe identifies only an unattributed listener, which is never signalled and always makes cleanup fail (requirement 4 and the sketch).
+5. The draft said helper death immediately reaps the leader and that local-ci is always the helper's parent. Neither holds in general (requirement 7).
+
+This document is still a design under review. Nothing in it is approved for implementation.
+
 No process was started or signalled for this revision. No product code, setting, or service changed. The evidence comes from reading this repository, the installed Playwright 1.63.0 and Next 16.4.5 sources under `website/node_modules/.pnpm/`, and public manual pages. Every statement is labelled:
 
 - **[fact: code]** comes from reading source in this checkout, with its location.
@@ -74,7 +84,13 @@ The supervisor (H) pins the server group's ID by keeping its leader (`LS`) as an
 - `waitpid(LS, &st, WNOHANG)` **reaps** an exited child. **[fact: doc]** It must not be used to "check" the leader during cleanup. The same applies to `wait`, `wait3`/`wait4`, and any `waitpid` without `WNOWAIT`-style semantics.
 - **[hypothesis]** Two mechanisms can observe exit without reaping: `waitid(P_PID, LS, &info, WEXITED | WNOHANG | WNOWAIT)` and `kqueue` `EVFILT_PROC`/`NOTE_EXIT`. Both must be verified on each supported macOS version. Apple's `waitid` man page lists `WNOWAIT`, but its behaviour isn't verified until fixture F1 passes. If neither is reliable, the design has no non-reaping exit observer and stays blocked.
 - H must reset `SIGCHLD` to `SIG_DFL` and must never set `SA_NOCLDWAIT`. **[fact: doc]** A `SIG_IGN` disposition for `SIGCHLD` survives `exec` and causes automatic reaping, which would silently drop the pin.
-- The only reaping call is one final blocking `waitpid(LS, …, 0)`. It runs after the completion predicate succeeds, or after H has decided to fail closed and will send no further signal.
+
+**Reaping rule.** A blocking `waitpid(LS, …, 0)` waits until `LS` exits. **[fact: doc]** If `LS` ignores or survives the signals, or is stopped, that call may never return. So:
+
+- H calls `waitpid` on `LS` **only after** the non-reaping observer (F1) has reported that `LS` has exited. **[hypothesis]** The call then returns at once, because the zombie is already there. Fixture F15 checks this.
+- If the deadline passes and H has **not** observed `LS` exit, H must not call `waitpid` in any form that can block. `LS` may still be alive. H reports a bounded failure with what it enumerated, sends **no further signal** to `GS` or `LS`, and leaves `LS` unreaped.
+- When H then exits, `LS` is reparented and H's pin ends. That is acceptable only because H has already committed to sending nothing more. No other component inherits authority to signal `GS` (see requirement 7).
+- After H has observed `LS` exit and before it reaps, it may still signal `GS`, because the zombie keeps the ID pinned. After the reap it signals nothing.
 
 ### 2. Non-circular completion predicate for grandchildren
 
@@ -83,10 +99,15 @@ The supervisor (H) pins the server group's ID by keeping its leader (`LS`) as an
 **Proposed predicate [hypothesis, to be proven by F4/F5].** The tree counts as gone only when all of these hold in one pass:
 
 - `sysctl {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, GS}` succeeds without truncation. It returns exactly one `kinfo_proc`, whose PID is `LS` and whose `p_stat` is `SZOMB`.
-- A session-scoped enumeration of `LS`'s session returns the same single zombie. Candidates are `KERN_PROC_SESSION` or `proc_listpgrppids` with per-PID `proc_pidinfo`; which one to use is **[open]**. This catches members that moved to a different group but stayed in the session. Such a member could later `setpgid` back into `GS`.
+- A session-scoped enumeration of `LS`'s session returns the same single zombie. This would catch members that moved to a different group but stayed in the session. Such a member could later `setpgid` back into `GS`.
+  - The only candidate named so far is `sysctl` `KERN_PROC_SESSION`. **[hypothesis]** Whether macOS implements it, what its argument means, whether it is exhaustive, and whether it lists zombies are all unverified (F0, F4, F16).
+  - `proc_listpgrppids` is **not** a session enumeration. Its `libproc.h` declaration takes one process-group ID and lists that group's members (**[fact: doc]**, to be confirmed in the SDK by F0). It can serve at most as a second reading of `GS`, next to `KERN_PROC_PGRP`. It cannot find a member that moved to another group.
+  - **[open]** If no exhaustive session enumeration is verified, the predicate has group evidence only. A member that moved to another group in the same session is then undetected, and the design must either find another independent and exhaustive discovery mechanism or record that gap as a residual that blocks any session-level claim.
 - `LS` is still unreaped, as confirmed by F1's non-reaping observer.
 
-**Fail closed.** Any of the following counts as **not complete**: a sysctl error, a size race, an unknown `p_stat`, an entry from a different uid, or a mismatch between the two enumerations. After the bounded deadline, H reports failure with the enumerated survivors. Only then does it reap, and it never signals again afterwards. Whether a zombie leader appears in `KERN_PROC_PGRP` and `KERN_PROC_SESSION` results is **[hypothesis]**.
+**What a passing predicate means.** Even with a verified session enumeration, a pass shows only that no **visible** member of `GS` or of the session is left. A process that called `setsid` has left the session and is invisible to both checks. **[fact: doc]** A pass is therefore conditional on no such escape. It is not proof that the whole descendant tree is gone (see requirement 4).
+
+**Fail closed.** Any of the following counts as **not complete**: a sysctl error, a size race, an unknown `p_stat`, an entry from a different uid, or a mismatch between enumerations. After the bounded deadline, H reports failure with the enumerated survivors and sends no further signal. It reaps `LS` only if it has observed `LS` exit; otherwise it leaves `LS` unreaped (requirement 1). Whether a zombie leader appears in `KERN_PROC_PGRP` and `KERN_PROC_SESSION` results is **[hypothesis]**.
 
 ### 3. Place the helper outside every group another component force-kills
 
@@ -94,9 +115,12 @@ The supervisor (H) pins the server group's ID by keeping its leader (`LS`) as an
 
 Candidate placements, all **[open]**:
 
-- **(a) H calls `setsid()` itself after Playwright spawns it**, then spawns the server in another new session.
-  - Playwright's `-G2` signals reach only SH, and SH has no server to signal.
-  - H must hold R's stdio pipes or use a dedicated control pipe. R's `close` would then wait for H, so R's teardown is bounded only by H's deadline, and that deadline must stay below local-ci's budget.
+- **(a) H leaves G2 after Playwright starts it**, then spawns the server in another new session. **As first drafted, this placement does not work.**
+  - Node's `detached: true` makes SH the leader of a new session and group. If `/bin/sh -c` `exec`s H (F11 decides this), H inherits SH's PID and is already a group leader and session leader. `setsid()` fails with `EPERM` for a process-group leader. **[fact: doc]** H cannot leave G2 by calling `setsid()` itself.
+  - If SH does not `exec`, H is a non-leader in G2 and `setsid()` would succeed. The design must not depend on that, because shell `exec` behaviour is unverified and may differ between macOS releases.
+  - Candidate (a) therefore needs an **explicitly designed fork/exec arrangement**. For example, the process Playwright starts forks, and only the child calls `setsid()`. That arrangement must specify which process Playwright sees, which process holds R's pipes, and what happens to each when Playwright sends `SIGKILL` to `-G2`. If no such arrangement is specified and passes F10 and F19, candidate (a) is rejected.
+  - **[open] Teardown notification is unresolved.** Once H is outside G2, Playwright's `-G2` signals no longer reach H. Nothing yet tells H that Playwright wants the server stopped. A pipe from the in-group process could carry EOF on its death, but that depends on descriptor inheritance (requirement 5) and is unverified (F20).
+  - Whatever process holds R's stdio pipes delays R's `close`. R's teardown is then bounded only by H's deadline, which must stay below local-ci's budget.
   - Playwright still believes it owns the server. Its graceful-shutdown signal goes to a group that no longer holds the server.
 - **(b) local-ci starts H before the shard**, and Playwright attaches to an external server. This conflicts with the current `reuseExistingServer: false` and "never attach" contract in `website/playwright.config.mjs`, so that contract would have to change explicitly.
 - **(c) A small in-group lifeline shim.** H passes a pipe to a shim inside `GS`. When the pipe reaches EOF, the shim calls `kill(0, SIGKILL)`. This addresses the caller's own group without using a PID, so PID reuse can't misdirect it.
@@ -114,7 +138,11 @@ A free loopback port does **not** show any of the following:
 - That a member of the session in another group exited.
 - That a process which closed its listener but is still running exited.
 
-A port probe may be used only to detect a **foreign** listener, which is then never signalled.
+**What a port probe may do.** A successful connect shows only that **something** listens on the port. It does not show which process, which group, or whether it belongs to this shard. Such a listener is **unattributed**. Rules:
+
+- An unattributed listener is **never** signalled, and the probe result is never used to choose a PID or group to signal.
+- An unattributed listener after cleanup makes cleanup **fail** (`ok: false`). It may be an escaped server descendant (F17) or an unrelated process; the probe cannot tell them apart.
+- A free port does not make cleanup succeed. It only removes one reason to fail (F18).
 
 **[fact: doc]** POSIX groups and sessions are not containment. Any descendant can leave with `setsid`. macOS offers no unprivileged kernel handle that tracks a whole process tree. `NOTE_TRACK` is documented as unsupported, and Endpoint Security needs an entitlement. **[hypothesis]** Enumerating children recursively with `proc_listchildpids` is racy and loses the link when a process reparents to `launchd`.
 
@@ -124,6 +152,8 @@ A port probe may be used only to detect a **foreign** listener, which is then ne
 - Keep every process in `GS` and `SS`.
 
 Anything that escapes the session is outside the guarantee. H checks this best-effort at checkpoints (enumerating descendants with the same uid by parent links before signalling) and fails closed if it finds a violation. An escape it never sees remains a documented residual. No full-tree claim stands without either this contract or a stronger mechanism.
+
+**Fixtures observe; they do not prove.** F12 and the other fixtures run a finite number of times on specific inputs. A run in which no escape occurs shows that none occurred in that run. It does not prove that the supported tree never escapes, for example under other Next features, load, or future versions. The contract is an assumption that the fixtures fail to refute, not a proven property.
 
 ### 5. Descriptors, pipe EOF, blocked output and SIGPIPE
 
@@ -151,14 +181,14 @@ Nothing guarantees cleanup if H is killed with `SIGKILL`, crashes, or is killed 
 
 When H dies:
 
-1. `LS` is reparented to `launchd` and reaped.
-2. The pin is lost.
-3. Nothing remains that may signal `GS` safely.
+1. **Retention authority is lost at once.** H was the only process allowed to signal `GS`, and only because it held `LS` unreaped. No other process inherits that authority, and nothing remains that may signal `GS` safely.
+2. `LS` is reparented to `launchd`. It is **not necessarily reaped at once**: a live `LS` stays alive, possibly indefinitely, and an exited `LS` is reaped whenever `launchd` collects it. **[hypothesis]** The timing is unverified (F13). From this point the group ID may be reused after the reap, so even a correct-looking `GS` value must not be signalled.
 
 local-ci must therefore:
 
-- Detect H's loss through control-pipe EOF, `EPIPE`, or H's own exit status, which local-ci reaps as H's parent.
-- Report a cleanup failure.
+- Detect H's loss and report a cleanup failure.
+  - Control-pipe EOF or `EPIPE` works under any placement that gives local-ci such a pipe. **[hypothesis]** It depends on descriptor inheritance (requirement 5, F6, F20).
+  - H's exit status is available to local-ci **only if local-ci is H's parent**. That holds under placement (b), where local-ci spawns H. Under (a) and (c), H's parent is in Playwright's tree, so local-ci sees no exit status and must rely on the control channel.
 - Stop the remaining shards.
 - **Never** signal `GS` itself.
 
@@ -167,15 +197,18 @@ Mitigation (c) in requirement 3 is the only candidate that still works after H d
 ## Supervisor sketch (non-binding, gated on the fixtures)
 
 1. **Start.** H is native C, starts under the placement chosen in requirement 3, resets `SIGCHLD`/`SIGPIPE`, and spawns the server with `POSIX_SPAWN_SETSID` (or `setsid` in a fork-exec shim) and `POSIX_SPAWN_CLOEXEC_DEFAULT`. It reports `READY {leader, pgid, sid}` for diagnostics only.
-2. **Trigger.** A stop request or control EOF starts cleanup:
+2. **Trigger.** A stop request or control EOF starts cleanup. How a stop request reaches H under each placement is still **[open]** (requirement 3).
    1. `killpg(GS, SIGTERM)`.
    2. Wait, observing without reaping (F1), until the predicate in requirement 2 holds or the grace period ends.
    3. `killpg(GS, SIGKILL)`.
-   4. Repeat the wait with the predicate.
-   5. Reap `LS` exactly once.
-   6. Report `{ok, survivors, escaped, signals}`.
-3. **Fail closed.** No signal is sent after the reap. Every uncertainty yields `ok: false`.
-4. **Node side.** Node awaits the report and probes the port only to classify a foreign listener. It removes the private state file only on `ok: true`. It never falls back to `ps` or a PID scan.
+   4. Repeat the wait with the predicate, up to a hard deadline.
+   5. If H has observed `LS` exit, reap `LS` exactly once. If it has not, do **not** call `waitpid`; leave `LS` unreaped and mark the result failed.
+   6. Report `{ok, leaderExitObserved, survivors, escaped, signals}`.
+3. **Fail closed.** No signal is sent after the reap, or after H has decided on failure. Every uncertainty yields `ok: false`.
+4. **Node side.** Node awaits the report, then runs its own loopback port check.
+   - A listener found by that check is **unattributed**. Node never signals it and never derives a PID or group from it. It forces the overall result to failure.
+   - Node removes the private state file only when the helper reported `ok: true` **and** its own port check found no listener. Until that check finishes, the state file stays. Any failure keeps the state file for diagnosis.
+   - It never falls back to `ps` or a PID scan.
 
 Unit tests for the Node protocol use a fake helper and never signal real processes.
 
@@ -190,7 +223,7 @@ Run these on a **disposable** macOS runner covering every supported macOS versio
 
 | ID | Proves or refutes | Method |
 |---|---|---|
-| F0 | SDK has `POSIX_SPAWN_SETSID`, `POSIX_SPAWN_CLOEXEC_DEFAULT`, `waitid`+`WNOWAIT`, `KERN_PROC_PGRP`/`KERN_PROC_SESSION`, `proc_listpgrppids` | Compile-only probe; no process spawned |
+| F0 | SDK has `POSIX_SPAWN_SETSID`, `POSIX_SPAWN_CLOEXEC_DEFAULT`, `waitid`+`WNOWAIT`, `KERN_PROC_PGRP`/`KERN_PROC_SESSION`; record the `proc_listpgrppids` prototype (one group ID argument) | Compile-only probe; no process spawned |
 | F1 | Exit can be observed without reaping | Child exits; `waitid(WNOWAIT\|WNOHANG\|WEXITED)` and `EVFILT_PROC NOTE_EXIT`; then `KERN_PROC_PID` must still show `SZOMB`; final `waitpid` reaps |
 | F2 | `WNOHANG` `waitpid` reaps (negative control) | Same as F1 with `waitpid(WNOHANG)`; the entry must be gone |
 | F3 | Inherited `SIGCHLD=SIG_IGN` causes auto-reap; reset restores pinning | Parent sets `SIG_IGN`, execs fixture H with and without reset |
@@ -203,8 +236,16 @@ Run these on a **disposable** macOS runner covering every supported macOS versio
 | F10 | Playwright shutdown vs. helper placement | Each candidate from requirement 3: does Playwright's `-G2` TERM/KILL reach H? How long does R's `close` wait for H? |
 | F11 | `/bin/sh -c` exec behaviour | Record whether SH or T leads G2 |
 | F12 | Supported-tree contract for Next | Run `next start` on a fixture build at a loopback port inside the temporary directory; record every descendant and any `setsid`/`setpgid` |
-| F13 | Helper crash | Kill H with `SIGKILL` during each phase; confirm the server orphans, local-ci-style parent detects loss, and no further signal is sent |
+| F13 | Helper crash | Kill H with `SIGKILL` during each phase. Record when `LS` is reparented and when (or whether) it is reaped; it may stay alive. Confirm loss is detected through the control channel, and through exit status only under placement (b); confirm no further signal is sent to `GS` |
 | F14 | macOS `watchRunner` weakness | Confirm `processStartTime` is `null` and liveness is `kill(pid,0)` only (inspection plus a fixture with a non-recycled PID; do not attempt to force PID reuse) |
+| F15 | Unobserved leader exit | Fixture leader blocks `SIGTERM` and is stopped with `SIGSTOP` (only `SIGCONT`/`SIGKILL` from the fixture's own cleanup, after H has finished, may touch it). H must hit its deadline, report `ok: false, leaderExitObserved: false`, send no further signal, make no `waitpid` call, and exit within its bound. Positive control: a leader that exits, where the observer fires and the following `waitpid` returns at once |
+| F16 | Moved groups | Member calls `setpgid` into a new group in the same session, then optionally back into `GS`. Record what `KERN_PROC_PGRP`, `proc_listpgrppids(GS)` and `KERN_PROC_SESSION` each show. Expected: the group listings miss it; the predicate must fail if the session listing sees it, and the gap is recorded if no exhaustive session listing exists |
+| F17 | Escaped listener | Server descendant calls `setsid` and binds the reserved loopback port, then the group is cleaned. The helper predicate may pass; the Node port check must find an unattributed listener, report failure, keep the state file, and send no signal. The fixture itself stops the escaped process afterwards by the PID it recorded at creation |
+| F18 | No listener | (1) Server never listens; (2) server closes its listener but stays alive. Port is free in both; the predicate must stay false while the member lives, so a free port never yields success alone |
+| F19 | Placement (a) fork/exec | Start a fixture helper through `spawn(…, {shell: true, detached: true})`. Record whether it leads its group, that `setsid()` returns `EPERM` when it does, and the behaviour of the specified fork/exec arrangement under Playwright-style `SIGKILL` to the group |
+| F20 | Pipe behaviour across helper and placements | For each placement: control and report pipes between local-ci, the in-group process and H. Kill each holder with `SIGKILL`; record EOF timing, `EPIPE` on the next write, `SIGPIPE` disposition, and any leaked write end that delays EOF |
+
+**Scope of fixture results.** Each fixture observes behaviour in a finite number of runs on specific macOS versions. A pass shows what happened in those runs. It does not prove that no process can ever escape the group or session, and it does not prove the behaviour on untested releases.
 
 Linux CI cannot validate any macOS result. If F0–F8 don't establish requirements 1 and 2, macOS browser sharding stays fail-closed and deferred. Add no `ps` or PID-scan fallback.
 
@@ -220,4 +261,4 @@ A Node-API addon isn't preferred, and a checked-in prebuilt binary isn't accepta
 
 ## What this note does not claim
 
-It does not claim that any supervisor design is safe or correct, that macOS supports the needed non-reaping wait, that the predicate is sound, that the browser and Next trees stay inside their groups, or that cleanup survives the helper dying. Each of these waits on the fixtures above.
+It does not claim that any supervisor design is safe or correct, or that any part of it is approved for implementation. It does not claim that macOS supports the needed non-reaping wait, that the predicate is sound, that an exhaustive session enumeration exists, that the browser and Next trees stay inside their groups, that any helper placement delivers teardown notification, or that cleanup survives the helper dying. Fixtures can refute these claims or fail to refute them; they cannot prove universal no-escape.

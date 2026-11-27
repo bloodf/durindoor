@@ -17,7 +17,7 @@ import {
   ADOBE_FIREFLY_API_ORIGIN,
   adobeFireflyCancelUrl,
   adobeFireflyStatusUrl,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache } from "./auth.js";
 import { resolveCredentialProxyOptions } from "../oauthCredentialManager.js";
 import { readBoundedResponseText } from "../../utils/error.js";

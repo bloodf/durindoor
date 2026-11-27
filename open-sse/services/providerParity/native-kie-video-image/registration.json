@@ -1,0 +1,478 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/providers/registry/kie/imageModels.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/executors/kie.ts",
+      "open-sse/utils/kieTask.ts",
+      "open-sse/translator/image/sizeMapper.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-kie-video-image/index.js",
+  "exports": {
+    "kieImageAdapter": "default image adapter instance (guarded generate adapter, async task)",
+    "kieVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract)",
+    "createKieImageAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "createKieVideoAdapter": "factory; same options as createKieImageAdapter",
+    "buildKieImageRequest": "(model, body) -> { route, request }; throws status 400",
+    "buildKieVideoRequest": "(model, body) -> Market createTask body; throws status 400",
+    "runKieTask": "createTask + bounded recordInfo poll; { success, urls, taskId, accounting } or error result with acceptedJob",
+    "kieTaskState": "source normalizeKieTaskState without the envelope msg fallback; null when no state field",
+    "kieResultJson": "source parseKieResultJson (bounded)",
+    "kieImageResultCandidates": "source normalizeKieImageResult candidate fields",
+    "kieVideoResultCandidates": "source normalizeKieVideoResult candidate lists",
+    "kieAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "kiePublicUrl": "public https URL check used for results and inputs",
+    "KIE_IMAGE_MODELS": "image catalog metadata (isMarket / kieFluxKontextModel)",
+    "KIE_VIDEO_MODELS": "video catalog metadata",
+    "KIE_VIDEO_UNSUPPORTED_MODELS": "image-to-video ids refused before submit",
+    "KIE_IMAGE_SIZES": "registry supportedSizes",
+    "KIE_MARKET_UPSTREAM_MODEL_IDS": "catalog id -> Market upstream id",
+    "KIE_IMAGE_ROUTES": "the three source image routes"
+  },
+  "provider": {
+    "canonicalId": "kie",
+    "aliases": [
+      "kie"
+    ],
+    "existingRegistryEntry": "open-sse/providers/registry/kie.js",
+    "existingServiceKinds": [
+      "llm"
+    ],
+    "addServiceKinds": [
+      "image",
+      "video"
+    ],
+    "authModes": [
+      "apikey"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey",
+        "accessToken"
+      ]
+    },
+    "connectionBaseUrlHonored": false,
+    "notAdded": {
+      "audio": "source kie-audio (audioRegistry.ts) is outside this delta",
+      "music": "source kie-music (musicRegistry.ts) is outside this delta"
+    }
+  },
+  "models": {
+    "image": [
+      {
+        "id": "gpt4o-image",
+        "name": "KIE 4o Image",
+        "route": "direct",
+        "upstreamId": "gpt4o-image"
+      },
+      {
+        "id": "seedream/4.5-text-to-image",
+        "name": "Seedream 4.5",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "seedream/4.5-text-to-image"
+      },
+      {
+        "id": "seedream/4.5-edit",
+        "name": "Seedream 4.5 Edit",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "seedream/4.5-edit"
+      },
+      {
+        "id": "seedream/5.0-lite-text-to-image",
+        "name": "Seedream 5.0 Lite",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "seedream/5-lite-text-to-image"
+      },
+      {
+        "id": "seedream/5.0-lite-image-to-image",
+        "name": "Seedream 5.0 Lite I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "seedream/5-lite-image-to-image"
+      },
+      {
+        "id": "z-image",
+        "name": "Z-Image",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "z-image"
+      },
+      {
+        "id": "z-image/4.0-text-to-image",
+        "name": "Z-Image (legacy alias 4.0)",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "z-image"
+      },
+      {
+        "id": "z-image/4.5-text-to-image",
+        "name": "Z-Image (legacy alias 4.5)",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "z-image"
+      },
+      {
+        "id": "google-imagen/nano-banana-2",
+        "name": "Nano Banana 2",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "nano-banana-2"
+      },
+      {
+        "id": "google-imagen/nano-banana",
+        "name": "Nano Banana",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "google/nano-banana"
+      },
+      {
+        "id": "google-imagen/nano-banana-pro",
+        "name": "Nano Banana Pro",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "nano-banana-pro"
+      },
+      {
+        "id": "google-imagen/nano-banana-edit",
+        "name": "Nano Banana Edit",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "google/nano-banana-edit"
+      },
+      {
+        "id": "flux/2-pro-image-to-image",
+        "name": "Flux 2 Pro I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "flux-2/pro-image-to-image"
+      },
+      {
+        "id": "flux/2-pro-text-to-image",
+        "name": "Flux 2 Pro T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "flux-2/pro-text-to-image"
+      },
+      {
+        "id": "flux/2-image-to-image",
+        "name": "Flux 2 I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "flux-2/flex-image-to-image"
+      },
+      {
+        "id": "flux/2-text-to-image",
+        "name": "Flux 2 T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "flux-2/flex-text-to-image"
+      },
+      {
+        "id": "flux/kontext",
+        "name": "Flux Kontext Pro",
+        "isMarket": false,
+        "kieFluxKontextModel": "flux-kontext-pro",
+        "route": "fluxKontext",
+        "upstreamId": "flux-kontext-pro"
+      },
+      {
+        "id": "flux/kontext-max",
+        "name": "Flux Kontext Max",
+        "isMarket": false,
+        "kieFluxKontextModel": "flux-kontext-max",
+        "route": "fluxKontext",
+        "upstreamId": "flux-kontext-max"
+      },
+      {
+        "id": "grok-imagine/text-to-image",
+        "name": "Grok Imagine T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "grok-imagine/text-to-image"
+      },
+      {
+        "id": "grok-imagine/image-to-image",
+        "name": "Grok Imagine I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "grok-imagine/image-to-image"
+      },
+      {
+        "id": "gpt/gpt-image-1.5-text-to-image",
+        "name": "GPT Image 1.5 T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "gpt-image/1.5-text-to-image"
+      },
+      {
+        "id": "gpt/gpt-image-1.5-image-to-image",
+        "name": "GPT Image 1.5 I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "gpt-image/1.5-image-to-image"
+      },
+      {
+        "id": "gpt/gpt-image-2-text-to-image",
+        "name": "GPT Image 2 T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "gpt-image-2-text-to-image"
+      },
+      {
+        "id": "gpt/gpt-image-2-image-to-image",
+        "name": "GPT Image 2 I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "gpt-image-2-image-to-image"
+      },
+      {
+        "id": "ideogram/v3-text-to-image",
+        "name": "Ideogram v3",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "ideogram/v3-text-to-image"
+      },
+      {
+        "id": "ideogram/v3-edit",
+        "name": "Ideogram v3 Edit",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "ideogram/v3-edit"
+      },
+      {
+        "id": "ideogram/v3-remix",
+        "name": "Ideogram v3 Remix",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "ideogram/v3-remix"
+      },
+      {
+        "id": "ideogram/v3-reframe",
+        "name": "Ideogram v3 Reframe",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "ideogram/v3-reframe"
+      },
+      {
+        "id": "qwen/text-to-image",
+        "name": "Qwen T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "qwen/text-to-image"
+      },
+      {
+        "id": "qwen/image-to-image",
+        "name": "Qwen I2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "qwen/image-to-image"
+      },
+      {
+        "id": "qwen/image-edit",
+        "name": "Qwen Edit",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "qwen/image-edit"
+      },
+      {
+        "id": "qwen2/image-edit",
+        "name": "Qwen2 Edit",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "qwen2/image-edit"
+      },
+      {
+        "id": "qwen2/text-to-image",
+        "name": "Qwen2 T2I",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "qwen2/text-to-image"
+      },
+      {
+        "id": "wan/2.7-image",
+        "name": "Wan 2.7 Image",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "wan/2-7-image"
+      },
+      {
+        "id": "wan/2.7-image-pro",
+        "name": "Wan 2.7 Image Pro",
+        "isMarket": true,
+        "route": "market",
+        "upstreamId": "wan/2-7-image-pro"
+      }
+    ],
+    "video": [
+      {
+        "id": "veo/veo-3-1",
+        "name": "Veo 3.1",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "veo/veo-3-1-fast",
+        "name": "Veo 3.1 Fast",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "kling-3.0/video",
+        "name": "Kling 3.0",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "bytedance/seedance-2",
+        "name": "Seedance v2.0",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "wan/2-7-text-to-video",
+        "name": "Wan 2.7 T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "wan/2-7-image-to-video",
+        "name": "Wan 2.7 I2V",
+        "isMarket": true,
+        "supported": false
+      },
+      {
+        "id": "hailuo/02-text-to-video-pro",
+        "name": "Hailuo Pro T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "hailuo/2-3-image-to-video-pro",
+        "name": "Hailuo 2.3 Pro I2V",
+        "isMarket": true,
+        "supported": false
+      },
+      {
+        "id": "grok-imagine/text-to-video",
+        "name": "Grok Imagine T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "grok-imagine/image-to-video",
+        "name": "Grok Imagine I2V",
+        "isMarket": true,
+        "supported": false
+      },
+      {
+        "id": "happyhorse/text-to-video",
+        "name": "HappyHorse T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "happyhorse/image-to-video",
+        "name": "HappyHorse I2V",
+        "isMarket": true,
+        "supported": false
+      },
+      {
+        "id": "sora-2-text-to-video",
+        "name": "Sora 2 T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "sora-2-image-to-video",
+        "name": "Sora 2 I2V",
+        "isMarket": true,
+        "supported": false
+      },
+      {
+        "id": "sora-2-pro-text-to-video",
+        "name": "Sora 2 Pro T2V",
+        "isMarket": true,
+        "supported": true
+      },
+      {
+        "id": "sora-2-pro-image-to-video",
+        "name": "Sora 2 Pro I2V",
+        "isMarket": true,
+        "supported": false
+      }
+    ],
+    "supportedSizes": [
+      "1:1",
+      "16:9",
+      "9:16",
+      "4:3",
+      "3:4"
+    ],
+    "dynamicDiscovery": "none for media in the source; static lists only. The chat /v1/models validateUrl stays on the llm kind."
+  },
+  "endpoints": {
+    "marketCreate": {
+      "method": "POST",
+      "url": "https://api.kie.ai/api/v1/jobs/createTask"
+    },
+    "marketStatus": {
+      "method": "GET",
+      "url": "https://api.kie.ai/api/v1/jobs/recordInfo?taskId={taskId}"
+    },
+    "fluxKontextCreate": {
+      "method": "POST",
+      "url": "https://api.kie.ai/api/v1/flux/kontext/generate"
+    },
+    "fluxKontextStatus": {
+      "method": "GET",
+      "url": "https://api.kie.ai/api/v1/flux/kontext/record-info?taskId={taskId}"
+    },
+    "gpt4oCreate": {
+      "method": "POST",
+      "url": "https://api.kie.ai/api/v1/gpt4o-image/generate"
+    },
+    "gpt4oStatus": {
+      "method": "GET",
+      "url": "https://api.kie.ai/api/v1/gpt4o-image/record-info?taskId={taskId}"
+    }
+  },
+  "responseFormats": {
+    "image": [
+      "url"
+    ],
+    "video": [
+      "url"
+    ]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { kieImageAdapter } and add `kie: kieImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { kieVideoAdapter } and add `kie: kieVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/kie.js",
+      "change": "serviceKinds [\"llm\", \"image\", \"video\"]; add image and video model rows (kind) from KIE_IMAGE_MODELS / KIE_VIDEO_MODELS (omit or mark KIE_VIDEO_UNSUPPORTED_MODELS); keep transport.baseUrl on chat"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list KIE image and video kinds after registration"
+    }
+  ]
+}

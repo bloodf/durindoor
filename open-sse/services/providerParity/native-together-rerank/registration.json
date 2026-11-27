@@ -1,0 +1,56 @@
+{
+  "registered": false,
+  "canonicalId": "together",
+  "aliases": ["together"],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/rerankRegistry.ts",
+      "open-sse/handlers/rerank.ts",
+      "src/app/api/providers/[id]/models/discovery/providerModelsConfig.ts",
+      "src/app/api/providers/[id]/models/discovery/providerSets.ts"
+    ]
+  },
+  "exports": {
+    "config.js": ["TOGETHER_ID", "TOGETHER_ALIASES", "TOGETHER_ORIGIN", "TOGETHER_RERANK_URL", "TOGETHER_MODELS_URL", "rerankModels", "rerankConfig", "togetherRerankMetadata"],
+    "adapter.js": ["togetherRerankAdapter", "buildRerankBody", "normalizeRerank", "safeModel", "togetherHeaders", "invalid"],
+    "service.js": ["handleTogetherRerankNative", "discoverTogetherModels"],
+    "index.js": "public staging exports (config.js, adapter.js except invalid, service.js)"
+  },
+  "serviceKinds": ["rerank"],
+  "models": {
+    "rerank": ["Salesforce/Llama-Rank-V2"]
+  },
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": ["apiKey", "accessToken"],
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay or failover"
+  },
+  "endpoints": {
+    "rerank": "https://api.together.xyz/v1/rerank",
+    "discovery": "https://api.together.xyz/v1/models"
+  },
+  "envelope": {
+    "request": "{ model, query, documents (string | {text}), top_n: top_n ?? documents.length, return_documents: return_documents !== false }",
+    "response": "{ id, model, results: [{ index, relevance_score, document?: { text } }], usage? } rebuilt from validated upstream results and caller document text"
+  },
+  "integration": {
+    "rerank": "open-sse/handlers/rerankCore.js handleRerankCore: dispatch handleTogetherRerankNative for provider 'together' before generic deriveRerankUrl/passthrough; generic path derives the same URL but forwards the body verbatim and relays the raw upstream body",
+    "routeKind": "src/sse/handlers/modelKind.js modelKindError: currently rejects together rerank (no rerank model/kind); registration must add togetherRerankMetadata.models and rerankConfig",
+    "provider": "existing open-sse/providers/registry/together.js: append 'rerank' to serviceKinds, the kind:'rerank' model and rerankConfig only; preserve transport, auth, image/video/tts/stt configs",
+    "discovery": "existing src/app/api/providers/[id]/models/modelsConfig.js together createOpenAIModelsConfig is equivalent; staged discovery adds bounded safe-ID validation, no replacement required",
+    "catalog": "docs/providers/catalog.mdx and shared catalogs updated at serial registration only"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "text documents only (string or {text}); no rank_fields, structured/JSON documents, media, streaming or extra fields",
+    "up to 1024 documents, each and query at most 20000 characters; top_n 1..documents.length",
+    "custom safe model IDs allowed; only the pinned catalog model claims the rerank serviceKind",
+    "30s default/60s maximum total deadline, 8MiB success and 16KiB error response bounds",
+    "upstream error messages and bodies are never relayed (the source relays them)",
+    "no synthetic billed_units/search_units; unknown cost stays unknown",
+    "no async jobs, polling, artifact URL fetching, browser or WebSocket protocol"
+  ]
+}

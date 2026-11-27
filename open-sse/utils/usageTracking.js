@@ -304,7 +304,7 @@ export function canonicalizeUsage(usage) {
   const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
     reasoningIsSubsetOfOutput(usage);
   const completion = foldReasoning ? reasoning : reportedCompletion;
-  // Match normalizeUsage: the top-level creation alias is a typed inclusive subset.
+  // Resolve creation aliases before applying the provider accounting convention.
   const creationAlias = isNumber(usage.cache_creation_tokens) &&
     Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
@@ -314,9 +314,8 @@ export function canonicalizeUsage(usage) {
   usage.cache_creation_input_tokens != null &&
   usage.cached_tokens === undefined &&
   inputDetails?.cache_creation_tokens === undefined);
-  const cacheCreation = hasExclusiveCache ?
-  num(usage.cache_creation_input_tokens) :
-  num(cacheWrite);
+  // Flat exclusive reads also make the resolved creation count exclusive.
+  const cacheCreation = num(cacheWrite);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);
   let cached;

@@ -1,6 +1,8 @@
-// Ideogram native image generation: one synchronous POST per image to
-// https://api.ideogram.ai/generate, then a guarded download of the returned
-// URL. Staged for /v1/images/generations as a guarded `generate` adapter and
+// Ideogram native image generation: one synchronous POST per image to the
+// documented operation for the model (V_2A: https://api.ideogram.ai/generate
+// with a JSON `image_request` envelope; V_3:
+// https://api.ideogram.ai/v1/ideogram-v3/generate as multipart/form-data),
+// then a guarded download of the returned URL. Staged for /v1/images/generations as a guarded `generate` adapter and
 // not registered (see ./registration.json).
 //
 // Ported from OmniRoute at c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT):
@@ -27,6 +29,14 @@
 // is fetched with the local pinned-IP, manual-redirect, magic-byte-checked
 // image fetch; a send whose outcome is unknown, and any earlier completed
 // fan-out call, carries `acceptedJob` and is never resent.
+//
+// Wire correction (#2034, checked 2026-11-27 against Ideogram's official API
+// v1 OpenAPI spec, see ./config.js): the source's flat `/generate` body does
+// not match the documented GenerateImageRequest, which requires the fields
+// inside `image_request`, and `/generate` does not list V_3. V_2A is sent as
+// `{ image_request: { prompt, aspect_ratio: "ASPECT_16_9", model: "V_2A" } }`
+// to /generate; V_3 is sent as form fields `prompt` and `aspect_ratio=16x9`
+// to /v1/ideogram-v3/generate, which takes no model field.
 import { createErrorResult } from "../../../utils/error.js";
 import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { MAX_IMAGE_BYTES } from "../../../config/mediaConfig.js";
@@ -36,8 +46,9 @@ import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
 import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
   IDEOGRAM_ASPECT_RATIO, IDEOGRAM_CALL_TIMEOUT_MS, IDEOGRAM_DEFAULT_MODEL, IDEOGRAM_IMAGE_FORMAT,
-  IDEOGRAM_IMAGE_MAX_N, IDEOGRAM_IMAGE_MODELS, IDEOGRAM_IMAGE_SIZES, IDEOGRAM_IMAGE_URL, IDEOGRAM_PROVIDER_ID,
-  IDEOGRAM_RESPONSE_FORMATS, IDEOGRAM_TOTAL_TIMEOUT_MS, ideogramImageModel,
+  IDEOGRAM_IMAGE_MAX_N, IDEOGRAM_IMAGE_MODELS, IDEOGRAM_IMAGE_SIZES, IDEOGRAM_PROVIDER_ID,
+  IDEOGRAM_RESPONSE_FORMATS, IDEOGRAM_TOTAL_TIMEOUT_MS, IDEOGRAM_V3_ASPECT_RATIO, IDEOGRAM_WIRE_V3_MULTIPART,
+  ideogramImageModel,
 } from "./config.js";
 import {
   boundedFetch, ideogramHeaders, ideogramPublicUrl, ideogramSecrets, ideogramToken, provenUnsent,
@@ -47,7 +58,7 @@ import {
 const MODALITY = "image";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_PROMPT_CHARS = 32_000;
-const ASPECT_ALIASES = new Set(["16:9", IDEOGRAM_ASPECT_RATIO]);
+const ASPECT_ALIASES = new Set(["16:9", IDEOGRAM_ASPECT_RATIO, IDEOGRAM_V3_ASPECT_RATIO]);
 // Reference-image and edit fields: the source never forwarded them, so
 // accepting them would silently generate from the prompt alone.
 const IMAGE_INPUT_FIELDS = ["image", "image_url", "imageUrls", "image_urls", "images", "mask", "mask_url", "input_image"];
@@ -67,14 +78,20 @@ function hasChatImagePart(messages) {
 }
 
 /**
- * Validate an OpenAI-style image request and build the source's Ideogram body.
- * Throws a 400 error for an unknown model or an input this subset cannot honor.
+ * Validate an OpenAI-style image request and build the documented Ideogram
+ * request for the model. Throws a 400 error for an unknown model or an input
+ * this subset cannot honor.
  *
- * @returns {{ request: { prompt: string, aspect_ratio: string, model: string }, count: number }}
+ * @returns {{
+ *   request: { url: string, wire: string, fields: object },
+ *   count: number,
+ * }} `fields` is the JSON body (`{ image_request }`) for /generate, or the
+ *   form fields (`{ prompt, aspect_ratio }`) for /v1/ideogram-v3/generate
  */
 export function buildIdeogramImageRequest(model, body) {
   const modelId = model || IDEOGRAM_DEFAULT_MODEL;
-  if (!ideogramImageModel(modelId)) {
+  const entry = ideogramImageModel(modelId);
+  if (!entry) {
     throw reject(`Unsupported Ideogram image model: ${modelId}. Use one of: ${IDEOGRAM_IMAGE_MODELS.map((m) => m.id).join(", ")}`);
   }
   if (!isRecord(body)) throw reject("Ideogram image generation needs a JSON object");
@@ -99,10 +116,23 @@ export function buildIdeogramImageRequest(model, body) {
   if (present(body.response_format) && !IDEOGRAM_RESPONSE_FORMATS.includes(body.response_format)) {
     throw reject(`Ideogram image supports response_format ${IDEOGRAM_RESPONSE_FORMATS.join(", ")} only`);
   }
+  const fields = entry.wire === IDEOGRAM_WIRE_V3_MULTIPART
+    ? { prompt: body.prompt, aspect_ratio: IDEOGRAM_V3_ASPECT_RATIO }
+    : { image_request: { prompt: body.prompt, aspect_ratio: IDEOGRAM_ASPECT_RATIO, model: modelId } };
   return {
-    request: { prompt: body.prompt, aspect_ratio: IDEOGRAM_ASPECT_RATIO, model: modelId },
+    request: { url: entry.url, wire: entry.wire, fields },
     count: present(body.n) ? body.n : 1,
   };
+}
+
+/** The fetch body and headers for one call. A fresh body is built per call. */
+export function encodeIdeogramImageRequest(request, token) {
+  if (request.wire === IDEOGRAM_WIRE_V3_MULTIPART) {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(request.fields)) form.append(name, value);
+    return { body: form, headers: ideogramHeaders(token, { json: false }) };
+  }
+  return { body: JSON.stringify(request.fields), headers: ideogramHeaders(token) };
 }
 
 /**
@@ -123,10 +153,11 @@ export function createIdeogramImageAdapter({
   async function generateOne({ request, token, secrets, credentials, signal, remaining, log }) {
     let response;
     try {
-      response = await boundedFetch(IDEOGRAM_IMAGE_URL, {
+      const { body, headers } = encodeIdeogramImageRequest(request, token);
+      response = await boundedFetch(request.url, {
         method: "POST",
-        headers: ideogramHeaders(token),
-        body: JSON.stringify(request),
+        headers,
+        body,
         redirect: "manual",
         proxyOptions: resolveCredentialProxyOptions(credentials),
       }, { signal, timeoutMs: remaining() });

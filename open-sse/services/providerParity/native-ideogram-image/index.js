@@ -4,7 +4,7 @@
 import { createIdeogramImageAdapter } from "./image.js";
 
 export * from "./config.js";
-export { buildIdeogramImageRequest, createIdeogramImageAdapter } from "./image.js";
+export { buildIdeogramImageRequest, createIdeogramImageAdapter, encodeIdeogramImageRequest } from "./image.js";
 export { ideogramAcceptedJob, ideogramPublicUrl } from "./http.js";
 
 /** Default instance for IMAGE_ADAPTERS under `ideogram`. */

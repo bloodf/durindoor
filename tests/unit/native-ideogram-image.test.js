@@ -1,8 +1,14 @@
 // Ideogram native image adapter, staged and unregistered (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
-// fails the test, and every key is synthetic. Wire shapes follow OmniRoute
+// fails the test, and every key is synthetic. Behavior follows OmniRoute
 // c71f0065 (imageRegistryData.ts `ideogram`, imageGeneration.ts format
 // dispatch, imageGeneration/providers/ideogram.ts, imageGeneration/fanOut.ts).
+// Wire bodies follow Ideogram's official API v1 OpenAPI spec (checked
+// 2026-11-27): V_2A posts `{ image_request }` JSON to /generate
+// (generate_post_generate_image); V_3 posts multipart `prompt` and
+// `aspect_ratio=16x9` to /v1/ideogram-v3/generate
+// (generate_post_generate_image_v3). The source's flat body is not the
+// documented contract; see tests/unit/ideogram-native-request-contract.test.js.
 // Result URLs use a literal public IP so the local image fetch resolves them
 // without DNS. Passing here says nothing about the live service.
 import { readFileSync } from "node:fs";
@@ -21,6 +27,8 @@ import { isFunction } from "../../src/shared/utils/typeChecks.js";
 
 const ORIGIN = "https://api.ideogram.ai";
 const IMAGE_URL = `${ORIGIN}/generate`;
+const V3_URL = `${ORIGIN}/v1/ideogram-v3/generate`;
+const V3_FIELDS = (prompt = PROMPT) => ({ prompt, aspect_ratio: "16x9" });
 const KEY_A = "ideo-SYNTHETIC-key-a-0001";
 const KEY_B = "ideo-SYNTHETIC-key-b-0002";
 const PROMPT = "a stone gate in an emerald forest";
@@ -50,7 +58,8 @@ function serve({ submit = [], download = [] } = {}) {
   global.fetch = vi.fn(async (url, init) => {
     const target = String(url);
     const isSubmit = init?.method === "POST";
-    calls.push({ kind: isSubmit ? "submit" : "download", url: target, init, body: isSubmit && init?.body ? JSON.parse(init.body) : undefined });
+    const decode = (raw) => (raw instanceof FormData ? Object.fromEntries(raw.entries()) : JSON.parse(raw));
+    calls.push({ kind: isSubmit ? "submit" : "download", url: target, init, body: isSubmit && init?.body ? decode(init.body) : undefined });
     const step = (isSubmit ? submits : downloads).shift();
     if (!step) throw new Error(`Unexpected request: ${target}`);
     return isFunction(step) ? step(target, init) : step;
@@ -97,6 +106,9 @@ describe("staged module metadata", () => {
     expect(staged.IDEOGRAM_PROVIDER_ID).toBe("ideogram");
     expect(staged.IDEOGRAM_ALIASES).toEqual(["ideo"]);
     expect(staged.IDEOGRAM_IMAGE_URL).toBe(IMAGE_URL);
+    expect(staged.IDEOGRAM_V3_IMAGE_URL).toBe(V3_URL);
+    expect(IDEOGRAM_IMAGE_MODELS.map((m) => [m.id, m.url])).toEqual([["V_3", V3_URL], ["V_2A", IMAGE_URL]]);
+    expect(staged.IDEOGRAM_V3_ASPECT_RATIO).toBe("16x9");
     expect(staged.IDEOGRAM_ORIGIN).toBe(ORIGIN);
     expect(staged.IDEOGRAM_AUTH_HEADER).toBe("Api-Key");
     expect(staged.IDEOGRAM_IMAGE_FORMAT).toBe("ideogram-image");
@@ -126,23 +138,30 @@ describe("staged module metadata", () => {
     expect(REGISTRATION.provider.auth.header).toBe("Api-Key");
     expect(REGISTRATION.models.image.map((m) => m.id)).toEqual(IDEOGRAM_IMAGE_MODELS.map((m) => m.id));
     expect(REGISTRATION.endpoints.image.url).toBe(IMAGE_URL);
+    expect(REGISTRATION.endpoints.image.models).toEqual(["V_2A"]);
+    expect(REGISTRATION.endpoints.imageV3.url).toBe(V3_URL);
+    expect(REGISTRATION.endpoints.imageV3.models).toEqual(["V_3"]);
+    expect(REGISTRATION.officialContract.operations.V_2A.operationId).toBe("generate_post_generate_image");
+    expect(REGISTRATION.officialContract.operations.V_3.operationId).toBe("generate_post_generate_image_v3");
     expect(REGISTRATION.responseFormats.image).toEqual(["b64_json"]);
     for (const name of Object.keys(REGISTRATION.exports)) expect(staged).toHaveProperty(name);
   });
 });
 
 describe("image request contract", () => {
-  it("sends the source body with the Api-Key header to the fixed endpoint, then downloads the result", async () => {
+  it("sends V_3 as the documented Ideogram 3.0 multipart form with the Api-Key header, then downloads the result", async () => {
     serve({ submit: [generated()], download: [png()] });
     const result = await image({ size: "1792x1024", response_format: "b64_json" });
     expect(result.success).toBe(true);
     expect(submitCalls()).toHaveLength(1);
     const [submit] = submitCalls();
-    expect(submit.url).toBe(IMAGE_URL);
+    expect(submit.url).toBe(V3_URL);
     expect(submit.init.method).toBe("POST");
     expect(submit.init.redirect).toBe("manual");
-    expect(submit.init.headers).toEqual({ "Content-Type": "application/json", "Api-Key": KEY_A });
-    expect(submit.body).toEqual({ prompt: PROMPT, aspect_ratio: "ASPECT_16_9", model: "V_3" });
+    // The multipart body sets its own Content-Type boundary.
+    expect(submit.init.headers).toEqual({ "Api-Key": KEY_A });
+    expect(submit.init.body).toBeInstanceOf(FormData);
+    expect(submit.body).toEqual(V3_FIELDS());
 
     expect(downloadCalls()).toHaveLength(1);
     const [download] = downloadCalls();
@@ -158,10 +177,25 @@ describe("image request contract", () => {
     expect(result.accounting.cost).toBeNull();
   });
 
-  it("uses the source default model and keeps V_2A verbatim", () => {
-    expect(buildIdeogramImageRequest("", { prompt: "x" })).toEqual({ request: { prompt: "x", aspect_ratio: "ASPECT_16_9", model: "V_3" }, count: 1 });
-    expect(buildIdeogramImageRequest("V_2A", { prompt: "x", aspect_ratio: "16:9", n: 2 }))
-      .toEqual({ request: { prompt: "x", aspect_ratio: "ASPECT_16_9", model: "V_2A" }, count: 2 });
+  it("sends V_2A in the documented image_request envelope to /generate", async () => {
+    serve({ submit: [generated()], download: [png()] });
+    const result = await image({}, { model: "V_2A" });
+    expect(result.success).toBe(true);
+    const [submit] = submitCalls();
+    expect(submit.url).toBe(IMAGE_URL);
+    expect(submit.init.headers).toEqual({ "Content-Type": "application/json", "Api-Key": KEY_A });
+    expect(submit.body).toEqual({ image_request: { prompt: PROMPT, aspect_ratio: "ASPECT_16_9", model: "V_2A" } });
+    expect((await payload(result)).data).toEqual([{ b64_json: PNG_B64 }]);
+  });
+
+  it("uses the source default model and maps each model to its documented operation", () => {
+    expect(buildIdeogramImageRequest("", { prompt: "x" }))
+      .toEqual({ request: { url: V3_URL, wire: "multipart-v3", fields: V3_FIELDS("x") }, count: 1 });
+    expect(buildIdeogramImageRequest("V_3", { prompt: "x", aspect_ratio: "16x9" }).request.fields).toEqual(V3_FIELDS("x"));
+    expect(buildIdeogramImageRequest("V_2A", { prompt: "x", aspect_ratio: "16:9", n: 2 })).toEqual({
+      request: { url: IMAGE_URL, wire: "json-image-request", fields: { image_request: { prompt: "x", aspect_ratio: "ASPECT_16_9", model: "V_2A" } } },
+      count: 2,
+    });
   });
 
   it.each([
@@ -208,7 +242,9 @@ describe("image request contract", () => {
     const result = await image({ n: 3 });
     expect(result.success).toBe(true);
     expect(submitCalls()).toHaveLength(3);
-    for (const call of submitCalls()) expect(call.body).toEqual({ prompt: PROMPT, aspect_ratio: "ASPECT_16_9", model: "V_3" });
+    for (const call of submitCalls()) expect(call.body).toEqual(V3_FIELDS());
+    // Each call gets its own form body.
+    expect(new Set(submitCalls().map((call) => call.init.body)).size).toBe(3);
     expect((await payload(result)).data).toHaveLength(3);
     expect(result.accounting.nativeUnits.images).toBe(3);
   });
@@ -392,7 +428,7 @@ describe("image outputs and failures", () => {
     const [a, b] = await Promise.all([image({}, { credentials: { apiKey: KEY_A } }), image({}, { credentials: { apiKey: KEY_B } })]);
     expect(a.success && b.success).toBe(true);
     expect(submitCalls().map((c) => c.init.headers["Api-Key"]).sort()).toEqual([KEY_A, KEY_B]);
-    expect(submitCalls().every((c) => c.url === IMAGE_URL)).toBe(true);
+    expect(submitCalls().every((c) => c.url === V3_URL)).toBe(true);
     expect(downloadCalls().every((c) => !JSON.stringify(c.init.headers ?? {}).includes("ideo-SYNTHETIC"))).toBe(true);
 
     serve({ submit: [leaky(401, "UNAUTHORIZED")] });

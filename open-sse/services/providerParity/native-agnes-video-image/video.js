@@ -28,7 +28,7 @@ import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
 import { sleep } from "../../../handlers/imageProviders/_base.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
   AGNES_PROVIDER_ID, AGNES_VIDEO_JOB_PRESETS, AGNES_VIDEO_MAX_POLL_RETRIES, AGNES_VIDEO_MAX_POLLS,
   AGNES_VIDEO_MAX_RETRY_DELAY_MS, AGNES_VIDEO_MODELS, AGNES_VIDEO_POLL_INTERVAL_MS, AGNES_VIDEO_REQUEST_TIMEOUT_MS,
@@ -69,7 +69,7 @@ export function buildAgnesVideoRequest(model, body) {
   const preset = AGNES_VIDEO_JOB_PRESETS[entry.jobPreset];
   const extras = Object.fromEntries(Object.entries(body).filter(([key]) => !GATEWAY_FIELDS.has(key)));
   const request = { model, prompt: body.prompt, ...extras };
-  if (preset.stringSeconds && typeof extras.seconds === "number") request.seconds = String(extras.seconds);
+  if (preset.stringSeconds && isNumber(extras.seconds)) request.seconds = String(extras.seconds);
   if (Buffer.byteLength(JSON.stringify(request)) > MAX_REQUEST_BYTES) throw reject("Agnes video request is too large");
   return { request, preset };
 }

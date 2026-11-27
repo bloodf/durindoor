@@ -1,5 +1,55 @@
 # Provider usage alias extraction
 
+## Reviewed null canonical suppression correction, 2026-11-27
+
+Reproduced the reviewer and orchestrator finding on base `a9a5deb4f2a`.
+For `{ prompt_tokens: 100, completion_tokens: 5,
+cache_creation_input_tokens: null, cache_creation_tokens: 30 }`, direct
+`canonicalizeUsage` returned cache write 0 while canonicalizing `extractUsage`
+returned 30. The exclusive-cache discriminator treated null creation as present
+and bypassed the existing nullish alias fallback.
+
+Changed only that canonical creation presence check to `!= null`. Null now
+follows the existing nullish field precedence. Numeric canonical zero and
+positive values retain precedence and exclusive accounting; alias validation
+still requires a finite nonnegative number. Other canonical-field validation
+and the cache-read discriminator are unchanged.
+
+Added the regression before the production edit. From `tests/`, under a
+credential-free environment containing only PATH, locale and private HOME,
+DATA_DIR, XDG_CACHE_HOME and TMPDIR, the red command was:
+
+```sh
+node node_modules/vitest/vitest.mjs run unit/provider-usage-alias-extraction.test.js --maxWorkers=2
+```
+
+It exited 1: 4 failed, 145 passed. The failures were direct Chat, direct
+Responses, nonstream Chat and nonstream Responses. Bare Responses extraction
+and response.completed/done/incomplete already passed. Each failure reported
+write 0 instead of 30, with input 100, output 5, total 105 and read 0.
+
+After the correction and two additional no-read numeric precedence controls,
+the final targeted command was:
+
+```sh
+node node_modules/vitest/vitest.mjs run unit/provider-usage-alias-extraction.test.js unit/parity-stream-cache-creation-alias.test.js unit/claude-openai-cache-usage.test.js unit/cached-token-usage.test.js unit/omni-cache-write-usage-alias.test.js unit/usage-cost-total.test.js --maxWorkers=2
+```
+
+It exited 0: 6 files, 226 tests passed, including 151 extraction tests.
+The no-read fixture returns input 100, output 5, total 105, write 30 and read 0
+across all eight entry paths. Existing stream, alias-validation and token/cost
+accounting checks passed. Both commands had a 300-second subprocess timeout.
+Root, CLI and test dependencies were installed with the requested frozen-lockfile,
+prefer-offline commands before test execution.
+
+Scoped Oxlint with `.oxlintrc.json` and the two changed JavaScript paths exited
+0 with zero warnings and errors; its configuration selected one file.
+`git diff --check` also exited 0.
+
+No full suite, build, live provider call, GitHub write, baseline change or
+machine/production operation was performed. Full CI and independent review
+remain outside this scoped correction.
+
 Disposition: DONE. Implemented 2026-11-27 as the #2686 review4 deferred extraction follow-up.
 
 ## Source and ownership

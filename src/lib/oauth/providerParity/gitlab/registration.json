@@ -1,9 +1,45 @@
 {
-  "status": "staged",
-  "module": "./guards.js",
-  "exports": ["gitlabDeploymentSecret", "gitlabRequestError"],
+  "issue": 2034,
+  "modules": {
+    "./directAccess.js": {
+      "status": "active",
+      "importedBy": ["open-sse/executors/gitlab.js"],
+      "exports": [
+        "GITLAB_DIRECT_ACCESS_MIN_VALIDITY_MS",
+        "normalizeGitLabRoot",
+        "gitlabDirectAccessUrl",
+        "buildGitLabDirectGatewayUrl",
+        "parseGitLabDirectAccess",
+        "isCacheableGitLabDirectAccess",
+        "readCachedGitLabDirectAccess",
+        "buildGitLabDirectHeaders",
+        "isGitLabDirectAccessRejection",
+        "gitlabRequestError"
+      ]
+    },
+    "./oauthBinding.js": {
+      "status": "staged",
+      "importedBy": [],
+      "exports": ["bindGitLabOAuthClient"]
+    }
+  },
   "integration": [
-    "In open-sse/services/tokenRefresh/providers.js refreshGitLabDuoToken, use gitlabDeploymentSecret with the selected base URL, configured default base URL and deployment secret before adding client_secret. Preserve per-connection refresh and proxy identity.",
-    "In open-sse/executors/gitlab.js execute, replace the provider-body-derived error with gitlabRequestError(response.status) while preserving status and dispatch settlement."
+    {
+      "slot": "auth05:refresh",
+      "file": "open-sse/services/tokenRefresh/providers.js",
+      "function": "refreshGitLabDuoToken",
+      "change": "Replace the baseUrl/clientId/clientSecret resolution with bindGitLabOAuthClient(credentials.providerSpecificData, { baseUrl: PROVIDER_OAUTH['gitlab-duo'].defaultBaseUrl, clientId: PROVIDER_OAUTH['gitlab-duo'].clientId, clientSecret: <current env/config secret> }). Return null when it returns null. POST to binding.tokenUrl, set client_secret only when binding.clientSecret is non-empty, use binding.dedupKey, and keep the existing proxyOptions argument and returned providerSpecificData { baseUrl: binding.root, clientId: binding.clientId, authKind: 'oauth' }."
+    },
+    {
+      "slot": "auth05:direct-access-store",
+      "file": "src/sse/handlers/chat/singleModel/dispatch.js",
+      "change": "For provider 'gitlab-duo' OAuth connections, supply persistGitLabDirectAccess(entry) that writes only providerSpecificData.gitlabDirectAccess (entry, or removal when entry is null) for credentials.connectionId under the same refresh context, without touching accessToken or refreshToken. The gateway token is a bearer secret, so store it with the connection's encrypted credential fields if providerSpecificData is not encrypted at rest."
+    },
+    {
+      "slot": "auth05:direct-access-store-forward",
+      "file": "open-sse/handlers/chatCore.js",
+      "function": "runChatCore executor.execute call",
+      "change": "Forward persistGitLabDirectAccess from the dispatch options into the executor input. Without both store slots the executor still works and exchanges per request without storing anything."
+    }
   ]
 }

@@ -437,7 +437,7 @@ export function hasValidUsage(usage) {
   // Check for any known token field with value > 0
   const tokenFields = [
   "prompt_tokens", "completion_tokens", "total_tokens", // OpenAI
-  "input_tokens", "output_tokens", // Claude
+  "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", // Claude
   "promptTokenCount", "candidatesTokenCount" // Gemini
   ];
 

@@ -163,11 +163,11 @@
 .dd-docs a {
   text-underline-offset: 4px;
 }
-.dd-docs :is(a, button) {
-  transition:
-    color 160ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease;
+/* Theme changes can otherwise blend text and surfaces into unreadable
+   intermediate colors, including while a link is hovered or focused. Keep
+   docs chrome colors instantaneous in every interaction state. */
+.dd-docs :is(a, button, .transition-colors) {
+  transition: none;
 }
 .dd-docs #nd-sidebar {
   background: var(--dd-surface);

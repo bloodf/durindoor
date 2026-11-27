@@ -1,3 +1,5 @@
+import { HAIPER_IMAGE_MODELS, HAIPER_VIDEO_MODELS } from "../../services/providerParity/native-haiper-video-image/config.js";
+
 export default {
   id: "haiper",
   priority: 70,
@@ -16,9 +18,12 @@ export default {
     authHeader: "HAIPER_KEY",
     auth: { combined: true, header: "HAIPER_KEY", scheme: "raw" },
   },
-  models: [],
-  // Video/image generation only — never expose as LLM/chat models (PR #45 review).
-  // Hidden until image/video routes have Haiper adapters.
-  serviceKinds: [],
-  hiddenKinds: ["image", "video"],
+  // Gen 2 serves both media kinds under one id; never expose it as an LLM/chat model.
+  models: [
+    ...HAIPER_IMAGE_MODELS.map(({ id, name }) => ({ id, name, kind: "image" })),
+    ...HAIPER_VIDEO_MODELS.map(({ id, name }) => ({ id, name, kind: "video" })),
+  ],
+  // Synchronous submit-and-poll adapters in imageProviders and videoProviders;
+  // no videoConfig, so the /v1/videos job proxy never sees Haiper.
+  serviceKinds: ["image", "video"],
 };

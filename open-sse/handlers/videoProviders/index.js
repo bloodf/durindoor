@@ -11,6 +11,9 @@ import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
 import { agnesVideoAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
 import vertex from "../../services/providerParity/native-vertex-video/adapter.js";
+import { haiperVideoAdapter } from "../../services/providerParity/native-haiper-video-image/index.js";
+import { leonardoVideoAdapter } from "../../services/providerParity/native-leonardo-video-image/index.js";
+import veoAiFree from "../../services/providerParity/native-veoaifree-web-video/index.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   "fal-ai": falVideo,
@@ -27,6 +30,15 @@ export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   // Adobe's native video model through the Firefly Services API only.
   "adobe-firefly-api": adobeFireflyApi,
   "adobe-firefly-web": adobeFireflyWeb,
+  // Haiper Gen 2 and Leonardo Motion jobs on fixed origins; result URLs only.
+  haiper: haiperVideoAdapter,
+  hp: haiperVideoAdapter,
+  leonardo: leonardoVideoAdapter,
+  leo: leonardoVideoAdapter,
+  // Veo AI Free WordPress AJAX: anonymous, or the selected connection's saved
+  // session cookie on its own AJAX calls only. One submit, never replayed.
+  "veoaifree-web": veoAiFree,
+  "veo-free": veoAiFree,
 });
 
 /** The adapter for `provider`, or null when it has none. */

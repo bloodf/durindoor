@@ -51,10 +51,9 @@ const expectedShape = {
     baseUrl: "https://api.haiper.ai/v1",
     authHeader: "HAIPER_KEY",
     runtimeAuth: { header: "HAIPER_KEY", scheme: "raw" },
-    serviceKinds: [],
-    hiddenKinds: ["image", "video"],
-    // Video/image models never expose as LLM/chat models (PR #45 review).
-    modelCount: 0,
+    // Native image and video adapters; never LLM/chat models (PR #45 review).
+    serviceKinds: ["image", "video"],
+    modelCount: 2,
   },
   heroku: {
     alias: "heroku",
@@ -115,9 +114,8 @@ const expectedShape = {
     authType: "apikey",
     imageBaseUrl: "https://cloud.leonardo.ai/api/rest/v1",
     imageAuthHeader: "bearer",
-    serviceKinds: [],
-    hiddenKinds: ["image"],
-    modelIds: ["phoenix", "sdxl"],
+    serviceKinds: ["image", "video"],
+    modelIds: ["phoenix", "sdxl", "motion-2.0", "motion-2.0-fast"],
   },
   liquid: {
     alias: "liquid",
@@ -292,16 +290,17 @@ describe("OmniRoute simple/default provider batch C", () => {
   it("maps transportless media provider IDs to static model aliases", () => {
     expect(PROVIDER_ID_TO_ALIAS.ideogram).toBe("ideo");
     expect(PROVIDER_ID_TO_ALIAS.leonardo).toBe("leo");
-    expect(getModelsByProviderId("leonardo").map((m) => m.id)).toEqual(["phoenix", "sdxl"]);
-    expect(PROVIDER_MODELS.leo.map((m) => m.id)).toEqual(["phoenix", "sdxl"]);
+    expect(getModelsByProviderId("leonardo").map((m) => m.id)).toEqual(["phoenix", "sdxl", "motion-2.0", "motion-2.0-fast"]);
+    expect(PROVIDER_MODELS.leo.map((m) => m.id)).toEqual(["phoenix", "sdxl", "motion-2.0", "motion-2.0-fast"]);
   });
 
   it("keeps unsupported media providers hidden until adapters or routes exist", () => {
-    for (const id of ["ideogram", "haiper", "leonardo"]) {
-      expect(AI_PROVIDERS[id]?.serviceKinds, `${id} service kinds`).toEqual([]);
-    }
+    expect(AI_PROVIDERS.ideogram?.serviceKinds, "ideogram service kinds").toEqual([]);
     expect(AI_PROVIDERS.ideogram?.hiddenKinds).toEqual(["image"]);
-    expect(AI_PROVIDERS.haiper?.hiddenKinds).toEqual(["image", "video"]);
-    expect(AI_PROVIDERS.leonardo?.hiddenKinds).toEqual(["image"]);
+    // Haiper and Leonardo have native image and video adapters now.
+    for (const id of ["haiper", "leonardo"]) {
+      expect(AI_PROVIDERS[id]?.serviceKinds, `${id} service kinds`).toEqual(["image", "video"]);
+      expect(AI_PROVIDERS[id]?.hiddenKinds, `${id} hidden kinds`).toBeUndefined();
+    }
   });
 });

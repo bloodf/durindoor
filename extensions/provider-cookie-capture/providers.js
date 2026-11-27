@@ -162,6 +162,13 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__client"],
     cookiePrefixes: [],
   },
+  // Optional WordPress sign-in for an otherwise anonymous video provider: the one logged-in cookie of this site.
+  "veoaifree-web": {
+    label: "Veo AI Free Web",
+    origin: "https://veoaifree.com",
+    cookieNames: ["wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b"],
+    cookiePrefixes: [],
+  },
   // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
   "tinycms-web": {
     label: "TinyCMS Web",

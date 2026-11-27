@@ -14,6 +14,8 @@ vi.mock("@/lib/db/repos/mediaJobsRepo.js", () => ({
 }));
 vi.mock("../../src/sse/services/auth.js", () => ({
   resolveClientApiKey: mocks.resolve, getProviderCredentialsWithQuotaPreflight: mocks.credentials,
+  // veoaifree-web selects through the no-auth path (optional saved session); same selector mock.
+  getNoAuthProviderCredentials: (provider, model, options) => mocks.credentials(provider, null, model, options),
   markAccountUnavailable: vi.fn(), clearAccountError: vi.fn(),
   extractApiKey: vi.fn(), hasValidCliToken: vi.fn(),
 }));
@@ -29,6 +31,12 @@ vi.mock("../../src/sse/services/tokenRefresh.js", () => ({
 vi.mock("../../src/sse/services/nativeUsage.js", () => ({ nativeUsageFromValue: vi.fn() }));
 vi.mock("../../src/sse/utils/logger.js", () => ({ warn: vi.fn() }));
 vi.mock("open-sse/executors/index.js", () => ({ getExecutor: () => ({ execute: mocks.execute }) }));
+// This suite covers the direct executor branch of the video core. veoaifree-web
+// now has a registered native adapter, so the fixture keeps it off the adapter map.
+vi.mock("../../open-sse/handlers/videoProviders/index.js", async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, getVideoGenerationAdapter: (provider) => (provider === "veoaifree-web" ? null : original.getVideoGenerationAdapter(provider)) };
+});
 vi.mock("open-sse/services/combo.js", () => ({
   handleComboChat: async ({ body, models, handleSingleModel }) => {
     let response;

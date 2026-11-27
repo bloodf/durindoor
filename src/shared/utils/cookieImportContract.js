@@ -35,10 +35,14 @@ export const MAX_IMPORT_LOCAL_STORAGE_ITEMS = 4;
  * Select an explicit import profile or reuse the provider's web sign-in rules.
  * A provider of any category may declare a `cookieImport` profile that names
  * `localStorageKeys`: its credential is a browser localStorage value (TinyCMS
- * `app-config-uuid`), not a cookie.
+ * `app-config-uuid`), not a cookie. A no-auth provider may declare a
+ * `cookieImport` profile with `optionalSession: true` for an optional session.
  */
 export function cookieImportConfig(provider) {
   if (Array.isArray(provider?.cookieImport?.localStorageKeys) && provider.cookieImport.localStorageKeys.length > 0) return provider.cookieImport;
+  // An anonymous provider may accept an optional saved web session (Veo AI
+  // Free). Its profile is explicit; the provider never gains a web sign-in.
+  if (provider?.noAuth === true && provider.cookieImport?.optionalSession === true) return provider.cookieImport;
   if (provider?.category !== "webCookie" || provider.authType !== "cookie") return null;
   return provider.cookieImport ?? provider.webLogin;
 }

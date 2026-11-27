@@ -34,6 +34,7 @@
     "https://v0.dev/*",
     "https://app.innerai.com/*",
     "https://clerk.venice.ai/*",
+    "https://veoaifree.com/*",
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*",

@@ -8,7 +8,7 @@ import { assertVideoBillingEpoch } from "@/lib/db/repos/reportQueriesRepo.js";
 import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
-import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
+import { getNoAuthProviderCredentials, getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
 import { getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -67,6 +67,20 @@ function shouldMarkAccountUnavailable(status) {
     || [HTTP_STATUS.UNAUTHORIZED, HTTP_STATUS.PAYMENT_REQUIRED, HTTP_STATUS.FORBIDDEN, HTTP_STATUS.RATE_LIMITED].includes(code);
 }
 
+// Anonymous video providers with an optional saved web session. With no saved
+// row the request runs anonymously; with rows, the selected (or pinned via
+// x-connection-id) row's session is sent, and an unavailable row never falls
+// back to anonymous.
+const OPTIONAL_SESSION_VIDEO_PROVIDERS = new Set(["veoaifree-web"]);
+
+function optionalSessionCredentials(request, modelInfo, apiKeyId) {
+  const pinned = request.headers.get("x-connection-id") || null;
+  return getNoAuthProviderCredentials(modelInfo.provider, modelInfo.model, {
+    apiKeyId,
+    ...(pinned ? { preferredConnectionId: pinned, strictConnectionId: pinned } : null),
+  });
+}
+
 async function handleVideoGenerationHandler(request) {
   const billingEpoch = await captureRequestBillingEpoch(request);
   let body;
@@ -121,7 +135,9 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   // job-only provider is not "unsupported at video", it is a different endpoint.
   const endpointSupport = mediaEndpointSupport("video", "/v1/video/generations", modelInfo.provider, modelInfo.model);
   if (!endpointSupport.supported) return errorResponse(HTTP_STATUS.BAD_REQUEST, endpointSupport.reason);
-  const credentials = await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
+  const credentials = OPTIONAL_SESSION_VIDEO_PROVIDERS.has(modelInfo.provider)
+    ? await optionalSessionCredentials(request, modelInfo, apiKeyId)
+    : await getProviderCredentialsWithQuotaPreflight(modelInfo.provider, null, modelInfo.model, { apiKeyId });
   if (credentials?.providerDisabled) {
     log.warn("VIDEO", `[${modelInfo.provider}/${modelInfo.model}] free no-auth provider disabled by settings`);
     return errorResponse(HTTP_STATUS.FORBIDDEN, `Provider '${modelInfo.provider}' is disabled. Enable it in Settings > Providers.`);

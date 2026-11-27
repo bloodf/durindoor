@@ -2,7 +2,7 @@
 
 A small Manifest V3 extension that hands one signed-in provider session from your browser to your own DurinDoor dashboard. It implements the client side of the [provider cookie import contract](../../src/lib/providers/cookieImport/README.md). It is opt-in and one shot: nothing runs until you open its popup on a supported provider tab, paste a pairing and confirm.
 
-Supported: ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Poe Web, v0 Vercel Web, Inner.ai Web, Venice Web, TinyCMS Web and DeepSeek Web. The list and the approved cookie names (and, for TinyCMS and DeepSeek, the one localStorage item) are compiled into `providers.js` and checked against the dashboard contract by a unit test.
+Supported: ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Poe Web, v0 Vercel Web, Inner.ai Web, Venice Web, Veo AI Free Web, TinyCMS Web and DeepSeek Web. The list and the approved cookie names (and, for TinyCMS and DeepSeek, the one localStorage item) are compiled into `providers.js` and checked against the dashboard contract by a unit test.
 
 ## What it will and will not do
 
@@ -43,10 +43,11 @@ The zip is deterministic (sorted files, no compression, fixed timestamps), so th
 
 If the dashboard rejects the pairing, or anything fails after the request went out, create a new pairing. Cancel discards the pairing and aborts an in-flight request.
 
-Two providers need a specific tab:
+Three providers need a specific tab or note:
 
 - **Inner.ai Web** (`https://app.innerai.com`, cookie `token`, which may be scoped to `.innerai.com`). The extension never reads or sends an account email. An optional email is typed in the dashboard dialog before the pairing is created; the server keeps it with that pairing and appends it to the stored token. The import route refuses a body that carries `accountEmail`, so a capture cannot add or change it.
 - **Venice Web** (`https://clerk.venice.ai`, cookie `__client`). Sign in at `https://venice.ai`, then open `https://clerk.venice.ai` itself in the active tab and send from there. A `venice.ai` tab is refused, and only the Clerk origin and the dashboard are requested.
+- **Veo AI Free Web** (`https://veoaifree.com`, cookie `wordpress_logged_in_04e805bfa8c7064a04c2e480966a748b`, the WordPress signed-in cookie of that site). The provider also runs anonymously; a captured session is optional. Only that exact cookie name is read, never other `wordpress_*` cookies.
 
 ## Limits
 

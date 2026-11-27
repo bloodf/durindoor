@@ -19,6 +19,8 @@ vi.mock("@/sse/services/auth.js", () => ({
   resolveClientApiKey: async () => ({ apiKey: state.keyId ? `${state.keyId}-secret` : null, auth: { ok: true, apiKeyId: state.keyId } }),
   hasValidCliToken: async () => false,
   getProviderCredentialsWithQuotaPreflight: vi.fn(async (_provider, _excluded, _model, options) => ({ connectionId: options.strictConnectionId || state.connectionId, apiKey: "provider-secret" })),
+  // veoaifree-web selects through the no-auth path (optional saved session); same selection answer.
+  getNoAuthProviderCredentials: vi.fn(async (_provider, _model, options) => ({ connectionId: options.strictConnectionId || state.connectionId, apiKey: "provider-secret" })),
   markAccountUnavailable: vi.fn(), clearAccountError: vi.fn(),
 }));
 vi.mock("@/sse/services/model.js", () => ({
@@ -34,6 +36,12 @@ vi.mock("@/sse/services/apiKeyPolicy.js", async (original) => ({
 }));
 vi.mock("open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetch(...args) }));
 vi.mock("open-sse/executors/index.js", () => ({ getExecutor: () => ({ execute: async () => ({ response: await fetch("https://video.example.test/generate") }) }) }));
+// The direct cases cover the video core's executor branch. veoaifree-web now has
+// a registered native adapter, so the fixture keeps it off the adapter map.
+vi.mock("open-sse/handlers/videoProviders/index.js", async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, getVideoGenerationAdapter: (provider) => (provider === "veoaifree-web" ? null : original.getVideoGenerationAdapter(provider)) };
+});
 
 let directory;
 let previousDataDir;

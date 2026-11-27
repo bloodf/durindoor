@@ -7,6 +7,13 @@ import { parseMetaAiResponseText } from "open-sse/executors/muse-spark-web/respo
 import { handleMusicGenerationCore } from "open-sse/handlers/musicGenerationCore.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 
+// The VeoAIFree case below covers the video core's executor branch. veoaifree-web
+// now has a registered native adapter, so the fixture keeps it off the adapter map.
+vi.mock("open-sse/handlers/videoProviders/index.js", async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, getVideoGenerationAdapter: (provider) => (provider === "veoaifree-web" ? null : original.getVideoGenerationAdapter(provider)) };
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

@@ -13,14 +13,15 @@ import { terminal, proceed } from "./context.js";
  * endpoint. Forwarding it to a chat upstream yields a confusing raw provider
  * 400 (e.g. HuggingFace: "not a chat model"). Per-model kind is used (not the
  * provider-level serviceKinds) because mixed providers like Cloudflare serve
- * both chat and image models.
+ * both chat and image models. An id that also has a non-image row (Haiper
+ * `gen2` is an image and a video row) is not image-only.
  */
 export function isImageOnlyModel(provider, model) {
   const entry = REGISTRY.find(
     (e) => e.id === provider || e.alias === provider || e.aliases?.includes(provider)
   );
-  const m = entry?.models?.find((x) => x.id === model);
-  return (m?.kind ?? m?.type) === "image";
+  const rows = entry?.models?.filter((x) => x.id === model) ?? [];
+  return rows.length > 0 && rows.every((m) => (m.kind ?? m.type) === "image");
 }
 
 /**

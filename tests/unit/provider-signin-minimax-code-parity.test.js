@@ -377,12 +377,19 @@ describe("MiniMax Code chat route never replays possibly accepted work", () => {
   });
 
   it("submits exactly once when the response headers never arrive", async () => {
+    vi.stubEnv("MINIMAX_CODE_GATEWAY_TIMEOUT_MS", "5000");
     vi.stubEnv("MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS", "50");
     transport.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
       init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
     }));
     const response = await chat();
-    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(response.status).toBe(502);
+    const error = (await response.json()).error;
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(error.message).toContain("response headers within 50 ms");
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
+    expect(error.message).not.toContain(SECRET);
     expect(gatewaySends()).toHaveLength(1);
     expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
     const receipt = usage.saveRequestUsage.mock.calls[0][0];

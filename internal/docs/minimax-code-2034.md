@@ -139,3 +139,30 @@ absent; the anti-slop runner likewise reports missing oxlint. No dependencies
 were installed and no full suite was run. The focused suite and lint gate still
 require confirmation in the prepared gate checkout; earlier results above are
 historical, not results for this head.
+
+### Header-timeout gate follow-up
+
+The nearby upstream #5889 regression expected a thrown header timeout. That
+representation is obsolete under the terminal unknown-outcome contract. The test
+now retains its exact header-deadline diagnostic and additionally requires a 502
+unknown outcome, no early transport abort, cancellation at the deadline, one
+send, a bounded nonempty message and no delayed replay. The executor formats the
+diagnostic from the shared resolved timeout, never from upstream error text.
+The actual handleChat/SQLite header case now separates the whole-call budget
+from the header deadline and checks exact status/code/message alongside the
+existing selected-account durable unknown-cost receipt assertions.
+
+The gate removal flags in the three MiniMax files refer to the authorized
+contract replacements listed above: 500/503/529 remain covered as once-only
+unknown outcomes; retry-count/backoff still use explicit 429 refusals; overloaded
+envelopes remain covered with unknown outcome and bounded messages; no-usage
+assertions became exactly-one durable unknown-cost receipt assertions. Restoring
+those obsolete expectations would reintroduce unsafe replay or lost accounting.
+No scenario, skip, baseline entry or valid assertion was removed to silence the
+gate.
+
+Validation for this follow-up: executor and both changed test files pass
+node --check; git diff --check passes. One focused five-file Vitest command
+(maxWorkers=2, 300-second ceiling) could not collect because this checkout has
+no tests/node_modules/vitest. No installs or full suite were run. The prepared
+gate must rerun the focused cases and lint; no passing suite is claimed here.

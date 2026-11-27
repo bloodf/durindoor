@@ -87,13 +87,26 @@ describe("MiniMax Code response header timeout (upstream #5889)", () => {
     fetchMock.mockImplementationOnce((_url, { signal }) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
     }));
-    const pending = expect(executor.execute({
+    const pending = executor.execute({
       model: "MiniMax-M3",
       body: { model: "MiniMax-M3", messages: [{ role: "user", content: "hi" }] },
       stream: true,
       credentials,
-    })).rejects.toThrow("Upstream did not send response headers within 120000 ms");
-    await vi.advanceTimersByTimeAsync(120_000);
-    await pending;
+    });
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await pending;
+    expect(result.response.status).toBe(502);
+    const error = (await result.response.json()).error;
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(error.message).toContain("Upstream did not send response headers within 120000 ms");
+    expect(error.message).toContain("It was not retried");
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

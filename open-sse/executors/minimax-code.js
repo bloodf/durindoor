@@ -25,6 +25,7 @@
 //  - Error answers carry fixed public messages. Gateway bodies are read only to classify the
 //    failure; their text is never echoed, because it is untrusted and may contain secrets.
 import { DefaultExecutor } from "./default.js";
+import { resolveHeaderTimeout } from "./sendRequest.js";
 import { buildErrorBody, readBoundedResponseText } from "../utils/error.js";
 import { MINIMAX_CODE_GATEWAY_URL, MINIMAX_CODE_MODELS } from "../providers/registry/minimax-code.js";
 import { normalizeMinimaxCodeRegion, refreshMinimaxCodeToken } from "../services/minimaxCodeAuth.js";
@@ -312,7 +313,10 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
         return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms. ${UNKNOWN_OUTCOME_MESSAGE}`);
       }
       if (error?.errorKind === "connect_timeout") {
-        return failure(502, MINIMAX_CODE_OUTCOME_UNKNOWN, UNKNOWN_OUTCOME_MESSAGE);
+        const resolvedDeadline = resolveHeaderTimeout(this.config, requestPolicy);
+        const deadlineMs = Number.isFinite(resolvedDeadline) ? resolvedDeadline : headerTimeoutMs;
+        return failure(502, MINIMAX_CODE_OUTCOME_UNKNOWN,
+          `Upstream did not send response headers within ${deadlineMs} ms. ${UNKNOWN_OUTCOME_MESSAGE}`);
       }
       throw error;
     } finally {

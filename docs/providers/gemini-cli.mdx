@@ -1,0 +1,16 @@
+---
+title: Gemini CLI
+description: Connect Gemini CLI with a Google OAuth client and a per-account Cloud Code project.
+---
+
+Gemini CLI (`gemini-cli`, alias `gc`) uses Google OAuth, separately from Gemini
+API keys, Vertex and Antigravity.
+
+1. Set `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET` on the server and restart.
+2. Open **Providers → Gemini CLI → Connect** and select the proxy pool if needed.
+3. Open the Google consent URL, approve access, and return the callback URL to the same Connect attempt.
+4. Check the connection's models. Project discovery uses that account's bearer and project; discovery refresh uses the same configured OAuth client and proxy as sign-in.
+
+There is no device-code or pasted refresh-token import mode. Expired or cancelled
+consent requires a new Connect attempt. A successful sign-in does not guarantee
+that Google has provisioned a usable Cloud Code project or enabled every model.

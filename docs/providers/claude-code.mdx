@@ -115,3 +115,8 @@ again. The existing `?force=1` API flag remains supported.
 Preflight skips an account whose window is exhausted. Auto-ping can restart the five-hour window on a schedule; see [Quota tracking](../features/quota-tracking.mdx#auto-ping).
 
 After login, send a short request with a `cc/` ID from your catalog and confirm **Usage**. If authentication fails, reconnect. If a model requires a newer CLI, update the client and restart DurinDoor. Test tool calls separately from basic text replies.
+
+When pasting `code#state`, keep the complete value from the same Connect attempt.
+A different state is rejected before contacting Anthropic. A rejected or expired
+attempt needs a fresh Connect; an accepted code cannot be exchanged again.
+Claude Code has no device-code polling or pasted refresh-token import mode.

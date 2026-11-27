@@ -34,6 +34,7 @@ const outbound = vi.fn(async (input, init = {}, proxyOptions = null) => {
     if (token === "Bearer expired") return new Response("expired", { status: 401 });
     return Response.json({ models: { "gemini-test": { displayName: "Test" }, hidden: { isInternal: true } } });
   }
+  if (url.includes(":generateContent")) return Response.json({ response: { candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 2, candidatesTokenCount: 1, totalTokenCount: 3 } } });
   if (url.includes(":streamGenerateContent")) return new Response(`data: ${JSON.stringify({ response: { candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
   throw new Error("Unexpected outbound request");
 });
@@ -97,6 +98,18 @@ describe("Gemini CLI runtime contracts", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("redacts rejected exchanges through the public handler without saving or replay", async () => {
+    const flow = await (await post("authorize", { redirectUri: "http://localhost/callback", proxyMode: "direct" })).json();
+    const rows = await db.getProviderConnections({ provider: "gemini-cli" });
+    const before = calls.length;
+    const response = await post("exchange", { code: "reject", state: flow.state, flowId: flow.flowId });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("private upstream body");
+    expect((await db.getProviderConnections({ provider: "gemini-cli" })).length).toBe(rows.length);
+    expect(calls.slice(before).filter(({ url }) => url.includes("oauth2.googleapis.com/token"))).toHaveLength(1);
+  });
+
   it("sends isolated streaming requests through the provider executor", async () => {
     const { GeminiCLIExecutor } = await import("../../open-sse/executors/gemini-cli.js");
     const executor = new GeminiCLIExecutor();
@@ -138,6 +151,24 @@ describe("Gemini CLI runtime contracts", () => {
     expect(sent.proxyOptions).toEqual({ proxyUrl: "http://proxy.test" });
   });
 
+  it("refreshes discovery through the public route with the sign-in client and selected proxy", async () => {
+    const pool = await db.createProxyPool({ name: "gemini-discovery", proxyUrl: "http://gemini-discovery.invalid:8080", isActive: true });
+    const connection = await db.createProviderConnection({ provider: "gemini-cli", authType: "oauth", accessToken: "expired", refreshToken: "discovery-refresh", projectId: "discovery-project", isActive: true, providerSpecificData: { proxyMode: "strict-pool", proxyPoolId: pool.id } });
+    const route = await import("@/app/api/providers/[id]/models/route.js");
+    const before = calls.length;
+    const response = await route.GET(new Request(`http://localhost/api/providers/${connection.id}/models`), { params: Promise.resolve({ id: connection.id }) });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(text).toContain("gemini-test");
+    const sent = calls.slice(before);
+    const refreshCall = sent.find(({ url }) => url.includes("oauth2.googleapis.com/token"));
+    expect(Object.fromEntries(refreshCall.init.body)).toMatchObject({ client_id: "test-client", client_secret: "test-client-secret", refresh_token: "discovery-refresh" });
+    expect(refreshCall.proxyOptions).toMatchObject({ proxyPoolId: pool.id });
+    expect(sent.filter(({ url }) => url.includes(":fetchAvailableModels"))).toHaveLength(2);
+    expect(text).not.toContain("discovery-refresh");
+    expect(text).not.toContain("test-client-secret");
+  });
+
   it("refreshes and refuses rejected credentials without disclosing the response", async () => {
     const proxy = { proxyUrl: "http://proxy.test" };
     const good = await refresh("refresh-one", "test-client", "test-client-secret", null, proxy);
@@ -161,5 +192,28 @@ describe("staged Gemini CLI web registration", () => {
     const route = { proxyUrl: "http://proxy.test" };
     refreshGeminiDiscoveryToken(fn, { clientId: "client", clientSecret: "secret" }, { refreshToken: "refresh" }, route);
     expect(fn).toHaveBeenCalledWith("refresh", "client", "secret", null, route);
+  });
+});
+
+
+describe("Gemini CLI public inference", () => {
+  beforeAll(async () => {
+    for (const row of await db.getProviderConnections({ provider: "gemini-cli" })) {
+      await db.updateProviderConnection(row.id, { isActive: row.accessToken === "access-code0" });
+    }
+  });
+  it.each([["chat/completions", false], ["chat/completions", true], ["messages", false], ["messages", true]])("serves %s stream=%s on the signed-in account", async (endpoint, stream) => {
+    const handler = endpoint === "messages" ? await import("@/app/api/v1/messages/route.js") : await import("@/app/api/v1/chat/completions/route.js");
+    const before = calls.length;
+    const response = await handler.POST(new Request(`http://localhost/v1/${endpoint}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gc/gemini-2.5-flash", max_tokens: 32, stream, messages: [{ role: "user", content: "Hi" }] }) }));
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(text).toContain("Hello");
+    expect(text).not.toContain("access-code0");
+    expect(text).not.toContain("refresh-code0");
+    const sends = calls.slice(before).filter(({ url }) => url.includes("GenerateContent") || url.includes("generateContent"));
+    expect(sends).toHaveLength(1);
+    expect(new Headers(sends[0].init.headers).get("authorization")).toBe("Bearer access-code0");
+    expect(JSON.parse(sends[0].init.body).project).toBe("project-access-code0");
   });
 });

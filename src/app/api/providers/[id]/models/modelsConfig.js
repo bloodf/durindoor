@@ -1,3 +1,6 @@
+import { refreshGoogleToken as refreshGeminiGoogleToken } from "open-sse/services/tokenRefresh/providers.js";
+import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth.js";
+import { refreshGeminiDiscoveryToken } from "@/lib/oauth/providerParity/gemini-cli/index.js";
 import { FILTERS } from "../../suggested-models/filters.js";
 import { fetchOpenCodeServerModels } from "open-sse/services/opencodeServer.js";
 import { refreshOpenferenceToken } from "open-sse/services/openferenceAuth.js";
@@ -934,12 +937,7 @@ export const PROVIDER_MODELS_CONFIG = {
   "qoder-cn": buildQoderModelsResolver("qoder-cn"),
   "gemini-cli": {
     customResolver: buildOAuthResolver({
-      refreshFn: (conn, proxyOptions) => refreshGoogleToken(
-        conn.refreshToken,
-        process.env.GEMINI_CLIENT_ID,
-        process.env.GEMINI_CLIENT_SECRET,
-        proxyOptions
-      ),
+      refreshFn: (conn, proxyOptions) => refreshGeminiDiscoveryToken(refreshGeminiGoogleToken, GEMINI_CONFIG, conn, proxyOptions),
       fetchFn: (token, conn, proxyOptions) => {
         const projectId = conn.projectId || conn.providerSpecificData?.projectId;
         const body = projectId ? { project: projectId } : {};

@@ -1,3 +1,4 @@
+import { buildCodexRefreshRequest } from "../../../src/lib/oauth/providerParity/codex/index.js";
 import { buildKiroIdentityHeaders } from "../../shared/kiroHeaders.js";
 import { PROVIDERS, PROVIDER_OAUTH } from "../../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiDeviceHeaders, buildKimiHeaders, getKimiOAuthClientId } from "../../config/appConstants.js";
@@ -478,20 +479,12 @@ export async function refreshCodexToken(refreshToken, log, proxyOptions = null, 
 
   async function exchange() {
     try {
-      const response = await proxyAwareFetch(OAUTH_ENDPOINTS.openai.token, {
-        method: "POST",
+      const request = buildCodexRefreshRequest({ refreshToken, clientId: PROVIDERS.codex.clientId });
+      const response = await proxyAwareFetch(request.url, {
+        ...request.init,
         redirect: "error",
         noTransportReplay: true,
-        signal: AbortSignal.timeout(30_000),
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify({
-          client_id: PROVIDERS.codex.clientId,
-          grant_type: "refresh_token",
-          refresh_token: refreshToken
-        })
+        signal: AbortSignal.timeout(30_000)
       }, proxyOptions);
 
       if (!response.ok) {

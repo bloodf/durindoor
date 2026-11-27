@@ -1,0 +1,127 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "kind": "foundation",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "license": "MIT",
+    "files": [
+      "open-sse/config/ocrRegistry.ts",
+      "open-sse/handlers/ocr.ts"
+    ],
+    "ported": [
+      "OcrTransformation (buildRequest, parseResponse, pollUrl) as the adapter interface",
+      "parseOcrModel \"<provider>/<model>\" prefix and bare-id lookup, scoped to the selected adapter",
+      "handleOcr: document required, transformation dispatch, Mistral OCR response shape { model, pages: [{ index, markdown }], usage_info }",
+      "pollOcrOperation: same-origin status URL only, redirects refused, 30 attempts 1000 ms apart, failed state is a 502, exhausted polls are a 504",
+      "buildOcrSuccessResponse: accounting never turns a delivered result into an error; unknown cost stays unknown"
+    ],
+    "notPorted": [
+      "OCR_PROVIDERS entries (mistral, azure-document-intelligence, vertex-deepseek-ocr), their models, base URLs and auth: each belongs to a provider adapter",
+      "the \"mistral-ocr-latest\" default model and the \"mistral-ocr-\" prefix fallback: provider-specific",
+      "Vertex service-account token minting and project/region URL building: provider-specific auth",
+      "OmniRoute meta response headers and request ids: no DurinDoor equivalent"
+    ]
+  },
+  "intentionalContractChanges": [
+    "model is required and must resolve to the selected adapter (the source defaults to mistral-ocr-latest and picks the provider from the model)",
+    "the document must be exactly one of document_url or image_url (image_url may be { url }), a public https URL or a bounded base64 data URL of an accepted media type; the source forwards any value",
+    "top-level fields other than model and document are refused unless the adapter declares them; the source forwards the whole body",
+    "connection base URLs are not honored: requests and polls go only to the adapter's declared https origins",
+    "one deadline covers submit and polls; submit redirects are refused; bodies are read within caps",
+    "upstream error text is never quoted; failures after the document was sent carry acceptedJob and are never replayed",
+    "normalized pages keep index and markdown only, sorted by index; usage_info keeps primitive values only"
+  ],
+  "module": "open-sse/services/providerParity/native-ocr-foundation/index.js",
+  "exports": {
+    "defineOcrAdapter": "(spec) -> frozen adapter; throws TypeError on an invalid spec",
+    "createOcrDispatcher": "({ adapters, fetchImpl?, sleepImpl?, timeoutMs?, maxResponseBytes? }) -> { dispatch, adapter, providers }",
+    "validateOcrRequest": "(adapter, body) -> { model, document, options }; throws ocrReject",
+    "resolveOcrModel": "(adapter, value) -> model id sent upstream",
+    "normalizeOcrDocument": "(adapter, document) -> { type, source: url, url } | { type, source: inline, mediaType, bytes, base64, dataUrl }",
+    "normalizeOcrResult": "(parsed, { model }) -> { model, pages, usage_info? } or null",
+    "ocrAccounting": "(provider, body) -> media accounting with nativeUnits.pages",
+    "ocrAcceptedJob": "(provider, jobState) -> accepted-job accounting with unknown cost",
+    "ocrRefusal": "(status, { provider, label, secrets, retryAfter }) -> failure result that never quotes the upstream",
+    "ocrReject": "(message) -> input error an adapter may throw from an option validator or buildRequest",
+    "OCR_POLL_STATES": "[\"running\", \"succeeded\", \"failed\"]",
+    "OCR_MODALITY": "\"ocr\"",
+    "OCR_DOCUMENT_TYPES": "[\"document_url\", \"image_url\"]",
+    "OCR_INLINE_MEDIA_TYPES": "application/pdf and image/png, jpeg, webp, gif, tiff",
+    "OCR_TIMEOUT_MS": "300000",
+    "OCR_POLL_MAX_ATTEMPTS": "30",
+    "OCR_POLL_INTERVAL_MS": "1000",
+    "OCR_MAX_DOCUMENT_URL_CHARS": "8192",
+    "OCR_MAX_INLINE_DOCUMENT_BYTES": "52428800",
+    "OCR_MAX_RESPONSE_BYTES": "33554432",
+    "OCR_MAX_ERROR_BYTES": "16384",
+    "OCR_MAX_PAGES": "5000",
+    "OCR_MAX_MODEL_CHARS": "256"
+  },
+  "adapterInterface": {
+    "required": {
+      "id": "lowercase provider id",
+      "origins": "non-empty list of bare https origins; the only targets for the submit and every poll",
+      "models": "static { id, name } rows (may be empty only with acceptsModel)",
+      "authHeaders": "(credentials) -> headers or null; null refuses with 401 before sending. The foundation adds no auth of its own",
+      "buildRequest": "({ model, document, options }) -> { url, method? (POST|PUT), headers?, body? }; an object body is sent as JSON",
+      "parseResponse": "(raw, { model }) -> { model?, pages: [{ index, markdown }], usage_info? }"
+    },
+    "optional": {
+      "label": "display name for messages",
+      "acceptsModel": "(id) -> boolean passthrough for ids outside models",
+      "documentTypes": "subset of OCR_DOCUMENT_TYPES",
+      "inlineMediaTypes": "subset of OCR_INLINE_MEDIA_TYPES; [] refuses inline documents",
+      "acceptsUrl": "false refuses remote document URLs",
+      "options": "extra top-level request fields mapped to validators",
+      "pollUrl": "(submitResponse) -> status URL or null (with pollState)",
+      "pollState": "(json) -> running | succeeded | failed",
+      "poll": "{ maxAttempts, intervalMs }"
+    }
+  },
+  "dispatch": {
+    "input": "{ provider, body, credentials, signal? }: the caller already selected the provider and connection",
+    "success": "{ success: true, status: 200, provider, model, document (no inline bytes), body: { model, pages, usage_info? }, accounting, response }",
+    "failure": "createErrorResult shape; local: true when nothing was sent; acceptedJob when the provider may have done the work",
+    "acceptedJobStates": {
+      "submit-unknown": "the document was sent and no answer proves the outcome (5xx, redirect, transport error, deadline or abort before an answer)",
+      "accepted": "the provider answered 2xx and the result was lost (status check failure, failed analysis, exhausted polls, unreadable or malformed answer, deadline or abort after the answer)"
+    }
+  },
+  "bounds": {
+    "timeoutMs": 300000,
+    "pollMaxAttempts": 30,
+    "pollIntervalMs": 1000,
+    "maxResponseBytes": 33554432,
+    "maxInlineDocumentBytes": 52428800,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "localEquivalence": {
+    "checked": [
+      "`git ls-files | rg -i ocr` (only open-sse/utils/kiroCreateResponse.js, unrelated, and tests/unit/port-10400-chutes-ocr-seed.test.js, a chat model seed)",
+      "open-sse/handlers (no OCR core; mediaRegistry.js has no ocr kind)",
+      "src/app/api/v1 (no /v1/ocr route)"
+    ],
+    "result": "DurinDoor has no OCR route, core or registry; this module is the provider-neutral delta"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ocrCore.js (new)",
+      "change": "build one dispatcher from the registered provider adapters and call dispatch with the selected connection; record result.accounting on success and result.acceptedJob on failure; stop account fallback when acceptedJob is present or local is true"
+    },
+    {
+      "file": "src/app/api/v1/ocr/route.js (new)",
+      "change": "POST /v1/ocr: parse JSON within a size cap, select provider and connection, call the core, return result.response"
+    },
+    {
+      "file": "provider adapters (separate units)",
+      "change": "each provider defines its own adapter with defineOcrAdapter, sourced from its own vendor contract; none is staged here"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "document /v1/ocr after the first provider is registered"
+    }
+  ]
+}

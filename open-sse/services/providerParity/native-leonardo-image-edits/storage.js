@@ -18,7 +18,7 @@ import { promises as dnsPromises } from "node:dns";
 import { isIP } from "node:net";
 import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 import { isBlockedHost } from "../../../../src/shared/utils/ssrfGuard.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
   LEONARDO_STORAGE_MAX_FIELD_BYTES, LEONARDO_STORAGE_MAX_FIELDS, LEONARDO_STORAGE_MAX_URL_LENGTH,
 } from "./config.js";
@@ -71,7 +71,7 @@ export function parseLeonardoUploadTicket(answer) {
   if (!entries.length || entries.length > LEONARDO_STORAGE_MAX_FIELDS) throw storageError("Leonardo init-image answer has unusable upload fields");
   const fields = [];
   for (const [name, value] of entries) {
-    const text = isString(value) || (typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean" ? String(value) : null;
+    const text = isString(value) || (isNumber(value) && Number.isFinite(value)) || isBoolean(value) ? String(value) : null;
     if (!FIELD_NAME_RE.test(name) || name.toLowerCase() === "file" || text === null
       || text.length > LEONARDO_STORAGE_MAX_FIELD_BYTES || CONTROL_RE.test(text)) {
       throw storageError("Leonardo init-image answer has unusable upload fields");

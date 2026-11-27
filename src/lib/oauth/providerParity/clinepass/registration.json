@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "module": "./exchange.js",
+  "exports": ["exchangeClinepassCode"],
+  "integration": "In src/lib/oauth/providers.js wrap clinepass.exchangeToken with exchangeClinepassCode after existing route state and flow ownership checks. Pass the existing exchange function and its arguments; reject unsupported mode before calling it. Keep existing connection storage and PKCE/state handling."
+}

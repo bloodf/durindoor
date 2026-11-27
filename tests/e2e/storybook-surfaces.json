@@ -80526,6 +80526,26 @@
       "reviewEvidence": null
     },
     {
+      "storyId": "v5-review-pages-providers-fireflybrowserpanel--disabled",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-fireflybrowserpanel.stories.jsx",
+      "sourceSha256": "6568ad0c3b18a5ec7f7aef0372cff29cb997a83e66ddfd4e9ba4e405d56c89f3",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-fireflybrowserpanel--configured",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-fireflybrowserpanel.stories.jsx",
+      "sourceSha256": "6568ad0c3b18a5ec7f7aef0372cff29cb997a83e66ddfd4e9ba4e405d56c89f3",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "v5-review-pages-providers-inferencestatus--empty",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-inferencestatus.stories.jsx",
       "sourceSha256": "f6228c60e2c102aad1a6ea30dc60b3f6e2fb21301150ce9e5376fc36d79b7377",
@@ -104732,11 +104752,11 @@
   ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "75538484b4051e03eddeffbdee56e343a3db083b8be3d2b7ffb6f38678c5a9e8",
+    "builtIndexSha256": "753d2cd214edadfe320d018c645d2147ba0a800d0693ffb3c8ac5c70c41869f2",
     "sourceCensusSha256": "ba287415edca688a7f0befe92434139a5bc156812fa1723bd4acd0a077f66d41",
     "pendingRows": 452,
     "retainedApprovedRows": 197,
-    "pendingReferences": 1496,
+    "pendingReferences": 1498,
     "runtimeStatus": "pending"
   }
 }

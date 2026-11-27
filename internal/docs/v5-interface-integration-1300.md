@@ -10,6 +10,8 @@ Recent requests now include a non-secret API key identity and label; the Request
 
 The [surface manifest](../../tests/e2e/storybook-surfaces.json) records the current source and catalog reconciliation, including the inventory basis, source and reference review status, scenario mappings and runtime status. Final coverage credit requires approved classifications, mappings and evidence.
 
+The #2694 reconciliation regenerates the Firefly browser panel review wrapper and manifest entry from its `Disabled` and `Configured` source stories. Rebuild Storybook before running `sync-storybook-inventory.mjs --write`, then rerun both generators and the read-only inventory checks to confirm idempotence. New catalog associations remain pending; this regeneration grants no source approval or UI runtime acceptance.
+
 ## Remaining V5 scope
 
 The five provider-detail rows in S05 (`AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`) record proposed scenario mappings and supporting source-story evidence. Independent source review and approval of those mappings and evidence remain pending. This guide records no new approved coverage.

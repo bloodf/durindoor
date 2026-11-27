@@ -474,6 +474,15 @@ export class AntigravityExecutor extends BaseExecutor {
     // Split parallel replies are regrouped in call order before names and
     // signatures are rewritten (CLIProxyAPI 13e0642; its Antigravity translator groups the same way).
     const contents = normalizeFilteredContents(groupGeminiFunctionResponses(body.request?.contents)?.map((c) => {
+      // Read both wire spellings before thought filtering so signed calls survive.
+      c = { ...c, parts: c.parts?.map((part) => {
+        const { function_call, function_response, thought_signature, ...rest } = part;
+        return { ...rest,
+          ...((part.functionCall ?? function_call) && { functionCall: part.functionCall ?? function_call }),
+          ...((part.functionResponse ?? function_response) && { functionResponse: part.functionResponse ?? function_response }),
+          ...((part.thoughtSignature ?? thought_signature) && { thoughtSignature: part.thoughtSignature ?? thought_signature }),
+        };
+      }) };
       let role = c.role;
       // functionResponse must be role "user" for Claude models
       if (c.parts?.some((p) => p.functionResponse)) {

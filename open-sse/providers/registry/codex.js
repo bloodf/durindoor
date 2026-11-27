@@ -1,5 +1,4 @@
 
-import { createHash, randomUUID } from "node:crypto";
 import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Default instructions for Codex models
@@ -126,12 +125,72 @@ You are producing plain text that will later be styled by the CLI. Follow these 
 // must stay current with the published @openai/codex release.
 export const CODEX_CLI_VERSION = "0.167.1";
 
-const CODEX_INSTALLATION_SALT = "durindoor-codex-installation";
-const CODEX_SESSION_SEED_PREFIX = "durindoor:codex-session-id:v1:";
-const CODEX_THREAD_SEED_PREFIX = "durindoor:codex-thread-id:v1:";
+const SAFE_HEADER_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+const CODEX_UA_VERSION_PATTERN = /(?:codex[-_][A-Za-z0-9_]*|codex-cli)\/(\d+\.\d+\.\d+)/i;
+
+/**
+ * Resolve the caller's Codex CLI version from the inbound `Version` header
+ * (case-insensitive) or, failing that, a `codex_cli_rs/x.y.z`-shaped
+ * `User-Agent`. Returns `null` when neither yields a usable version, so the
+ * caller can fall back to the pinned default.
+ *
+ * @param {Headers|Record<string,string>|null} clientHeaders Inbound request headers.
+ * @returns {string|null} Caller-reported Codex CLI version, or `null`.
+ */
+export function getCodexClientVersionFromHeaders(clientHeaders) {
+  const versionHeader = readNamedHeader(clientHeaders, "version");
+  if (versionHeader && SAFE_HEADER_TOKEN_PATTERN.test(versionHeader)) return versionHeader;
+  const userAgent = readNamedHeader(clientHeaders, "user-agent");
+  const match = userAgent.match(CODEX_UA_VERSION_PATTERN);
+  return match ? match[1] : null;
+}
+
+function compareVersionParts(a, b) {
+  const pa = String(a).split(".").map(Number);
+  const pb = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * Whether our advertised Codex CLI version satisfies a model catalog entry's
+ * `minimal_client_version` gate. A missing/non-string gate always passes.
+ * Upstream provenance: diegosouzapw/OmniRoute d5452d03e (#12933).
+ *
+ * @param {unknown} minimalClientVersion Catalog entry's `minimal_client_version` field.
+ * @returns {boolean} `true` when CODEX_CLI_VERSION is new enough (or the gate is absent).
+ */
+export function meetsMinimalCodexClientVersion(minimalClientVersion) {
+  if (!isString(minimalClientVersion) || !minimalClientVersion) return true;
+  return compareVersionParts(CODEX_CLI_VERSION, minimalClientVersion) >= 0;
+}
+
+// ---------------------------------------------------------------------------
+// Client-safe Codex identity helpers.
+//
+// src/shared/constants/providers.js pulls every registry entry into the client
+// bundle, so this module must not import a Node built-in. The helpers that need
+// node:crypto live in open-sse/executors/codex/identity.js.
+// ---------------------------------------------------------------------------
 
 export const CODEX_FINGERPRINT_MODES = ["off", "device", "session", "full"];
 export const CODEX_FINGERPRINT_MODE_KEY = "codexFingerprintMode";
+
+const CODEX_IDENTITY_HEADER_NAMES = [
+  "session-id",
+  "session_id",
+  "thread-id",
+  "thread_id",
+  "x-client-request-id",
+  "x-codex-installation-id",
+  "x-codex-parent-thread-id",
+  "x-codex-turn-state",
+  "x-codex-window-id",
+  "x-codex-turn-metadata",
+];
 
 function nonEmptyString(value) {
   if (!isString(value)) return null;
@@ -139,6 +198,7 @@ function nonEmptyString(value) {
   return normalized || null;
 }
 
+/** Reads one header by name from a Headers object or a plain record. */
 export function readNamedHeader(headers, name) {
   if (!headers) return "";
   if (headers instanceof Headers) return headers.get(name)?.trim() || "";
@@ -151,21 +211,7 @@ export function readNamedHeader(headers, name) {
   return "";
 }
 
-/** RFC4122 v4 derived from SHA-256. Same seed -> same UUID, every process. */
-export function deriveStableUUIDv4(seed) {
-  const digest = createHash("sha256").update(seed).digest();
-  const bytes = Buffer.from(digest.subarray(0, 16));
-  bytes[6] = bytes[6] & 0x0f | 0x40;
-  bytes[8] = bytes[8] & 0x3f | 0x80;
-  return [
-    bytes.subarray(0, 4).toString("hex"),
-    bytes.subarray(4, 6).toString("hex"),
-    bytes.subarray(6, 8).toString("hex"),
-    bytes.subarray(8, 10).toString("hex"),
-    bytes.subarray(10, 16).toString("hex"),
-  ].join("-");
-}
-
+/** Account-scoped seed that Codex identity derivation keys on. */
 export function accountSeed(providerSpecificData, accountKey) {
   return (
     nonEmptyString(accountKey) ||
@@ -193,95 +239,11 @@ export function getCodexFingerprintMode(providerSpecificData, isOAuth = true) {
   return CODEX_FINGERPRINT_MODES.includes(raw) ? raw : "session";
 }
 
-function getCodexInstallationId(providerSpecificData, accountKey) {
-  return deriveStableUUIDv4(
-    `${CODEX_INSTALLATION_SALT}:${accountSeed(providerSpecificData, accountKey)}`
-  );
-}
-
-function getCodexConvergedSessionId(providerSpecificData, accountKey) {
-  return deriveStableUUIDv4(
-    `${CODEX_SESSION_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}`
-  );
-}
-
-function getCodexConvergedThreadId(clientSessionId, providerSpecificData, accountKey) {
-  if (!nonEmptyString(clientSessionId)) return "";
-  return deriveStableUUIDv4(
-    `${CODEX_THREAD_SEED_PREFIX}${accountSeed(providerSpecificData, accountKey)}:${clientSessionId}`
-  );
-}
-
-function getCodexClientSessionId(headers) {
-  return nonEmptyString(readNamedHeader(headers, "session-id")) || nonEmptyString(readNamedHeader(headers, "session_id"));
-}
-
-function isCompactRequestEndpoint(path) {
+/** Compact requests carry no identity carriers upstream. */
+export function isCompactRequestEndpoint(path) {
   if (!isString(path)) return false;
   const normalized = path.trim().toLowerCase().replace(/\\/g, "/");
   return normalized === "/compact" || /(?:^|\/)responses\/compact(?:\/|$)/.test(normalized);
-}
-
-/**
- * One identity object for every carrier (headers + body metadata) in one
- * upstream turn. accountKey may be the DurinDoor connection id; never sent upstream.
- */
-export function createCodexClientIdentity(clientSessionId, providerSpecificData, options = {}) {
-  const mode = options.mode ?? getCodexFingerprintMode(providerSpecificData, options.isOAuth ?? true);
-  if (mode === "off") return null;
-
-  const installationId = getCodexInstallationId(providerSpecificData, options.accountKey);
-  if (mode === "device") {
-    return {
-      mode,
-      installationId,
-      sessionId: "",
-      threadId: "",
-      turnId: "",
-      windowId: "",
-      turnStartedAtUnixMs: Date.now(),
-    };
-  }
-
-  const sessionId = getCodexConvergedSessionId(providerSpecificData, options.accountKey);
-  const threadId =
-    mode === "full"
-      ? sessionId
-      : getCodexConvergedThreadId(clientSessionId, providerSpecificData, options.accountKey) || sessionId;
-
-  return {
-    mode,
-    installationId,
-    sessionId,
-    threadId,
-    turnId: randomUUID(),
-    windowId: `${threadId}:0`,
-    turnStartedAtUnixMs: Date.now(),
-  };
-}
-
-const CODEX_IDENTITY_HEADER_NAMES = [
-  "session-id",
-  "session_id",
-  "thread-id",
-  "thread_id",
-  "x-client-request-id",
-  "x-codex-installation-id",
-  "x-codex-parent-thread-id",
-  "x-codex-turn-state",
-  "x-codex-window-id",
-  "x-codex-turn-metadata",
-];
-
-function removeCodexIdentityCarriers(target) {
-  for (const key of Object.keys(target)) {
-    if (CODEX_IDENTITY_HEADER_NAMES.includes(key.toLowerCase())) delete target[key];
-  }
-}
-
-function withoutTransientCodexIdentity(providerSpecificData) {
-  const { codexClientIdentity: _identity, codexOriginalIdentityHeaders: _original, ...rest } = providerSpecificData || {};
-  return rest;
 }
 
 /** Preserves caller-provided Codex identity only when OAuth convergence is disabled. */
@@ -298,6 +260,21 @@ export function resolveCodexOriginalIdentityHeaders({ credentials, clientHeaders
     if (value) result[name] = value;
   }
   return Object.keys(result).length ? result : null;
+}
+
+/** Applies saved caller identity headers when Codex OAuth convergence is off. */
+export function applyCodexOriginalIdentityHeaders(headers, original) {
+  if (!original) return headers;
+  for (const name of CODEX_IDENTITY_HEADER_NAMES) {
+    if (isString(original[name]) && original[name]) headers[name] = original[name];
+  }
+  return headers;
+}
+
+function removeCodexIdentityCarriers(target) {
+  for (const key of Object.keys(target)) {
+    if (CODEX_IDENTITY_HEADER_NAMES.includes(key.toLowerCase())) delete target[key];
+  }
 }
 
 function mergeTurnMetadata(raw, identity, includeSessionFields) {
@@ -327,54 +304,6 @@ function mergeTurnMetadata(raw, identity, includeSessionFields) {
     metadata.turn_started_at_unix_ms = identity.turnStartedAtUnixMs;
   }
   return JSON.stringify(metadata);
-}
-
-/** Applies saved caller identity headers when Codex OAuth convergence is off. */
-export function applyCodexOriginalIdentityHeaders(headers, original) {
-  if (!original) return headers;
-  for (const name of CODEX_IDENTITY_HEADER_NAMES) {
-    if (isString(original[name]) && original[name]) headers[name] = original[name];
-  }
-  return headers;
-}
-
-/** One identity for headers, body, and nested metadata. Compact requests are skipped. */
-export function resolveCodexFingerprintIdentity({ credentials, clientHeaders, requestEndpointPath } = {}) {
-  if (!credentials || isCompactRequestEndpoint(requestEndpointPath ?? credentials.requestEndpointPath)) return null;
-
-  const providerSpecificData = credentials.providerSpecificData ?? null;
-  const isOAuth = isCodexOAuthCredentials(credentials);
-  if (getCodexFingerprintMode(providerSpecificData, isOAuth) === "off") return null;
-
-  return createCodexClientIdentity(getCodexClientSessionId(clientHeaders), providerSpecificData, {
-    accountKey: credentials.connectionId ?? null,
-    isOAuth,
-  });
-}
-
-/** Merges resolved or original client identity into request-local credentials. */
-export function withCodexFingerprintCredentials(credentials, clientHeaders, requestEndpointPath) {
-  const providerSpecificData = withoutTransientCodexIdentity(credentials.providerSpecificData);
-  const requestCredentials = {
-    ...credentials,
-    providerSpecificData,
-    ...(requestEndpointPath ? { requestEndpointPath } : null),
-  };
-  const identity = resolveCodexFingerprintIdentity({
-    credentials: requestCredentials,
-    clientHeaders,
-    requestEndpointPath,
-  });
-  const original = resolveCodexOriginalIdentityHeaders({ credentials: requestCredentials, clientHeaders });
-  if (!identity && !original) return requestCredentials;
-  return {
-    ...requestCredentials,
-    providerSpecificData: {
-      ...providerSpecificData,
-      ...(identity ? { codexClientIdentity: identity } : null),
-      ...(original ? { codexOriginalIdentityHeaders: original } : null),
-    },
-  };
 }
 
 /** Applies a resolved identity onto outbound Codex request headers. */
@@ -418,49 +347,6 @@ export function applyCodexClientMetadata(body, identity) {
   }
   body.client_metadata = existing;
   return body;
-}
-
-const SAFE_HEADER_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
-const CODEX_UA_VERSION_PATTERN = /(?:codex[-_][A-Za-z0-9_]*|codex-cli)\/(\d+\.\d+\.\d+)/i;
-
-/**
- * Resolve the caller's Codex CLI version from the inbound `Version` header
- * (case-insensitive) or, failing that, a `codex_cli_rs/x.y.z`-shaped
- * `User-Agent`. Returns `null` when neither yields a usable version, so the
- * caller can fall back to the pinned default.
- *
- * @param {Headers|Record<string,string>|null} clientHeaders Inbound request headers.
- * @returns {string|null} Caller-reported Codex CLI version, or `null`.
- */
-export function getCodexClientVersionFromHeaders(clientHeaders) {
-  const versionHeader = readNamedHeader(clientHeaders, "version");
-  if (versionHeader && SAFE_HEADER_TOKEN_PATTERN.test(versionHeader)) return versionHeader;
-  const userAgent = readNamedHeader(clientHeaders, "user-agent");
-  const match = userAgent.match(CODEX_UA_VERSION_PATTERN);
-  return match ? match[1] : null;
-}
-
-function compareVersionParts(a, b) {
-  const pa = String(a).split(".").map(Number);
-  const pb = String(b).split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
-/**
- * Whether our advertised Codex CLI version satisfies a model catalog entry's
- * `minimal_client_version` gate. A missing/non-string gate always passes.
- * Upstream provenance: diegosouzapw/OmniRoute d5452d03e (#12933).
- *
- * @param {unknown} minimalClientVersion Catalog entry's `minimal_client_version` field.
- * @returns {boolean} `true` when CODEX_CLI_VERSION is new enough (or the gate is absent).
- */
-export function meetsMinimalCodexClientVersion(minimalClientVersion) {
-  if (!isString(minimalClientVersion) || !minimalClientVersion) return true;
-  return compareVersionParts(CODEX_CLI_VERSION, minimalClientVersion) >= 0;
 }
 
 export default {

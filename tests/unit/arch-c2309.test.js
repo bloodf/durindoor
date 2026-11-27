@@ -218,17 +218,26 @@ const MOVED_MODULES = [
       "CODEX_FINGERPRINT_MODES",
       "CODEX_FINGERPRINT_MODE_KEY",
       "readNamedHeader",
-      "deriveStableUUIDv4",
       "accountSeed",
       "isCodexOAuthCredentials",
       "getCodexFingerprintMode",
-      "createCodexClientIdentity",
       "resolveCodexOriginalIdentityHeaders",
       "applyCodexOriginalIdentityHeaders",
-      "resolveCodexFingerprintIdentity",
-      "withCodexFingerprintCredentials",
       "applyCodexClientIdentityHeaders",
       "applyCodexClientMetadata",
+    ],
+  },
+  {
+    // The node:crypto-backed helpers cannot live in a registry entry: every
+    // registry entry reaches the client bundle. They live in a server-only
+    // module, and the config path still re-exports them unchanged.
+    configFile: "open-sse/config/codexIdentity.js",
+    registryFile: "open-sse/executors/codex/identity.js",
+    symbols: [
+      "deriveStableUUIDv4",
+      "createCodexClientIdentity",
+      "resolveCodexFingerprintIdentity",
+      "withCodexFingerprintCredentials",
     ],
   },
   {

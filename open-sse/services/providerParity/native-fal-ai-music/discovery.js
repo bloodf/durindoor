@@ -58,7 +58,8 @@ export function falInputProperties(document, schema, seen = new Set()) {
   const resolved = resolve(document, schema);
   if (seen.has(resolved)) return {};
   seen.add(resolved);
-  const properties = { ...(isRecord(resolved.properties) ? resolved.properties : {}) };
+  const properties = {};
+  if (isRecord(resolved.properties)) Object.assign(properties, resolved.properties);
   for (const composition of ["allOf", "anyOf", "oneOf"]) {
     if (!Array.isArray(resolved[composition])) continue;
     for (const alternative of resolved[composition]) Object.assign(properties, falInputProperties(document, alternative, seen));

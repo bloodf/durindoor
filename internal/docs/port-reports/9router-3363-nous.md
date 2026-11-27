@@ -26,7 +26,7 @@ This lane leaves the registry, the registry index, `AGENT-INDEX.md`, `executors/
 
 ## Contracts
 
-- **Chat request.** `POST https://inference-api.nousresearch.com/v1/chat/completions` with an OpenAI body. `NousExecutor` extends `DefaultExecutor("nous-research")`, so the registry endpoint, auth header, attribution tags, proxy routing and redirect refusal for credentialed sends stay as they are. It adds the Nous body shaping and refuses to send without a well-formed API key. It is not in the executor map.
+- **Chat request.** `POST https://inference-api.nousresearch.com/v1/chat/completions` with an OpenAI body. `NousExecutor` extends `DefaultExecutor("nous-research")`, so the registry endpoint, auth header, attribution tags, proxy routing and redirect refusal for credentialed sends stay as they are. It pins the endpoint: a connection `baseUrl` or a `runtimeTransport` override (base URL, suffix, headers, auth or format) is ignored, so the key only goes to the fixed Nous URL. It also adds the Nous body shaping and refuses to send without a well-formed API key. It is not in the executor map.
 - **Model IDs.** One leading `nous/` and any `(level)` suffix are removed before sending. Live catalogue IDs are routed as `nous/<upstream id>`, with `upstreamModelId` kept.
 - **Thinking.** Only the Hermes 4 rows (`nousresearch/hermes-4-70b`, `-405b`; tools false, 131072 context, 32000 output) can reason.
   - When enabled, the body gets `reasoning: { enabled: true, effort }` with effort low, medium or high. Minimal becomes low; xhigh, max and ultra become high; auto, adaptive and unknown levels become medium; a budget goes through `budgetToLevel` and is then clamped.
@@ -37,7 +37,7 @@ This lane leaves the registry, the registry index, `AGENT-INDEX.md`, `executors/
 - **Catalogue.** An unauthenticated `GET https://inference-api.nousresearch.com/v1/models` (the endpoint is public), with `redirect: "error"`, a 10 s timeout and a 4 MiB bounded read. It goes through the selected connection's proxy route.
   - Parsing accepts the `data`, `models` and `results` shapes or a bare array. It drops non-object, ID-less, duplicate and non-text entries. `nousresearch/` models sort first.
   - HTTP errors and malformed JSON raise `NousCatalogError`.
-  - The free filter keeps models with zero prompt and completion price, text output and at least 200K context.
+  - The free filter keeps models with an explicit zero prompt and completion price (the number 0 or a decimal zero string), text output and at least 200K context. Null, blank, boolean, array, object and other malformed prices fail closed.
 - **Usage.** The source has no usage or quota endpoint. The OpenAI `usage` object is passed through unchanged.
 
 ## Key verification

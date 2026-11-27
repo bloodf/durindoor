@@ -11,7 +11,7 @@ import { U, fetchReadWithTimeout, parseResetTime } from "./shared.js";
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 
 // Claude API config (urls from registry, apiVersion is header logic kept here)
-import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 const CLAUDE_CONFIG = {
   oauthUsageUrl: U("claude").oauthUrl,
   usageUrl: U("claude").orgUrl,
@@ -99,6 +99,75 @@ const oauthQuotaInFlight = new Map();
 // Rate-limit strikes live outside the cache: cache entries evaporate at the
 // TTL boundary, but a 429 strike count must survive to keep escalating.
 const oauthRateLimits = new Map();
+
+// Response observations are separate from endpoint caches and cooldowns. Each
+// window expires 15 minutes after it was actually reported, even if a later
+// response reports other windows. Only credential digests are retained.
+const OBSERVED_QUOTA_TTL_MS = 15 * 60 * 1000;
+const observedQuotas = new Map();
+const OBSERVED_WINDOWS = [
+  ["5h", "session (5h)"],
+  ["7d", "weekly (7d)"],
+  ["7d_oi", "weekly fable (7d)"]
+];
+
+export function observeClaudeUsageHeaders(accessToken, headers) {
+  if (!accessToken || !isFunction(headers?.get)) return;
+  const key = getOAuthCacheKey(accessToken);
+  const now = Date.now();
+  const windows = { ...observedQuotas.get(key) };
+  let changed = false;
+  for (const [suffix, name] of OBSERVED_WINDOWS) {
+    const raw = headers.get(`anthropic-ratelimit-unified-${suffix}-utilization`);
+    const value = raw === null || raw.trim() === "" ? NaN : Number(raw);
+    if (!Number.isFinite(value) || value < 0) continue;
+    const used = Math.min(100, Math.round(value * 10000) / 100);
+    const reset = Number(headers.get(`anthropic-ratelimit-unified-${suffix}-reset`));
+    const resetMs = reset * 1000;
+    windows[name] = {
+      observedAt: now,
+      quota: {
+        used, total: 100, remaining: 100 - used, remainingPercentage: 100 - used,
+        resetAt: Number.isFinite(resetMs) && resetMs > 0 && resetMs <= 8.64e15
+          ? new Date(resetMs).toISOString() : null,
+        unlimited: false
+      }
+    };
+    changed = true;
+  }
+  if (!changed) return;
+  for (const [name, window] of Object.entries(windows)) {
+    if (now - window.observedAt >= OBSERVED_QUOTA_TTL_MS) delete windows[name];
+  }
+  if (!observedQuotas.has(key) && observedQuotas.size >= OAUTH_QUOTA_CACHE_MAX) {
+    observedQuotas.delete(observedQuotas.keys().next().value);
+  }
+  observedQuotas.set(key, windows);
+}
+
+function overlayObservedQuotas(key, usage) {
+  // Authentication and other failures remain visible. Header-only rows are
+  // partial account information and never change polling or cooldown state.
+  if (!usage.quotas && usage.message !== "Rate limited, try again later.") return usage;
+  const windows = observedQuotas.get(key);
+  if (!windows) return usage;
+  const endpointAt = oauthQuotaCache.get(key)?.cachedAt ?? -Infinity;
+  const quotas = { ...usage.quotas };
+  let changed = false;
+  for (const [name, window] of Object.entries(windows)) {
+    if (Date.now() - window.observedAt >= OBSERVED_QUOTA_TTL_MS) {
+      delete windows[name];
+      continue;
+    }
+    // Endpoint model rows take precedence; newer general observations can
+    // update cached totals. Omitted rows never imply unused capacity.
+    if (quotas[name] && (name === "weekly fable (7d)" || window.observedAt <= endpointAt)) continue;
+    quotas[name] = window.quota;
+    changed = true;
+  }
+  if (!Object.keys(windows).length) observedQuotas.delete(key);
+  return changed ? { ...usage, quotas } : usage;
+}
 
 function getOAuthCacheKey(accessToken) {
   return digestMemoryKey("claude-oauth-quota", accessToken);
@@ -197,6 +266,13 @@ function shouldFallbackToLegacy(status) {
 }
 /** Polls Claude OAuth quota once per credential at a time. */
 export function getClaudeUsage(accessToken, proxyOptions = null, authType = "oauth", options = {}) {
+  const result = getClaudeUsageFromEndpoint(accessToken, proxyOptions, authType, options);
+  return authType === "oauth"
+    ? result.then((usage) => overlayObservedQuotas(getOAuthCacheKey(accessToken), usage))
+    : result;
+}
+
+function getClaudeUsageFromEndpoint(accessToken, proxyOptions, authType, options) {
   if (authType !== "oauth") {
     return getClaudeUsageLegacy(accessToken, proxyOptions);
   }
@@ -268,7 +344,8 @@ async function pollClaudeOAuthUsage(accessToken, proxyOptions, cacheKey, plan = 
       // model-scoped weekly limits to limits[].
       const modelDisplayNames = {
         fable_5_1: "fable",
-        fable_5: "fable"
+        fable_5: "fable",
+        overage_included: "fable"
       };
 
       for (const [key, value] of Object.entries(data)) {
@@ -344,6 +421,7 @@ export function __clearOAuthQuotaCacheForTesting() {
   oauthQuotaCache.clear();
   oauthQuotaInFlight.clear();
   oauthRateLimits.clear();
+  observedQuotas.clear();
 }
 
 // Free "limit reset" grants (Anthropic program id "cedar_ember").

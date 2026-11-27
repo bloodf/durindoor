@@ -108,12 +108,22 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
   ];
   const caps = modelCapabilities || getCapabilitiesForModel(provider, model || "");
   const nativeGeminiLevels = caps?.thinkingFormat === "gemini-level";
+  // First explicit level this lane does not recognize: an unknown native
+  // Gemini string, or a non-string value. Normally skipped (passthrough lets
+  // the upstream judge it); a none-only model refuses it below (#2648).
+  let unrecognizedLevel = null;
   for (const candidate of explicitLevels) {
-    if (!isString(candidate) || !candidate.trim()) continue;
+    if (candidate === undefined || candidate === null || candidate === false) continue;
+    if (!isString(candidate)) {
+      unrecognizedLevel ??= JSON.stringify(candidate) ?? String(candidate);
+      continue;
+    }
+    if (!candidate.trim()) continue;
     const trimmed = candidate.trim();
     if (nativeGeminiLevels) {
       const level = trimmed.toLowerCase();
       if (["minimal", "low", "medium", "high"].includes(level)) return { mode: "level", level };
+      if (level !== "none" && level !== "off") unrecognizedLevel ??= level;
       continue;
     }
     return { mode: "level", level: trimmed.toLowerCase() };
@@ -133,6 +143,12 @@ export function extractThinking(body, model = null, provider = null, modelCapabi
       return { mode: "budget", budget: tbSnake };
     }
     }
+  }
+  // A model declaring no reasoning tier must see an explicit but unrecognized
+  // level as a reasoning request, so applyThinking answers with a local 400
+  // instead of forwarding it unchanged. Other models keep native passthrough.
+  if (unrecognizedLevel !== null && declaresNoReasoningTier(caps, provider, model)) {
+    return { mode: "level", level: unrecognizedLevel };
   }
 
   // Qwen shape
@@ -392,7 +408,16 @@ function isAstraMinimalFloorModel(provider, model) {
 // the highest supported tier. Same rule the upstream registry-tier clamp uses.
 const EFFORT_TIER_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 
-const hasReasoningTier = (levels) => levels.some((tier) => tier !== "none");
+function hasReasoningTier(levels) {
+  return levels.some((tier) => tier !== "none");
+}
+
+/** True when a reasoning model's declared efforts cannot enable reasoning (`["none"]`, or `[]` after thinkingCanDisable). */
+function declaresNoReasoningTier(caps, provider = null, model = null) {
+  if (!caps?.reasoning) return false;
+  const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
+  return Array.isArray(declared) && !hasReasoningTier(declared);
+}
 
 /**
  * HTTP 400 for an explicit reasoning request on a model whose declared efforts
@@ -432,9 +457,8 @@ export function unsupportedReasoningEffortError(level, supported, model = null) 
  * @param {string|null} model
  */
 export function assertDeclaredEffortsCanReason(cfg, caps, provider = null, model = null) {
-  if (!cfg || !caps?.reasoning) return;
+  if (!cfg || !declaresNoReasoningTier(caps, provider, model)) return;
   const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
-  if (!Array.isArray(declared) || hasReasoningTier(declared)) return;
   if (cfg.mode === "none" && caps.thinkingCanDisable !== false) return;
   const level = cfg.mode === "level" ? cfg.level
     : cfg.mode === "budget" ? `budget ${cfg.budget}`

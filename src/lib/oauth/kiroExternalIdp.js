@@ -24,7 +24,7 @@ export function validateMicrosoftTokenEndpoint(rawEndpoint) {
     throw new Error("token_endpoint must be a valid URL");
   }
 
-  if (parsed.protocol !== "https:") {
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.port || parsed.hash || parsed.search) {
     throw new Error("token_endpoint must use https");
   }
 

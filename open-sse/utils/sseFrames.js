@@ -1,3 +1,4 @@
+import { isRecord } from "../../src/shared/utils/typeChecks.js";
 import { MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 
 const sharedEncoder = new TextEncoder();
@@ -53,7 +54,7 @@ export function parseSseFrame(frame) {
   if (!dataLines.length && frame.trimStart().startsWith("{")) {
     try {
       const parsed = JSON.parse(frame);
-      if (parsed?.error && typeof parsed.error === "object" && !Array.isArray(parsed.error)) {
+      if (isRecord(parsed) && isRecord(parsed.error)) {
         dataLines.push(JSON.stringify({ error: parsed.error }));
       }
     } catch { /* non-SSE noise is not an error envelope */ }

@@ -33,7 +33,7 @@ import { HTTP_STATUS, VALIDATE_OUTBOUND } from "../config/runtimeConfig.js";
 import { applyStatusRestatement, parseRestatedRateLimitEvidence } from "../config/upstreamStatusRestatement.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { handlePonytailCommands, DEFAULT_PONYTAIL_HELP, resolvePonytailStream } from "../utils/tokenSaverBridge.js";
-import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
+import { trackPendingRequest, finishActiveSession, appendRequestLog, saveRequestDetail, saveRequestUsage } from "@/lib/usageDb.js";
 import { PayloadAdmissionError } from "../services/payloadAdmission.js";
 import { acquireMany, getConcurrencyLimit, ConcurrencyGateTimeoutError } from "../services/concurrencyGate.js";
 import {
@@ -1467,9 +1467,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => {});
       saveRequestDetail(buildRequestDetail({
         comboNoLog,
-        provider, model: cleanModel, connectionId,
+          provider, model: cleanModel, connectionId,
         latency: { ttft: 0, total: Date.now() - requestStartTime },
-        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+          tokens: { prompt_tokens: 0, completion_tokens: 0 },
         request: extractRequestConfig(body, stream),
         providerRequest: translatedBody || null,
         response: { error: errMsg, status: HTTP_STATUS.BAD_REQUEST, thinking: null },
@@ -1609,6 +1609,25 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
     }
   }
 
+  // Unknown MiniMax POST outcomes are billable uncertainty, never successful usage.
+  // Numeric token placeholders satisfy the frozen row shape; metadata says unmeasured.
+  // A ledger failure is logged, never turned into a second request or a lost error answer.
+  const recordMinimaxUnknown = async () => {
+    try {
+      await saveRequestUsage({
+        provider, model: cleanModel, modality: "chat", connectionId,
+        apiKey, apiKeyId, billingEpoch, usageEventId: activeSessionRequestId,
+        endpoint: clientRawRequest?.endpoint || null,
+        comboId, comboName, usageAttribution: clientRawRequest?.usageAttribution,
+        tokens: { prompt_tokens: 0, completion_tokens: 0 },
+        cost: null, costStatus: "unknown", costSource: "minimax-unknown-outcome",
+        status: "error", meta: { outcome: "unknown", tokenStatus: "unknown" },
+      });
+    } catch (error) {
+      log?.warn?.("USAGE", `minimax-code unknown-outcome receipt not recorded: ${error?.name || "Error"}`);
+    }
+  };
+
   let claudeRequestScoped = false;
   let claudeFast = false;
   try {
@@ -1641,6 +1660,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       result.response[Symbol.for("durindoor.localSchemaError")] = true;
       return { ...result, attemptStartedAt: latestProviderAttemptStartedAt };
     }
+    if (provider === "minimax-code" && error?.minimaxOutcomeUnknown === true) await recordMinimaxUnknown();
     finishProviderRequest();
     finishActiveDashboardSession("error");
     const terminalReason = classifyQuotaTerminalReason(error, { providerSignal, fallback: "transport_error" });
@@ -1672,7 +1692,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
     if (wasClientAbort) {
       finishTimeline("aborted", "abort", "request aborted");
       streamController.handleError(error);
-      return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
+      const aborted = createErrorResult(499, "Request aborted");
+      if (provider === "minimax-code" && error?.minimaxOutcomeUnknown === true) aborted.response.upstreamPartialOutput = true;
+      return { ...aborted, attemptStartedAt: latestProviderAttemptStartedAt };
     }
     const errMsg = formatProviderError(error, provider, requestedModel, failureStatus);
 
@@ -1690,6 +1712,10 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       upstreamError = { statusCode: response.status || 502, message: "Upstream provider error", resetsAtMs: null, rateLimitEvidence: null };
+    }
+    if (provider === "minimax-code" && ["upstream_outcome_unknown", "gateway_timeout"].includes(upstreamError.errorBody?.error?.code)) {
+      await recordMinimaxUnknown();
+      return upstreamError;
     }
     const retryAfterMs = Number.isFinite(upstreamError.resetsAtMs) ?
     Math.max(0, upstreamError.resetsAtMs - Date.now()) :

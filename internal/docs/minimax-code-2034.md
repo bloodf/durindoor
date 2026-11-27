@@ -45,3 +45,124 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 - [OmniRoute gateway transport and refresh](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/minimaxCodeGateway.ts)
 
 - [OmniRoute provider page](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/docs/providers/MINIMAX_CODE.md)
+
+## Accepted-work follow-up (Refs #2034)
+
+The earlier transport assumed that HTTP 500, 503 and 529 meant the gateway did
+no work. Neither the pinned first-party sources above nor the pinned OmniRoute
+gateway transport documents a no-work or no-billing refusal for those statuses.
+A retry in OmniRoute's transport is a design choice, not a vendor guarantee. With
+no explicit primary-source refusal evidence, every bare 5xx is an unknown outcome.
+This change asserts no new vendor guarantee.
+
+Behavior (MiniMax Code only; other providers and Codex quota handling unchanged):
+
+- **Retry.** Only an explicit 429 and a transport error whose code proves the
+  request never left (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `ENETUNREACH`,
+  `EHOSTUNREACH`, `UND_ERR_CONNECT_TIMEOUT`, `ERR_PROXY_CONNECTION_FAILED`) are
+  resent, on the same token, proxy route and caller signal. A 401 keeps its
+  refresh path; other 4xx are not resent.
+- **Unknown outcome.** Any 5xx (500, 502, 503, 504, 529), a 200 envelope with an
+  overloaded or other server error, a connection lost after sending, the header
+  deadline and the whole-call timeout are sent once and answered with
+  `upstream_outcome_unknown` (or `gateway_timeout`) and a fixed, bounded public
+  message. Gateway text is read only to classify and is never echoed.
+- **Operator rules.** `computeRetryDelay` vetoes every HTTP retry except 429, and
+  `execute()` drops non-429 `retry` rules from its own request policy before the
+  base loop sees them. An operator rule therefore cannot resend a 5xx, network
+  or header-deadline outcome. `skip` rules and `maxTransportAttempts` still apply.
+- **Account, outer retry and combo.** `processAttemptResult` makes the outcome
+  terminal (no sibling account, no outer transient retry, no cooldown). The combo
+  loop returns it instead of trying the next model, and for MiniMax awaits the
+  executor's own cancellation at the combo deadline instead of racing past it.
+- **Receipt.** `chatCore` writes one `saveRequestUsage` row on the selected
+  connection: `cost: null`, `costStatus: "unknown"`,
+  `costSource: "minimax-unknown-outcome"`, `status: "error"`, and
+  `meta.outcome`/`meta.tokenStatus` `"unknown"`. The zero token columns are
+  frozen-schema placeholders, not measurements, and no success usage is
+  reported. The receipt is keyed by the request's usage event id. A ledger error
+  is logged and does not change the answer or trigger a resend. A client abort
+  after dispatch also records the receipt; an abort during the unsent backoff
+  does not, because nothing was sent.
+
+### Test changes
+
+Three existing files changed. The parent reviewed the changes and authorized
+them as stronger contracts:
+
+- `tests/unit/provider-signin-minimax-code-parity.test.js`: 500/503/529 moved
+  from "replays a definite refusal" to "sends once, unknown outcome". The no-usage
+  assertions now require exactly one durable unknown-cost receipt in SQLite on the
+  connection whose token was sent. A 200 `api_error` envelope is unknown instead
+  of `gateway_error`. New cases cover operator retry rules, combo no-advance,
+  whole-call deadline and abort after dispatch. Every earlier scenario remains.
+- `tests/unit/minimax-code-budget.test.js`: the retry-success, retry-then-surface,
+  retry-count and backoff cases use 429 instead of 500/503. New cases cover
+  500/503/529/502/504/drop single sends and operator `network`,
+  `connect_timeout`, status and 429 rules.
+- `tests/unit/minimax-code-provider.test.js`: a 200 `overloaded_error` envelope
+  is now a 500 unknown outcome with a nonempty, bounded message instead of 429.
+
+### Validation
+
+The run used a private `HOME`, `DATA_DIR`, `TMPDIR`, XDG and npm/pnpm store
+under `/var/tmp`, `env -i`, umask 077, no installs and no network. Dependencies
+were linked read-only from a sibling worktree whose manifests and lockfiles match
+byte for byte:
+
+```sh
+cd tests
+node node_modules/vitest/vitest.mjs run unit/minimax-code-budget.test.js unit/provider-signin-minimax-code-parity.test.js unit/minimax-code-provider.test.js --maxWorkers=2
+```
+
+First run: 96/96 passed. In the second run, after the operator-rule cases were
+added, 101/102 passed. The header-deadline case returned 500 `gateway_timeout`
+because, with only `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS` set, the call
+budget takes the same 40 ms value. The case now pins
+`MINIMAX_CODE_GATEWAY_TIMEOUT_MS` so the header deadline is the only trigger.
+The two-run limit left this change unrerun; the gate's suite must confirm it.
+`node --check` and `git diff --check` pass.
+
+### Gate 3 lint correction
+
+Carried the three MiniMax follow-up commits through 8b7059b916 onto the
+integration checkout. The abort catch now uses the existing isObject predicate
+instead of a runtime typeof check, matching executor conventions. The truthiness
+guard, unknown-outcome marker and original thrown abort remain intact. No retry,
+receipt, combo or test architecture changed. The corrected header-deadline test
+still sets a separate 5000 ms whole-call budget.
+
+This checkout has no root or test node_modules. Under the required private
+/var/tmp environment, the executor syntax check and git diff --check passed.
+The focused three-file Vitest invocation could not start because Vitest is
+absent; the anti-slop runner likewise reports missing oxlint. No dependencies
+were installed and no full suite was run. The focused suite and lint gate still
+require confirmation in the prepared gate checkout; earlier results above are
+historical, not results for this head.
+
+### Header-timeout gate follow-up
+
+The nearby upstream #5889 regression expected a thrown header timeout. That
+representation is obsolete under the terminal unknown-outcome contract. The test
+now retains its exact header-deadline diagnostic and additionally requires a 502
+unknown outcome, no early transport abort, cancellation at the deadline, one
+send, a bounded nonempty message and no delayed replay. The executor formats the
+diagnostic from the shared resolved timeout, never from upstream error text.
+The actual handleChat/SQLite header case now separates the whole-call budget
+from the header deadline and checks exact status/code/message alongside the
+existing selected-account durable unknown-cost receipt assertions.
+
+The gate removal flags in the three MiniMax files refer to the authorized
+contract replacements listed above: 500/503/529 remain covered as once-only
+unknown outcomes; retry-count/backoff still use explicit 429 refusals; overloaded
+envelopes remain covered with unknown outcome and bounded messages; no-usage
+assertions became exactly-one durable unknown-cost receipt assertions. Restoring
+those obsolete expectations would reintroduce unsafe replay or lost accounting.
+No scenario, skip, baseline entry or valid assertion was removed to silence the
+gate.
+
+Validation for this follow-up: executor and both changed test files pass
+node --check; git diff --check passes. One focused five-file Vitest command
+(maxWorkers=2, 300-second ceiling) could not collect because this checkout has
+no tests/node_modules/vitest. No installs or full suite were run. The prepared
+gate must rerun the focused cases and lint; no passing suite is claimed here.

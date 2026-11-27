@@ -156,11 +156,22 @@ describe("MiniMax Code call budget", () => {
 });
 
 describe("MiniMax Code retry with backoff", () => {
-  it.each([429, 500, 503])("retries a %i once and returns the answer of the retry", async (status) => {
+  it.each([429])("retries a %i once and returns the answer of the retry", async (status) => {
     script = [status, 200];
     const result = await run();
     expect(result.response.status).toBe(200);
     expect(calls).toHaveLength(2);
+  });
+
+  it.each([500, 503, 529, 502, 504, "network"])("retains unknown outcome without replay for %s", async (status) => {
+    script = [status, 200];
+    const result = await run();
+    const error = await refusal(result);
+    expect(calls).toHaveLength(1);
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
+    expect(error.message).not.toContain("synthetic");
   });
 
   // A dropped connection may have been accepted and is never replayed (provider-signin-minimax-code-parity.test.js).
@@ -170,7 +181,7 @@ describe("MiniMax Code retry with backoff", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it.each([[429, 429], [500, 500], [503, 503]])("retries a %i once, then surfaces the error with its own status", async (status, expected) => {
+  it.each([[429, 429]])("retries a %i once, then surfaces the error with its own status", async (status, expected) => {
     script = [status];
     const result = await run();
     expect(calls).toHaveLength(2);
@@ -187,7 +198,7 @@ describe("MiniMax Code retry with backoff", () => {
   });
 
   it("is configurable with MINIMAX_CODE_GATEWAY_RETRIES: 0 turns it off, 2 allows two, a typo keeps one", async () => {
-    script = [503];
+    script = [429];
     vi.stubEnv("MINIMAX_CODE_GATEWAY_RETRIES", "0");
     await run();
     expect(calls).toHaveLength(1);
@@ -204,7 +215,7 @@ describe("MiniMax Code retry with backoff", () => {
   });
 
   it("waits a backoff between the attempts, growing exponentially and capped", async () => {
-    script = [503];
+    script = [429];
     vi.stubEnv("MINIMAX_CODE_GATEWAY_RETRIES", "2");
     await run({}, { executor: new MinimaxCodeExecutor({ retryBaseMs: 40 }) });
     expect(calls).toHaveLength(3);
@@ -214,9 +225,56 @@ describe("MiniMax Code retry with backoff", () => {
   });
 
   it("does not spend a retry on a request the ceiling refused", async () => {
-    script = [503];
+    script = [429];
     const result = await run({ messages: [{ role: "user", content: "a".repeat(4_000_000) }] });
     expect(result.response.status).toBe(413);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("MiniMax Code operator retry rules cannot resend possibly accepted work", () => {
+  const withRules = (skipRules) => new MinimaxCodeExecutor({ retryBaseMs: 1 }).execute({
+    model: "MiniMax-M3", body: { model: "MiniMax-M3", messages: [{ role: "user", content: "ping" }] }, stream: false, credentials,
+    requestPolicy: { maxTransportAttempts: 4, skipRules },
+  });
+  const bounded = (error) => {
+    expect(error.code).toBe("upstream_outcome_unknown");
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
+    expect(error.message).not.toContain("synthetic");
+  };
+
+  it("sends a dropped connection once under a network retry rule", async () => {
+    script = ["network", 200];
+    const result = await withRules([{ provider: "minimax-code", action: "retry", match: { kind: "network" } }]);
+    expect(calls).toHaveLength(1);
+    expect(result.response.status).toBe(502);
+    bounded(await refusal(result));
+  });
+
+  it("sends once when the response headers never arrive, even under a connect_timeout retry rule", async () => {
+    // A separate call budget, so the header deadline (not the whole-call timeout) ends the attempt.
+    vi.stubEnv("MINIMAX_CODE_GATEWAY_TIMEOUT_MS", "5000");
+    vi.stubEnv("MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS", "40");
+    script = ["hang"];
+    const result = await withRules([{ provider: "minimax-code", action: "retry", match: { kind: "connect_timeout" } }]);
+    expect(calls).toHaveLength(1);
+    expect(result.response.status).toBe(502);
+    bounded(await refusal(result));
+  });
+
+  it.each([500, 503, 529])("sends a bare %i once under a matching status retry rule", async (status) => {
+    script = [status, 200];
+    const result = await withRules([{ provider: "minimax-code", action: "retry", match: { status } }]);
+    expect(calls).toHaveLength(1);
+    expect(result.response.status).toBe(status);
+    bounded(await refusal(result));
+  });
+
+  it("keeps an operator 429 retry rule, since a 429 is an explicit refusal", async () => {
+    script = [429, 429, 200];
+    const result = await withRules([{ provider: "minimax-code", action: "retry", match: { status: 429 } }]);
+    expect(result.response.status).toBe(200);
+    expect(calls).toHaveLength(3);
   });
 });

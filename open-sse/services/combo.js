@@ -1340,6 +1340,12 @@ export async function handleComboChat({
         }
         let timeoutTimer = null;
         try {
+          // MiniMax may already have accepted the POST. Await its cancellation
+          // receipt instead of racing into a second model after the deadline.
+          if (["minimax-code", "mmcode"].includes(splitModelString(modelStr).provider)) {
+            timeoutTimer = setTimeout(() => attemptController.abort(), comboTimeoutMs);
+            return await dispatch(attemptBody, modelStr, attemptSignal);
+          }
           return await Promise.race([
             dispatch(attemptBody, modelStr, attemptSignal),
             new Promise((_, reject) => {
@@ -1358,6 +1364,11 @@ export async function handleComboChat({
       };
 
       const result = await runAttempt();
+
+      if (result.upstreamPartialOutput === true) {
+        releaseFailedAffinity(modelStr, i);
+        return result;
+      }
 
       // A timed-out attempt may return a 499 Response; treat it as a deadline miss
       // rather than a genuine failure and fall back to the next model.

@@ -143,3 +143,23 @@ Validation:
 
 No public wiring or registration was introduced. The enclosing gate remains
 blocked by the separate Mistral staging consumer policy.
+
+
+## Gate rejection correction
+
+The subsequent gate-fix request resolves the integration failure by enumerating
+three existing private Mistral foundation references (`adapter.js`, `config.js`,
+and `registration.json`) alongside the three Vertex references. No other
+foundation consumer is permitted. Production references to either sibling are
+also rejected, so the exception cannot create a transitive production entry.
+This supersedes the earlier recorded Mistral blocker.
+
+The removed original assertion conflated staged private consumers with
+production imports. Its replacement preserves the production boundary, with
+closed mutation evidence: a tracked production probe importing foundation,
+Vertex, or Mistral fails the actual guard and names the probe. Each mutation
+was restored. No protocol test or non-staging assertion was changed; the
+candidate adapter and all 80 regression cases remain unchanged.
+
+Combined scoped evidence now passes 172/172 cases, retaining all 92 foundation
+cases. Scoped ESLint and repository anti-slop lint pass. No full suite ran.

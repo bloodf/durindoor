@@ -599,16 +599,20 @@ describe("staging: native-ocr-foundation is not registered", () => {
     }
   });
 
-  it("is reachable only through enumerated private Vertex siblings, never production", () => {
+  it("is reachable only through enumerated private OCR siblings, never production", () => {
     const siblingDir = "open-sse/services/providerParity/native-ocr-vertex-deepseek-ocr";
+    const mistralDir = "open-sse/services/providerParity/native-ocr-mistral";
     const permittedFoundationConsumers = new Set([
       `${siblingDir}/adapter.js`,
       `${siblingDir}/ocr.js`,
       `${siblingDir}/registration.json`,
+      `${mistralDir}/adapter.js`,
+      `${mistralDir}/config.js`,
+      `${mistralDir}/registration.json`,
     ]);
     let listed = "";
     try {
-      listed = execFileSync("git", ["grep", "-l", "-e", "native-ocr-foundation", "-e", "native-ocr-vertex-deepseek-ocr", "--", "open-sse", "src", "cli"], { cwd: ROOT, encoding: "utf8" });
+      listed = execFileSync("git", ["grep", "-l", "-e", "native-ocr-foundation", "-e", "native-ocr-vertex-deepseek-ocr", "-e", "native-ocr-mistral", "--", "open-sse", "src", "cli"], { cwd: ROOT, encoding: "utf8" });
     } catch (error) {
       if (error.status !== 1) throw error; // 1: no match
     }
@@ -619,6 +623,9 @@ describe("staging: native-ocr-foundation is not registered", () => {
       const text = readFileSync(new URL(file, ROOT), "utf8");
       if (text.includes("native-ocr-foundation")) {
         if (!permittedFoundationConsumers.has(file)) productionConsumers.push(file);
+      }
+      if (text.includes("native-ocr-mistral")) {
+        if (!file.startsWith(`${mistralDir}/`)) productionConsumers.push(file);
       }
       if (text.includes("native-ocr-vertex-deepseek-ocr")) {
         if (!file.startsWith(`${siblingDir}/`)) productionConsumers.push(file);

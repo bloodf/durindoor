@@ -73,6 +73,29 @@ describe("OpenAI Chat Completions to Claude streaming cache usage (upstream #589
     });
   });
 
+  it.each([": heartbeat\n\n", "event: keepalive\nid: 42\nretry: 1000\n\n"])("waits for real usage across non-data frames: %s", async (heartbeat) => {
+    const result = await run([
+      sse(text),
+      sse(finish),
+      heartbeat,
+      sse({
+        choices: [],
+        usage: {
+          prompt_tokens: 8505,
+          completion_tokens: 16,
+          prompt_tokens_details: { cached_tokens: 8448 },
+        },
+      }),
+      done,
+    ]);
+
+    const terminal = result.filter(({ type }) => type === "message_delta");
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0].usage).toEqual({ input_tokens: 57, output_tokens: 16, cache_read_input_tokens: 8448 });
+    expect(result.filter(({ type }) => type === "message_stop")).toHaveLength(1);
+    expect(result.at(-1).type).toBe("message_stop");
+  });
+
   it("uses inline measured usage without buffer padding and clamps negative uncached input", async () => {
     const result = await run([sse(text), sse({
       ...finish,

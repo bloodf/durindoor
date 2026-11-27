@@ -133,7 +133,16 @@ const getRawModels = (payload) => {
   return Array.isArray(models) ? models.filter(isPlainObject) : [];
 };
 
-const isZeroPrice = (value) => value !== null && value !== undefined && value !== "" && Number(value) === 0;
+/**
+ * True only for an explicit zero price: the number 0 or a decimal zero string
+ * ("0", "0.0", " 0.000 "). Booleans, arrays, objects, blanks and other
+ * malformed values fail closed, so they are never offered as free.
+ */
+const isZeroPrice = (value) => {
+  if (typeof value === "number") return value === 0;
+  if (typeof value === "string") return /^0+(?:\.0+)?$/.test(value.trim());
+  return false;
+};
 
 /**
  * Normalize the OpenAI-style Nous catalogue. Embedding and image-only entries
@@ -404,15 +413,29 @@ export class NousExecutor extends DefaultExecutor {
     super(NOUS_PROVIDER_ID);
   }
 
-  buildHeaders(credentials, ...rest) {
-    if (!checkNousApiKeyShape(credentials?.apiKey).ok) throw new Error("Nous connection has no usable API key");
-    return super.buildHeaders(credentials, ...rest);
+  // The endpoint is fixed: DefaultExecutor honours credentials.runtimeTransport
+  // (baseUrl, urlSuffix, headers, auth, format), which could send the selected
+  // key elsewhere or change its header. The staged executor ignores it.
+  buildUrl() {
+    return NOUS_CHAT_COMPLETIONS_URL;
   }
 
-  transformRequest(model, body, stream, credentials, requestContext = null, targetUrl = null) {
-    const shaped = buildNousChatBody(model, body, { intent: requestContext?.thinkingIntent, stream });
-    return super.transformRequest(shaped.model, shaped, stream, credentials, requestContext, targetUrl);
+  buildHeaders(credentials, ...rest) {
+    if (!checkNousApiKeyShape(credentials?.apiKey).ok) throw new Error("Nous connection has no usable API key");
+    return super.buildHeaders(withoutRuntimeTransport(credentials), ...rest);
   }
+
+  transformRequest(model, body, stream, credentials, requestContext = null) {
+    const shaped = buildNousChatBody(model, body, { intent: requestContext?.thinkingIntent, stream });
+    return super.transformRequest(shaped.model, shaped, stream, withoutRuntimeTransport(credentials), requestContext, NOUS_CHAT_COMPLETIONS_URL);
+  }
+}
+
+/** Selected connection credentials without a runtime transport override. */
+function withoutRuntimeTransport(credentials) {
+  if (!credentials || !("runtimeTransport" in credentials)) return credentials;
+  const { runtimeTransport: _ignored, ...rest } = credentials;
+  return rest;
 }
 
 export function createNousExecutor() {

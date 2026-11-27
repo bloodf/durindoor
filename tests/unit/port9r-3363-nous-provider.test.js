@@ -227,6 +227,28 @@ describe("catalogue parsing", () => {
     expect(toNousUpstreamModelId(routed[0].id)).toBe(HERMES_70B);
   });
 
+  it.each([
+    ["false", false],
+    ["an empty array", []],
+    ["an array holding zero", [0]],
+    ["an object", {}],
+    ["whitespace", "   "],
+    ["an empty string", ""],
+    ["null", null],
+    ["a boolean string", "false"],
+    ["a hex zero", "0x0"],
+    ["NaN", Number.NaN],
+    ["a negative zero string", "-0"],
+  ])("does not treat %s as a free price", (_name, value) => {
+    const model = { id: "m", context_length: 300000 };
+    expect(normalizeNousFreeModels([{ ...model, pricing: { prompt: value, completion: "0" } }])).toEqual([]);
+    expect(normalizeNousFreeModels([{ ...model, pricing: { prompt: "0", completion: value } }])).toEqual([]);
+  });
+
+  it.each([["0", "0"], [0, 0], ["0.000", " 0 "], [-0, "00.0"]])("accepts explicit zero prices %j/%j", (prompt, completion) => {
+    expect(normalizeNousFreeModels([{ id: "m", context_length: 300000, pricing: { prompt, completion } }])).toEqual([{ id: "m", name: "m", contextLength: 300000 }]);
+  });
+
   it("offers only zero-cost text models with at least 200K context as free", () => {
     expect(normalizeNousFreeModels(CATALOG).map(({ id }) => id)).toEqual(["poolside/laguna-xs-2.1:free"]);
   });
@@ -424,6 +446,28 @@ describe("executor request boundary", () => {
     const directFetch = vi.fn(async () => json({}));
     await send(createNousExecutor(), { credentials: { apiKey: KEY_A, providerSpecificData: { baseUrl: "https://attacker.example.test/v1" } }, directFetch });
     expect(new URL(directFetch.mock.calls[0][0]).host).toBe("inference-api.nousresearch.com");
+  });
+
+  it.each([
+    ["a hostile base URL", { baseUrl: "https://attacker.example.test/v1/chat/completions", format: "openai" }],
+    ["a hostile base URL and suffix", { baseUrl: "https://inference-api.nousresearch.com", urlSuffix: "@attacker.example.test/steal", format: "openai" }],
+    ["a path suffix", { baseUrl: "https://inference-api.nousresearch.com/v1/chat/completions", urlSuffix: "/../../other?x=1", format: "openai" }],
+    ["hostile headers and auth", { baseUrl: "https://attacker.example.test", headers: { "X-Exfil": "1" }, auth: { header: "X-Leak", scheme: "raw" }, format: "claude" }],
+  ])("ignores a runtime transport with %s", async (_name, runtimeTransport) => {
+    const directFetch = vi.fn(async () => json({}));
+    const executor = createNousExecutor();
+    const credentials = { apiKey: KEY_A, runtimeTransport };
+    expect(executor.buildUrl(`nous/${HERMES_70B}`, false, 0, credentials)).toBe(NOUS_CHAT_COMPLETIONS_URL);
+    await send(executor, { credentials, directFetch });
+    expect(directFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = directFetch.mock.calls[0];
+    expect(String(url)).toBe("https://inference-api.nousresearch.com/v1/chat/completions");
+    expect(headerOf(init, "authorization")).toBe(`Bearer ${KEY_A}`);
+    expect(headerOf(init, "x-leak")).toBeNull();
+    expect(headerOf(init, "x-exfil")).toBeNull();
+    const body = JSON.parse(init.body);
+    expect(body).toMatchObject({ model: HERMES_70B, messages: [{ role: "user", content: "ping" }], tags: ["product=durindoor", "client=durindoor", "user=durindoor"] });
+    expect(credentials.runtimeTransport).toBe(runtimeTransport);
   });
 
   it("does not follow a redirect, so the key never reaches another host", async () => {

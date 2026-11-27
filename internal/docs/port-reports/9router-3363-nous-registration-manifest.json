@@ -110,7 +110,7 @@
       ],
       "nonReasoningModels": "all thinking fields removed"
     },
-    "credentialHandling": "Selected connection credentials only; registry endpoint for nous-research (connection baseUrl not used); redirect:'error' via BaseExecutor credentialed send; selected connection proxyOptions via proxyAwareFetch; existing attribution tags kept",
+    "credentialHandling": "Selected connection credentials only; fixed endpoint https://inference-api.nousresearch.com/v1/chat/completions (NousExecutor.buildUrl ignores providerSpecificData.baseUrl and credentials.runtimeTransport baseUrl/urlSuffix; runtimeTransport headers/auth/format are stripped before DefaultExecutor header and body building); redirect:'error' via BaseExecutor credentialed send; selected connection proxyOptions via proxyAwareFetch; existing attribution tags kept",
     "attributionTags": [
       "product=durindoor",
       "client=durindoor",
@@ -149,7 +149,7 @@
     "catalogUrl": "https://inference-api.nousresearch.com/v1/models",
     "catalogRequest": "GET, no Authorization (public endpoint), Accept: application/json, redirect:'error', 10s timeout, 4 MiB bounded read, selected connection proxy",
     "catalogParsing": "data|models|results|array; non-object, id-less, duplicate and non-text (embedding/image-only) entries dropped; nousresearch/ first, stable order; routed ids 'nous/<id>' with upstreamModelId",
-    "freeFilter": "zero prompt+completion price (null/empty is not zero), text output, context >= 200000"
+    "freeFilter": "explicit zero prompt+completion price only (number 0 or decimal zero string after trim); null, blank, boolean, array, object, NaN, hex and negative-zero strings fail closed; text output; context >= 200000"
   },
   "usage": {
     "endpoint": "none in source",

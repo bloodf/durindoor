@@ -184,8 +184,8 @@ Active local PRs and review-lane reservations checked to prevent duplicate work:
   - [open-sse/handlers/chatCore.js](../../../open-sse/handlers/chatCore.js)
   - [src/sse/handlers/chat.js](../../../src/sse/handlers/chat.js)
   - [src/lib/db/repos/settingsRepo.js](../../../src/lib/db/repos/settingsRepo.js)
-  - [src/app/(dashboard)/dashboard/endpoint/endpointConstants.js](../../../src/app/(dashboard)/dashboard/endpoint/endpointConstants.js)
-  - [src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx](../../../src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx)
+  - <a href="../../../src/app/(dashboard)/dashboard/endpoint/endpointConstants.js">src/app/(dashboard)/dashboard/endpoint/endpointConstants.js</a>
+  - <a href="../../../src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx">src/app/(dashboard)/dashboard/token-saver/TokenSaverClient.jsx</a>
   - [../../../.env.example](../../../.env.example)
 - **Acceptance Tests**:
   - `tests/unit/claude-cache-ttl.test.js`:

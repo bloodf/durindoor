@@ -90,8 +90,9 @@ export class UcFrameParser {
     const lines = (carried + raw).split("\n");
     const last = lines.length - 1;
     for (let i = 0; i <= last; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+      // Parse tolerates protocol whitespace; retain the original fragment bytes.
+      const line = lines[i];
+      if (!line.trim()) continue;
       let frame = parseLine(line);
       if (frame === null && i === 0 && carried) {
         // The carried tail was a keepalive, not the start of this frame.

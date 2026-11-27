@@ -23,7 +23,7 @@ import { createErrorResult } from "../../../utils/error.js";
 import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
-import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
+import { isBoolean, isNumber, isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
   ELEVENLABS_MUSIC_BASE_URL,
   ELEVENLABS_MUSIC_CONFIG,
@@ -84,7 +84,7 @@ export function listElevenLabsMusicModels() {
 }
 
 const isInt = (value) => Number.isInteger(value);
-const optionalBoolean = (body, key) => body[key] === undefined || typeof body[key] === "boolean";
+const optionalBoolean = (body, key) => body[key] === undefined || isBoolean(body[key]);
 
 /**
  * Validate the caller body against the source schema before anything is sent.
@@ -103,12 +103,12 @@ export function buildElevenLabsMusicRequest(model, body) {
   const outputFormat = body.output_format ?? ELEVENLABS_MUSIC_DEFAULT_OUTPUT_FORMAT;
   if (!isString(outputFormat)) return { error: "output_format must be a string" };
   if (!ELEVENLABS_MUSIC_OUTPUT_FORMAT.test(outputFormat)) return { error: `Unsupported output_format: ${outputFormat.slice(0, 40)}` };
-  if (body.duration !== undefined && body.duration !== null && typeof body.duration !== "number") return { error: "duration must be a number of seconds" };
+  if (body.duration !== undefined && body.duration !== null && !isNumber(body.duration)) return { error: "duration must be a number of seconds" };
 
   // Source buildNativeMusicBody: native milliseconds win over seconds; force_instrumental wins over instrumental.
   const payload = {
     model_id: resolvedModel,
-    music_length_ms: body.music_length_ms ?? (typeof body.duration === "number" ? body.duration * 1000 : undefined),
+    music_length_ms: body.music_length_ms ?? (isNumber(body.duration) ? body.duration * 1000 : undefined),
     force_instrumental: body.force_instrumental ?? body.instrumental,
   };
   for (const field of NATIVE_FIELDS) if (body[field] !== undefined) payload[field] = body[field];
@@ -238,7 +238,8 @@ export async function handleElevenLabsMusicGeneration({
   const stopStatus = (error) => (error?.kind === "abort" ? 499 : 504);
   const proxyOptions = resolveCredentialProxyOptions(credentials);
   log?.info?.("MUSIC", `${ELEVENLABS_MUSIC_PROVIDER_ID}/${request.model} (${ELEVENLABS_MUSIC_FORMAT}, ${request.outputFormat})`);
-  const requested = { outputFormat: request.outputFormat, ...(request.payload.music_length_ms ? { requestedMusicLengthMs: request.payload.music_length_ms } : {}) };
+  const requested = { outputFormat: request.outputFormat };
+  if (request.payload.music_length_ms) requested.requestedMusicLengthMs = request.payload.music_length_ms;
 
   // Submit exactly once. A lost answer is possibly accepted work and is never replayed.
   let response;

@@ -25788,7 +25788,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js#CookieImportModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js",
       "symbol": "CookieImportModal",
-      "sourceSha256": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
+      "sourceSha256": "5d33c1c15d15ec66851006626d596431c5963d97e36e86d98dab28eefe8aa0f9",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -25810,8 +25810,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "5d33c1c15d15ec66851006626d596431c5963d97e36e86d98dab28eefe8aa0f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "1035516921fb82aedb88fbc1a6eb69d80a55ee5df0594e72a2fd27f2dfdc6945"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25823,8 +25823,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "5d33c1c15d15ec66851006626d596431c5963d97e36e86d98dab28eefe8aa0f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "1035516921fb82aedb88fbc1a6eb69d80a55ee5df0594e72a2fd27f2dfdc6945"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -25836,8 +25836,8 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "12ccd492d9f93fccc27910262f08996922943870445709f4afaf6b9a6d98fe6b",
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "5d33c1c15d15ec66851006626d596431c5963d97e36e86d98dab28eefe8aa0f9",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "1035516921fb82aedb88fbc1a6eb69d80a55ee5df0594e72a2fd27f2dfdc6945"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -91958,6 +91958,16 @@
       "reviewEvidence": null
     },
     {
+      "storyId": "production-providers-cookieimportmodal--veo-existing-session",
+      "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx",
+      "sourceSha256": "1035516921fb82aedb88fbc1a6eb69d80a55ee5df0594e72a2fd27f2dfdc6945",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "production-providers-editcompatiblenodemodal--open",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/EditCompatibleNodeModal.stories.jsx",
       "sourceSha256": "eb0b74b2d7fd9c4c60f3f5e0325975ff3f64fb28fe3016976d6798449aab7211",
@@ -104732,11 +104742,11 @@
   ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "75538484b4051e03eddeffbdee56e343a3db083b8be3d2b7ffb6f38678c5a9e8",
-    "sourceCensusSha256": "20b0e53cde4ec5e4a0efc80e609bdca921d04bd949066b7926feb69dcc5b6ca0",
+    "builtIndexSha256": "28f11d615698e2d73dc0b6853fcfa5433550b9bd3b5cff19521f4dab4fbb4e9c",
+    "sourceCensusSha256": "2c7aa6f65accf3fbc9fe19f356f5b40579585cbaa4c33edb883b2ae17004f14f",
     "pendingRows": 452,
     "retainedApprovedRows": 197,
-    "pendingReferences": 1496,
+    "pendingReferences": 1497,
     "runtimeStatus": "pending"
   }
 }

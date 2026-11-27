@@ -84,7 +84,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   // Inner.ai Web: an optional account email the server binds to the pairing. Blank means token only.
   const takesAccountEmail = contract?.accountEmail === "optional";
   const emailCheck = takesAccountEmail ? normalizeAccountEmail(accountEmail) : { ok: true, email: "" };
-  const cookieConnections = usesCookies ? connections.filter((connection) => connection?.authType === "cookie") : connections;
+  const cookieConnections = connections.filter((connection) => connection?.provider === provider && connection.authType === (contract?.authType ?? "cookie"));
 
   const clearSensitiveInput = () => {
     setRawText("");

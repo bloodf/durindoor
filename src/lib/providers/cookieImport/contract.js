@@ -18,6 +18,7 @@ import {
   MAX_IMPORT_COOKIES,
   MAX_COOKIE_VALUE_LENGTH,
   cookieImportConfig,
+  cookieImportAuthType,
   resolveCookieImportContract,
   isApprovedCookieName,
   isValidCookieName,
@@ -47,7 +48,7 @@ export function getCookieImportContract(providerId) {
   if (!resolved) return null;
   return Object.freeze({
     provider: String(providerId),
-    authType: entry.category === "webCookie" ? "cookie" : (entry.authType || "apikey"),
+    authType: cookieImportAuthType(entry),
     ...resolved,
     config,
   });

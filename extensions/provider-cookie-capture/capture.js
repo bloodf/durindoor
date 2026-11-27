@@ -8,8 +8,8 @@
  *  - asks for optional permissions on exactly two origins (provider, paired
  *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
  *  - reads only cookie names that are in both the built-in table and the pairing, each by its exact
- *    name; a hashed family (WordPress `wordpress_logged_in_<md5>`) is read only under the built-in
- *    candidate names of a family the pairing names, and never by listing the cookie store;
+ *    name; built-in hashed families use one bounded provider-URL enumeration in the confirmed
+ *    tab store, matching names before reading values;
  *  - for a provider whose credential is a localStorage item (TinyCMS, DeepSeek Web), reads only the
  *    built-in item names, once, from the confirmed tab, through `chrome.scripting`, and only
  *    while that tab and its page are still on the provider origin;
@@ -117,7 +117,6 @@ export function parsePairing(text, now = Date.now()) {
   const pairedHashed = Array.isArray(contract.hashedCookiePrefixes) ? contract.hashedCookiePrefixes : [];
   const hashedCookiePrefixes = builtInHashed.filter((prefix) => pairedHashed.includes(prefix));
   if (hashedCookiePrefixes.length !== builtInHashed.length) return fail("invalid_pairing");
-  const hashedCookieCandidates = (def.hashedCookieCandidates ?? []).filter((name) => hashedCookiePrefixes.some((prefix) => hashedMember(prefix, name)));
   // Optional cookies are never required: a pairing that omits them (an older dashboard) simply narrows them away.
   const pairedOptional = Array.isArray(contract.optionalCookies) ? contract.optionalCookies : [];
   const optionalCookies = (def.optionalCookies ?? []).filter((name) => pairedOptional.includes(name));
@@ -141,7 +140,6 @@ export function parsePairing(text, now = Date.now()) {
       cookieNames,
       cookiePrefixes,
       hashedCookiePrefixes,
-      hashedCookieCandidates,
       optionalCookies,
       localStorageKeys,
       expiresAt,
@@ -228,24 +226,28 @@ function approvedCookie(cookie, host) {
   return out;
 }
 
-/**
- * The one member of a hashed cookie family on the provider URL. The site digest is not knowable
- * from the origin, and this module never lists a cookie store, so each built-in candidate name of
- * the family is read by its exact name. Two different members are ambiguous and yield nothing.
- * @returns {Promise<{ cookie: object|null, ambiguous: boolean }>}
- */
-async function readHashedCookie(chrome, url, host, prefix, candidates, storeId, cancelled) {
-  const members = [];
-  for (const name of candidates) {
-    if (!hashedMember(prefix, name)) continue;
-    const cookie = await chrome.cookies.get({ url, name, storeId });
-    if (cancelled()) return { cookie: null, ambiguous: false };
-    if (!cookie || cookie.name !== name) continue;
-    const out = approvedCookie(cookie, host);
-    if (out) members.push(out);
+/** One bounded enumeration for built-in hashed families; unrelated values are never inspected. */
+async function readHashedFamily(chrome, plan, storeId, cancelled, now) {
+  if (!(await tabOnProvider(chrome, plan))) return { cookies: [], navigated: true };
+  const entries = await chrome.cookies.getAll({ url: plan.providerOrigin + "/", storeId });
+  if (!(await tabOnProvider(chrome, plan))) return { cookies: [], navigated: true };
+  if (cancelled() || !Array.isArray(entries) || entries.length > 64) return { cookies: [] };
+  const cookies = [];
+  const host = new URL(plan.providerOrigin).hostname;
+  for (const prefix of plan.hashedCookiePrefixes) {
+    const members = [];
+    for (const entry of entries) {
+      if (!isRecord(entry) || !hashedMember(prefix, entry.name)) continue;
+      if (entry.storeId !== storeId || (entry.expirationDate !== undefined &&
+        (!isNumber(entry.expirationDate) || entry.expirationDate * 1000 <= now()))) continue;
+      const cookie = approvedCookie(entry, host);
+      if (cookie) members.push(cookie);
+    }
+    if (members.length > 1) return { cookies: [], ambiguous: true };
+    if (!members.length) return { cookies: [] };
+    cookies.push(members[0]);
   }
-  if (members.length > 1) return { cookie: null, ambiguous: true };
-  return { cookie: members[0] ?? null, ambiguous: false };
+  return { cookies };
 }
 
 /** @returns {Promise<{ cookies: object[], ambiguous: boolean }>} */
@@ -277,14 +279,6 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
       if (!(await take(`${prefix}${index}`)) || cancelled()) break;
     }
-  }
-  // A required hashed family that is absent or ambiguous leaves nothing to send.
-  for (const prefix of plan.hashedCookiePrefixes ?? []) {
-    const { cookie, ambiguous } = await readHashedCookie(chrome, url, host, prefix, plan.hashedCookieCandidates ?? [], storeId, cancelled);
-    if (cancelled()) return done();
-    if (ambiguous) return done(true);
-    if (!cookie) { found.length = 0; return done(); }
-    found.push(cookie);
   }
   return done();
 }
@@ -416,6 +410,15 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
 
       try { ({ cookies, ambiguous: ambiguousCookies } = await readApprovedCookies(chrome, plan, store.id, cancelled)); }
       catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+      if (plan.hashedCookiePrefixes?.length) {
+        let read;
+        try { read = await readHashedFamily(chrome, plan, store.id, cancelled, now); }
+        catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
+        if (cancelled()) return fail("cancelled");
+        if (read.navigated) return fail("tab_navigated");
+        cookies = read.cookies;
+        ambiguousCookies = read.ambiguous;
+      }
       if (cancelled()) return fail("cancelled");
     }
 

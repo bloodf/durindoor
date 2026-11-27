@@ -50,10 +50,7 @@ including other `wordpress_*` cookies, and input for another site is refused.
 If the input holds two `wordpress_logged_in_…` cookies with different hashes,
 the import is refused; keep only the session you want.
 
-The Cookie Capture extension reads cookies by exact name only. It finds the
-signed-in cookie when the site's address setting is `https` or `http`, with or
-without `www`. If it reports that no session cookie was found while you are
-signed in, use the Cookie, cURL or HAR import instead.
+Veo uses one bounded cookie enumeration for the confirmed provider URL and tab store. At most 64 entries are accepted. Names are matched before values are read; exactly one secure, unexpired `wordpress_logged_in_<32 lowercase hex>` member in that store is required. Arbitrary valid md5 hashes are supported. Other providers retain exact-name reads.
 
 Each import becomes a session connection under the provider. While at least
 one session exists, requests use a saved session. Send

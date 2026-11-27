@@ -243,7 +243,8 @@ describe("browser extension capture", () => {
         },
         cookies: {
           getAllCookieStores: async () => [{ id: "store-1", tabIds: [7] }],
-          get: async (details) => { calls.push({ name: "cookies.get", arg: details }); return jar[details.name] ?? null; },
+          get: async () => { throw new Error("unexpected exact-name read"); },
+          getAll: async (details) => { calls.push({ name: "cookies.getAll", arg: details }); return Object.values(jar).map((cookie) => ({ ...cookie, storeId: "store-1" })); },
         },
       },
     };
@@ -262,7 +263,7 @@ describe("browser extension capture", () => {
 
   it("ships the exact built-in Veo entry that matches the dashboard contract", () => {
     expect(EXTENSION_PROVIDERS["veoaifree-web"]).toMatchObject({ label: "Veo AI Free Web", origin: ORIGIN, cookieNames: [], cookiePrefixes: [], hashedCookiePrefixes: [WP_PREFIX] });
-    expect(EXTENSION_PROVIDERS["veoaifree-web"].hashedCookieCandidates).toContain(WP);
+    expect(EXTENSION_PROVIDERS["veoaifree-web"]).not.toHaveProperty("hashedCookieCandidates");
     const manifest = JSON.parse(fs.readFileSync(new URL("../../extensions/provider-cookie-capture/manifest.json", import.meta.url), "utf8"));
     expect(manifest.optional_host_permissions).toContain(`${ORIGIN}/*`);
     expect(manifest.host_permissions).toBeUndefined();
@@ -273,11 +274,7 @@ describe("browser extension capture", () => {
     const { result, calls, fetchImpl, plan } = await capture({ jar });
     expect(result.ok).toBe(true);
     expect(describePlan(plan).cookieNames).toEqual([`${WP_PREFIX}<md5>`]);
-    // Exact-name reads of the built-in candidates only, on the provider URL in the tab's store.
-    const reads = calls.filter((c) => c.name.startsWith("cookies."));
-    expect(reads.every((c) => c.name === "cookies.get" && c.arg.url === `${ORIGIN}/` && c.arg.storeId === "store-1" && c.arg.name.startsWith(WP_PREFIX))).toBe(true);
-    expect(reads.map((c) => c.arg.name)).toContain(WP);
-    expect(reads.map((c) => c.arg.name)).not.toContain("wordpress_test_cookie");
+    expect(calls.filter((c) => c.name.startsWith("cookies."))).toEqual([{ name: "cookies.getAll", arg: { url: `${ORIGIN}/`, storeId: "store-1" } }]);
     expect(calls.find((c) => c.name === "permissions.request").arg.origins).toEqual([`${ORIGIN}/*`, `${DASHBOARD}/*`]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];

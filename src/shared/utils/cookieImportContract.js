@@ -235,3 +235,8 @@ export function cookieDomainAllowed(host, domain) {
   const d = domain.replace(/^\./, "").toLowerCase();
   return d.includes(".") && (host === d || host.endsWith(`.${d}`));
 }
+
+/** Connection auth type shared by the dashboard and server import contract. */
+export function cookieImportAuthType(provider) {
+  return provider.category === "webCookie" ? "cookie" : (provider.authType || "apikey");
+}

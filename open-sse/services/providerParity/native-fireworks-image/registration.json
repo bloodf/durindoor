@@ -1,6 +1,6 @@
 {
   "issue": "#2034",
-  "status": "staged-unregistered",
+  "status": "blocked-source-unresolved",
   "source": {
     "repository": "OmniRoute",
     "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
@@ -17,64 +17,142 @@
   },
   "module": "open-sse/services/providerParity/native-fireworks-image/index.js",
   "exports": {
-    "fireworksImageAdapter": "default image adapter instance (guarded generate adapter)",
-    "createFireworksImageAdapter": "factory; options { timeoutMs, now } for tests",
-    "buildFireworksImageRequest": "(model, body) -> Fireworks OpenAI-style body; throws status 400",
+    "fireworksImageAdapter": "disabled private guard; never register while activationAllowed is false",
+    "createFireworksImageAdapter": "disabled private guard; no network",
+    "buildFireworksImageRequest": "throws 400 before dispatch: source-unresolved",
     "fireworksAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
-    "fireworksPublicUrl": "public https URL check used for results",
+    "fireworksPublicUrl": "retained transport helper, not an active result path",
     "FIREWORKS_PROVIDER_ID": "\"fireworks\"",
     "FIREWORKS_ALIASES": "[\"fireworks\"]",
-    "FIREWORKS_ORIGIN": "the only origin the key is sent to",
-    "FIREWORKS_IMAGE_URL": "image endpoint",
+    "FIREWORKS_ORIGIN": "fixed origin retained for a future established contract; no dispatch",
+    "FIREWORKS_IMAGE_URL": "null: no established dispatch endpoint",
     "FIREWORKS_IMAGE_FORMAT": "\"openai\" (source registry format)",
-    "FIREWORKS_IMAGE_MODELS": "image catalog metadata (kind \"image\")",
-    "FIREWORKS_IMAGE_SIZES": "supported sizes",
-    "FIREWORKS_RESPONSE_FORMATS": "[\"url\", \"b64_json\"]",
+    "FIREWORKS_IMAGE_MODELS": "unresolved historical source inventory only",
+    "FIREWORKS_IMAGE_SIZES": "historical OmniRoute sizes, not native capabilities",
+    "FIREWORKS_RESPONSE_FORMATS": "historical fixture formats, not native capabilities",
     "FIREWORKS_IMAGE_TIMEOUT_MS": "whole-call deadline",
-    "FIREWORKS_IMAGE_MAX_N": "n ceiling",
-    "fireworksImageModel": "(id) -> catalog row or null"
+    "FIREWORKS_IMAGE_MAX_N": "historical local fixture ceiling, not native capability",
+    "fireworksImageModel": "(id) -> catalog row or null",
+    "FIREWORKS_SUPPORTED_IMAGE_MODELS": "empty supported subset",
+    "FIREWORKS_CONTRACT_STATUS": "source-unresolved",
+    "FIREWORKS_SOURCE_IMAGE_URL": "historical OmniRoute URL, not dispatchable"
   },
   "provider": {
     "canonicalId": "fireworks",
-    "aliases": ["fireworks"],
+    "aliases": [
+      "fireworks"
+    ],
     "existingRegistryEntry": "open-sse/providers/registry/fireworks.js",
-    "existingServiceKinds": ["llm", "embedding"],
-    "addServiceKinds": ["image"],
-    "authModes": ["apikey"],
-    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "existingServiceKinds": [
+      "llm",
+      "embedding"
+    ],
+    "addServiceKinds": [],
+    "authModes": [
+      "apikey"
+    ],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": [
+        "apiKey",
+        "accessToken"
+      ]
+    },
     "connectionBaseUrlHonored": false
   },
   "models": {
-    "image": [
-      { "id": "accounts/fireworks/flux-kontext-max", "name": "FLUX Kontext Max", "inputModalities": ["text"] },
-      { "id": "accounts/fireworks/flux-kontext-pro", "name": "FLUX Kontext Pro", "inputModalities": ["text"] },
-      { "id": "accounts/fireworks/flux-1-schnell-fp8", "name": "FLUX.1 schnell", "inputModalities": ["text"] },
-      { "id": "accounts/fireworks/models/flux-1-dev-fp8", "name": "FLUX 1 Dev FP8", "inputModalities": ["text"] },
-      { "id": "accounts/fireworks/models/stable-diffusion-xl-1024-v1-0", "name": "SDXL 1024 v1.0", "inputModalities": ["text"] }
-    ],
-    "publicIds": "fireworks/<id>, e.g. fireworks/accounts/fireworks/flux-1-schnell-fp8; the first `/` splits provider from model",
+    "image": [],
+    "publicIds": "none: source IDs retained in sourceModels are not supported aliases",
     "dynamicDiscovery": "none for images in the source; static list only. The existing chat /v1/models fetcher (src/app/api/providers/[id]/models/providerModelsConfig.js) stays on the llm kind."
   },
-  "endpoints": {
-    "image": { "method": "POST", "url": "https://api.fireworks.ai/inference/v1/images/generations", "redirect": "manual (refused)" }
+  "endpoints": {},
+  "responseFormats": {
+    "image": [],
+    "binary": false,
+    "stream": false
   },
-  "responseFormats": { "image": ["url", "b64_json"], "binary": false, "stream": false },
-  "integrationPoints": [
+  "integrationPoints": [],
+  "checkedDate": "2026-11-27",
+  "activationAllowed": false,
+  "blocker": "Current primary sources do not establish native request/result contracts for these five source IDs; no live account gate.",
+  "sourceModels": [
     {
-      "file": "open-sse/handlers/imageProviders/index.js",
-      "change": "import { fireworksImageAdapter } and add `fireworks: fireworksImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+      "id": "accounts/fireworks/flux-kontext-max",
+      "name": "FLUX Kontext Max",
+      "inputModalities": [
+        "text"
+      ],
+      "contractStatus": "unresolved",
+      "primaryModelUrl": "https://fireworks.ai/models/fireworks/flux-kontext-max",
+      "primaryModelPageStatus": 404
     },
     {
-      "file": "open-sse/providers/registry/fireworks.js",
-      "change": "serviceKinds [\"llm\", \"embedding\", \"image\"]; add the five FIREWORKS_IMAGE_MODELS rows with kind \"image\"; imageConfig { baseUrl: FIREWORKS_IMAGE_URL, supportedSizes: FIREWORKS_IMAGE_SIZES }"
+      "id": "accounts/fireworks/flux-kontext-pro",
+      "name": "FLUX Kontext Pro",
+      "inputModalities": [
+        "text"
+      ],
+      "contractStatus": "unresolved",
+      "primaryModelUrl": "https://fireworks.ai/models/fireworks/flux-kontext-pro",
+      "primaryModelPageStatus": 404
     },
     {
-      "file": "docs/providers/catalog.mdx",
-      "change": "list the Fireworks image kind after registration"
+      "id": "accounts/fireworks/flux-1-schnell-fp8",
+      "name": "FLUX.1 schnell",
+      "inputModalities": [
+        "text"
+      ],
+      "contractStatus": "unresolved",
+      "primaryModelUrl": "https://fireworks.ai/models/fireworks/flux-1-schnell-fp8",
+      "primaryModelPageStatus": 404
     },
     {
-      "file": "open-sse/AGENT-INDEX.md",
-      "change": "regenerate after the registry edit"
+      "id": "accounts/fireworks/models/flux-1-dev-fp8",
+      "name": "FLUX 1 Dev FP8",
+      "inputModalities": [
+        "text"
+      ],
+      "contractStatus": "unresolved",
+      "primaryModelUrl": "https://fireworks.ai/models/fireworks/flux-1-dev-fp8",
+      "primaryModelPageStatus": 404
+    },
+    {
+      "id": "accounts/fireworks/models/stable-diffusion-xl-1024-v1-0",
+      "name": "SDXL 1024 v1.0",
+      "inputModalities": [
+        "text"
+      ],
+      "contractStatus": "unresolved",
+      "primaryModelUrl": "https://fireworks.ai/models/fireworks/stable-diffusion-xl-1024-v1-0",
+      "primaryModelPageStatus": 404
+    }
+  ],
+  "acceptance": {
+    "requires": "primary request, model/alias, response/artifact and poll contract evidence plus closed-mock tests",
+    "liveAccountRequired": false,
+    "batch08": "Do not register this module, add image serviceKinds, or advertise sourceModels while activationAllowed is false."
+  },
+  "primarySources": [
+    {
+      "url": "https://docs.fireworks.ai/llms.txt",
+      "finding": "Current index has no image-generation reference."
+    },
+    {
+      "url": "https://docs.fireworks.ai/api-reference/generate-a-new-image-from-a-text-prompt",
+      "finding": "Direct page and .md return 404; historical indexed Schnell workflow reference only."
+    },
+    {
+      "url": "https://docs.fireworks.ai/api-reference/generate-or-edit-image-using-flux-kontext",
+      "finding": "Direct page and .md return 404; historical indexed async request_id reference only."
+    },
+    {
+      "url": "https://docs.fireworks.ai/api-reference/get-generated-image-from-flux-kontex",
+      "finding": "Direct page and .md return 404; historical indexed GET heading conflicts with POST example, result:any."
+    },
+    {
+      "url": "https://github.com/fw-ai-external/python-sdk/blob/e09df11e25c2b0e1548c5d3e5e765111a6438986/src/fireworks/_client.py",
+      "finding": "Current official SDK client has no image-generation or workflow resource."
     }
   ]
 }

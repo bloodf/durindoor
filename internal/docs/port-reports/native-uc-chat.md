@@ -191,3 +191,43 @@ exits 0 with 117 passing tests: 58 attachment tests and the 59 chat tests,
 unchanged from that base. No tests or failure baseline were altered. Full local CI
 and independent merge review remain outstanding; this is staged work, not a
 merge-ready or live-provider claim.
+
+## Fragment and streamed failure integrity (#1241, #2034)
+
+These are fork bug fixes to the staged port attributed above to OmniRoute
+`c71f0065a7efe9230ec23b96a12253b050c4d7ad`; they do not register or publish UC.
+The split-frame carry now retains original JSON fragment bytes, including spaces
+inside an unfinished quoted string. JSON parsing still accepts protocol whitespace,
+malformed keepalives still recover, and the byte cap counts the retained bytes.
+The existing source final-answer trimming contract remains unchanged; deltas retain
+leading/trailing spaces and newlines.
+
+Every complete answer uses the same capacity-apology classifier, including after
+content deltas committed a 200 response. Such a streamed failure preserves already
+emitted content and ends with a redacted `uc_soft_error`, `finish_reason: "error"`
+and `[DONE]`, without success usage or a `stop` ending. The existing gateway
+translators produce Claude error events and Responses `response.failed` events.
+Buffered and pre-output failures retain HTTP 502 and accepted-turn bookkeeping.
+No retry, replay, account-cache invalidation or success callback is introduced;
+UC still supplies no measured usage and failed streams carry no success estimate.
+Cancellation and socket/turn limits retain their existing paths.
+
+`tests/unit/uc-chat-stream-integrity.test.js` is an independent synthetic regression
+suite: arbitrary fragment splits (including quoted whitespace, escapes and Unicode),
+terminal frames with/without raw text, carry limits, malformed recovery, buffered
+and live capacity/ordinary answers, gateway translations, redaction, cancellation,
+account isolation and single dispatch. Running it against the pre-fix implementation
+fails both fragment integrity and post-delta capacity classification. The existing
+59 chat, 22 reauth and 58 attachment tests remain byte-for-byte unchanged.
+
+```sh
+cd tests && test -f unit/uc-chat-stream-integrity.test.js && node node_modules/vitest/vitest.mjs run unit/uc-chat-stream-integrity.test.js unit/native-uc-chat.test.js unit/uc-chat-reauth-contract.test.js unit/uc-chat-attachments.test.js --maxWorkers=2
+```
+
+The focused command passes 160 tests (21 new regressions plus all 139 protected
+existing tests). Root lint passes with 349 existing warnings and zero errors;
+scoped ESLint and `git diff --check` also pass. The old implementation fails 11 of the initial 18 regression
+cases, including both reported defects.
+
+Validation uses private HOME/DATA_DIR and a credential-free environment with closed
+synthetic transports. No live-provider equivalence or full local-CI receipt is claimed.

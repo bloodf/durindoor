@@ -452,9 +452,10 @@ export class UcChatExecutor extends BaseExecutor {
             if (failure.auth) this.sessions.forget(credentials);
             return failStream(failure);
           }
+          // A capacity apology remains a failure even after its deltas committed headers.
+          const soft = detectUcSoftError(run.content);
+          if (soft) return failStream({ code: "uc_soft_error", message: UC_CHAT_MESSAGES.softError });
           if (!streamed) {
-            const soft = detectUcSoftError(run.content);
-            if (soft) return failStream({ code: "uc_soft_error", message: UC_CHAT_MESSAGES.softError });
             if (!run.content) return failStream({ code: "uc_empty_response", message: UC_CHAT_MESSAGES.emptyResponse });
           }
           const base = run.content.startsWith(streamed) ? streamed : run.content.startsWith(streamed.trimStart()) ? streamed.trimStart() : null;

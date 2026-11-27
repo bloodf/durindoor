@@ -109,14 +109,17 @@ function parseStat(text) {
   const fields = text.slice(close + 2).trim().split(" ");
   if (fields.length < 20) return null;
   const state = fields[0];
+  const ppid = Number(fields[1]);
   const pgid = Number(fields[2]);
+  const session = Number(fields[3]);
   const flags = Number(fields[6]);
   const startTime = fields[19];
   if (!/^[A-Za-z]$/.test(state)) return null;
+  if (!Number.isInteger(ppid) || ppid < 0 || !Number.isInteger(session) || session < 0) return null;
   if (!Number.isInteger(pgid) || pgid < 0) return null;
   if (!Number.isInteger(flags) || flags < 0) return null;
   if (!/^\d+$/.test(startTime)) return null;
-  return { state, pgid, flags, startTime };
+  return { state, ppid, pgid, session, flags, startTime };
 }
 
 // Real, effective, saved and filesystem uid, or null when malformed.
@@ -198,7 +201,9 @@ export function readProcessIdentity(pid, procRoot = "/proc", { readFile = readFi
  *
  *   gone       demonstrably exited; ignore.
  *   foreign    provably not this shard's: another uid without the token, a
- *              kernel thread, or a fully readable environment without it.
+ *              kernel thread, a fully readable environment without it, or an
+ *              unreadable environment with proven unrelated ancestry, group
+ *              and session when the shard server identity is available.
  *   owned      every uid is euid, the token is in the environment, and the
  *              identity is complete. Only these are ever signalled.
  *   uncertain  could be this shard's and cannot be proven either way: the
@@ -207,10 +212,13 @@ export function readProcessIdentity(pid, procRoot = "/proc", { readFile = readFi
  *              malformed, empty, or changed while it was read. Never
  *              signalled; makes cleanup fail while it lives.
  *
+ * `shard` optionally supplies the verified server identity and a PID-to-read
+ * map for ancestry checks. Without it, protected environments stay uncertain.
+ *
  * The token in argv (/proc/<pid>/cmdline) is never read: a process can put
  * any text there, so it is not proof of anything.
  */
-export function classifyProcess(read, owner, euid) {
+export function classifyProcess(read, owner, euid, shard = null) {
   const { pid } = read;
   if (read.kind === "gone") return { verdict: "gone", pid };
   if (read.kind === "excluded") return { verdict: "foreign", pid, reason: "excluded PID" };
@@ -237,7 +245,15 @@ export function classifyProcess(read, owner, euid) {
   if (!read.stat) return uncertain(`stat ${read.statError}`);
   if (!read.uids) return uncertain(`status ${read.statusError}`);
   if (read.stat.flags & PF_KTHREAD) return { verdict: "foreign", pid, reason: "kernel thread" };
-  if (read.environ === null) return uncertain(`environ ${read.environError}`);
+  if (read.environ === null) {
+    // Only a complete, unrelated ancestry can excuse a protected environment.
+    // Missing shard/ancestor stat data stays fail-closed. Group or session
+    // membership is evidence of possible ownership, never permission to signal.
+    if (shard && !couldBelongToShard(read, shard)) {
+      return { verdict: "foreign", pid, reason: "unrelated same-uid process with unreadable environ" };
+    }
+    return uncertain(`environ ${read.environError}`);
+  }
   // A user process normally has at least one variable. Linux returns an empty
   // environ while a task tears down its memory on exit, so empty is uncertain
   // until the task is visibly gone.
@@ -256,6 +272,22 @@ export function classifyProcess(read, owner, euid) {
       uids: read.uids,
     },
   };
+}
+
+function couldBelongToShard(read, { serverIdentity, processes }) {
+  if (!serverIdentity?.stat || !processes) return true;
+  const { pid, stat } = serverIdentity;
+  if (read.pid === pid || read.stat.pgid === stat.pgid || read.stat.session === stat.session) return true;
+  const visited = new Set();
+  let ancestor = read.stat.ppid;
+  while (ancestor > 1) {
+    if (ancestor === pid || visited.has(ancestor)) return true;
+    visited.add(ancestor);
+    const parent = processes.get(ancestor);
+    if (!parent?.stat) return true;
+    ancestor = parent.stat.ppid;
+  }
+  return false;
 }
 
 export function procfsAvailable(procRoot = "/proc") {
@@ -296,13 +328,16 @@ export function scanShardProcesses(owner, {
   readDirectory = readdirSync,
   readFile = readFileSync,
   baseline = null,
+  serverIdentity = null,
 } = {}) {
   const owned = [];
   const uncertain = [];
   const known = baseline ? new Set(baseline) : null;
-  for (const pid of listPids(procRoot, readDirectory)) {
+  const processes = new Map(listPids(procRoot, readDirectory).map((pid) =>
+    [pid, readProcessIdentity(pid, procRoot, { readFile })]));
+  for (const [pid, read] of processes) {
     if (pid === selfPid) continue;
-    const result = classifyProcess(readProcessIdentity(pid, procRoot, { readFile }), owner, euid);
+    const result = classifyProcess(read, owner, euid, { serverIdentity, processes });
     if (result.verdict === "owned") owned.push(result.identity);
     else if (result.verdict === "uncertain") {
       const predates = known && !result.tokenSeen && result.startTime !== null && known.has(baselineKey(pid, result.startTime));
@@ -468,7 +503,12 @@ export async function cleanupShardServer({
 
   // The /proc scan is the authority: every process of the shard's tree
   // inherits the owner token. The state file is only cleaned up at the end.
-  const scan = () => scanShardProcesses(owner, { procRoot, euid, selfPid, readDirectory, readFile, baseline });
+  const { state: serverState } = readShardServerState(stateFile, { owner, port, euid });
+  const serverRead = serverState?.pid > 1
+    ? readProcessIdentity(serverState.pid, procRoot, { readFile }) : null;
+  const serverIdentity = serverRead?.stat && serverRead.stat.startTime === serverState?.serverStartTime
+    ? serverRead : null;
+  const scan = () => scanShardProcesses(owner, { procRoot, euid, selfPid, readDirectory, readFile, baseline, serverIdentity });
   const settled = (state) => !state.owned.length && !state.uncertain.length;
 
   // Waits for owned and uncertain processes alike: a process whose identity

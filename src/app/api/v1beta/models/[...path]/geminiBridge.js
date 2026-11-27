@@ -4,10 +4,46 @@
  * adding non-route exports to the Next.js app route module.
  */
 import { isObject, isRecord, isString } from "../../../../../shared/utils/typeChecks.js";
+import { GEMINI_ROLE } from "open-sse/translator/schema/roles.js";
+import { encodeToolCallIdWithSignature } from "open-sse/translator/concerns/signatureTransport.js";
 import { encodeDataUri } from "open-sse/translator/concerns/image.js";
 import { buildGeminiUsageMetadata } from "open-sse/translator/response/geminiUsageMetadata.js";
 import { groupGeminiFunctionResponses } from "open-sse/translator/formats/gemini.js";
 import { formatGoogleRpcStreamError } from "open-sse/utils/antigravityGeminiNative.js";
+
+/**
+ * Check native reply groups before the OpenAI pivot can repair or discard them.
+ * CPA 13e0642 deliberately preserves invalid boundaries and excess replies for
+ * pairing rejection. A later model turn starts a fresh queue, as in #1089.
+ */
+export function validateGeminiFunctionPairing(contents) {
+  let pending = [];
+  const fail = () => { throw new Error("Invalid Gemini function pairing"); };
+  for (const content of groupGeminiFunctionResponses(contents) || []) {
+    if (!isRecord(content) || !Array.isArray(content.parts) || content.parts.length === 0) {
+      if (pending.length) fail();
+      continue;
+    }
+    const calls = content.parts.map(p => p?.functionCall ?? p?.function_call).filter(isRecord);
+    const replies = content.parts.map(p => p?.functionResponse ?? p?.function_response).filter(isRecord);
+    if (calls.length) {
+      if (content.role !== GEMINI_ROLE.MODEL && pending.length) fail();
+      pending = calls;
+      continue;
+    }
+    if (!replies.length) continue;
+    if (replies.length !== pending.length) fail();
+    for (let i = 0; i < pending.length; i++) {
+      const call = pending[i];
+      const reply = replies[i];
+      const name = isString(reply.name) ? reply.name.trim() : "";
+      if (call.id && reply.id && call.id !== reply.id) fail();
+      if (name && call.name && name !== call.name) fail();
+    }
+    pending = [];
+  }
+  if (pending.length) fail();
+}
 
 /**
  * Convert Gemini request format to OpenAI/internal format.
@@ -15,8 +51,10 @@ import { formatGoogleRpcStreamError } from "open-sse/utils/antigravityGeminiNati
  * @param {object} geminiBody  - parsed Gemini request body
  * @param {string} model       - resolved model string (e.g. "gemini-pro-high")
  * @param {boolean} stream     - whether to stream (from URL action)
+ * @param {boolean} preserveSignatures - public gateway transports native signatures
+ * through the OpenAI pivot; direct callers keep their historical plain IDs.
  */
-export function convertGeminiToInternal(geminiBody, model, stream) {
+export function convertGeminiToInternal(geminiBody, model, stream, preserveSignatures = false) {
   const messages = [];
 
   if (geminiBody.systemInstruction) {
@@ -29,7 +67,7 @@ export function convertGeminiToInternal(geminiBody, model, stream) {
   }
 
   if (geminiBody.contents) {
-    const toolCallIdState = { serialByName: new Map(), queueByName: new Map(), callOrder: [] };
+    const toolCallIdState = { serialByName: new Map(), queueByName: new Map(), callOrder: [], preserveSignatures };
     // Regroup split parallel replies in call order before ids are paired.
     for (const content of groupGeminiFunctionResponses(geminiBody.contents)) {
       const converted = convertGeminiContentToInternal(content, toolCallIdState);
@@ -138,11 +176,15 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       const payload = Object.prototype.hasOwnProperty.call(response, "result") ?
       response.result :
       response;
-      const name = part.functionResponse.name || "";
+      const name = (part.functionResponse.name || "").trim();
       let toolCallId = part.functionResponse.id;
       // A nameless reply takes the next unanswered call by position, as
       // CLIProxyAPI backfills empty functionResponse names.
-      if (!toolCallId) toolCallId = claim(name ? queueByName.get(name) : callOrder);
+      if (toolCallId) {
+        const entry = callOrder.find(candidate => !candidate.used && candidate.rawId === toolCallId && (!name || candidate.name === name))
+          ?? callOrder.find(candidate => !candidate.used && candidate.rawId === toolCallId);
+        if (entry) { entry.used = true; toolCallId = entry.id; }
+      } else toolCallId = claim(name ? queueByName.get(name) : callOrder);
       if (!toolCallId && name) {
         toolCallId = `call_${name}`;
       }
@@ -184,7 +226,10 @@ function convertGeminiContentToInternal(content, toolCallIdState = { serialByNam
       serialByName.set(name, serial);
       id = `call_${name}_${serial}`;
     }
-    const entry = { id, used: false };
+    const rawId = id;
+    const signature = part.thoughtSignature ?? part.thought_signature;
+    if (toolCallIdState.preserveSignatures && signature) id = encodeToolCallIdWithSignature(id, signature);
+    const entry = { id, rawId, name, used: false };
     const queue = queueByName.get(name) || [];
     queue.push(entry);
     queueByName.set(name, queue);

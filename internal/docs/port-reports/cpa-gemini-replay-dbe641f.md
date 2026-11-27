@@ -92,3 +92,6 @@ cd tests && node node_modules/vitest/vitest.mjs run unit/cpa-gemini-replay-parit
 
 Existing Gemini, Antigravity, empty-stream, enum and `/v1beta` suites were rerun
 unchanged, including `v1beta-gemini-gateway-conformance-1089.test.js`.
+
+Retained earlier scenarios and concrete case-by-case comparison are recorded in
+[cpa-gemini-replay-retained-2034.md](./cpa-gemini-replay-retained-2034.md).

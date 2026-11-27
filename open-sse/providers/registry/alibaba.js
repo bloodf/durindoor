@@ -2,6 +2,12 @@
 // c71f0065a7efe9230ec23b96a12253b050c4d7ad: open-sse/config/videoRegistry.ts.
 // Request options follow open-sse/handlers/videoGeneration/dashscopeHandler.ts.
 // Existing keys and chat transport are shared; video uses /v1/video/generations.
+/**
+ * Framing inputs for models without a first frame. `aspect_ratio` is an alias
+ * of `ratio`; `size` (e.g. "1280*720") is normalized to `resolution` + `ratio`.
+ * I2V models take the ratio from the first frame and refuse all three.
+ */
+const FRAMING_PARAMS = ["ratio", "aspect_ratio", "size"];
 const videoModels = [
   ["happyhorse-1.1-i2v", "HappyHorse 1.1 I2V"],
   ["happyhorse-1.1-t2v", "HappyHorse 1.1 T2V"],
@@ -14,7 +20,7 @@ const videoModels = [
   ["wan2.7-videoedit", "Wan 2.7 Video Edit"],
 ].map(([id, name]) => ({
   id, name, kind: "video",
-  params: ["resolution", ...(/i2v/.test(id) ? [] : ["ratio"]), "duration", "prompt_extend", "watermark", "seed", "shot_type"],
+  params: ["resolution", ...(/i2v/.test(id) ? [] : FRAMING_PARAMS), "duration", "prompt_extend", "watermark", "seed", "shot_type"],
 }));
 
 export default {

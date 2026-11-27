@@ -147,11 +147,12 @@ export function scopedSignatureKey(scope, toolCallId) {
 }
 
 // The only writer: synchronous once the adapter is open, otherwise async.
-function writeSignature(toolCallId, signature, { scope = null, owner = null, family = null, expiresAt, now }) {
+// `alias: false` writes only the scoped row, so no other scope can read it by bare id.
+function writeSignature(toolCallId, signature, { scope = null, owner = null, family = null, expiresAt, now, alias = true }) {
   const value = { signature, family, createdAt: now, expiresAt };
   const primary = scopedSignatureKey(scope, toolCallId);
   const rows = primary ?
-  [[primary, value], [toolCallId, { ...value, primary, ...(owner && { owner }) }]] :
+  alias ? [[primary, value], [toolCallId, { ...value, primary, ...(owner && { owner }) }]] : [[primary, value]] :
   [[toolCallId, value]];
 
   for (const [key, row] of rows) remember(key, row);
@@ -223,6 +224,54 @@ export function getGeminiThoughtSignatureSync(toolCallId, sessionId = null, mode
     if (entry && isCompatible(entry, family)) return entry.signature;
   }
   return null;
+}
+
+/**
+ * Account + model-family scope for signatures captured from a selected account's
+ * response (OmniRoute PR 21439 nonstream capture). Null when the account or the
+ * family is unknown: such signatures are never written to a shared bare-id row.
+ */
+export function accountSignatureScope(accountId, model) {
+  const family = signatureFamily(model);
+  if (!isString(accountId) || !accountId || accountId === "unknown" || !family) return null;
+  return `account.${accountId}.${family}`;
+}
+
+/** Account-scoped write without the bare alias; a no-op for an unknown account or family. */
+export function storeAccountThoughtSignature(toolCallId, signature, accountId, model) {
+  const scope = accountSignatureScope(accountId, model);
+  if (!scope || !isString(toolCallId) || !toolCallId || !isString(signature) || !signature) return false;
+  const now = Date.now();
+  writeSignature(toolCallId, signature, { scope, family: signatureFamily(model), expiresAt: now + SESSION_TTL_MS, now, alias: false });
+  return true;
+}
+
+/** Account-scoped RAM read: only the exact account + family row, never a bare alias. */
+export function getAccountThoughtSignatureSync(toolCallId, accountId, model) {
+  const key = scopedSignatureKey(accountSignatureScope(accountId, model), toolCallId);
+  if (!key) return null;
+  pruneMemoryExpired();
+  return recall(key)?.signature || null;
+}
+
+/** Account-scoped read with SQLite fallback for a cold RAM cache. */
+export async function getAccountThoughtSignature(toolCallId, accountId, model) {
+  const cached = getAccountThoughtSignatureSync(toolCallId, accountId, model);
+  if (cached) return cached;
+  const key = scopedSignatureKey(accountSignatureScope(accountId, model), toolCallId);
+  if (!key) return null;
+  try {
+    const row = await signatureKv.get(key);
+    if (!row) return null;
+    if (!liveEntry(row)) {
+      signatureKv.remove(key).catch(() => {});
+      return null;
+    }
+    remember(key, row);
+    return row.signature;
+  } catch {
+    return null;
+  }
 }
 
 // Connection ids carry no ":", tool call ids may, so split at the first one.

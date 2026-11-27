@@ -315,8 +315,12 @@ export function createSSEErrorResult(parsed, credentials = null, sourceFormat = 
   return { ...createFormattedErrorResult(status, message, undefined, undefined, null, credentials, status, sourceFormat), quotaTerminalReason: "stream_error" };
 }
 
-export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null) {
-  const state = { toolNameMap, clientTools, providerBody };
+/**
+ * @param {{accountId: string|null, model: string|null}|null} [accountSignatures] - Antigravity only:
+ *   persist signatures for this account and model family instead of the session store.
+ */
+export function parseGeminiSSEToOpenAIResponse(rawSSE, fallbackModel, providerBody, toolNameMap, clientTools = null, accountSignatures = null) {
+  const state = { toolNameMap, clientTools, providerBody, ...(accountSignatures && { accountSignatures }) };
   const chunks = [];
 
   for (const { data, done } of parseSseEvents(rawSSE)) {
@@ -651,6 +655,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
         timeoutMs: responseBodyTimeoutMs
       });
       const isGeminiFamily = GEMINI_FAMILY_FORMATS.has(targetFormat);
+      const accountSignatures = targetFormat === FORMATS.ANTIGRAVITY ?
+      { accountId: connectionId || null, model: (finalBody || translatedBody)?.model || model } :
+      null;
       const terminalFormat = [FORMATS.KIRO, FORMATS.COMMANDCODE, FORMATS.CURSOR].includes(targetFormat) ?
       targetFormat :
       FORMATS.OPENAI;
@@ -662,7 +669,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       }) :
       null;
       let parsed = claudeSSE ? claudeSSE.completion : isGeminiFamily ?
-      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null) :
+      parseGeminiSSEToOpenAIResponse(sseText, model, finalBody || translatedBody, toolNameMap, Array.isArray(body?.tools) ? body.tools : null, accountSignatures) :
       parseSSEToOpenAIResponse(sseText, model, {
         format: terminalFormat,
         providerBody: finalBody || translatedBody,
@@ -671,7 +678,7 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
       if (!parsed && clientRawRequest?.geminiNativeResponse === true && ["antigravity", "agy"].includes(provider) && targetFormat === FORMATS.ANTIGRAVITY) {
         const native = collectAntigravityGeminiSSE(sseText, toolNameMap);
         if (native.candidates?.length) {
-          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap);
+          parsed = parseGeminiSSEToOpenAIResponse(`data: ${JSON.stringify(native)}\n\n`, model, finalBody || translatedBody, toolNameMap, null, accountSignatures);
         }
       }
       // A forced-streaming upstream can answer with one complete JSON response

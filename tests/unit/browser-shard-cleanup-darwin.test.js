@@ -21,7 +21,7 @@ describe("cleanup without /proc (macOS)", () => {
   it("never reports success, even when the port is free, and signals nothing", async () => {
     const kill = vi.fn();
     const result = await cleanupShardServer({ ...base, platform: "darwin", kill, probe: async () => false });
-    expect(result).toMatchObject({ ok: false, verification: "port-only", signalled: [], foreignListener: false });
+    expect(result).toMatchObject({ ok: false, verification: "port-only", signalled: [], unattributedListener: false });
     expect(result.reason).toMatch(/cannot be verified/);
     expect(kill).not.toHaveBeenCalled();
   });
@@ -30,6 +30,7 @@ describe("cleanup without /proc (macOS)", () => {
     const kill = vi.fn();
     const result = await cleanupShardServer({ ...base, platform: "darwin", kill, probe: async () => true });
     expect(result).toMatchObject({ ok: false, verification: "port-only", signalled: [] });
+    expect(result).toMatchObject({ unattributedListener: true });
     expect(result.reason).toMatch(/still held/);
     expect(kill).not.toHaveBeenCalled();
   });

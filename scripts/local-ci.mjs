@@ -21,6 +21,7 @@ import { chromiumLaunchOptions } from "../tests/utils/chromiumLaunch.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
 import {
   SHARD_OWNER_ENV, SHARD_PORT_ENV, SHARD_STATE_ENV, cleanupShardServer, newShardOwnerToken, reserveLoopbackPort,
+  snapshotShardBaseline,
 } from "./lib/website-shard-server.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -281,20 +282,20 @@ export function websiteBrowserShardEnv(shardOpts, port) {
 
 // Runs after every shard, whatever ended it: pass, failure, budget or silence
 // timeout, interrupt or spawn error. A failed cleanup is a failed check and
-// stops the remaining shards (fail closed).
-export async function websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanup = cleanupShardServer) {
+// stops the remaining shards (fail closed). `baseline` is the pre-shard
+// snapshot of processes whose ownership cannot be read (snapshotShardBaseline).
+export async function websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanup = cleanupShardServer, { baseline = null } = {}) {
   const step = { id: `${shardId}-server-cleanup`, job: "website-build", kind: "check", port };
   try {
-    const result = await cleanup({ owner: shardOpts.server.owner, port, stateFile: shardOpts.server.stateFile });
+    const result = await cleanup({ owner: shardOpts.server.owner, port, stateFile: shardOpts.server.stateFile, baseline });
     Object.assign(step, {
       status: result.ok ? "passed" : "failed",
-      reason: result.ok
-        ? (result.foreignListener ? "shard server stopped; an unrelated listener on the port was left untouched" : "shard server stopped")
-        : result.reason,
+      reason: result.ok ? "shard server stopped" : result.reason,
       verification: result.verification,
       signalled: result.signalled,
       survivors: result.survivors,
-      foreignListener: result.foreignListener,
+      uncertain: result.uncertain ?? [],
+      unattributedListener: Boolean(result.unattributedListener),
     });
   } catch (error) {
     Object.assign(step, { status: "failed", reason: `shard server cleanup could not be established: ${error.message}` });
@@ -855,10 +856,11 @@ if (!websiteRun) {
           rmSync(shardOpts.reportFile, { force: true });
           rmSync(shardOpts.server.stateFile, { force: true });
           const port = await reserveLoopbackPort();
+          const baseline = snapshotShardBaseline();
           const step = await run(shardId, "website-build", cmd, args, {
             cwd: shardOpts.cwd, env: websiteBrowserShardEnv(shardOpts, port),
           });
-          const cleanupStep = await websiteBrowserShardCleanupStep(shardId, shardOpts, port);
+          const cleanupStep = await websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanupShardServer, { baseline });
           cleanupStep.at = now();
           evidence.steps.push(cleanupStep);
           save();

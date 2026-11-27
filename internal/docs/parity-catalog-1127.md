@@ -40,27 +40,55 @@ presence or mocks. Do not add identity-cloaking behavior.
 | EasyCLIProxyAPI guided setup | Seven guided OAuth identities and nine API-key setup choices remain in the pinned desktop UI; the desktop source does not pin its bundled CLIProxyAPI core revision. | DurinDoor has native provider connections and generic configured-compatible connections. | **No new upstream identity delta.** Exact runtime, refresh, model and quota parity is unprovable from Easy's UI source alone. Next scoped acceptance, if guided-onboarding parity is wanted: exercise representative API-key and OAuth forms against synthetic config, and verify the selected provider ID, auth fields and endpoint without asserting core behavior that is not pinned. |
 | OmniRoute non-cookie identities | The pinned registry and executor tree retain the requested non-cookie provider contracts. Full historical identity dispositions are linked above; direct source links in rows below pin the actionable unmatched contracts. | Current registry/executor checks show several prior “missing” reports have since shipped: `freebuff`, `nlpcloud`, `openference`, `xkiro`, `cursor-api`, `zed-hosted`, and `devin-cli-agentic` are composed; `freebuff` has OAuth/API-key modes, `openference` has its own OAuth identity separate from `openference-api`. | **Do not re-file historical absences.** Offline evidence includes `tests/unit/freebuff-provider.test.js`, `nlpcloud-provider.test.js`, `openference-provider.test.js`, `cursor-api-provider.test.js`, `zed-hosted-provider.test.js`, and `devin-cli-agentic-provider.test.js`. Live account/provider acceptance remains unverified for entries whose docs say so. |
 
-## Missing-in-DurinDoor contracts and next units
+## OmniRoute contracts: corrections, staged work and retired candidates
 
-The rows below are exact unmatched IDs in the pinned OmniRoute registry and
-absent from the composed DurinDoor registry. Their prior “retired” labels are
-not used as current policy. The owner addition rule makes these implementable
-provider candidates; an implementation should document any known dead-origin
-or terms uncertainty and remain mock-covered until an authorized real-account
-check is separately scheduled.
+Corrected 2026-11-27. The first version of this section listed `chatgpt` as
+absent and listed five dead or closed candidates as implementable gaps. It also
+said `g4f-groq` had no provider-specific offline test, although one exists.
 
-| Provider / pinned upstream contract | Auth delta | Current local evidence and test coverage | State and implementable next-unit acceptance |
-| --- | --- | --- | --- |
-| `chatgpt`: OAuth plan-usage route to OpenAI Responses; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/chatgpt/index.ts), [OAuth protocol](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/src/lib/oauth/chatgptProtocol.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/executors/chatgpt.ts). | Plan scope `chatgpt.tokens.use.direct` and resource-bound OAuth grant differ from local `chatgpt-plan`/Codex token scopes and backend route. | `chatgpt` absent; `chatgpt-plan` is registered with its own executor and `tests/unit/chatgpt-plan-access.test.js`; it does not establish the platform Responses credential/route. | **Implementable gap.** Add a separate OAuth identity/credential class. Mock authorize/PKCE, token exchange and refresh, bearer Responses dispatch, model discovery, response normalization, and isolation from `codex` and `chatgpt-plan`. |
-| `g4f-groq`: optional API key at G4F Groq gateway; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/g4f-groq/index.ts). | Optional key, with anonymous and keyed modes; not equivalent to local Groq API-key auth. | No composed `g4f-groq` identity or dedicated gateway executor; no provider-specific offline test found. | **Implementable gap.** Fixture both no-key and synthetic-key calls; assert exact gateway URL/header presence, model passthrough, normalized JSON/SSE and error behavior; prove no external request. |
-| `monsterapi`: API-key inference route; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/monsterapi/index.ts). | Provider API key and MonsterAPI endpoint/catalog semantics, not a generic OpenAI-compatible alias. | No composed identity or executor; no provider-specific offline test. Older endpoint-health disposition is historical and does not settle present service availability. | **Implementable gap; live status unverified.** Fake server covers missing/valid key, model/path mapping, JSON/SSE and provider errors. Keep live endpoint acceptance separate. |
-| `predibase`: hosted inference route; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7b83979f40be488c5da8772b9/open-sse/config/providers/registry/predibase/index.ts). | Bearer key plus deployment/model route semantics. | No composed identity or dedicated executor; no provider-specific offline test. Prior DNS finding is historical, not a current reachability result. | **Implementable gap; live status unverified.** Mock authorization, endpoint construction, deployment/model selection, response and error conversion. Only a separately authorized live check can resolve availability. |
-| `seekai`: hosted chat endpoint; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7b83979f40be488c5da8772b9/open-sse/config/providers/registry/seekai/index.ts). | Inherited shared auth; exact missing credential behavior must follow the composed upstream builder. | No composed identity or dedicated executor; no provider-specific offline test. Prior certificate/site report is historical. | **Implementable gap; live status unverified.** First pin inherited auth behavior from the shared builder, then fake endpoint tests for URL, auth, model, success, stream and error mapping. |
-| `syntx`: custom API endpoint and executor; [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7b83979f40be488c5da8772b9/open-sse/config/providers/registry/syntx/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7b83979f40be488c5da8772b9/open-sse/executors/syntx.ts). | Bearer key and provider-specific request conversion. | No composed identity or executor; no provider-specific offline test. Prior reseller/terms assessment remains dated evidence, not an implementation veto. | **Implementable gap; authorization/live status require explicit documentation.** Use synthetic key and fake endpoint; assert outbound request fields, model mapping, stream parsing and normalized error. Document unresolved vendor terms in the provider note. |
+### Already covered: `chatgpt`
 
-No row above claims the provider is live, operational, or authorized by virtue of
-OmniRoute source. The test acceptance is deterministic and offline. Existing
-source parity or registry entries establish code paths only, not account access.
+`chatgpt` is **not missing**. DurinDoor registers it as `chatgpt-plan`, hidden
+and owner-operated. Only the exact ID `chatgpt` is absent.
+
+| Contract | Pinned OmniRoute | DurinDoor |
+| --- | --- | --- |
+| OAuth scopes and resource ([upstream config](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/chatgpt.ts), [protocol](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/src/lib/oauth/chatgptProtocol.ts)) | `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct` for resource `https://api.openai.com/v1`; issuer `https://auth.openai.com`; PKCE | The same scopes, resource, issuer, authorize path, token URL and PKCE in [`chatgptPlanProtocol.js`](../../src/lib/oauth/chatgptPlanProtocol.js). This is a separate credential class from `codex`. |
+| Models and inference ([registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/chatgpt/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/executors/chatgpt.ts)) | Discovery at `/v1/models`, Responses at `/v1/responses` | Both in [`chatgpt-plan/index.js`](../../open-sse/providers/chatgpt-plan/index.js) and [`chatgpt-plan.js`](../../open-sse/executors/chatgpt-plan.js), dispatched by [`chatgptPlanDispatch.js`](../../src/sse/services/chatgptPlanDispatch.js) instead of the shared executor map. |
+
+Deliberate differences include DurinDoor's guarded, opt-in enrollment, scoped
+gateway keys and its own agent name. See the
+[provider guide](../../docs/providers/chatgpt-plan.md) and
+[transport note](./chatgpt-plan-transport.md). Offline evidence is in
+`tests/unit/chatgpt-plan-*.test.js`; this correction ran the `provider`,
+`oauth`, `enrollment`, `model-list`, `inference` and `gateway-dispatch` files.
+No sign-in or request was made to OpenAI.
+
+### Staged, not registered: `renderhour`
+
+| Pinned contract | DurinDoor state | Remaining |
+| --- | --- | --- |
+| Media jobs with an `rh_` key or subscription OAuth: [models](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/renderhour/mediaModels.ts), [job client](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/mediaGeneration/renderhour.ts) | Image generation with an `rh_` key is **staged and mock-covered** in `tests/unit/renderhour-images.test.js`. It is not registered, available or verified live. | Registration and the shared-handler gaps in the [provider note](../../docs/providers/renderhour.md#before-registration). Video, speech, reference uploads and OAuth are not ported. |
+
+### Retired candidates
+
+These exact IDs are in the pinned OmniRoute registry. DurinDoor has no route for
+them. They are **not queued**. The evidence is dated and already in this
+repository; this refresh made no new probe. It does not show that a service is
+unavailable today. The owner direction above allows a later owner-authorized
+addition, but a pinned registry row alone is not a reason to revive one. Any
+revival needs new first-party evidence for the recorded problem.
+
+| Candidate / pinned upstream | Recorded evidence | Existing offline check |
+| --- | --- | --- |
+| `g4f-groq`: [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/g4f-groq/index.ts) | Issue [#1186](https://github.com/bloodf/durindoor/issues/1186), closed not planned as a public gateway front ([dispositions](./provider-parity-current-dispositions.md)). A [2026-11-21 probe](./g4f-groq-2034.md) of the pinned model list returned HTTP 404. The other four G4F gateways have since been registered, so that shared basis no longer excludes them; it says nothing new about this route's 404. | `tests/unit/fleet-provider-g4f-groq-acceptance.test.js`, `tests/unit/provider-registration-apikey-batch-b.test.js` |
+| `monsterapi`: [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/monsterapi/index.ts) | Issue [#1208](https://github.com/bloodf/durindoor/issues/1208), closed not planned: DNS failure and ambiguous free-catalog terms. A [later note](./monsterapi-2034.md) records both the API and developer hosts failing to resolve. | `tests/unit/provider-registration-apikey-batch-b.test.js` |
+| `predibase`: [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/predibase/index.ts) | Issue [#1227](https://github.com/bloodf/durindoor/issues/1227), closed not planned: the documented host did not resolve. | The free-model row is marked discontinued, asserted by `tests/unit/port-omniroute-free-catalog-retired.test.js`. |
+| `seekai`: [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/seekai/index.ts) | Issue [#1232](https://github.com/bloodf/durindoor/issues/1232), closed not planned: the 2026-11-03 review found the site offline, an invalid origin certificate and no API documentation. | None |
+| `syntx`: [registry](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/syntx/index.ts), [executor](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/executors/syntx.ts) | Issue [#1234](https://github.com/bloodf/durindoor/issues/1234), closed not planned: reseller with no public API documentation or named operator. A [2026-11-21 check](../../docs/providers/syntx.mdx) got HTTP 404 from the pinned chat route. | `tests/unit/provider-registration-apikey-batch-b.test.js` |
+
+Registry presence, a staged module and mocks do not show that a provider is
+live, operational or authorized.
 
 ## Separate live-only verification
 
@@ -70,7 +98,7 @@ Cursor API key and newly added web-session providers. The current local code and
 mock suites are not substitutes for those checks. These remain **live-only
 verification**, separate from implementable missing contracts; no real account
 was used for this catalog. Antigravity, CLIProxyAPI/Easy auth, and web-cookie
-groups remain excluded from this catalog's provider-addition table.
+groups remain excluded from this catalog's OmniRoute tables.
 
 ## Tracker boundaries and evidence limits
 
@@ -78,6 +106,7 @@ The open tracker list on 2026-11-27 includes [#2034](https://github.com/bloodf/d
 [#2642](https://github.com/bloodf/durindoor/issues/2642) TrustedRouter review,
 and distinct architecture items. This document makes no claims for #2642 or
 architecture lanes and changes no GitHub issue. All source identities and
-unmatched status refer to the pins above; the local evidence refers only to
-`1184034cec8dbe158ae3e69479a06b1bb7a93359`. Live provider behavior, accepted
+unmatched status refer to the pins above; the local evidence refers to
+`1184034cec8dbe158ae3e69479a06b1bb7a93359`, except the staged `renderhour`
+modules, which were added after it. Live provider behavior, accepted
 credentials, pricing, regional availability and account quotas were not tested.

@@ -418,6 +418,33 @@ export function unsupportedReasoningEffortError(level, supported, model = null) 
 }
 
 /**
+ * Refuse a thinking intent the model's declared efforts cannot carry, before
+ * any provider-specific rendering. Runs for every thinking format (OpenAI,
+ * Responses, DeepSeek, Claude adaptive/budget, Gemini, Qwen, ...), so no lane
+ * can fold the request onto `none` or forward an undeclared tier.
+ *
+ * Only a declared set with no reasoning tier triggers it: `["none"]`, or `[]`
+ * once `thinkingCanDisable: false` removes `none`. A level, `auto` or budget
+ * request is refused; `none` is refused only when the model cannot disable.
+ * @param {object|null} cfg - unified thinking intent
+ * @param {object} caps - resolved capabilities
+ * @param {string|null} provider
+ * @param {string|null} model
+ */
+export function assertDeclaredEffortsCanReason(cfg, caps, provider = null, model = null) {
+  if (!cfg || !caps?.reasoning) return;
+  const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
+  if (!Array.isArray(declared) || hasReasoningTier(declared)) return;
+  if (cfg.mode === "none" && caps.thinkingCanDisable !== false) return;
+  const level = cfg.mode === "level" ? cfg.level
+    : cfg.mode === "budget" ? `budget ${cfg.budget}`
+      : cfg.mode === "none" ? "none" : "auto";
+  // Report what the operator declared, before thinkingCanDisable filtering.
+  const reported = Array.isArray(caps.thinkingEfforts) ? caps.thinkingEfforts : declared;
+  throw unsupportedReasoningEffortError(level, caps.thinkingCanDisable === false ? [] : reported, model);
+}
+
+/**
  * Clamp one effort tier onto a model's declared tier set.
  *
  * A reasoning request (any tier other than `none`, including unknown tiers) is
@@ -762,6 +789,13 @@ function applyFormat(fmt, body, cfg, caps, model = null, provider = null, reques
 export function applyThinking(targetFormat, model, body, provider = null, intent = undefined, modelCapabilities = null) {
   if (!body || !isObject(body)) return body;
 
+  const { cleanModel, override } = parseSuffix(model);
+  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
+  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
+  // Declared efforts that cannot enable reasoning refuse a reasoning request
+  // here, before any early return or format-specific rendering (#2648).
+  assertDeclaredEffortsCanReason(cfg, caps, provider, cleanModel);
+
   // ponytail: ceiling = ollama under claude transport. Lift into PROVIDERS[ollama].quirks
   // or a capability flag if a second native-claude provider lands.
   // Explicit custom thinking-related overrides (customKeys marker) must not be
@@ -793,8 +827,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
     return body;
   }
 
-  const { cleanModel, override } = parseSuffix(model);
-
   // Grok Build (grok-cli) rejects reasoning.effort but still accepts summary/
   // encrypted-content continuity. Let the executor own the wire normalization so
   // a caller-supplied summary is not stripped by the reasoning:false capability.
@@ -802,9 +834,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   if (provider === "grok-cli" && cleanModel === "grok-build") {
     return body;
   }
-
-  const caps = modelCapabilities || getCapabilitiesForModel(provider, cleanModel);
-  const cfg = override || intent || extractThinking(body, cleanModel, provider, caps);
 
   // OpenCode Go publishes model-scoped DeepSeek effort tiers (the same rows the
   // catalog advertises). Fold the requested tier onto the declared set once,

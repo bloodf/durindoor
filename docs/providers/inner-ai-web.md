@@ -80,10 +80,12 @@ A failure before the first text is an HTTP error. A failure after streaming has 
 
 `tests/unit/inner-ai-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any other URL. It covers credential parsing, headers and request body, discovery, account separation, JSON and SSE, quota and stream errors, expiry, redirects, and estimated usage. Its gateway cases replace the executor lookup, because the provider is not registered.
 
+The upstream stream is read with the shared SSE frame reader (`open-sse/utils/sseFrames.js`). `tests/unit/inner-ai-web-sse.test.js` covers LF, CRLF and CR endings, byte-fragmented reads, split UTF-8, multi-line data, comments, a final frame without a blank line, quota events, malformed or truncated frames, and the pending-frame byte bound.
+
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/inner-ai-web-provider.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/inner-ai-web-provider.test.js unit/inner-ai-web-sse.test.js --maxWorkers=2
 ```
 
 ## Attribution

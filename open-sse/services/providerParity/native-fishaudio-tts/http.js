@@ -95,7 +95,14 @@ export function redirected(response) {
 /**
  * A refused answer, by HTTP status. Fish's text is never quoted. For a billable
  * request (`billable`), a 5xx other than 503 may have come after Fish did the
- * work, so its outcome is unknown and it carries `acceptedJob`.
+ * work, so its outcome is unknown and it carries `acceptedJob`. A 503 keeps its
+ * status and a bounded Retry-After for the selected account's health, and for
+ * a billable request also carries `acceptedJob`: Fish's error reference lists
+ * 5xx only as "Server error" (retry with backoff), its "not billed" statements
+ * cover file ASR and Voice Design but not TTS, and a 5xx may come from the
+ * network edge, so a 503 is never treated as safe to replay on another account.
+ * Discovery (`billable: false`) stays a plain 503.
+ * See internal/docs/port-reports/native-fishaudio-tts.md.
  */
 export function refusal(status, { modality, label, secrets, billable, retryAfter = null }) {
   if (status >= 500 && status !== 503) {
@@ -115,7 +122,8 @@ export function refusal(status, { modality, label, secrets, billable, retryAfter
   if (status === 429 || status === 503) {
     const evidence = parseRateLimitEvidence({ status: 429, headers: new Headers({ "retry-after": retryAfter ?? "" }), now: Date.now() });
     const usable = evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(status, `Fish Audio ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    const failed = createErrorResult(status, `Fish Audio ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    return status === 503 && billable ? withAcceptedJob(failed, modality, "submit-unknown") : failed;
   }
   const passed = status >= 400 && status < 500 ? status : HTTP_STATUS.BAD_GATEWAY;
   return createErrorResult(passed, `Fish Audio refused the ${label} request with ${status}`, undefined, undefined, null, secrets);

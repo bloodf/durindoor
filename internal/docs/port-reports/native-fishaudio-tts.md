@@ -86,7 +86,7 @@ Voice discovery (`GET https://api.fish.audio/model`, `Accept: application/json`,
 - One send and no retries. The send carries a 120 s deadline (30 s for discovery) and the caller's signal. The wait ends even if the transport ignores its signal.
 - `redirect: "manual"`. Any 3xx or `opaqueredirect` is refused and not followed, so the key is not sent again.
 - The connection's egress policy is passed through (`resolveCredentialProxyOptions`). Any connection `baseUrl` is ignored.
-- Refusals keep only the HTTP status, and Fish's body is never quoted. 401/403 pass through. 402 sets `quotaExhausted` for this connection. 429/503 keep a valid `Retry-After`. Other 4xx pass through. 5xx other than 503 return 502, and for speech they carry `acceptedJob` (`submit-unknown`).
+- Refusals keep only the HTTP status, and Fish's body is never quoted. 401/403 pass through. 402 sets `quotaExhausted` for this connection. 429/503 keep a valid `Retry-After`. Other 4xx pass through. 5xx other than 503 return 502, and for speech they carry `acceptedJob` (`submit-unknown`). A speech 503 keeps status 503 and also carries `acceptedJob` (`submit-unknown`); see "503 replay" below.
 - The following carry `acceptedJob` with unknown cost and are never replayed:
   - aborts after send
   - timeouts
@@ -97,6 +97,25 @@ Voice discovery (`GET https://api.fish.audio/model`, `Accept: application/json`,
   - an abort before send
   - pre-connect errors (`ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED`, `UND_ERR_CONNECT_TIMEOUT`)
 - Discovery is not billable, so its failures never carry `acceptedJob`.
+
+## 503 replay (#2034, 2026-11-27)
+
+The adapter used to treat a speech 503 as a refusal with no `acceptedJob`, so the media account loop could send the same text to another account. No primary Fish Audio source supports that. Sources (public GET, read 2026-11-27):
+
+- [API errors](https://docs.fish.audio/api-reference/errors), "Status codes": `5xx` is "Server error", "Retry with backoff; if it persists, contact support." The intro says edge `5xx` answers "may not be JSON". "Retries": "Retry `429` and `5xx` with exponential backoff." That is client retry policy, not a no-work or no-billing contract.
+- [Pricing and rate limits](https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits): "Requests that return an error response are not billed" appears only under file ASR (`transcribe-1-pro`, `transcribe-1`), and "service errors are not billed" only under Voice Design. The TTS section says nothing about failed requests.
+
+The no-billing statements do not cover `/v1/tts`, and no structured "not accepted" field is documented. A speech 503 now:
+
+- keeps HTTP status 503 and the bounded `Retry-After` (`resetsAtMs`) for the selected account's health;
+- carries `acceptedJob` (`costSource: "accepted-job"`, cost unknown, `jobState: "submit-unknown"`). In `runMediaAccounts`, the TTS handler's `onAccountFailure` records the job on the selected account and ends the loop, so it is never replayed on another account;
+- never quotes the body; it is still drained only up to 16 KiB under a 2 s bound.
+
+Voice discovery (`billable: false`) is a free read and keeps a plain 503. Same contract as the HuggingFace speech fix (`internal/docs/port-reports/native-audio-503-contract.md`, commit `84b4a16baf`).
+
+Tests: `tests/unit/private-audio-503-replay.test.js` (30 tests, 15 per vendor; see the Deepgram report for the case list). Mutations: reverting the Fish 503 change fails 13 Fish cases; applying the job to discovery too fails the discovery case.
+
+Conflict: `tests/unit/native-fishaudio-tts.test.js` "keeps a bounded Retry-After on 429 and 503" asserts `unavailable.acceptedJob` is undefined and now fails. It was outside this change's allowed files and was left unchanged.
 
 ## Registration (serial step, not done here)
 

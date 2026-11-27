@@ -97,7 +97,14 @@ export function redirected(response) {
 /**
  * A refused answer, by HTTP status. Deepgram's text is never quoted. A 5xx other
  * than 503 may have come after Deepgram did the work, so its outcome is unknown
- * and, for billable work, it carries `acceptedJob`.
+ * and, for billable work, it carries `acceptedJob`. A 503 keeps its status and a
+ * bounded Retry-After for the selected account's health, and for billable work
+ * also carries `acceptedJob`: Deepgram's error reference only says a 503 means
+ * the server "isn't ready to handle the request" (maintenance or overload) and
+ * no Deepgram document says a 503 did no work or is not billed (TTS bills per
+ * input character), so it is never treated as safe to replay on another
+ * account. Discovery (`billable: false`) stays a plain 503.
+ * See internal/docs/port-reports/native-deepgram-tts.md.
  */
 export function refusal(status, { modality, label, secrets, retryAfter = null, billable = true }) {
   if (status >= 500 && status !== 503) {
@@ -119,7 +126,8 @@ export function refusal(status, { modality, label, secrets, retryAfter = null, b
   if (status === 429 || status === 503) {
     const evidence = parseRateLimitEvidence({ status: 429, headers: new Headers({ "retry-after": retryAfter ?? "" }), now: Date.now() });
     const usable = evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(status, `Deepgram ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    const failed = createErrorResult(status, `Deepgram ${status === 429 ? "rate limited" : "is unavailable for"} ${label}`, usable?.resetAtMs, undefined, usable, secrets);
+    return status === 503 ? maybeAccepted(failed, modality, "submit-unknown", billable) : failed;
   }
   const passed = status >= 400 && status < 500 ? status : HTTP_STATUS.BAD_GATEWAY;
   return createErrorResult(passed, `Deepgram refused the ${label} request with ${status}`, undefined, undefined, null, secrets);

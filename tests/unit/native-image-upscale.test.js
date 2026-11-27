@@ -101,9 +101,9 @@ describe("staging and registration", () => {
     } catch (error) {
       if (error.status !== 1) throw error; // 1 = no match
     }
-    const forbidden = out.trim().split("\n").filter(Boolean).filter((path) =>
-      isForbiddenUpscaleReference(path, readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")));
-    expect(forbidden).toEqual([]);
+    out = out.trim().split("\n").filter(Boolean).filter((path) =>
+      isForbiddenUpscaleReference(path, readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"))).join("\n");
+    expect(out).toBe("");
   });
 });
 

@@ -29,15 +29,22 @@ const FORMAT_TO_NATIVE = {
 /**
  * Thinking intent implied by a catalog-resolved `-<effort>` model ID (OmniRoute
  * #21347 port, see resolveSyncedClaudeEffortVariant in src/sse/services/model.js).
- * Unlike a `model(level)` suffix, which overrides the body, this is a default:
- * any explicit thinking/reasoning field in the request (or one injected by the
- * provider thinking setting) wins and the resolved effort is dropped.
- * @param {object} body - request body before translation
+ * Unlike a `model(level)` suffix, which overrides the body, this is a default.
+ * Precedence, highest first:
+ * 1. provider thinking mode `none`/`off`: always drops the resolved effort.
+ *    `none` strips the body's thinking fields before this runs, so the body
+ *    alone cannot show that the provider disabled thinking; read the setting.
+ * 2. any explicit thinking/reasoning field in the request, or one injected by
+ *    a provider level setting: wins over the resolved effort.
+ * 3. the resolved effort.
+ * @param {object} body - request body after the provider thinking override
  * @param {string|undefined} effort - resolved effort, if any
+ * @param {{ mode?: string } | null} [providerThinking] - provider thinking setting
  * @returns {{ mode: "level", level: string } | null}
  */
-export function catalogEffortIntent(body, effort) {
+export function catalogEffortIntent(body, effort, providerThinking = null) {
   if (!isString(effort) || !effort) return null;
+  if (providerThinking?.mode === "none" || providerThinking?.mode === "off") return null;
   return extractThinking(body) ? null : { mode: "level", level: effort };
 }
 

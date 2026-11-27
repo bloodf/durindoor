@@ -570,7 +570,8 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   providerThinking?.mode === "none" || providerThinking?.mode === "off";
   // A `-<effort>` ID resolved against a synced Claude base (OmniRoute #21347)
   // only fills in when neither the client nor the provider setting chose one.
-  const resolvedEffortIntent = catalogEffortIntent(body, modelInfo.resolvedThinkingEffort);
+  // Provider `none` has already stripped the body, so pass the setting itself.
+  const resolvedEffortIntent = catalogEffortIntent(body, modelInfo.resolvedThinkingEffort, providerThinking);
   const thinkingIntent = modelThinkingIntent || resolvedEffortIntent ||
   (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({

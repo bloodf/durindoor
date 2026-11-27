@@ -1,14 +1,21 @@
 // Private UC consumer email-code sign-in controller. Port of OmniRoute
-// c71f0065 open-sse/executors/uc/emailLogin.ts:
+// c71f0065 open-sse/executors/uc/emailLogin.ts (all calls form-encoded POSTs,
+// query `__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1`, lines 44-55):
 //
-//   1. POST /v1/client/sign_ins                         identifier=<email>
+//   1. POST /v1/client/sign_ins            locale=en-CA&identifier=<email>        (:130-135)
 //        -> { response: { id: "sia_…", status: "needs_first_factor",
 //             supported_first_factors: [{ strategy: "email_code", email_address_id: "idn_…" }] } }
-//        Set-Cookie: __client=…
-//   2. POST /v1/client/sign_ins/{sia}/prepare_first_factor  strategy=email_code&email_address_id=<idn>
-//   3. POST /v1/client/sign_ins/{sia}/attempt_first_factor  strategy=email_code&code=<code>
-//        -> { response: { status: "complete", created_session_id: "sess_…" } }
-//   then harvest __client, created_session_id, the user uid and the cookie jar.
+//        Any Set-Cookie becomes the jar carried into steps 2 and 3     (:140-143)
+//   2. POST …/sign_ins/{sia}/prepare_first_factor
+//        email_address_id=<idn>&strategy=email_code; only HTTP 200 is checked (:186-205)
+//   3. POST …/sign_ins/{sia}/attempt_first_factor
+//        strategy=email_code&code=<code>, Cookie = the step-1 jar     (:229-237)
+//        -> { response: { status: "complete", created_session_id: "sess_…" },
+//             client: { sessions: [{ id: "sess_…", user: { id: "<uid>" } }] } }
+//        + Set-Cookie: __client=<durable JWT>                           (:260-303)
+//   The credential is { clientCookie: attempt Set-Cookie __client,
+//   sid: created_session_id, uid: the session's user.id, cookies: the
+//   attempt Set-Cookie jar } (:287, :302).
 //
 // Fork deviations:
 // - Guarded opt-in: DURINDOOR_UC_CONSUMER_SIGNIN=1 and `consent: true` per start.
@@ -17,11 +24,16 @@
 //   `flowId` and `code`, so no caller body can supply or resume sign-in state.
 // - Each flow has its own jar; there is no shared jar across flows or accounts.
 // - Bounded: flow TTL, verify attempts, pending flow count, per-request deadline.
-// - A captcha/bot challenge or a second factor ends the flow as
-//   `needs_operator`; nothing tries to bypass it.
-// - Success is returned only after the harvested metadata passes the staged
-//   TTS credential resolver and a session mint proves the uid; any malformed
-//   success is dropped and nothing is saved.
+// - Step 1 must answer `needs_first_factor`; a captcha/bot challenge or a
+//   second factor ends the flow as `needs_operator`; nothing tries to bypass it.
+// - A prepare answer that names another sign-in id is refused.
+// - The uid is taken only from the session whose id is created_session_id; the
+//   source's fallback to sessions[0] (:280) is not ported, so another account's
+//   session in the same client is never picked.
+// - Success is returned only after one session mint with the harvested jar
+//   succeeds and its JWT names no other uid or sid, and the metadata passes the
+//   staged TTS credential resolver; any malformed success is dropped and
+//   nothing is saved.
 // - Results never echo the email, code, cookies, ids or upstream bodies.
 import { randomUUID } from "node:crypto";
 import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
@@ -36,6 +48,9 @@ import {
 } from "./config.js";
 import { buildUcConnectionMetadata, mergeCookies, mintUcSession, ucFailure } from "./session.js";
 import { clerkErrorCode, clerkResource, ucClerkPost } from "./transport.js";
+
+/** Step-1 locale the source sends (emailLogin.ts:133). */
+export const UC_SIGNIN_LOCALE = "en-CA";
 
 const EMAIL = /^[^\s@"<>()[\]\\,;:]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const CODE = /^\d{6}$/;
@@ -69,12 +84,11 @@ function emailFactor(resource) {
   return factor && isString(factor.email_address_id) && FACTOR_ID.test(factor.email_address_id) ? factor.email_address_id : null;
 }
 
-/** The uid named by the attempt answer for the created session, when it names one. */
+/** `client.sessions[id === sid].user.id` of the attempt answer (emailLogin.ts:273-285), or null. */
 function uidFromAttempt(body, sessionId) {
   const sessions = Array.isArray(body?.client?.sessions) ? body.client.sessions : [];
   const session = sessions.find((s) => isRecord(s) && s.id === sessionId);
-  const meta = session?.user?.public_metadata;
-  const value = isRecord(meta) ? (meta.uid ?? meta.useruid) : null;
+  const value = isRecord(session?.user) ? session.user.id : null;
   return isString(value) && UID.test(value) ? value : null;
 }
 
@@ -140,7 +154,7 @@ export function createUcSignInController({
       return out;
     };
 
-    const created = await ucClerkPost(fetchImpl, "/v1/client/sign_ins", { form: { identifier: email }, signal: scoped(flow, signal), timeoutMs });
+    const created = await ucClerkPost(fetchImpl, "/v1/client/sign_ins", { form: { locale: UC_SIGNIN_LOCALE, identifier: email }, signal: scoped(flow, signal), timeoutMs });
     if (!live(flow)) return fail(ucFailure("aborted"));
     if (!created.ok || created.status !== 200) return fail(signInFailure(created));
     flow.cookies = mergeCookies(flow.cookies, created.cookies);
@@ -150,19 +164,18 @@ export function createUcSignInController({
     if (attempt.status !== "needs_first_factor") return fail(ucFailure("needs_operator", { reason: "unsupported_flow" }));
     const factorId = emailFactor(attempt);
     if (!factorId) return fail(ucFailure("needs_operator", { reason: "unsupported_factor" }));
-    if (!flow.cookies.__client) return fail(ucFailure("malformed", { status: 200 }));
 
     const prepared = await ucClerkPost(fetchImpl, `/v1/client/sign_ins/${signInId}/prepare_first_factor`, {
-      form: { strategy: UC_SIGNIN_STRATEGY, email_address_id: factorId },
+      form: { email_address_id: factorId, strategy: UC_SIGNIN_STRATEGY },
       cookies: flow.cookies,
       signal: scoped(flow, signal),
       timeoutMs,
     });
     if (!live(flow)) return fail(ucFailure("aborted"));
     if (!prepared.ok || prepared.status !== 200) return fail(signInFailure(prepared));
-    const preparedResource = clerkResource(prepared.body);
-    if (preparedResource?.id !== signInId) return fail(ucFailure("malformed", { status: 200 }));
-    flow.cookies = mergeCookies(flow.cookies, prepared.cookies);
+    // The source checks only the status (emailLogin.ts:198); a body that names another attempt is refused.
+    const preparedId = clerkResource(prepared.body)?.id;
+    if (preparedId !== undefined && preparedId !== signInId) return fail(ucFailure("malformed", { status: 200 }));
     flow.signInId = signInId;
     flow.factorId = factorId;
     flow.busy = false;
@@ -174,16 +187,15 @@ export function createUcSignInController({
     if (resource?.status === "needs_second_factor") return ucFailure("needs_operator", { reason: "mfa" });
     if (resource?.status !== "complete") return ucFailure("needs_operator", { reason: "unsupported_flow" });
     const sid = isString(resource.created_session_id) && SESSION_ID.test(resource.created_session_id) ? resource.created_session_id : null;
-    const cookies = mergeCookies(flow.cookies, answer.cookies);
-    if (!sid || !cookies.__client) return ucFailure("malformed", { status: 200 });
-    const minted = await mintUcSession(fetchImpl, { sid, cookies, expectedUid: null }, { signal: scoped(flow, signal), timeoutMs });
+    // The durable cookie must come from this answer's Set-Cookie (emailLogin.ts:287-294),
+    // and the saved jar is this answer's Set-Cookie (emailLogin.ts:302).
+    const cookies = mergeCookies({}, answer.cookies);
+    const uid = sid ? uidFromAttempt(answer.body, sid) : null;
+    if (!sid || !uid || !cookies.__client) return ucFailure("malformed", { status: 200 });
+    const minted = await mintUcSession(fetchImpl, { sid, cookies, expectedUid: uid }, { signal: scoped(flow, signal), timeoutMs });
     if (!live(flow)) return interrupted(flow, ucFailure("aborted"));
     if (!minted.ok) return minted.kind === "aborted" || minted.kind === "timeout" ? interrupted(flow, minted) : minted;
-    const named = uidFromAttempt(answer.body, sid);
-    const cookieUid = isString(minted.cookies.useruid) && UID.test(minted.cookies.useruid) ? minted.cookies.useruid : null;
-    const candidates = [minted.uid, named, cookieUid].filter(Boolean);
-    if (!candidates.length || candidates.some((uid) => uid !== candidates[0])) return ucFailure("malformed", { status: 200 });
-    const metadata = buildUcConnectionMetadata({ clientCookie: minted.cookies.__client, sid, uid: candidates[0], cookies: minted.cookies, source: "email-code", now: now() });
+    const metadata = buildUcConnectionMetadata({ clientCookie: minted.cookies.__client, sid, uid, cookies: minted.cookies, source: "email-code", now: now() });
     return metadata ? { ok: true, providerSpecificData: metadata } : ucFailure("malformed", { status: 200 });
   }
 
@@ -215,7 +227,7 @@ export function createUcSignInController({
     }
     const failure = signInFailure(answer);
     if (failure.kind === "code_incorrect") {
-      flow.cookies = mergeCookies(flow.cookies, answer.cookies);
+      // The retry carries the step-1 jar again, as the source's verify does (emailLogin.ts:233).
       const attemptsLeft = attemptsCap - flow.attempts;
       if (attemptsLeft <= 0) {
         end(flow);

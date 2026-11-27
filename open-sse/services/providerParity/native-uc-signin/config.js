@@ -6,7 +6,7 @@
 // Clerk JS and API versions), open-sse/executors/uc/emailLogin.ts (form POST
 // sign_ins -> email_code prepare_first_factor -> attempt_first_factor, then
 // __client, created_session_id, uid and cookie jar harvest),
-// open-sse/executors/uc/clerkAuth.ts (session token mint and touch),
+// open-sse/executors/uc/clerkAuth.ts (session token mint; the source has no touch),
 // open-sse/executors/uc/credentials.ts (providerSpecificData field names) and
 // open-sse/config/providers/registry/uc/index.ts (the `uc` web-cookie row).
 //
@@ -54,15 +54,18 @@ export const UC_AUTH_SOURCES = Object.freeze(["email-code", "cookie-import"]);
 export const UC_SIGNIN_OPT_IN_ENV = "DURINDOOR_UC_CONSUMER_SIGNIN";
 export const isUcConsumerSignInEnabled = (env) => env?.[UC_SIGNIN_OPT_IN_ENV] === "1";
 
-// Bounds. The source has none; these are fork additions.
+// Bounds. Apart from the refresh skew below, the source has none; these are fork additions.
 export const UC_REQUEST_TIMEOUT_MS = 15_000;
 export const UC_MAX_RESPONSE_BYTES = 64 * 1024;
 /** A pending sign-in lives at most this long (Clerk email codes last 10 minutes). */
 export const UC_FLOW_TTL_MS = 10 * 60_000;
 export const UC_MAX_VERIFY_ATTEMPTS = 5;
 export const UC_MAX_PENDING_FLOWS = 32;
-/** Session JWTs are refreshed this long before `exp`; the option is clamped. */
-export const UC_REFRESH_SKEW_DEFAULT_MS = 10_000;
+/**
+ * Session JWTs are refreshed this long before `exp`; the option is clamped.
+ * Default is the source UC_TOKEN_REFRESH_SKEW_S = 8 (constants.ts:36).
+ */
+export const UC_REFRESH_SKEW_DEFAULT_MS = 8_000;
 export const UC_REFRESH_SKEW_MIN_MS = 1_000;
 export const UC_REFRESH_SKEW_MAX_MS = 30_000;
 /** A cached session JWT is never kept longer than this, whatever `exp` says. */

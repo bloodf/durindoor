@@ -16,7 +16,7 @@
   "localEquivalence": {
     "checked": [
       "open-sse/providers/registry/uc-direct.js: metered REST at api.uncensored.com with a `uai_` API key; a different backend, not an equivalent, not changed",
-      "open-sse/services/providerParity/native-uc-tts: consumes the same providerSpecificData fields and mints per call, but has no sign-in, touch, refresh cache or cookie import",
+      "open-sse/services/providerParity/native-uc-tts: consumes the same providerSpecificData fields and mints per call, but has no sign-in, refresh cache or cookie import",
       "open-sse/services/providerParity/native-uc-video-image: uc-direct `uai_` key only; never reads the consumer fields"
     ],
     "result": "no existing sign-in or session controller; this module is the whole delta"
@@ -29,10 +29,10 @@
   "module": "open-sse/services/providerParity/native-uc-signin/index.js",
   "exports": {
     "createUcSignInController": "({ fetchImpl, env, now, newFlowId, flowTtlMs, maxVerifyAttempts, maxPendingFlows, timeoutMs }) -> { start, verify, cancel, pending }",
-    "createUcSessionController": "({ fetchImpl, env, now, refreshSkewMs, timeoutMs, maxCachedAccounts }) -> { getSessionToken, touch, forget, cachedAccounts }",
+    "createUcSessionController": "({ fetchImpl, env, now, refreshSkewMs, timeoutMs, maxCachedAccounts }) -> { getSessionToken, forget, cachedAccounts }",
     "importUcCookies": "({ consent, fields }, { fetchImpl, env, now, signal }) -> { ok, providerSpecificData } | failure",
     "mintUcSession": "one account's token mint; never throws",
-    "touchUcSession": "one account's session touch; never throws",
+    "sessionJwtClaims": "unverified claims of a session JWT",
     "buildUcConnectionMetadata": "the only builder of saved metadata; null unless the staged TTS resolver accepts it",
     "ucClerkPost": "bounded POST to the fixed Clerk host with an injected transport",
     "UC_SIGNIN_MESSAGES": "fixed result messages",
@@ -40,27 +40,28 @@
   },
   "endpoints": {
     "host": "https://clerk.uncensored.com",
-    "query": "__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1",
+    "query": { "signIn": "__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1", "mint": "_clerk_js_version=5.127.1" },
     "headers": ["Origin: https://uncensored.com", "Referer: https://uncensored.com/", "Content-Type: application/x-www-form-urlencoded", "Cookie: <the one account's jar, when non-empty>"],
     "redirect": "manual (refused)",
-    "signIn": "POST /v1/client/sign_ins  identifier=<email>",
-    "prepare": "POST /v1/client/sign_ins/{sia}/prepare_first_factor  strategy=email_code&email_address_id=<idn>",
+    "signIn": "POST /v1/client/sign_ins  locale=en-CA&identifier=<email>",
+    "prepare": "POST /v1/client/sign_ins/{sia}/prepare_first_factor  email_address_id=<idn>&strategy=email_code",
     "attempt": "POST /v1/client/sign_ins/{sia}/attempt_first_factor  strategy=email_code&code=<6 digits>",
-    "mint": "POST /v1/client/sessions/{sid}/tokens  (empty body) -> { jwt } or { token }",
-    "touch": "POST /v1/client/sessions/{sid}/touch  (empty body) -> { response: { id, status, expire_at } }"
+    "mint": "POST /v1/client/sessions/{sid}/tokens  (empty body) -> { object: \"token\", jwt } or { token }",
+    "notPorted": ["session touch: the pinned source has no touch call"],
+    "sourceVerified": "line by line against c71f0065 emailLogin.ts, clerkAuth.ts, credentials.ts, constants.ts; see internal/docs/port-reports/native-uc-signin.md"
   },
   "metadata": {
     "target": "providerSpecificData of one `uc` connection",
     "fields": {
-      "ucClientCookie": "durable Clerk __client cookie",
+      "ucClientCookie": "durable Clerk __client cookie (attempt Set-Cookie on sign-in)",
       "ucSid": "created_session_id (sess_…)",
-      "ucUid": "UC user uid: the session JWT `uid` claim, cross-checked with any uid the attempt answer or a `useruid` cookie names",
+      "ucUid": "UC user uid: client.sessions[id = created_session_id].user.id of the attempt answer; a session JWT `uid` claim, when present, must equal it",
       "ucCookies": "flat cookie jar for this account, includes __client",
       "ucAuthSource": "email-code | cookie-import",
       "ucSignedInAt": "ISO timestamp"
     },
     "neverStored": ["email", "verification code", "sign-in attempt id", "factor id", "session JWT", "apiKey", "uc-direct key"],
-    "rotation": "mint and touch return `rotated` ({ ucClientCookie, ucCookies }) for the same connection when Set-Cookie changed the jar; the caller merges it into that connection only"
+    "rotation": "mint returns `rotated` ({ ucClientCookie, ucCookies }) for the same connection when Set-Cookie changed the jar; the caller merges it into that connection only"
   },
   "bounds": {
     "requestMs": 15000,
@@ -68,7 +69,7 @@
     "flowTtlMs": 600000,
     "maxVerifyAttempts": 5,
     "maxPendingFlows": 32,
-    "refreshSkewMs": { "default": 10000, "min": 1000, "max": 30000 },
+    "refreshSkewMs": { "default": 8000, "min": 1000, "max": 30000 },
     "maxTokenLifetimeMs": 120000,
     "maxCachedAccounts": 256
   },

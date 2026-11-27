@@ -2,11 +2,17 @@
 // and session controllers. Port of the request shape shared by OmniRoute
 // c71f0065 open-sse/executors/uc/emailLogin.ts and clerkAuth.ts:
 //
-//   POST https://clerk.uncensored.com{path}?__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1
+//   sign-in (emailLogin.ts:44, 130, 187, 230):
+//     POST https://clerk.uncensored.com{path}?__clerk_api_version=2025-11-10&_clerk_js_version=5.127.1
+//   token mint (clerkAuth.ts:95; no API version):
+//     POST https://clerk.uncensored.com/v1/client/sessions/{sid}/tokens?_clerk_js_version=5.127.1
+//   headers (emailLogin.ts:47-55, clerkAuth.ts:96-101):
 //     Origin: https://uncensored.com
 //     Referer: https://uncensored.com/
 //     Content-Type: application/x-www-form-urlencoded
 //     Cookie: <this account's jar only, when it has one>
+//   body: `k=encodeURIComponent(v)` pairs in source order (emailLogin.ts:133,
+//     191, 234), or "" for the mint (clerkAuth.ts:108).
 //
 // Fork deviations: the transport is injected (no global fetch); the caller's
 // signal and a deadline bound both the request and the body read, and the wait
@@ -29,8 +35,15 @@ import {
 const ERROR_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 const discard = (response) => void response?.body?.cancel?.().catch(() => {});
 
-export const ucClerkUrl = (path) =>
-  `${UC_CLERK_FAPI}${path}?__clerk_api_version=${UC_CLERK_API_VERSION}&_clerk_js_version=${UC_CLERK_JS_VERSION}`;
+/** Clerk URL. `apiVersion: false` is the mint query (clerkAuth.ts:95), which carries only the JS version. */
+export const ucClerkUrl = (path, { apiVersion = true } = {}) =>
+  apiVersion
+    ? `${UC_CLERK_FAPI}${path}?__clerk_api_version=${UC_CLERK_API_VERSION}&_clerk_js_version=${UC_CLERK_JS_VERSION}`
+    : `${UC_CLERK_FAPI}${path}?_clerk_js_version=${UC_CLERK_JS_VERSION}`;
+
+/** Form body exactly as the source writes it: insertion order, `encodeURIComponent` values. */
+export const ucClerkForm = (form) =>
+  Object.entries(form ?? {}).map(([name, value]) => `${name}=${encodeURIComponent(String(value))}`).join("&");
 
 export function ucClerkHeaders(cookies) {
   const headers = {
@@ -96,7 +109,7 @@ function deadlineRace(promise, signals) {
  *   { ok: false, kind: "aborted" | "timeout" | "network" | "redirect" | "foreign" | "malformed", status? }
  * `cookies` holds only the cookies this answer set.
  */
-export async function ucClerkPost(fetchImpl, path, { form = {}, cookies = {}, signal, timeoutMs = UC_REQUEST_TIMEOUT_MS } = {}) {
+export async function ucClerkPost(fetchImpl, path, { form = {}, cookies = {}, apiVersion = true, signal, timeoutMs = UC_REQUEST_TIMEOUT_MS } = {}) {
   if (signal?.aborted) return { ok: false, kind: "aborted" };
   const deadline = AbortSignal.timeout(Math.max(1, timeoutMs));
   const signals = signal ? [signal, deadline] : [deadline];
@@ -104,10 +117,10 @@ export async function ucClerkPost(fetchImpl, path, { form = {}, cookies = {}, si
   const failed = (kind, extra) => ({ ok: false, kind: signal?.aborted ? "aborted" : deadline.aborted ? "timeout" : kind, ...extra });
   let response;
   try {
-    const request = Promise.resolve().then(() => fetchImpl(ucClerkUrl(path), {
+    const request = Promise.resolve().then(() => fetchImpl(ucClerkUrl(path, { apiVersion }), {
       method: "POST",
       headers: ucClerkHeaders(cookies),
-      body: new URLSearchParams(form).toString(),
+      body: ucClerkForm(form),
       redirect: "manual",
       signal: fetchSignal,
     }));

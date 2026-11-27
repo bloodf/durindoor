@@ -1,0 +1,90 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/musicRegistry.ts",
+      "open-sse/handlers/musicGeneration.ts",
+      "open-sse/executors/vertexMedia.ts"
+    ],
+    "registryEntry": {
+      "id": "vertex",
+      "baseUrl": "https://us-central1-aiplatform.googleapis.com/v1",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "format": "vertex-lyria",
+      "models": [{ "id": "lyria-002", "name": "Lyria 2 (Vertex)" }]
+    }
+  },
+  "module": "open-sse/services/providerParity/native-vertex-music/index.js",
+  "exports": [
+    "VERTEX_MUSIC_PROVIDER_ID",
+    "VERTEX_MUSIC_PROVIDER_ALIASES",
+    "VERTEX_MUSIC_FORMAT",
+    "VERTEX_MUSIC_DEFAULT_MODEL",
+    "VERTEX_MUSIC_DEFAULT_LOCATION",
+    "VERTEX_MUSIC_EXPRESS_ORIGIN",
+    "VERTEX_MUSIC_CONFIG",
+    "listVertexMusicModels",
+    "isVertexMusicProvider",
+    "buildVertexMusicRequest",
+    "vertexMusicOrigin",
+    "classifyVertexMusicAuth",
+    "buildVertexMusicEndpoint",
+    "wavDurationSeconds",
+    "handleVertexMusicGeneration",
+    "default"
+  ],
+  "provider": "vertex",
+  "aliases": ["vx"],
+  "serviceKinds": ["music"],
+  "models": [{ "id": "lyria-002", "name": "Lyria 2 (Vertex)", "kind": "music" }],
+  "connectionModes": {
+    "service_account": "apiKey holds Service Account JSON; Bearer token minted via services/tokenRefresh.js refreshVertexToken; project = project_id",
+    "adc": "apiKey holds authorized_user JSON; Bearer token via refreshGoogleToken; project = quota_project_id",
+    "access_token": "credentials.accessToken used as Bearer; project = providerSpecificData.projectId",
+    "express": "apiKey is an opaque Vertex AI Express key; sent as ?key= on the project-less publisher endpoint"
+  },
+  "endpoints": {
+    "projectScoped": "POST https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/lyria-002:predict",
+    "multiRegion": "POST https://aiplatform.{us|eu}.rep.googleapis.com/v1/projects/{project}/locations/{us|eu}/publishers/google/models/lyria-002:predict",
+    "global": "POST https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/lyria-002:predict",
+    "express": "POST https://aiplatform.googleapis.com/v1/publishers/google/models/lyria-002:predict?key={key}",
+    "defaultLocation": "us-central1",
+    "locationFields": ["providerSpecificData.location", "providerSpecificData.region"],
+    "redirects": "manual; any 3xx is refused"
+  },
+  "request": {
+    "accepted": ["model", "prompt", "negative_prompt", "seed", "sample_count", "response_format=b64_json", "output_format=wav", "format=wav", "instrumental=true", "is_instrumental=true", "make_instrumental=true", "user"],
+    "wireBody": "{ instances: [{ prompt, negative_prompt?, seed? }], parameters: { sample_count? } }"
+  },
+  "response": {
+    "shape": "{ object: 'music.generation', created, provider: 'vertex', model, status: 'completed', data: [{ b64_json, format: 'wav', mime_type: 'audio/wav', duration_seconds }] }",
+    "resultContract": "musicGenerationCore: { success, accounting, response } | createErrorResult(...) + { outcome, acceptedJob?, connectionId }"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/musicGenerationCore.js",
+      "point": "handleMusicGenerationCore",
+      "change": "dispatch provider 'vertex' to handleVertexMusicGeneration({ model, body, credentials, signal }) before the MUSIC_ADAPTERS cookie path"
+    },
+    {
+      "file": "src/sse/handlers/music.js",
+      "point": "handleSingleModelMusic",
+      "change": "on !result.success with result.acceptedJob, call recordAcceptedJobUsage(apiKey, { ...result.acceptedJob, billingEpoch, usageEventId, provider, model, connectionId, endpoint, modality: 'music', apiKeyId }) before markAccountUnavailable/fallback; never fall back to another connection after an accepted job"
+    },
+    {
+      "file": "open-sse/providers/registry/vertex.js",
+      "point": "serviceKinds + models",
+      "change": "add 'music' service kind and the lyria-002 model with kind music"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "point": "Vertex AI row",
+      "change": "list music (Lyria 2, WAV b64_json, synchronous)"
+    }
+  ],
+  "discovery": "none: the pinned source exposes a static model list for Vertex music; listVertexMusicModels() returns it"
+}

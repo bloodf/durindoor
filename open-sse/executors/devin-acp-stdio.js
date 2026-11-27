@@ -32,7 +32,9 @@ function readWindowsEnv(env, name) {
 }
 
 // Extensions cmd.exe launches itself (batch files) or through CreateProcess when the
-// file is named explicitly, independent of PATHEXT.
+// file is named with its extension, independent of PATHEXT. cmd looks up a name that
+// includes an extension as that exact file name, in the given directory or, for a bare
+// name, in each PATH directory; PATHEXT only supplies extensions for names without one.
 const WINDOWS_INHERENT_EXTENSIONS = [".com", ".exe", ".bat", ".cmd"];
 
 /**
@@ -58,8 +60,8 @@ function windowsShellToken(bin) {
 
 /**
  * File names cmd.exe could launch for `bin`. A name whose extension is listed in
- * PATHEXT (case-insensitive) is tried as written, as is a directory-qualified path
- * ending in .com/.exe/.bat/.cmd, which cmd runs regardless of PATHEXT. Any other
+ * PATHEXT (case-insensitive) is tried as written, as is any bare or directory-qualified
+ * name ending in .com/.exe/.bat/.cmd, which cmd runs regardless of PATHEXT. Any other
  * name is tried only with each PATHEXT extension appended, because Windows will not
  * run an extensionless or unknown-extension file. Bare names search PATH entries
  * only (not the current directory), which can under-report but never over-report.
@@ -72,7 +74,7 @@ function windowsCommandCandidates(bin, env) {
     .split(";").map((ext) => ext.trim().toLowerCase()).filter((ext) => /^\.[^.\\/:*?"<>|\s]+$/.test(ext));
   const explicitPath = /[\\/]/.test(token) || path.win32.isAbsolute(token);
   const ownExt = path.win32.extname(token).toLowerCase();
-  const runsAsWritten = ownExt && (extensions.includes(ownExt) || (explicitPath && WINDOWS_INHERENT_EXTENSIONS.includes(ownExt)));
+  const runsAsWritten = ownExt && (extensions.includes(ownExt) || WINDOWS_INHERENT_EXTENSIONS.includes(ownExt));
   const names = runsAsWritten ? [token] : extensions.map((ext) => token + ext);
   if (explicitPath) return names;
   const dirs = (readWindowsEnv(env, "PATH") || "").split(";").map((dir) => dir.trim().replace(/^"(.*)"$/, "$1")).filter(Boolean);

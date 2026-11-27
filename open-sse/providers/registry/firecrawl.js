@@ -25,8 +25,7 @@ export default {
     freeMonthlyQuota: 500,
     formats: [
       "markdown",
-      "html",
-      "text"
+      "html"
     ],
     maxCharacters: 200000,
     timeoutMs: 30000

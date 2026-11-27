@@ -10,10 +10,25 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Fixture storage isolation: src/lib/db/paths.js prefers process.env.DATA_DIR
+// over the mocked @/lib/dataDir.js, so an inherited runner DATA_DIR made every
+// worker open one shared SQLite file ("database is locked"). Claim a private
+// directory before any application import and restore only our own env key.
+const isolated = vi.hoisted(() => {
+  const fs = process.getBuiltinModule("node:fs");
+  const os = process.getBuiltinModule("node:os");
+  const path = process.getBuiltinModule("node:path");
+  const had = Object.hasOwn(process.env, "DATA_DIR");
+  const previous = process.env.DATA_DIR;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "register-native-01-data-"));
+  process.env.DATA_DIR = dir;
+  return { dir, had, previous };
+});
 
 const m = vi.hoisted(() => ({
-  dir: "",
+  dir: isolated.dir,
   credentials: null,
   refresh: null,
   save: null,
@@ -254,6 +269,7 @@ beforeEach(() => {
   clearLiveModelLimitsCache();
   m.rows.clear(); m.fallback.length = 0; m.writes.length = 0; m.selected = {}; m.clock = 1_000_000;
   m.dir = fs.mkdtempSync(path.join(os.tmpdir(), "register-native-01-"));
+  process.env.DATA_DIR = m.dir;
   for (const row of ROWS) m.rows.set(row.id, { ...row, authType: "apikey", isActive: true, providerSpecificData: { ...row.providerSpecificData } });
   select("agnes", "agnes-b");
   select("vertex", "vertex-b");
@@ -277,6 +293,21 @@ beforeEach(() => {
   }));
 });
 afterEach(() => { vi.unstubAllGlobals(); fs.rmSync(m.dir, { recursive: true, force: true }); });
+afterAll(async () => {
+  const fs = process.getBuiltinModule("node:fs");
+  const path = process.getBuiltinModule("node:path");
+  // The driver keeps its handle on globalThis, which outlives this file in a
+  // reused fork worker; close it only when it points at our private storage.
+  const db = globalThis._dbAdapter;
+  const owned = [isolated.dir, m.dir].filter(Boolean).map((dir) => dir + path.sep);
+  if (db?.file && owned.some((prefix) => db.file.startsWith(prefix))) {
+    try { await db.instance?.close?.(); } catch { /* already closed */ }
+    Object.assign(db, { instance: null, initPromise: null, file: null, cacheKey: null });
+  }
+  if (isolated.had) process.env.DATA_DIR = isolated.previous;
+  else delete process.env.DATA_DIR;
+  fs.rmSync(isolated.dir, { recursive: true, force: true });
+});
 
 // ── Registration identity, catalog and discovery ──────────────────────────────
 describe("registration identity", () => {

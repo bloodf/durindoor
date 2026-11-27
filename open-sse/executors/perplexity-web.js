@@ -8,7 +8,8 @@ import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString, isUndefined } from "../../src/shared/utils/typeChecks.js";
 import { buildPerplexitySessionCookie } from "../../src/lib/providers/webCookieAuth.js";
 
-const PPLX_SSE_ENDPOINT = PROVIDERS["perplexity-web"].baseUrl;
+// Read after module initialization: registry entries can import executor helpers.
+const PPLX_SSE_ENDPOINT = () => PROVIDERS["perplexity-web"].baseUrl;
 const PPLX_API_VERSION = "2.18";
 const PPLX_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
@@ -580,7 +581,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: "Missing or empty messages array", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: PPLX_SSE_ENDPOINT, headers: {}, transformedBody: body };
+      return { response: errResp, url: PPLX_SSE_ENDPOINT(), headers: {}, transformedBody: body };
     }
 
     const thinking = body?.thinking === true || body?.reasoning_effort != null && body.reasoning_effort !== "none";
@@ -612,7 +613,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: "Empty query after processing", type: "invalid_request" }
       }), { status: 400, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: PPLX_SSE_ENDPOINT, headers: {}, transformedBody: body };
+      return { response: errResp, url: PPLX_SSE_ENDPOINT(), headers: {}, transformedBody: body };
     }
 
     const pplxBody = buildPplxRequestBody(query, pplxMode, modelPref, followUpUuid);
@@ -640,14 +641,14 @@ export class PerplexityWebExecutor extends BaseExecutor {
 
     let response;
     try {
-      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT, fetchOptions, proxyOptions));
+      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT(), fetchOptions, proxyOptions));
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);
       const errResp = new Response(JSON.stringify({
         error: { message: `Perplexity connection failed: ${err.message || String(err)}`, type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
+      return { response: errResp, url: PPLX_SSE_ENDPOINT(), headers, transformedBody: pplxBody };
     }
 
     if (!response.ok) {
@@ -659,14 +660,14 @@ export class PerplexityWebExecutor extends BaseExecutor {
       const errResp = new Response(JSON.stringify({
         error: { message: errMsg, type: "upstream_error", code: `HTTP_${status}` }
       }), { status, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
+      return { response: errResp, url: PPLX_SSE_ENDPOINT(), headers, transformedBody: pplxBody };
     }
 
     if (!response.body) {
       const errResp = new Response(JSON.stringify({
         error: { message: "Perplexity returned empty response body", type: "upstream_error" }
       }), { status: 502, headers: { "Content-Type": "application/json" } });
-      return { response: errResp, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody };
+      return { response: errResp, url: PPLX_SSE_ENDPOINT(), headers, transformedBody: pplxBody };
     }
 
     const cid = `chatcmpl-pplx-${crypto.randomUUID().slice(0, 12)}`;
@@ -682,7 +683,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
     } else {
       finalResponse = await buildNonStreamingResponse(response.body, model, cid, created, parsed.history, parsed.currentMsg, signal, credentialScope);
     }
-    return { response: finalResponse, url: PPLX_SSE_ENDPOINT, headers, transformedBody: pplxBody, terminalProvenance: "validated" };
+    return { response: finalResponse, url: PPLX_SSE_ENDPOINT(), headers, transformedBody: pplxBody, terminalProvenance: "validated" };
   }
 }
 

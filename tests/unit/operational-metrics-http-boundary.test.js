@@ -295,7 +295,7 @@ describe("explicit public HTTP observations", () => {
     }
   });
 
-  it("observes an outer Gemini abort without adding signal inheritance to its derived chat Request", async () => {
+  it("forwards an outer Gemini abort to the provider through its derived chat Request", async () => {
     const abort = new AbortController();
     let entered, release, providerSignal;
     const dispatched = new Promise((resolve) => { entered = resolve; });
@@ -312,10 +312,8 @@ describe("explicit public HTTP observations", () => {
     const inheritedAbort = providerSignal.aborted;
     release();
     const response = await pending;
-    expect(inheritedAbort).toBe(false);
-    expect(response.status).toBe(200);
-    expectDelta({ starts: 1, cancelled: 1, durations: 1 });
-    expect((await response.json()).candidates[0].content.parts).toContainEqual({ text: "provider reply" });
+    expect(inheritedAbort).toBe(true);
+    expect(response.status).toBe(499);
     expectDelta({ starts: 1, cancelled: 1, durations: 1 });
   });
 

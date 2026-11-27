@@ -87,3 +87,39 @@ export function returnedImageUnits(accounting, normalized) {
     accounting.meta.nativeUnitsSource = "returned-images";
   }
 }
+
+/**
+ * Evidence for a client cancel that came after the provider answered 2xx but
+ * before its body was fully read, or for the same read ended by an upstream
+ * abort (`cause: "upstream"`). Call it only once a provider usage receipt
+ * (including Codex `tool_usage.image_gen`, which stays in `meta.imageToolUsage`)
+ * was actually read: that receipt, not the 2xx status, is the evidence of
+ * billable work. No returned image was observed, so native units stay empty
+ * and an unknown cost stays unknown, tagged so the ledger says why. The
+ * receipt's tokens and any USD cost are kept as reported.
+ */
+export function cancelledAccounting(accounting, cause = "client") {
+  const upstream = cause === "upstream";
+  const meta = { ...accounting.meta, [upstream ? "upstreamAborted" : "clientCancelled"]: "after-upstream-headers" };
+  delete meta.nativeUnitsSource;
+  return {
+    ...accounting,
+    state: "cancelled",
+    tokens: { ...accounting.tokens },
+    nativeUnits: {},
+    costSource: accounting.costStatus === "known" ? accounting.costSource : upstream ? "upstream-aborted" : "client-cancelled",
+    meta,
+  };
+}
+
+/**
+ * Mark a client cancel that came after 2xx headers with no receipt read. The
+ * status alone proves neither acceptance nor completion (a 200 can carry an
+ * error envelope), so this is kept apart from usage: it is logged and flagged
+ * on the result, never recorded, and consumes no quota or request count.
+ */
+export function headerOnlyCancel(result, log, provider, model) {
+  log?.warn?.("USAGE", `[${provider}/${model}] client cancelled after upstream 2xx headers before any receipt; outcome unknown, not recorded`);
+  result.cancelledAfterHeaders = true;
+  return result;
+}

@@ -1,9 +1,10 @@
 import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
-import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { credentialDispatchSnapshot, credentialFingerprint } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
   clearAccountError,
+  markAccountUnavailable,
 } from "../services/auth.js";
 import { getApiKeyByKey, getComboForModel } from "@/lib/localDb";
 import { getComboModels, getComboCanonicalName } from "../services/model.js";
@@ -16,7 +17,7 @@ import { leasedAntigravityRefresher } from "./media/antigravityRefresh.js";
 import { ACCEPTED_JOB_HEADER, handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import * as log from "../utils/logger.js";
-import { recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordApiKeyUsage, recordApiKeyUsageForResponse, recordCancelledUsage } from "../services/apiKeyPolicy.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { checkModelLifecycle } from "open-sse/handlers/chatCore/modelLifecyclePolicy.js";
@@ -165,6 +166,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       signal: request.signal,
     });
     if (result.success) return recordImageUsage(apiKey, result, request, provider, model, credentials.connectionId ?? null, billingEpoch, apiKeyId);
+    if (result.cancelledUsage) {
+      await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId ?? null, billingEpoch, apiKeyId);
+      return result.response;
+    }
     return errorResponse(result.status || HTTP_STATUS.BAD_GATEWAY, result.error || "Image generation failed");
   }
 
@@ -201,7 +206,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     },
     async runAttempt(credentials) {
       const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
-      const dispatch = credentialDispatchSnapshot(refreshedCredentials);
+      const initialSecret = sentSecret(refreshedCredentials);
+      // Health writes use the dispatch the provider last answered. The core may
+      // refresh after a 401/403 and retry, so this is replaced per answered dispatch.
+      let dispatch = dispatchContext(refreshedCredentials);
       // Cores and executors mutate the dispatched credentials before the callback runs.
       const presentedRefreshToken = refreshedCredentials.refreshToken;
       // Without a sent refresh token there is nothing to guard against.
@@ -217,6 +225,13 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         onStreamComplete: async (outcome, response) => {
           if (outcome.status === "success") {
             await recordImageUsage(apiKey, { response, accounting: outcome.accounting }, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+          } else if (outcome.cancelledUsage) {
+            await recordCancelledImage(apiKey, outcome.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+          } else if (outcome.status === "failure" && !request.signal?.aborted &&
+            (outcome.statusCode === 401 || outcome.statusCode === 403 || outcome.statusCode === 404 || outcome.statusCode === 429 || outcome.statusCode >= 500 && outcome.statusCode <= 599)) {
+            // Headers are committed, so update health without retrying or changing
+            // the response. Guard the update with the credential actually sent.
+            await markAccountUnavailable(credentials.connectionId, outcome.statusCode, outcome.error?.message, provider, model, null, dispatch);
           }
         },
         onCredentialsRefreshed: async (newCreds) => {
@@ -228,6 +243,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
           }, ...refreshGuard);
         },
         refreshCredentials: leasedAntigravityRefresher(refreshedCredentials),
+        onUpstreamDispatch: (sent, dispatchedAt) => {
+          dispatch = dispatchContext(sent, dispatchedAt, sentSecret(sent) !== initialSecret);
+        },
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         }
@@ -237,9 +255,17 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
 
       // Client abort: no account cooldown and no fallthrough to other accounts.
       if (request.signal?.aborted) {
+        if (result.cancelledUsage) {
+          await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+        }
         if (!result.acceptedJob) return { response: result.response };
         await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
         return { response: markAcceptedJob(result.response) };
+      }
+      // An upstream abort after a receipt was read: the provider may bill that
+      // work, so record it once for this account, then keep health and fallback.
+      if (result.cancelledUsage) {
+        await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
       }
       return {
         result,
@@ -265,6 +291,24 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       });
     },
   });
+}
+
+function sentSecret(credentials) {
+  return credentials?.accessToken || credentials?.apiKey || null;
+}
+
+/**
+ * The frozen health context of one dispatch: the secret sent, its fingerprint,
+ * and when it was sent. A secret refreshed during the attempt is fingerprinted
+ * directly. The write then applies only while the row stores that secret, so a
+ * lost refresh race or a concurrent re-login is not charged with this outcome.
+ */
+function dispatchContext(sent, dispatchedAt = Date.now(), refreshed = false) {
+  const usedCredential = sentSecret(sent);
+  const snapshot = refreshed && usedCredential ?
+    { credentialFingerprint: credentialFingerprint(usedCredential), dispatchedAt } :
+    credentialDispatchSnapshot(sent, dispatchedAt);
+  return Object.freeze({ usedCredential, ...snapshot });
 }
 
 /**
@@ -365,6 +409,18 @@ async function recordAcceptedImageJob(apiKey, accounting, request, provider, mod
   } catch (error) {
     log.error("IMAGE_GENERATION", `[${provider}/${model}] accepted job not recorded: ${error.message}`);
   }
+}
+
+/** The provider answered 2xx before the client cancelled, so it may bill; unknown stays unknown. */
+function recordCancelledImage(apiKey, accounting, request, provider, model, connectionId, billingEpoch, apiKeyId = null) {
+  const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = accounting;
+  return recordCancelledUsage(apiKey, {
+    billingEpoch,
+    usageEventId: JSON.stringify([getRequestId(request), "image-generation", provider, model, connectionId]), provider, model, connectionId,
+    endpoint: "/v1/images/generations", modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+    // The stable id of the admitted key travels with the usage.
+    apiKeyId,
+  });
 }
 
 export const handleImageGeneration = withRequestCorrelation(handleImageGenerationHandler);

@@ -84,6 +84,7 @@ describe("OmniRoute #21275: a rebuilt request keeps the client abort after GC", 
     "src/sse/utils/readBoundedRequest.js",
     "src/sse/handlers/completions.js",
     "src/app/api/v1beta/interactions/route.js",
+    "src/app/api/v1beta/models/[...path]/route.js",
     "src/sse/utils/inboundGzip.js",
   ])("ties every rebuild that forwards the client signal in %s", (file) => {
     const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");

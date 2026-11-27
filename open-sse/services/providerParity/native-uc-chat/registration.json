@@ -1,0 +1,91 @@
+{
+  "issue": "#1241",
+  "relatedIssues": ["#2034"],
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/executors/uc.ts",
+      "open-sse/executors/uc/catalog.ts",
+      "open-sse/executors/uc/protocol.ts",
+      "open-sse/executors/uc/stream.ts",
+      "open-sse/executors/uc/toolDialect.ts",
+      "open-sse/executors/uc/ws.ts",
+      "open-sse/executors/uc/constants.ts"
+    ],
+    "notPorted": {
+      "open-sse/executors/uc/media.ts": "blob upload for image and document input; media input is refused with 400 instead",
+      "open-sse/executors/uc/clerkAuth.ts": "replaced by the staged native-uc-signin session controller",
+      "open-sse/executors/uc/credentials.ts": "replaced by the staged native-uc-tts resolveUcCredential plus the sign-in metadata guard"
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry: no `uc` or `ucn` entry",
+      "open-sse/executors/index.js: no `uc` executor",
+      "open-sse/providers/registry/uc-direct.js: metered REST at api.uncensored.com with a `uai_` API key; a different backend, not an equivalent, not changed, never a fallback",
+      "open-sse/services/providerParity/native-uc-tts: speech socket on tts-stream.chatuncensored.ai; shares only credential resolution",
+      "open-sse/services/providerParity/native-uc-signin: Clerk mint and metadata; reused, not changed",
+      "checkout search for the persona socket path wss://internal-6.pubyar.com/ws: no matches outside this module (native-uc-video-image uses the same host only for /generate-signed-url)"
+    ],
+    "result": "no existing persona chat executor; this module is the whole delta"
+  },
+  "optIn": {
+    "env": "DURINDOOR_UC_CONSUMER_SIGNIN=1 (shared with native-uc-signin)",
+    "metadata": "providerSpecificData written by buildUcConnectionMetadata: ucAuthSource in [email-code, cookie-import] and an ISO ucSignedInAt, plus ucClientCookie, ucSid, ucUid, ucCookies",
+    "default": "disabled: 403 uc_disabled before any network call"
+  },
+  "module": "open-sse/services/providerParity/native-uc-chat/index.js",
+  "exports": {
+    "UcChatExecutor": "BaseExecutor subclass; execute({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt, onProviderAttempt, requestPolicy, onCredentialsRefreshed }) -> { response, url, headers, transformedBody, acceptedTurn? }",
+    "createUcChatExecutor": "({ sessionController, env, fetchImpl, WebSocketImpl, timeoutMs, handshakeTimeoutMs, idleTimeoutMs, maxFrameBytes, maxTurnBytes, now }) -> UcChatExecutor",
+    "resolveUcChatCredential": "selected connection credential, or null unless the sign-in metadata guard passes",
+    "classifyUcTurnError": "(code, text) -> { status, code }",
+    "UC_CHAT_PROVIDER_DEFINITION": "provider definition for registration: the staged TTS definition plus serviceKinds [llm], executor and chat models",
+    "UC_CHAT_MODELS": "the 19 source persona models",
+    "UC_CHAT_REGISTRY_MODELS": "source RegistryModel form",
+    "resolveUcChatModel": "bare, uc/ or ucn/ model -> catalog id or null",
+    "ucContextWindow": "source context lookup",
+    "assembleUcTurn": "OpenAI messages -> { text, history }",
+    "buildPersonaFrame": "source persona frame",
+    "UcFrameParser": "newline-delimited frame parser with split-frame carry",
+    "runUcTurn": "one socket turn; never rejects",
+    "buildUcWsUrl": "socket URL; carries the JWT, never logged or returned",
+    "__setUcChatWebSocketForTesting": "swap the WebSocket constructor; returns a restore function",
+    "parseUcExtraDialects": "code-style and <tool_code> tool calls",
+    "detectUcSoftError": "source soft-error apology detection",
+    "estimateUcTokens": "source usage estimate"
+  },
+  "provider": {
+    "canonicalId": "uc",
+    "aliases": ["ucn"],
+    "addServiceKinds": ["llm"],
+    "baseUrl": "https://internal-6.pubyar.com",
+    "socket": "wss://internal-6.pubyar.com/ws/{uid}?token={jwt}&_t={epoch ms}",
+    "handshakeHeaders": { "Origin": "https://uncensored.com" },
+    "appVersion": "1.0.0-web",
+    "auth": "web-cookie via the staged sign-in session controller; no apiKey, no Authorization header, no Cookie on the socket"
+  },
+  "models": { "llm": "UC_CHAT_MODELS (19 ids, sent verbatim as the frame model)" },
+  "bounds": {
+    "totalMs": 120000,
+    "handshakeMs": 15000,
+    "idleMs": 60000,
+    "maxFrameBytes": 4194304,
+    "maxTurnBytes": 16777216,
+    "tokenRefreshSkewMs": 8000
+  },
+  "failureContract": {
+    "beforeSend": "plain HTTP error; safe to fail over",
+    "afterSend": "HTTP error (or finish_reason error once output streamed) with acceptedTurn { state: accepted | uncertain, outcome }; never retried or replayed here",
+    "authChallenge": "mint needs_operator -> 403 uc_auth_challenge; revoked -> 401; socket 401/403 or unauthorized frame -> 401 and the cached JWT is dropped",
+    "quota": "message_limit_exceeded / paywall_exceeded / rate_limit_exceeded frames -> 429"
+  },
+  "integrationPoints": [
+    { "file": "open-sse/executors/index.js", "change": "map `uc` (and alias `ucn`) to one process-wide createUcChatExecutor()" },
+    { "file": "open-sse/providers/registry/uc.js", "change": "add `llm` with UC_CHAT_REGISTRY_MODELS next to the staged TTS kind" },
+    { "file": "open-sse/executors/staged.json", "change": "none while staged; the module is outside open-sse/executors" },
+    { "file": "docs/providers/catalog.mdx", "change": "list the persona models once registered" }
+  ]
+}

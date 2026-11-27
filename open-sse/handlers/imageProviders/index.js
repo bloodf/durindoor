@@ -22,6 +22,7 @@ import copilotM365 from "./copilotM365.js";
 import renderhour from "./renderhour.js";
 import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
+import aihorde from "./aihorde.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
@@ -64,6 +65,11 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   // firefly.adobe.com web app: `adobe-firefly` and `firefly` stay unknown.
   "adobe-firefly-api": adobeFireflyApi,
   "adobe-firefly-web": adobeFireflyWeb,
+  // Native AI Horde image jobs on the existing `aihorde` provider: the selected
+  // connection's key or the anonymous sentinel, `apikey` header, kudos never
+  // priced. Chat stays on the registry's OpenAI facade transport.
+  aihorde,
+  horde: aihorde,
 });
 
 export function getImageAdapter(provider) {

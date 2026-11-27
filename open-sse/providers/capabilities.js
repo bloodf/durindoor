@@ -1440,6 +1440,8 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
   }
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
   if (provider === "aihorde" || provider === "horde") {
+    // Native image-catalog rows are image generators, not facade chat models.
+    if (kind === "image") return finalize({ ...DEFAULT_CAPABILITIES, ...MEDIA_CAPABILITIES, ...capabilitiesFromServiceKind("image") });
     return finalize({ ...DEFAULT_CAPABILITIES, ...AI_HORDE_CAPABILITIES });
   }
 

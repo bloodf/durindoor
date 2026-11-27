@@ -1,7 +1,8 @@
-// AI Horde native text-to-image (#2034). STAGED: not in IMAGE_ADAPTERS, so
-// getImageAdapter("aihorde") stays null and users cannot reach it. The
-// registered `aihorde` chat route (OpenAI facade, Bearer sentinel) is separate
-// and unchanged. See internal/docs/aihorde-images-2034.md.
+// AI Horde native text-to-image. Registered in IMAGE_ADAPTERS under the
+// existing `aihorde` provider (alias `horde`): /v1/images/generations reaches
+// it through the selected `aihorde` connection or the public no-auth
+// credential. The `aihorde` chat route (OpenAI facade, Bearer sentinel) is a
+// separate transport and is unchanged. See docs/providers/free-and-local.mdx.
 //
 // Ported from cheaper-inference/OmniRoute at
 // c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT, Copyright (c) 2026 Cheaper
@@ -9,7 +10,8 @@
 // open-sse/handlers/imageGeneration/providers/aihorde.ts and
 // open-sse/handlers/imageGeneration/providers/aihordeMapRequest.ts.
 //
-// Contract: `.generate({ model, body, credentials, signal, log })` returns
+// Contract: `.generate({ model, body, credentials, signal, log })`, the same
+// guarded core path as adobe-firefly-web (imageGenerationCore), returns
 // `{ success: true, response, accounting }` or an error result. An error after
 // Horde may have taken the job carries `acceptedJob` (cost unknown) and is
 // never resubmitted.
@@ -87,7 +89,7 @@ export function stripHordeModelPrefix(model) {
 
 /**
  * Validate an OpenAI-style image body and build the Horde submit envelope.
- * Returns `{ error }` for anything this staged adapter does not implement.
+ * Returns `{ error }` for anything this adapter does not implement.
  */
 export function mapHordeImageRequest(model, body) {
   if (!isRecord(body)) return { error: "Request body must be an object" };
@@ -426,7 +428,9 @@ export function createAiHordeImageAdapter({
 
   return {
     async: true,
-    staged: true,
+    // An omitted response_format means b64_json; the core refuses `url` and
+    // `binary` before the catalog or a submit.
+    defaultResponseFormat: "b64_json",
     responseFormats: ["b64_json"],
     generate,
   };

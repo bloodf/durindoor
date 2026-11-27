@@ -26,6 +26,7 @@ import { credentialFetch } from "open-sse/utils/credentialFetch.js";
 import { classifyUpstreamError, sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { updateProviderConnection } from "@/lib/localDb";
+import { PROVIDER_MEDIA_CATALOGS, resolveProviderMediaCatalog } from "@/shared/models/modelCatalogSources.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // The public Kilo catalog is shared across accounts. Never send stored credentials
@@ -111,6 +112,19 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
     if (failure.status === 500) return { error: "Failed to fetch models", status: 500 };
     return { error: failure.message, code: failure.code, status: failure.status };
   }
+}
+
+/**
+ * Append a provider's native media catalog (AI Horde image models) to its chat
+ * discovery. A chat failure is returned unchanged, so a known catalog is never
+ * replaced by a media-only list; a chat id keeps its chat row.
+ */
+async function withProviderMediaCatalog(provider, result) {
+  const catalog = PROVIDER_MEDIA_CATALOGS[provider];
+  if (!catalog || result?.error || !Array.isArray(result?.models)) return result;
+  const chatIds = new Set(result.models.map((model) => model?.id));
+  const rows = (await resolveProviderMediaCatalog(provider, catalog.kinds)).filter((row) => !chatIds.has(row.id));
+  return { ...result, models: [...result.models, ...rows] };
 }
 
 /**
@@ -276,7 +290,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
     const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;
     if (fetcher && isString(fetcher.url)) {
-      return fetchRegistryFetcherModels(connection, fetcher, proxyOptions);
+      return withProviderMediaCatalog(connection.provider, await fetchRegistryFetcherModels(connection, fetcher, proxyOptions));
     }
     return { error: `Provider ${connection.provider} does not support models listing`, status: 400 };
   }

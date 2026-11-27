@@ -1,6 +1,5 @@
-// #2034 staging boundary for AI Horde native images. Every assertion that
-// changes when the adapter is registered lives here, so a later registration
-// can promote this block alone; the catalog and flow tests stay unchanged.
+// AI Horde native images: the former staging boundary, promoted to strict
+// registration assertions. The catalog and flow tests stay unchanged.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,22 +14,24 @@ import stagedAdapter from "../../open-sse/handlers/imageProviders/aihorde.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
-describe("AI Horde native images are staged, not registered", () => {
-  it("has no image adapter under the canonical id or the alias", () => {
-    expect(getImageAdapter("aihorde")).toBeNull();
-    expect(getImageAdapter("horde")).toBeNull();
-    expect(isImageProvider("aihorde")).toBe(false);
-    expect(Object.keys(IMAGE_ADAPTERS)).not.toContain("aihorde");
-    expect(read("open-sse/handlers/imageProviders/index.js")).not.toMatch(/aihorde/i);
+describe("AI Horde native images are registered on the existing provider", () => {
+  it("registers the image adapter under the canonical id and the alias", () => {
+    expect(getImageAdapter("aihorde")).toBe(stagedAdapter);
+    expect(getImageAdapter("horde")).toBe(stagedAdapter);
+    expect(isImageProvider("aihorde")).toBe(true);
+    expect(Object.keys(IMAGE_ADAPTERS)).toContain("aihorde");
+    expect(read("open-sse/handlers/imageProviders/index.js")).toMatch(/import aihorde from "\.\/aihorde\.js";/);
   });
 
-  it("no production module imports the staged adapter or catalog", () => {
+  it("dispatches through the shared generate core and lists through the shared catalog owner", () => {
     expect(read("open-sse/handlers/imageGenerationCore.js")).not.toMatch(/aihorde/i);
     expect(read("open-sse/index.js")).not.toMatch(/aihordeImageCatalog|imageProviders\/aihorde/);
+    expect(read("src/shared/models/modelCatalogSources.js")).toMatch(/listHordeImageModelRows/);
   });
 
-  it("the staged adapter exposes only the generate contract and b64_json", () => {
-    expect(stagedAdapter).toMatchObject({ async: true, staged: true, responseFormats: ["b64_json"] });
+  it("the registered adapter exposes only the generate contract and b64_json", () => {
+    expect(stagedAdapter).toMatchObject({ async: true, defaultResponseFormat: "b64_json", responseFormats: ["b64_json"] });
+    expect(stagedAdapter.staged).toBeUndefined();
     expect(typeof stagedAdapter.generate).toBe("function");
     expect(stagedAdapter.buildUrl).toBeUndefined();
     expect(stagedAdapter.useExecutor).toBeUndefined();
@@ -40,6 +41,7 @@ describe("AI Horde native images are staged, not registered", () => {
     expect(REGISTRY.filter((entry) => entry.id === "aihorde" || entry.alias === "horde")).toHaveLength(1);
     expect(Object.keys(STAGED_PROVIDERS).filter((id) => /horde/i.test(id))).toEqual([]);
     expect(manifest.modules.filter(({ module, provider }) => /horde/i.test(`${module} ${provider}`))).toEqual([]);
+    expect(aihordeRegistry.serviceKinds).toEqual(["llm", "image"]);
   });
 
   it("keeps the registered chat route on the OpenAI facade with the Bearer sentinel", () => {

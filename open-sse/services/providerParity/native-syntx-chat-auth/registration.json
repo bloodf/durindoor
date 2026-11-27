@@ -1,0 +1,88 @@
+{
+  "issue": "#1234",
+  "relatedIssues": ["#2034"],
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/executors/syntx.ts",
+      "open-sse/executors/syntxChat.ts",
+      "open-sse/executors/syntxExecute.ts",
+      "open-sse/services/syntxAuth.ts",
+      "open-sse/services/syntxSessions.ts",
+      "open-sse/services/syntxModels.ts",
+      "open-sse/config/providers/registry/syntx/index.ts"
+    ],
+    "notPorted": {
+      "open-sse/services/syntxMedia.ts": "media generation; outside this chat/auth unit",
+      "open-sse/services/syntxMediaCatalog.ts": "media catalog; outside this chat/auth unit"
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry: no `syntx` or `stx` entry",
+      "open-sse/executors/index.js: no `syntx` executor",
+      "docs/providers/syntx.mdx: status unreleased; records a 404 from GET https://api.syntx.ai/api/v1/chat/completions, a route the source executor never calls",
+      "tests/unit/provider-registration-apikey-batch-b.test.js: asserts `syntx` is not registered; unchanged",
+      "no registered native chat/auth path; retry base contains separately staged SYNTX media/upscale work"
+    ],
+    "result": "no existing SYNTX chat path; this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-syntx-chat-auth/index.js",
+  "exports": {
+    "SyntxChatExecutor": "BaseExecutor subclass; execute({ model, body, stream, credentials, signal, log, proxyOptions, attemptStartedAt, onProviderAttempt, requestPolicy }) -> { response, url, headers, transformedBody, acceptedTurn? }",
+    "createSyntxChatExecutor": "({ fetchImpl, lookup, sessions, catalog, emulateTools, now, timeoutMs, auxTimeoutMs, idleTimeoutMs, maxStreamBytes }) -> SyntxChatExecutor",
+    "SyntxChatExecutor#discoverModels": "(credentials, { signal, proxyOptions }) -> live GET /api/v1/llm/models?enabled_only=true&lang=en for that account",
+    "SYNTX_PROVIDER_DEFINITION": "provider definition for registration (source registry index.ts)",
+    "SYNTX_REGISTRY_MODELS": "34 source fallback models as registry rows (toolCalling true, supportsVision from the seed)",
+    "resolveSyntxToken": "source token resolution: accessToken, apiKey, providerSpecificData; first JWT-shaped wins",
+    "createSyntxSessionStore": "per-executor, account-keyed chat_uuid continuity",
+    "createSyntxModelCatalog": "per-instance, account-keyed discovery cache with the seed fallback"
+  },
+  "provider": {
+    "canonicalId": "syntx",
+    "aliases": ["stx"],
+    "serviceKinds": ["llm"],
+    "registryBaseUrl": "https://api.syntx.ai/api/v1",
+    "apiBase": "https://api.syntx.ai",
+    "streamOrigin": "https://sse.syntx.ai",
+    "auth": "long-lived syntx.ai site JWT as `Authorization: Bearer` on api.syntx.ai only; never sent to sse.syntx.ai or client image hosts",
+    "refresh": "none in the source; a 401/403 is a re-paste"
+  },
+  "wire": {
+    "createChat": "POST /api/v1/chats {title, scope:\"text\"} -> {uuid}",
+    "upload": "POST /api/v1/chats/upload-files multipart files/destination=uploaded/check_duplicates=true/model_type -> {files:[{url, object_type?}]}",
+    "settings": "PUT /api/v1/user/settings (only with syntx_account_system_prompt / syntx_disable_account_system_prompt)",
+    "generate": "POST /api/v1/llm/generate?ai_name=<ai> {chat_uuid, text, model, thinking, plan:false, deep_research, tools:[search,code,shell], files?} -> {stream_url}",
+    "stream": "GET https://sse.syntx.ai/stream/... -> data: {type:content|usage_final|error} ... data: [DONE]",
+    "models": "GET /api/v1/llm/models?enabled_only=true&lang=en -> {models:[{id,label,ai_name,capabilities,context_window,default_max_tokens}]}"
+  },
+  "bounds": {
+    "totalMs": 600000,
+    "auxCallMs": 60000,
+    "sseIdleMs": 300000,
+    "maxJsonBytes": 1048576,
+    "maxStreamBytes": 16777216,
+    "maxEventBytes": 1048576,
+    "maxImagesPerTurn": 8,
+    "maxImageDownloadBytes": 20971520,
+    "maxImageRedirects": 3,
+    "maxUploadBytes": 52428800,
+    "maxGenerateChars": 200000
+  },
+  "failureContract": {
+    "beforeGenerate": "plain HTTP error, no acceptedTurn; safe to fail over (a created chat may be left empty upstream)",
+    "generateTransport": "network error or deadline -> 502/504 syntx_generate_uncertain with acceptedTurn { state: uncertain }",
+    "generateHttp": "401/403 -> 401 syntx_auth_error; 429 -> 429 syntx_rate_limited (+Retry-After); other 4xx keep status; 5xx keep status with acceptedTurn uncertain",
+    "afterGenerate": "invalid stream_url, stream open failure, SSE error event, truncation, idle, deadline, size -> HTTP error with acceptedTurn { state: accepted }; after streamed output -> finish_reason error chunk; never retried or replayed here",
+    "quota": "only HTTP 429 from generate; the source parses no other quota condition"
+  },
+  "integrationPoints": [
+    { "file": "open-sse/providers/registry/syntx.js", "change": "add the provider from SYNTX_PROVIDER_DEFINITION and SYNTX_REGISTRY_MODELS" },
+    { "file": "open-sse/executors/index.js", "change": "map `syntx` (alias `stx`) to one process-wide createSyntxChatExecutor()" },
+    { "file": "tests/unit/provider-registration-apikey-batch-b.test.js", "change": "drop `syntx` from the not-registered list in the same change" },
+    { "file": "docs/providers/syntx.mdx", "change": "replace the unreleased 404 note with the native flow once registered" },
+    { "file": "open-sse/executors/staged.json", "change": "none while staged; the module is outside open-sse/executors" }
+  ]
+}

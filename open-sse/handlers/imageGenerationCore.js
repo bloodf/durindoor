@@ -223,32 +223,48 @@ export async function handleImageGenerationCore({
   // `submitTimeoutMs` bounds the submit; `submitOutcomeUnknown` marks a submit
   // whose transport failed after it may have been sent as a possibly billed job,
   // so account fallback does not send a second one.
-  const submitInit = () => ({
+  const boundedSubmit = Number.isFinite(adapter.submitTimeoutMs);
+  const submitInit = (fetchSignal) => ({
     method: "POST",
     headers,
     body: serializeRequestBody(requestBody),
-    signal,
+    signal: fetchSignal,
     proxyOptions,
     ...(adapter.submitRedirect ? { redirect: adapter.submitRedirect } : null)
   });
-  // The caller's signal still reaches fetch unchanged; the bound stops waiting,
-  // and a late answer to a submit already reported as unknown is discarded.
+  // A bounded submit sends fetch one signal that aborts on the caller's abort
+  // (with the caller's reason) or at the deadline (with a TimeoutError), so the
+  // transport itself is torn down. The wait also ends on either, even when a
+  // transport ignores its signal; an answer that still arrives is cancelled.
   const sendSubmit = async () => {
-    const pending = fetch(url, submitInit());
-    if (!Number.isFinite(adapter.submitTimeoutMs)) return pending;
-    let timer;
+    if (!boundedSubmit) return fetch(url, submitInit(signal));
+    // Proven unsent: the caller left before anything was handed to fetch.
+    if (signal?.aborted) throw Object.assign(new Error("aborted before submit"), { name: "AbortError", notSent: true });
+    const deadline = new AbortController();
+    const fetchSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+    const timeoutError = () => Object.assign(new Error("submit timed out"), { name: "TimeoutError" });
     let timedOut = false;
+    let stopWaiting;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      deadline.abort(timeoutError());
+    }, adapter.submitTimeoutMs);
     const bound = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        timedOut = true;
-        reject(Object.assign(new Error("submit timed out"), { name: "TimeoutError" }));
-      }, adapter.submitTimeoutMs);
+      stopWaiting = () => reject(timedOut ? timeoutError() : fetchSignal.reason);
+      fetchSignal.addEventListener("abort", stopWaiting, { once: true });
     });
+    const pending = fetch(url, submitInit(fetchSignal));
     try {
       return await Promise.race([pending, bound]);
+    } catch (error) {
+      if (timedOut) throw timeoutError();
+      throw error;
     } finally {
       clearTimeout(timer);
-      if (timedOut) pending.then((late) => late.body?.cancel().catch(() => {}), () => {});
+      fetchSignal.removeEventListener("abort", stopWaiting);
+      bound.catch(() => {});
+      // Ended by abort or deadline: whatever the transport still produces is dropped.
+      if (fetchSignal.aborted) pending.then((late) => late?.body?.cancel?.().catch(() => {}), () => {});
     }
   };
   const redirectRefused = (response) => adapter.submitRedirect === "manual" &&
@@ -258,11 +274,14 @@ export async function handleImageGenerationCore({
     log?.debug?.("IMAGE", `${provider.toUpperCase()} | submit redirect refused`);
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `${provider} image submit redirect refused`);
   };
-  // A failed submit transport: certainly unsent only when no connection was made.
+  // A failed submit transport: certainly unsent only when fetch was never called
+  // or no connection was made. Anything else may have reached the provider.
   const submitFailure = (error) => {
-    const sent = adapter.submitOutcomeUnknown && !PRE_CONNECT_ERROR_CODES.has(error?.cause?.code ?? error?.code);
-    // A client abort ends the request without fallback, so nothing is resubmitted.
-    if (isAbort(error)) return abortedResult();
+    const unsent = error?.notSent === true || PRE_CONNECT_ERROR_CODES.has(error?.cause?.code ?? error?.code);
+    const sent = adapter.submitOutcomeUnknown && !unsent;
+    // A client abort ends the request without fallback, so nothing is resubmitted;
+    // a submit that may have been sent keeps its possibly billed job.
+    if (isAbort(error)) return sent ? withAcceptedJob(abortedResult(), "submit-unknown") : abortedResult();
     if (!sent) {
       const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
       log?.debug?.("IMAGE", `Fetch error: ${errMsg}`);

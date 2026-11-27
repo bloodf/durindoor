@@ -254,6 +254,9 @@ describe("renderhour uncertain submit outcome", () => {
     const result = await core();
     expectUncertainSubmit(result, 504);
     expect(result.error).toBe("renderhour image submit timed out; whether it was accepted is unknown");
+    // The deadline aborts the transport, not only the wait.
+    expect(calls[0].init.signal.aborted).toBe(true);
+    expect(calls[0].init.signal.reason).toMatchObject({ name: "TimeoutError" });
     // A late answer is discarded, not polled.
     const cancel = vi.fn(async () => {});
     late({ body: { cancel } });
@@ -277,15 +280,16 @@ describe("renderhour uncertain submit outcome", () => {
     expect(result.acceptedJob).toBeUndefined();
   });
 
-  it("keeps a client abort during submit a 499 without fallback", async () => {
+  it("keeps a client abort during submit a 499 without fallback, with the job possibly accepted", async () => {
     const controller = new AbortController();
     serve((_url, init) => new Promise((_, reject) => {
       init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
       controller.abort();
     }));
     const result = await core({ signal: controller.signal });
-    expect(result).toMatchObject({ success: false, status: 499 });
+    expectUncertainSubmit(result, 499);
     expect(calls).toHaveLength(1);
+    expect(calls[0].init.signal.aborted).toBe(true);
   });
 
   it.each([

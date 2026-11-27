@@ -1,0 +1,94 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts"
+    ],
+    "registryFields": { "id": "nanogpt", "baseUrl": "https://nano-gpt.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and OPENAI_COMPAT_PROVIDERS (no nanogpt key; getEmbeddingAdapter('nanogpt') is null)",
+      "open-sse/handlers/embeddingProviders/openai.js (generic OpenAI-compatible factory; reads PROVIDER_MEDIA['nanogpt'].embeddingConfig, which does not exist, so its URL would be undefined)",
+      "open-sse/providers/registry/nanogpt.js (chat-only entry: transport https://nano-gpt.com/api/v1/chat/completions, serviceKinds [\"llm\"], no media.embeddingConfig, no embedding model rows; no other entry aliases nanogpt)",
+      "open-sse/config/providerQuota.js (nanogpt listed in PROVIDER_QUOTA_UNSUPPORTED as provider-not-present; no quota adapter)"
+    ],
+    "result": "same provider id and key exist for chat, but no embeddings route, endpoint or adapter; the embeddings adapter and its model rows are the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-nanogpt-embedding/index.js",
+  "exports": {
+    "nanogptEmbeddingAdapter": "default adapter instance; embed({ model, body, credentials, signal, log }) plus buildUrl/buildHeaders/buildBody for introspection",
+    "createNanogptEmbeddingAdapter": "factory; options { timeoutMs, now, fetch } for tests",
+    "buildNanogptEmbeddingRequest": "(model, body) -> { upstream, items, encodingFormat, model, dimensions }; throws status 400",
+    "normalizeNanogptEmbeddings": "(answer, { items, dimensions, encodingFormat }) -> { data, usage }; throws on unusable answers",
+    "packFloat32Base64": "little-endian float32 base64 pack (source packEmbeddingAsBase64)",
+    "nanogptAcceptedJob": "(jobState) accepted-work accounting with unknown cost",
+    "nanogptToken": "selected connection key: apiKey, then accessToken; null when missing or containing CR/LF",
+    "NANOGPT_PROVIDER": "provider facts (id, alias, name, website, authType, authHint, existingServiceKinds, serviceKinds to add)",
+    "NANOGPT_EMBEDDING_MODELS": "[{ text-embedding-3-small, 1536 }, { text-embedding-3-large, 3072 }], kind embedding",
+    "NANOGPT_EMBEDDINGS_URL": "https://nano-gpt.com/v1/embeddings",
+    "NANOGPT_EMBEDDING_TIMEOUT_MS": "60000, one deadline for send and body read"
+  },
+  "provider": {
+    "canonicalId": "nanogpt",
+    "aliases": ["nanogpt"],
+    "existingRegistryEntry": "open-sse/providers/registry/nanogpt.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["embedding"],
+    "serviceKindsNote": "keep llm and its chat transport, models, modelsFetcher and passthroughModels untouched; add embedding only. NanoGPT image, video, TTS and STT are separate #2034 rows and are not claimed here",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "tokenRefresh": "none (API key); a 401/403 is final for the call",
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "embedding": [
+      { "id": "text-embedding-3-small", "name": "Text Embedding 3 Small", "dimensions": 1536 },
+      { "id": "text-embedding-3-large", "name": "Text Embedding 3 Large", "dimensions": 3072 }
+    ],
+    "addressing": "clients must send nanogpt/<model>. In the source the bare ids text-embedding-3-small/-large resolve to openai; here they are already listed by open-sse/providers/registry/openai.js (and github.js lists -small). Registration must not change how bare ids resolve",
+    "dynamicDiscovery": "none for embeddings in the source: its nanogpt live discovery (src/app/api/providers/[id]/models/discovery/providerSets.ts) reads the chat catalog and does not feed EMBEDDING_PROVIDERS. The fork's existing modelsFetcher (https://nano-gpt.com/api/v1/models) stays chat-only; passthroughModels must not make unlisted embedding ids reachable"
+  },
+  "endpoints": {
+    "embeddings": {
+      "method": "POST",
+      "url": "https://nano-gpt.com/v1/embeddings",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ model, input, dimensions?, encoding_format: \"float\" }",
+      "redirect": "manual (refused)"
+    }
+  },
+  "supportedInput": {
+    "input": "string or 1..256 non-empty strings, each at most 20000 characters",
+    "encoding_format": ["float", "base64"],
+    "dimensions": "absent, or an integer 1..model width (forwarded; vectors must come back at exactly that width)",
+    "ignored": ["user"],
+    "refused": ["token arrays", "structured or multimodal items", "any other field", "any other model"]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import { nanogptEmbeddingAdapter } and add `nanogpt: nanogptEmbeddingAdapter` to EMBEDDING_ADAPTERS (not to OPENAI_COMPAT_PROVIDERS)"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "after getEmbeddingAdapter, `if (isFunction(adapter.embed)) return adapter.embed({ model, body, credentials, signal, log })` and call onRequestSuccess only on success; the shared fetch, refresh retry and upstream error relay must not run for nanogpt (same hook the deapi registration adds)"
+    },
+    {
+      "file": "open-sse/providers/registry/nanogpt.js",
+      "change": "add \"embedding\" to serviceKinds and NANOGPT_EMBEDDING_MODELS as kind embedding rows; keep the chat transport, chat models, modelsFetcher and passthroughModels as they are"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "it already selects the connection and enforces quota before handleEmbeddingsCore. Record result.acceptedJob as unknown-cost usage on the selected connection and do not fall through to another account for a result that carries acceptedJob, so uncertain work is never replayed"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the embedding kind on the NanoGPT row after registration"
+    }
+  ]
+}

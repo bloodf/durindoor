@@ -3,7 +3,7 @@ title: Venice Web
 description: Available, with mocked coverage only. The signed-in Venice session cookie, request flow, errors and limits.
 ---
 
-> **Available, mocked coverage only.** Venice Web is registered: you can add a connection from the dashboard (manual paste or cookie import), list its models, validate it and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
+> **Available, mocked coverage only.** Venice Web is registered: you can add a connection from the dashboard (manual paste, cookie import or the browser extension), list its models, validate it and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
 
 Venice Web (`venice-web`, alias `venw`) uses the session of an account signed in at [venice.ai](https://venice.ai). It has been tested only against mocks. No real account or Venice endpoint has been contacted, so there is no claim that it works against the live service or stays working.
 
@@ -29,11 +29,19 @@ From a full header, only `__client` is kept and sent. Treat the value as a passw
 
 Before anything is sent, the gateway refuses an API key, a value that is not a JWT with a readable payload, a header with no `__client` or with more than one, and a value containing line breaks. If the JWT has an `exp` time in the past, it is reported as expired. The signature is not verified locally.
 
-### Cookie import and sign-in
+### Cookie import, extension capture and sign-in
 
-Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `__client`, from the origin `https://clerk.venice.ai`, with a cookie domain of `clerk.venice.ai` or `.clerk.venice.ai`. A cookie for `venice.ai`, `api.venice.ai` or `outerface.venice.ai` is refused. Import stores `__client=<value>`.
+Dashboard import (Cookie header, cURL command or HAR file) and the [browser extension](./cookie-capture-extension.mdx) take one cookie, `__client`, from the exact origin `https://clerk.venice.ai`. The cookie domain must be `clerk.venice.ai` or a parent of it (`.clerk.venice.ai`, `.venice.ai`); a cookie scoped to `api.venice.ai`, `outerface.venice.ai` or another site is refused. Import stores `__client=<value>`.
 
-Browser extension capture is off, and there is no built-in web sign-in: the source defines no capture or session-ready contract, and the extension's compiled allowlist has no Venice entry.
+To capture with the extension:
+
+1. Sign in at `https://venice.ai` in a normal tab.
+2. In the same browser profile, open `https://clerk.venice.ai` in the active tab. The page may show only a short JSON or error message; that is fine. The cookie belongs to this origin.
+3. Create a pairing in the dashboard, paste it into the extension popup and confirm.
+
+The extension refuses a `venice.ai` tab: the tab it captures from must be the Clerk origin itself, and it asks for host access to `https://clerk.venice.ai/*` and your dashboard only. This capture has not been tried against a live Venice account.
+
+There is no built-in web sign-in: the source defines no sign-in or session-ready contract.
 
 ## What is sent, and where
 
@@ -99,12 +107,14 @@ A failure before the first text is an HTTP error. A failure after streaming has 
 
 `tests/unit/venice-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any unlisted URL. It covers credential parsing, exact headers and request body, discovery, account separation, JSON and SSE, broken answers, HTTP errors, redirects, token expiry and estimated usage. Its gateway cases use a fresh executor instance per test so the session-token cache never crosses tests.
 
-`tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard import through the pairing and import routes into the connection store, Cookie header, cURL and HAR parsing, discovery and validation for the selected connection, OpenAI and Anthropic JSON and SSE, account separation, an ended Clerk session, expiry, redirects, server errors and recorded usage.
+`tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard and extension import through the pairing and import routes into the connection store (with the Clerk origin and cookie domain checks), Cookie header, cURL and HAR parsing, discovery and validation for the selected connection, OpenAI and Anthropic JSON and SSE, account separation, an ended Clerk session, expiry, redirects, server errors and recorded usage.
+
+`tests/unit/provider-cookie-capture-extension.test.js` checks the extension side with a fake `chrome` namespace: only an exact `https://clerk.venice.ai` tab is accepted (not `venice.ai`, another Venice host or a lookalike), only `__client` is read, cookies scoped to other hosts are dropped, and the two requested host permissions are given back.
 
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/venice-web-provider.test.js unit/provider-session-registration-1127.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/venice-web-provider.test.js unit/provider-session-registration-1127.test.js unit/provider-cookie-capture-extension.test.js --maxWorkers=2
 ```
 
 ## Attribution

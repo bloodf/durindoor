@@ -79,7 +79,7 @@ const accountOf = (table, value) => Object.entries(table).find(([, secret]) => s
 
 const CASES = {
   "inner-ai-web": {
-    executor: InnerAiWebExecutor, alias: "inaw", apiKeyTwin: "inner-ai", model: "gpt-4o", extension: false,
+    executor: InnerAiWebExecutor, alias: "inaw", apiKeyTwin: "inner-ai", model: "gpt-4o", extension: true,
     origin: "https://app.innerai.com", cookie: (account) => ({ name: "token", value: INNER[account], domain: ".innerai.com" }),
     stored: (account) => `token=${INNER[account]}`, chatUrl: INNER_AI_WEB_CHAT_URL,
   },
@@ -89,7 +89,7 @@ const CASES = {
     stored: (account) => `p-b=${POE[account]}`, chatUrl: POE_WEB_URL,
   },
   "venice-web": {
-    executor: VeniceWebExecutor, alias: "venw", apiKeyTwin: "venice", model: "venice-uncensored", extension: false,
+    executor: VeniceWebExecutor, alias: "venw", apiKeyTwin: "venice", model: "venice-uncensored", extension: true,
     origin: "https://clerk.venice.ai", cookie: (account) => ({ name: "__client", value: VENICE[account], domain: ".clerk.venice.ai" }),
     stored: (account) => `__client=${VENICE[account]}`, chatUrl: VENICE_WEB_CHAT_URL,
   },
@@ -428,5 +428,155 @@ describe("1127 web-session registration", () => {
     const result = await dispatch({ ...connection, apiKey: `__client=${jwt({ id: "client_synthetic_c" }, "venice-c")}` });
     expect(result).toMatchObject({ success: false, status: 401 });
     expect(chatCalls("venice-web")).toEqual([]);
+  });
+});
+
+// ---- #2034: Inner.ai optional account email bound by the dashboard pairing --------------------
+describe("1127 Inner.ai Web account email and Venice Web capture", () => {
+  const ID = "inner-ai-web";
+  const EMAIL = INNER_EMAIL[INNER.a];
+  const pairWith = async (body, origin = DASHBOARD) => pair(new NextRequest(`${DASHBOARD}/api/providers/cookie-import/pairing`, {
+    method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body),
+  }));
+  const submit = (pairing, body, origin = DASHBOARD) => importCookies(new NextRequest(pairing.importUrl, {
+    method: "POST", headers: { "content-type": "application/json", origin, [PAIRING_HEADER]: pairing.token }, body: JSON.stringify(body),
+  }));
+  const capture = (account, extra = {}) => ({ provider: ID, origin: CASES[ID].origin, cookies: [{ ...CASES[ID].cookie(account), secure: true }], ...extra });
+  async function createWith(account, accountEmail, name = `inner ${account} ${Math.random()}`) {
+    const response = await pairWith({ provider: ID, action: "create", name, ...(accountEmail === undefined ? null : { accountEmail }) });
+    expect(response.status).toBe(201);
+    const raw = await response.text();
+    if (accountEmail && accountEmail.trim()) expect(raw).not.toContain(accountEmail.trim());
+    const { pairing } = JSON.parse(raw);
+    const imported = await submit(pairing, capture(account));
+    expect(imported.status).toBe(201);
+    return getProviderConnectionById((await imported.json()).connection.id);
+  }
+  async function replaceWith(connectionId, account, accountEmail) {
+    const response = await pairWith({ provider: ID, action: "update", connectionId, ...(accountEmail === undefined ? null : { accountEmail }) });
+    expect(response.status).toBe(201);
+    const { pairing } = await response.json();
+    const imported = await submit(pairing, { ...capture(account), connectionId });
+    expect(imported.status).toBe(200);
+    return getProviderConnectionById(connectionId);
+  }
+
+  it("stores token only when the email is absent or blank", async () => {
+    for (const blank of [undefined, "", "   "]) {
+      expect((await createWith("a", blank)).apiKey).toBe(`token=${INNER.a}`);
+    }
+    expect(wire.calls).toEqual([]);
+  });
+
+  it("appends a supplied email in the executor's credential format, and the executor reads it", async () => {
+    const connection = await createWith("a", `  ${EMAIL} `);
+    expect(connection.apiKey).toBe(`token=${INNER.a} ${EMAIL}`);
+    const { readInnerAiWebCredential } = await import("../../open-sse/executors/inner-ai-web/credential.js");
+    expect(readInnerAiWebCredential({ apiKey: connection.apiKey })).toMatchObject({ token: INNER.a, credentialEmail: EMAIL });
+    // The paired email is the fallback when the profile lookup names none.
+    wire.override[INNER_AI_WEB_PROFILE_URL] = () => Response.json({ data: {} });
+    const result = await dispatch(connection);
+    expect(result.response.status).toBe(200);
+    expect(chatCalls(ID)[0].init.headers["USER-EMAIL"]).toBe(EMAIL);
+  });
+
+  it.each([
+    ["not an email", "account"],
+    ["a domain without a dot", "a@example"],
+    ["two addresses", `${EMAIL} other@example.com`],
+    ["a header injection", `${EMAIL}\r\nX-Injected: 1`],
+    ["a cookie separator", `${EMAIL}; token=forged`],
+    ["angle brackets", `<${EMAIL}>`],
+    ["a non-ASCII address", "ä@example.com"],
+    ["an over-long address", `${"a".repeat(250)}@example.com`],
+    ["a number", 42],
+    ["an object", { email: EMAIL }],
+    ["null", null],
+  ])("refuses %s at pairing time and issues nothing", async (_label, accountEmail) => {
+    const response = await pairWith({ provider: ID, action: "create", name: "inner bad", accountEmail });
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toEqual({ error: "Account email is not valid" });
+    expect(body.pairing).toBeUndefined();
+  });
+
+  it.each(["poe-web", "venice-web", "v0-vercel-web"])("refuses an account email for %s", async (id) => {
+    const response = await pairWith({ provider: id, action: "create", name: `${id} email`, accountEmail: EMAIL });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "This provider takes no account email" });
+  });
+
+  it.each([
+    ["a different email", "attacker@example.com"],
+    ["the same email", EMAIL],
+    ["a blank email", ""],
+  ])("refuses an import body carrying %s, spends the pairing and stores nothing", async (_label, accountEmail) => {
+    const response = await pairWith({ provider: ID, action: "create", name: "inner tamper", accountEmail: EMAIL });
+    const { pairing } = await response.json();
+    const tampered = await submit(pairing, capture("a", { accountEmail }), "chrome-extension://synthetic-extension-id");
+    expect(tampered.status).toBe(400);
+    expect(await tampered.json()).toEqual({ error: "Account email is bound by the pairing" });
+    expect((await submit(pairing, capture("a"))).status).toBe(401);
+    expect((await pairWith({ provider: ID, action: "create", name: "inner tamper" })).status).toBe(201);
+    // The name was never taken: no connection was created by the refused import.
+    const { pairing: retry } = await (await pairWith({ provider: ID, action: "create", name: "inner tamper" })).json();
+    expect((await submit(retry, capture("a"))).status).toBe(201);
+  });
+
+  it("binds the email to the pairing for an extension capture, which cannot change it", async () => {
+    const response = await pairWith({ provider: ID, action: "create", name: "inner extension", accountEmail: EMAIL });
+    const { pairing } = await response.json();
+    expect(JSON.stringify(pairing)).not.toContain(EMAIL);
+    // A pairing edited to carry another email changes nothing: the server kept its own copy.
+    const edited = parsePairing(JSON.stringify({ pairing: { ...pairing, accountEmail: "attacker@example.com" } }));
+    expect(edited.ok).toBe(true);
+    expect(JSON.stringify(edited.plan)).not.toContain("attacker@example.com");
+    const imported = await submit(pairing, capture("b"), "chrome-extension://synthetic-extension-id");
+    expect(imported.status).toBe(201);
+    const stored = await getProviderConnectionById((await imported.json()).connection.id);
+    expect(stored.apiKey).toBe(`token=${INNER.b} ${EMAIL}`);
+  });
+
+  it("replaces the credential with exactly what the new pairing binds, never carrying an old email forward", async () => {
+    const created = await createWith("a", EMAIL);
+    expect(created.apiKey).toBe(`token=${INNER.a} ${EMAIL}`);
+    expect((await replaceWith(created.id, "b")).apiKey).toBe(`token=${INNER.b}`);
+    expect((await replaceWith(created.id, "a", INNER_EMAIL[INNER.b])).apiKey).toBe(`token=${INNER.a} ${INNER_EMAIL[INNER.b]}`);
+    expect((await replaceWith(created.id, "a", "  ")).apiKey).toBe(`token=${INNER.a}`);
+    expect(wire.calls).toEqual([]);
+  });
+
+  it("imports Cookie header, cURL and HAR input with the same optional email", async () => {
+    const contract = WEB_COOKIE_PROVIDERS[ID].cookieImport;
+    expect(contract.accountEmail).toBe("optional");
+    const header = `theme=dark; token=${INNER.a}`;
+    const inputs = [
+      { kind: "header", parsed: parseCookieHeaderValue(header) },
+      { kind: "curl", parsed: parseCurlCommand(`curl '${CASES[ID].origin}/' -H 'Cookie: ${header}'`) },
+      { kind: "har", parsed: parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${CASES[ID].origin}/`, headers: [{ name: "Cookie", value: header }], cookies: [] } }] } })) },
+    ];
+    for (const [index, input] of inputs.entries()) {
+      const [candidate] = buildImportCandidates(input, contract).candidates;
+      for (const accountEmail of [EMAIL, undefined]) {
+        const response = await pairWith({ provider: ID, action: "create", name: `inner ${input.kind} ${index} ${accountEmail ?? "none"}`, ...(accountEmail ? { accountEmail } : null) });
+        const { pairing } = await response.json();
+        const imported = await submit(pairing, { provider: ID, origin: candidate.origin, cookies: candidate.cookies.map((c) => ({ ...c, secure: true })) });
+        expect(imported.status, input.kind).toBe(201);
+        const stored = await getProviderConnectionById((await imported.json()).connection.id);
+        expect(stored.apiKey, input.kind).toBe(accountEmail ? `token=${INNER.a} ${EMAIL}` : `token=${INNER.a}`);
+      }
+    }
+  });
+
+  it("keeps Venice capture on the exact Clerk origin and cookie", async () => {
+    const response = await pairWith({ provider: "venice-web", action: "create", name: "venice clerk" });
+    const { pairing } = await response.json();
+    expect(pairing.contract).toEqual({ origin: "https://clerk.venice.ai", cookieNames: ["__client"], cookiePrefixes: [] });
+    expect((await submit(pairing, { provider: "venice-web", origin: "https://venice.ai", cookies: [{ ...CASES["venice-web"].cookie("a"), secure: true }] }, "chrome-extension://synthetic-extension-id")).status).toBe(400);
+    const { pairing: retry } = await (await pairWith({ provider: "venice-web", action: "create", name: "venice clerk" })).json();
+    expect((await submit(retry, { provider: "venice-web", origin: "https://clerk.venice.ai", cookies: [{ ...CASES["venice-web"].cookie("a"), domain: "outerface.venice.ai", secure: true }] })).status).toBe(400);
+    const { pairing: wrongProvider } = await (await pairWith({ provider: "venice-web", action: "create", name: "venice clerk" })).json();
+    expect((await submit(wrongProvider, { ...capture("a"), provider: ID })).status).toBe(409);
+    expect(wire.calls).toEqual([]);
   });
 });

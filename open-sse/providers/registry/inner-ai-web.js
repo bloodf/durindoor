@@ -20,15 +20,19 @@ export const INNER_AI_WEB_PROFILE_URL = "https://platformapi.innerai.com/api/v1/
 export const INNER_AI_WEB_MODELS_URL = "https://platformapi.innerai.com/api/v1/ai_models";
 
 export const INNER_AI_WEB_CREDENTIAL_HINT =
-  "Copy the `token` cookie for .innerai.com while signed in at app.innerai.com, then add a space and your login email: eyJ... user@example.com";
+  "Copy the `token` cookie for .innerai.com while signed in at app.innerai.com, optionally followed by a space and your login email: eyJ... user@example.com";
 
-// Dashboard cookie import only. A cookie capture cannot collect the account
-// email, so the extension stays off. There is no `webLogin` profile: the pinned
-// source defines no sign-in or session-ready contract.
+// Dashboard import (Cookie header, cURL or HAR) and extension capture of the one
+// `token` cookie of app.innerai.com (the cookie may be scoped to .innerai.com).
+// The account email is never read from the browser: the operator may type it in
+// the dashboard, where it is validated and bound to the one-use pairing on the
+// server, then appended as `token=<jwt> <email>`. Left blank, the token is
+// stored alone and the executor falls back to the profile lookup. There is no
+// `webLogin` profile: the pinned source defines no sign-in contract.
 export const innerAiWebCookieProfile = Object.freeze({
   origin: INNER_AI_WEB_ORIGIN,
   cookieNames: Object.freeze(["token"]),
-  extensionCapture: false,
+  accountEmail: "optional",
 });
 
 // Fallback catalog from the pinned registry. What an account can really use is

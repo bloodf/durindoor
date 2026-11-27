@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { requestSettings } from "@/store/settingsStore";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -355,10 +356,11 @@ export default function ProvidersPage() {
   // default "Active only" view lists a wall of unconnected local providers.
   // Genuine free no-auth CLOUD providers live in the free/freeTier categories,
   // which keep their own noAuth-active behavior above.
+  const browserEntries = Object.entries(APIKEY_PROVIDERS).filter(([key, info]) => key === "adobe-firefly-web" && matchSearch(info.name, key) && matchStatus(key, "none"));
   const apikeyEntries = Object.entries(APIKEY_PROVIDERS).
   filter(
     ([key, info]) =>
-    !info.hidden && (
+    !info.hidden && key !== "adobe-firefly-web" && (
     (info.serviceKinds ?? ["llm"]).includes("llm") ||
     getProviderStats(key, "apikey").total > 0) &&
     matchSearch(info.name, key) &&
@@ -394,7 +396,7 @@ export default function ProvidersPage() {
   apikeyEntries.length > 0 ||
   compatibleProviders.length > 0 ||
   anthropicCompatibleProviders.length > 0 ||
-  webCookieEntries.length > 0;
+  webCookieEntries.length > 0 || browserEntries.length > 0;
 
   return (
     <div className={`flex min-w-0 flex-col gap-6 px-1 sm:px-0${v5 ? " text-dd-text" : ""}`}>
@@ -638,6 +640,14 @@ export default function ProvidersPage() {
         }
       </div>
       }
+
+      {browserEntries.length > 0 && <section className="flex flex-col gap-4">
+        <h2 className="text-xl font-semibold">Operator browser profiles</h2>
+        {browserEntries.map(([key, info]) => <Link key={key} href={`/dashboard/providers/${key}`} className="rounded-dd border border-dd-border p-4">
+          <h3>{info.name}</h3>
+          <p>Experimental, operator-mapped image/video. Disabled until explicitly enabled on a private connection. Setup opens on this host and requires a display. Live compatibility and entitlement are unknown.</p>
+        </Link>)}
+      </section>}
 
       {/* Web Cookie Providers — use browser subscription cookie instead of API key */}
       {webCookieEntries.length > 0 &&

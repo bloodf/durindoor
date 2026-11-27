@@ -52,6 +52,18 @@ export function defaultOAuthRedirectUri(provider) {
  * @returns {string} absolute redirect_uri
  */
 export function buildOAuthRedirectUri(location, provider, hosted = false) {
+  // RenderHour accepts only loopback redirects (any port, RFC 8252 section 7.3),
+  // so remote and hosted dashboards use one too and the user pastes the callback
+  // URL back. The path is exactly /callback, without the base path. Source:
+  // cheaper-inference/OmniRoute d3f06ea668109f8ac1feadfcae25f6ff9b873b5f,
+  // src/shared/components/OAuthModal.tsx (LOOPBACK_REDIRECT_PROVIDERS).
+  if (provider === "renderhour") {
+    const host = location?.hostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
+    const defaultPort = isLoopbackHostname(location?.hostname) ?
+    location.protocol === "https:" ? "443" : "80" :
+    "20128";
+    return `http://${host}:${location?.port || defaultPort}/callback`;
+  }
   if (hosted && provider !== "claude") return `${publicBaseUrl(location)}${process.env.NEXT_PUBLIC_BASE_PATH || ""}/callback`;
   // Fixed-port loopback flows: the CLI these providers pair with listens on a
   // known port, so the redirect is not ours to choose.

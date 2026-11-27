@@ -23566,7 +23566,7 @@
       "id": "src/app/(dashboard)/dashboard/profile/page.js#ProfilePage",
       "sourcePath": "src/app/(dashboard)/dashboard/profile/page.js",
       "symbol": "ProfilePage",
-      "sourceSha256": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+      "sourceSha256": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23590,7 +23590,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -23606,7 +23606,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#OidcAndProxy",
@@ -23621,7 +23621,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "page.stories.jsx#ShutdownConfirm",
@@ -23637,7 +23637,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens export prompt."
@@ -23652,7 +23652,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/profile/page.js": "7189e3a32054232873423732b8fb2061569e5174fc4f9eacaefbe23f9e08022f",
+            "src/app/(dashboard)/dashboard/profile/page.js": "56a1aed843bcd9024ac5a6e21a1ed17bd7c621c93525c2ec2b3c668d57d5be4d",
             "src/app/(dashboard)/dashboard/profile/page.stories.jsx": "064fdb3865bef1ace02c21b9ab7c8264c4d034781ccee747b40deb8a760be76d"
           },
           "proposedSourceEvidence": "Play opens transfer branch."
@@ -32852,7 +32852,7 @@
       "id": "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx#PostgresConnectionTarget",
       "sourcePath": "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx",
       "symbol": "PostgresConnectionTarget",
-      "sourceSha256": "e90b84f476e681309d3d7646063b17d50946a272528014fb01d9a584a486e3f1",
+      "sourceSha256": "ebea12f5454fe6450f4a30d146aa2989037f1f6e4ad4219d2c50cdf683fb6d57",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -32875,7 +32875,7 @@
           ],
           "proposedSourceEvidence": "Parent play types target password, tests and saves encrypted cutover target, asserts readiness and cleared write-only field.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "e90b84f476e681309d3d7646063b17d50946a272528014fb01d9a584a486e3f1",
+            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "ebea12f5454fe6450f4a30d146aa2989037f1f6e4ad4219d2c50cdf683fb6d57",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "expectedVisibleText": "Ready for cutover without restarting"
@@ -32889,7 +32889,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "e90b84f476e681309d3d7646063b17d50946a272528014fb01d9a584a486e3f1",
+            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "ebea12f5454fe6450f4a30d146aa2989037f1f6e4ad4219d2c50cdf683fb6d57",
             "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.stories.jsx": "65ac76ce7b479297b9a3d799723dda158163f3d8b83bf88dc9ca1924ee9b32d4"
           },
           "proposedSourceEvidence": "PostgresConnectionTarget.stories.jsx#SavesTarget",
@@ -32904,7 +32904,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "e90b84f476e681309d3d7646063b17d50946a272528014fb01d9a584a486e3f1",
+            "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.jsx": "ebea12f5454fe6450f4a30d146aa2989037f1f6e4ad4219d2c50cdf683fb6d57",
             "src/app/(dashboard)/dashboard/settings/database/components/PostgresConnectionTarget.stories.jsx": "65ac76ce7b479297b9a3d799723dda158163f3d8b83bf88dc9ca1924ee9b32d4"
           },
           "proposedSourceEvidence": "PostgresConnectionTarget.stories.jsx#Failure",
@@ -32991,7 +32991,7 @@
       "id": "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx#StartupConfiguration",
       "sourcePath": "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx",
       "symbol": "StartupConfiguration",
-      "sourceSha256": "749d2c9e3c04b95e53c9b5b982311397c6c53ced23af2d81560250f2f6c3fb9b",
+      "sourceSha256": "b019726ff0fd4fd02d5314f50e1bd3a6ef68c9cdc6f31f07f5e593ee6967aa72",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -33015,7 +33015,7 @@
           ],
           "proposedSourceEvidence": "startupStory helper supplies process/file source badges and drives managed startup save with restart banner Scenario: startup-env-from-environment.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "749d2c9e3c04b95e53c9b5b982311397c6c53ced23af2d81560250f2f6c3fb9b",
+            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "b019726ff0fd4fd02d5314f50e1bd3a6ef68c9cdc6f31f07f5e593ee6967aa72",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "expectedVisibleText": "Restart DurinDoor to apply startup changes"
@@ -33030,7 +33030,7 @@
           ],
           "proposedSourceEvidence": "startupStory helper supplies process/file source badges and drives managed startup save with restart banner Scenario: startup-env-from-file.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "749d2c9e3c04b95e53c9b5b982311397c6c53ced23af2d81560250f2f6c3fb9b",
+            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "b019726ff0fd4fd02d5314f50e1bd3a6ef68c9cdc6f31f07f5e593ee6967aa72",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "expectedVisibleText": "Restart DurinDoor to apply startup changes"
@@ -33044,7 +33044,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "749d2c9e3c04b95e53c9b5b982311397c6c53ced23af2d81560250f2f6c3fb9b",
+            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "b019726ff0fd4fd02d5314f50e1bd3a6ef68c9cdc6f31f07f5e593ee6967aa72",
             "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.stories.jsx": "def64682cf6908724d7b77d5007efc3af01e0a3aa53193866ff516c420113ab1"
           },
           "proposedSourceEvidence": "StartupConfiguration.stories.jsx#TestConnection",
@@ -33060,7 +33060,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "749d2c9e3c04b95e53c9b5b982311397c6c53ced23af2d81560250f2f6c3fb9b",
+            "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.jsx": "b019726ff0fd4fd02d5314f50e1bd3a6ef68c9cdc6f31f07f5e593ee6967aa72",
             "src/app/(dashboard)/dashboard/settings/database/components/StartupConfiguration.stories.jsx": "def64682cf6908724d7b77d5007efc3af01e0a3aa53193866ff516c420113ab1"
           },
           "proposedSourceEvidence": "StartupConfiguration.stories.jsx#SaveRequiresRestart",
@@ -33164,7 +33164,7 @@
       "id": "src/app/(dashboard)/dashboard/settings/database/page.js#DatabaseSettingsPage",
       "sourcePath": "src/app/(dashboard)/dashboard/settings/database/page.js",
       "symbol": "DatabaseSettingsPage",
-      "sourceSha256": "5ab27f74591d457ab7af0e5ff40d4febcb5c90acd02fe4b9b7bf5d49da9b2fa7",
+      "sourceSha256": "ce105e2af22c531692de67f47056946e862c148f57ec076cab9a29a08b37c1c2",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -33187,7 +33187,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/page.js": "5ab27f74591d457ab7af0e5ff40d4febcb5c90acd02fe4b9b7bf5d49da9b2fa7",
+            "src/app/(dashboard)/dashboard/settings/database/page.js": "ce105e2af22c531692de67f47056946e862c148f57ec076cab9a29a08b37c1c2",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "proposedSourceEvidence": "page.stories.jsx#Default",
@@ -33203,7 +33203,7 @@
           ],
           "proposedSourceEvidence": "startupStory process fixture renders live DatabaseSettingsPage; play proves Startup configuration, host, password, and three from environment markers.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/page.js": "5ab27f74591d457ab7af0e5ff40d4febcb5c90acd02fe4b9b7bf5d49da9b2fa7",
+            "src/app/(dashboard)/dashboard/settings/database/page.js": "ce105e2af22c531692de67f47056946e862c148f57ec076cab9a29a08b37c1c2",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "expectedVisibleText": "Startup configuration"
@@ -33218,7 +33218,7 @@
           ],
           "proposedSourceEvidence": "startupStory file fixture renders live DatabaseSettingsPage; play proves Startup configuration, host, password, and three from managed file markers.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/page.js": "5ab27f74591d457ab7af0e5ff40d4febcb5c90acd02fe4b9b7bf5d49da9b2fa7",
+            "src/app/(dashboard)/dashboard/settings/database/page.js": "ce105e2af22c531692de67f47056946e862c148f57ec076cab9a29a08b37c1c2",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "expectedVisibleText": "Startup configuration"
@@ -33232,7 +33232,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/settings/database/page.js": "5ab27f74591d457ab7af0e5ff40d4febcb5c90acd02fe4b9b7bf5d49da9b2fa7",
+            "src/app/(dashboard)/dashboard/settings/database/page.js": "ce105e2af22c531692de67f47056946e862c148f57ec076cab9a29a08b37c1c2",
             "src/app/(dashboard)/dashboard/settings/database/page.stories.jsx": "e90fc712aeea02f16133cbd8cd5870dcf3eb769273c9d5e05c289f609a5511b6"
           },
           "proposedSourceEvidence": "page.stories.jsx#PostgresCutoverTarget",
@@ -56033,7 +56033,7 @@
       "id": "src/shared/components/Sidebar.js#Sidebar",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "Sidebar",
-      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+      "sourceSha256": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56056,7 +56056,7 @@
             "update-dialog-final"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "GroupsAndUpdate opens Token Saver, confirms Statistics, then clicks Update now; final play leaves Sidebar's Update available modal visible.",
@@ -56071,7 +56071,7 @@
             "expanded-by-route"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname /dashboard/media-providers/embedding makes renderMediaGroup active and open, rendering media children.",
@@ -56086,7 +56086,7 @@
             "current-page"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "TokenSaverActiveHierarchy pathname /dashboard/token-saver opens Token Saver and final play verifies Statistics aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56105,7 +56105,7 @@
             "geometry"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsibleRail collapses then expands controlled Sidebar. Final state restores full rail and Usage link after measured 44px row geometry. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56221,7 +56221,7 @@
       "id": "src/shared/components/Sidebar.js#SidebarTooltip",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "SidebarTooltip",
-      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+      "sourceSha256": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56243,7 +56243,7 @@
           ],
           "sourceHashes": {
             "src/shared/components/layouts/DashboardLayout.js": "3ac108a5bfa51f67dc62a960d0c05a2d169fe6ab8bf2b6b9690be69e1dea82f3",
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "CollapsedTooltip renders controlled Sidebar initially collapsed, hovers real Expand sidebar control, and final play waits for SidebarTooltip's visible Expand sidebar bubble.",
@@ -56364,7 +56364,7 @@
       "id": "src/shared/components/Sidebar.js#renderGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderGroup",
-      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+      "sourceSha256": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56385,7 +56385,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup creates Token Saver button and child links. TokenSaverActiveHierarchy final play verifies expanded parent and Statistics current-page child. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56447,7 +56447,7 @@
       "id": "src/shared/components/Sidebar.js#renderItem",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderItem",
-      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+      "sourceSha256": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56467,7 +56467,7 @@
             "active-link"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "renderGroup maps Token Saver children through renderItem. At /dashboard/token-saver, renderItem renders Statistics with aria-current=page. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -56528,7 +56528,7 @@
       "id": "src/shared/components/Sidebar.js#renderMediaGroup",
       "sourcePath": "src/shared/components/Sidebar.js",
       "symbol": "renderMediaGroup",
-      "sourceSha256": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+      "sourceSha256": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -56549,7 +56549,7 @@
             "active-child"
           ],
           "sourceHashes": {
-            "src/shared/components/Sidebar.js": "e83db1cf5f6318a9bc7fe24227640f6684662c71b00ee31f08f5f2f96898d077",
+            "src/shared/components/Sidebar.js": "db88a4851e29e1095d48283363a01fa71f4b217f3ddf33fe9df2169b250886eb",
             "src/shared/components/Sidebar.stories.jsx": "fcac11317ec7eb97da6d54774aaa2b2d29ab1cc1d068fb819ea94ad728e398b2"
           },
           "proposedSourceEvidence": "MediaExpanded pathname starts with /dashboard/media-providers. renderMediaGroup builds visible kinds and renders Embedding active in opened Media Providers group. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -80519,6 +80519,26 @@
       "storyId": "v5-review-pages-providers-providerdetailerror--error-boundary",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-error.stories.jsx",
       "sourceSha256": "c322c7a0c6069a1f2d672e77a271990756aca420ae3dace8323181a274665bff",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-fireflybrowserpanel--disabled",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-fireflybrowserpanel.stories.jsx",
+      "sourceSha256": "6568ad0c3b18a5ec7f7aef0372cff29cb997a83e66ddfd4e9ba4e405d56c89f3",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-providers-fireflybrowserpanel--configured",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-providers-id-fireflybrowserpanel.stories.jsx",
+      "sourceSha256": "6568ad0c3b18a5ec7f7aef0372cff29cb997a83e66ddfd4e9ba4e405d56c89f3",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -104742,11 +104762,11 @@
   ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "28f11d615698e2d73dc0b6853fcfa5433550b9bd3b5cff19521f4dab4fbb4e9c",
-    "sourceCensusSha256": "2c7aa6f65accf3fbc9fe19f356f5b40579585cbaa4c33edb883b2ae17004f14f",
+    "builtIndexSha256": "c05e831be9df8c8589c7d68a83774d397ced64d545263508faec622e1765271e",
+    "sourceCensusSha256": "e11ef32f24b933b0c1ef1c367a10060075544d0f21123fe55b0f6436ac31b58b",
     "pendingRows": 452,
     "retainedApprovedRows": 197,
-    "pendingReferences": 1497,
+    "pendingReferences": 1499,
     "runtimeStatus": "pending"
   }
 }

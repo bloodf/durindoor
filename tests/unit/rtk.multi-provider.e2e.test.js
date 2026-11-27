@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 
-const PORT = process.env.RTK_E2E_PORT || "20128";
+const PORT = process.env.RTK_E2E_PORT;
 const BASE = `http://localhost:${PORT}`;
 const API_KEY = process.env.RTK_E2E_KEY || "";
 const LOG_FILE = process.env.RTK_E2E_LOG || "";
@@ -53,9 +53,8 @@ async function sendChat(body) {
 }
 
 // Wait for server to emit a matching [RTK] log line (race-safe against concurrent traffic).
-async function waitForRtkLine({ minBytes, filterName, timeoutMs = 5000 }) {
+async function waitForRtkLine({ minBytes, filterName, startOffset, timeoutMs = 5000 }) {
   const start = Date.now();
-  const startOffset = logOffset();
   while (Date.now() - start < timeoutMs) {
     const text = readLogSince(startOffset);
     const matches = [...text.matchAll(/\[RTK\] saved (\d+)B \/ (\d+)B \(([\d.]+)%\) via \[([\w,-]+)\] hits=(\d+)/g)];
@@ -69,7 +68,7 @@ async function waitForRtkLine({ minBytes, filterName, timeoutMs = 5000 }) {
         hits: Number(mine[5])
       };
     }
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 50));
   }
   return null;
 }
@@ -107,6 +106,7 @@ const ROUTES = [
 
 maybe("RTK multi-provider E2E", () => {
   it("server reachable and rtkEnabled=true", async () => {
+    expect(PORT, "Set RTK_E2E_PORT to the running server port").toBeTruthy();
     const health = await fetch(`${BASE}/api/health`);
     expect(health.ok).toBe(true);
     const settings = await fetch(`${BASE}/api/settings`).then(r => r.json());
@@ -118,6 +118,7 @@ maybe("RTK multi-provider E2E", () => {
       const diff = makeBigDiff();
       expect(diff.length).toBeGreaterThan(500);
 
+      const startOffset = logOffset();
       const res = await sendChat(chatBodyWithDiff(route.model, diff));
       // Provider may respond with 200/400/401/402/404/429/500 depending on account state.
       // The important thing: proxy must NOT crash (we just need status code).
@@ -125,7 +126,7 @@ maybe("RTK multi-provider E2E", () => {
       expect(res.status).toBeLessThan(600);
 
       if (!LOG_FILE) return;
-      const hit = await waitForRtkLine({ minBytes: diff.length, filterName: "git-diff" });
+      const hit = await waitForRtkLine({ minBytes: diff.length, filterName: "git-diff", startOffset });
       expect(hit, `[RTK] git-diff log line not found for ${route.name}`).toBeTruthy();
       expect(hit.saved).toBeGreaterThan(500);
       expect(hit.filters).toContain("git-diff");

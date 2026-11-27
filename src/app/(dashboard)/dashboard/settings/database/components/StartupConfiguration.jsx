@@ -6,6 +6,7 @@ import Input from "@/shared/ui/components/Input.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
+import api from "@/shared/utils/api.js";
 import { normalizeSslmode, SSL_MODES } from "./sslmode.js";
 
 const sourceLabels = { file: "from managed file", process: "from environment" };
@@ -57,19 +58,17 @@ export default function StartupConfiguration({ startupEnv, password, onUnauthori
     setBusy(true);
     setResult(null);
     try {
-      const options = {
-        method: action === "remove" ? "DELETE" : "POST",
-        headers: { "content-type": "application/json", "x-9r-password": password },
-      };
-      if (action !== "remove") {
+      const url = `/api/settings/database/startup-env${action === "test" ? "?test=1" : ""}`;
+      const headers = { "x-9r-password": password };
+      let body;
+      if (action === "remove") {
+        body = await api.del(url, { headers });
+      } else {
         const payload = { ...draft };
         if (passwordChanged) payload.password = credential;
-        options.body = JSON.stringify(payload);
+        body = await api.post(url, payload, { headers });
       }
-      const response = await fetch(`/api/settings/database/startup-env${action === "test" ? "?test=1" : ""}`, options);
-      if (response.status === 401) { onUnauthorized(); return; }
-      const body = await response.json();
-      if (!response.ok || !body.ok) throw new Error(body.error || "Startup configuration request failed");
+      if (!body?.ok) throw new Error(body?.error || "Startup configuration request failed");
       setResult({ ok: true, message: action === "test" ? `Connection successful (${body.latencyMs ?? 0}ms)` : action === "remove" ? "Managed override removed" : "Startup configuration saved" });
       if (body.restartRequired) {
         setRestartRequired(true);
@@ -80,7 +79,8 @@ export default function StartupConfiguration({ startupEnv, password, onUnauthori
         onSaved(body.startupEnv);
       }
     } catch (error) {
-      setResult({ ok: false, message: error.message });
+      if (error?.status === 401) { onUnauthorized(); return; }
+      setResult({ ok: false, message: error?.body?.error || error.message || "Startup configuration request failed" });
     } finally { setBusy(false); }
   }
 

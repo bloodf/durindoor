@@ -1,4 +1,4 @@
-import { WebSessionExecutor } from "./web-session-executor.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { unpatchedGlobalFetch } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { stripCookieInputPrefix, extractCookieValue } from "../../src/lib/providers/webCookieAuth.js";
@@ -16,10 +16,9 @@ export class NotrackWebExecutor extends WebSessionExecutor {
     const err = (status, message) => ({ response: this.errorReply(status, message), url: URL, headers: {} });
     const body = input.body || {};
     if (!Array.isArray(body.messages) || !body.messages.length) return err(400, "Missing or empty messages array");
-    const raw = input.credentials?.apiKey || input.credentials?.providerSpecificData?.cookie || "";
-    const cookieInput = stripCookieInputPrefix(raw);
+    const cookieInput = this.storedCookie(input.credentials);
     if (!hasNotrackSession(cookieInput)) return err(401, "Notrack session cookie is required");
-    const values = Object.fromEntries(["uid", "si_usr_id", "si_ses_id", "nt_session"].map((n) => [n, extractCookieValue(cookieInput, n)]));
+    const values = Object.fromEntries(["uid", "si_usr_id", "si_ses_id", "nt_session"].map((n) => [n, this.cookieValue(cookieInput, n)]));
     const cookie = values.uid && values.si_usr_id && values.si_ses_id
       ? [`uid=${values.uid}`, `si_usr_id=${values.si_usr_id}`, `si_ses_id=${values.si_ses_id}`, ...(values.nt_session ? [`nt_session=${values.nt_session}`] : [])].join("; ")
       : cookieInput;

@@ -428,7 +428,13 @@ describe("MiniMax Code credential and quota error mapping", () => {
     const failed = await direct(optedIn(TOKEN_A));
     expect(failed.response.status).toBe(429);
     wire.gatewayBody = { type: "error", error: { type: "overloaded_error", message: "busy" } };
-    expect((await direct(optedIn(TOKEN_A))).response.status).toBe(429);
+    // No pinned source guarantees that an overloaded gateway did no work.
+    const overloaded = await direct(optedIn(TOKEN_A));
+    expect(overloaded.response.status).toBe(500);
+    const unknown = (await overloaded.response.json()).error;
+    expect(unknown.code).toBe("upstream_outcome_unknown");
+    expect(unknown.message.length).toBeGreaterThan(0);
+    expect(unknown.message.length).toBeLessThan(400);
     wire.gatewayBody = { type: "error", error: { type: "api_error", message: "internal" } };
     expect((await direct(optedIn(TOKEN_A))).response.status).toBe(500);
     wire.gatewayBody = message("fine");

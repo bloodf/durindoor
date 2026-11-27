@@ -51,11 +51,11 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 | `MINIMAX_CODE_MAX_INPUT_TOKENS` | the window | Lowers the input ceiling for a stricter refusal. It cannot raise the ceiling above the window. |
 | `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` | `100000` | Budget of the whole call: the attempt, the backoff and the retry. It stops at the response headers, so a stream that is already flowing is not cut. Zero, negative or non-numeric values use the default. |
 | `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS` | `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` | Optional per-attempt response-header timeout for MiniMax Code (ms). When set without `MINIMAX_CODE_GATEWAY_TIMEOUT_MS`, also raises the call budget so delayed headers are not aborted at `FETCH_CONNECT_TIMEOUT_MS`. |
-| `MINIMAX_CODE_GATEWAY_RETRIES` | `1` | Retries of a 429, a 5xx or a dropped connection. `0` turns the retry off; values above `3` are capped at `3`; a non-numeric value keeps the default. |
+| `MINIMAX_CODE_GATEWAY_RETRIES` | `1` | Retries of an explicit 429 refusal or a proven unsent DNS/connect failure. `0` turns the retry off; values above `3` are capped at `3`; a non-numeric value keeps the default. |
 
 - **Input ceiling.** Before sending, DurinDoor estimates the input tokens of the messages, the system prompt and the tool catalog, weighing CJK at one token per character, Cyrillic at two characters and other text at three. The estimate is deliberately pessimistic. A request over the ceiling is refused with HTTP 413 `context_length_exceeded` ("too large for the managed gateway transport", with the estimate and the limit) and nothing is sent to MiniMax. The status is 413, not 400, so the refusal is not read as an outage of the model.
 - **Call budget.** A call that outlives `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` is stopped and answers HTTP 500 `gateway_timeout`. It is not a 504, so a slow answer does not take the model out of fallback combos.
-- **Retry with backoff.** A gateway 429 or 5xx, or a dropped connection, is retried once after a 1 second backoff (exponential if you raise the retry count: 1 s, 2 s, 4 s, up to 30 s). `Retry-After` does not lengthen the wait, so the retry stays inside the call budget; it is still passed to the client when the retry fails too. If the retry fails the last error is returned with its own status. A 4xx other than 429, including the 413 above, is never retried, and a 401 keeps its separate refresh-and-retry path.
+- **Retry with backoff.** Only an explicit 429 refusal or a proven unsent DNS/connect failure is retried, using the selected connection and proxy. Backoff grows from 1 second, capped at 30 seconds, inside the whole-call budget. A 401 retains its separate refresh path; other request/auth refusals are not retried. Bare 500/503/529 responses, 502/504, dropped connections and header/call deadlines do not prove that no work or billing occurred. These return an unknown outcome after one submission. Operator retry rules, account fallback and combos cannot replay them. Check the conversation before submitting again. An unknown-outcome receipt records the selected connection with unknown tokens and cost, without reporting successful usage or confirmed zero spend.
 
 ## Errors
 
@@ -81,7 +81,7 @@ A 4xx that belongs to the request keeps a request-scoped status so it does not l
 - The account service returns no account identity, so connections are labelled "MiniMax Code account". Two sign-ins to the same account create two rows that rotate independently, and the service may revoke the older refresh token.
 - The budgets and the single retry above are ported from OmniRoute's transport. Their defaults, including the 1000000 window and the 100000 ms call budget, come from that source and are not verified against a live gateway.
 - OmniRoute's other `MINIMAX_CODE_*` settings (`MINIMAX_CODE_REGION`, `MINIMAX_CODE_AUTH_FILE`, `MINIMAX_CODE_PROFILE_DIR`, `MINIMAX_CODE_AUTH_RECORD`, `MINIMAX_CODE_GATEWAY_URL`) belong to its local `~/.minimax` profile and are not ported. Region and gateway URL are per-connection fields here.
-- A 429 or 5xx is retried by this executor, and DurinDoor's own routing and fallback still apply after it gives up.
+- Routing may fall back after a proven unsent failure or an explicit refusal. An uncertain outcome is terminal for this request, including across combos.
 
 ## Sources
 

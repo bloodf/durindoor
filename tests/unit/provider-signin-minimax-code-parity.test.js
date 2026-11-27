@@ -30,7 +30,10 @@ vi.mock("@/lib/localDb", async (importOriginal) => {
 });
 vi.mock("@/lib/usageDb.js", async (importOriginal) => ({
   ...(await importOriginal()), appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(),
-  saveRequestDetail: usage.saveRequestDetail, saveRequestUsage: usage.saveRequestUsage,
+  saveRequestDetail: usage.saveRequestDetail, saveRequestUsage: async (...args) => {
+    await usage.saveRequestUsage(...args);
+    if (storage.realDb) return (await importOriginal()).saveRequestUsage(...args);
+  },
 }));
 vi.mock("@/lib/network/connectionProxy", () => ({
   resolveConnectionProxyConfig: vi.fn(async () => ({ connectionProxyEnabled: false, connectionProxyUrl: "", vercelRelayUrl: "" })),
@@ -208,7 +211,7 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
   });
   const errorOf = async (result) => (await result.response.json()).error;
 
-  it.each([429, 500, 503, 529])("replays only a definite %i refusal, and never echoes its body", async (status) => {
+  it.each([429])("replays only a definite %i refusal, and never echoes its body", async (status) => {
     transport.mockResolvedValue(gatewayError(status, { "retry-after": "17" }));
     const result = await run();
     expect(gatewaySends()).toHaveLength(2);
@@ -219,7 +222,7 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
     if (status === 429) expect(result.response.headers.get("retry-after")).toBe("17");
   });
 
-  it.each([502, 504])("sends a %i once and reports the outcome as unknown", async (status) => {
+  it.each([500, 503, 529, 502, 504])("sends a %i once and reports the outcome as unknown", async (status) => {
     transport.mockResolvedValue(gatewayError(status));
     const result = await run();
     expect(gatewaySends()).toHaveLength(1);
@@ -227,6 +230,8 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
     const error = await errorOf(result);
     expect(error.code).toBe("upstream_outcome_unknown");
     expect(JSON.stringify(error)).not.toContain(SECRET);
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
   });
 
   it.each(["ECONNRESET", "EPIPE", "UND_ERR_SOCKET", "ETIMEDOUT"])("never replays a connection lost after sending (%s)", async (code) => {
@@ -237,6 +242,16 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
     const error = await errorOf(result);
     expect(error.code).toBe("upstream_outcome_unknown");
     expect(JSON.stringify(error)).not.toContain(SECRET);
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
+  });
+
+  it.each([500, 503, 529, 502, 504, "drop"])("operator retries cannot replay uncertain %s", async (status) => {
+    if (status === "drop") transport.mockRejectedValue(transportError("ECONNRESET"));
+    else transport.mockResolvedValue(gatewayError(status));
+    const result = await run({ requestPolicy: { maxTransportAttempts: 4, skipRules: [{ provider: "minimax-code", action: "retry", match: { status: status === "drop" ? 502 : status } }] } });
+    expect(gatewaySends()).toHaveLength(1);
+    expect((await errorOf(result)).code).toBe("upstream_outcome_unknown");
   });
 
   it("treats a transport error without a proven code as possibly accepted", async () => {
@@ -260,6 +275,8 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
     const error = await errorOf(unreachable);
     expect(error.code).toBe("gateway_unreachable");
     expect(JSON.stringify(error)).not.toContain(SECRET);
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message.length).toBeLessThan(400);
   });
 
   it("preserves cancellation during the unsent-retry backoff", async () => {
@@ -283,7 +300,7 @@ describe("MiniMax Code gateway replay and disclosure contract", () => {
       [400, { type: "error", error: { type: "invalid_request_error", message: `context window exceeds limit ${SECRET}` } }, [413, "context_length_exceeded"]],
       [403, { type: "error", error: { type: "permission_error", message: SECRET } }, [403, "gateway_error"]],
       [200, { type: "error", error: { type: "rate_limit_error", message: SECRET } }, [429, "quota_exceeded"]],
-      [200, { type: "error", error: { type: "api_error", message: SECRET } }, [500, "gateway_error"]],
+      [200, { type: "error", error: { type: "api_error", message: SECRET } }, [500, "upstream_outcome_unknown"]],
     ]) {
       transport.mockReset();
       transport.mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "retry-after": `${SECRET}` } }));
@@ -326,13 +343,14 @@ describe("MiniMax Code chat route never replays possibly accepted work", () => {
     vi.unstubAllEnvs();
   });
 
-  const chat = () => handleChat(new Request("http://gateway.invalid/v1/chat/completions", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "mmcode/MiniMax-M3", messages: [{ role: "user", content: "ping" }] }),
+  const chat = (model = "mmcode/MiniMax-M3", signal) => handleChat(new Request("http://gateway.invalid/v1/chat/completions", {
+    method: "POST", signal, headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, messages: [{ role: "user", content: "ping" }] }),
   }));
 
   it.each([
     ["a connection lost after sending", () => Promise.reject(transportError("ECONNRESET")), 502],
+    ...[500, 503, 529].map((status) => [`an uncertain ${status}`, async () => gatewayError(status), status]),
     ["an intermediary 504", async () => gatewayError(504), 504],
     ["an intermediary 502", async () => gatewayError(502), 502],
   ])("submits exactly once on %s, with no sibling replay and no invented usage", async (_name, answer, status) => {
@@ -343,7 +361,16 @@ describe("MiniMax Code chat route never replays possibly accepted work", () => {
     expect(text).not.toContain(SECRET);
     expect(text).not.toMatch(/"usage"/);
     expect(gatewaySends()).toHaveLength(1);
-    expect(usage.saveRequestUsage).not.toHaveBeenCalled();
+    expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
+    const receipt = usage.saveRequestUsage.mock.calls[0][0];
+    const selected = await repo.getProviderConnections({ provider: "minimax-code" });
+    expect(selected.find((row) => row.id === receipt.connectionId).accessToken).toBe(bearerOf(gatewaySends()[0][1]).slice(7));
+    expect(receipt).toMatchObject({ cost: null, costStatus: "unknown", status: "error", meta: { outcome: "unknown", tokenStatus: "unknown" } });
+    const adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+    const rowsForReceipt = await adapter.all("SELECT * FROM usageHistory WHERE connectionId = ?", [receipt.connectionId]);
+    expect(rowsForReceipt).toHaveLength(1);
+    expect(rowsForReceipt[0].cost).toBeNull();
+    expect(JSON.parse(rowsForReceipt[0].meta)).toMatchObject({ costStatus: "unknown", outcome: "unknown" });
     // The account that may have done the work is not cooled down on a guess.
     const rows = await repo.getProviderConnections({ provider: "minimax-code" });
     expect(rows.every((row) => row.testStatus !== "unavailable" && !Object.entries(row).some(([key, value]) => key.startsWith("modelLock_") && value))).toBe(true);
@@ -357,7 +384,48 @@ describe("MiniMax Code chat route never replays possibly accepted work", () => {
     const response = await chat();
     expect(response.status).toBeGreaterThanOrEqual(500);
     expect(gatewaySends()).toHaveLength(1);
-    expect(usage.saveRequestUsage).not.toHaveBeenCalled();
+    expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
+    const receipt = usage.saveRequestUsage.mock.calls[0][0];
+    const selected = await repo.getProviderConnections({ provider: "minimax-code" });
+    expect(selected.find((row) => row.id === receipt.connectionId).accessToken).toBe(bearerOf(gatewaySends()[0][1]).slice(7));
+    expect(receipt).toMatchObject({ cost: null, costStatus: "unknown", status: "error", meta: { outcome: "unknown", tokenStatus: "unknown" } });
+    const adapter = await (await import("@/lib/db/driver.js")).getAdapter();
+    const rowsForReceipt = await adapter.all("SELECT * FROM usageHistory WHERE connectionId = ?", [receipt.connectionId]);
+    expect(rowsForReceipt).toHaveLength(1);
+    expect(rowsForReceipt[0].cost).toBeNull();
+    expect(JSON.parse(rowsForReceipt[0].meta)).toMatchObject({ costStatus: "unknown", outcome: "unknown" });
+  });
+
+  it("does not advance a combo after uncertain accepted work", async () => {
+    const combos = await import("../../src/lib/db/repos/combosRepo.js");
+    const combo = await combos.createCombo({ name: "mmc-uncertain", models: ["mmcode/MiniMax-M3", "mmcode/MiniMax-M3.1-Flash"] });
+    try {
+      transport.mockResolvedValue(gatewayError(503));
+      expect((await chat(combo.name)).status).toBe(503);
+      expect(gatewaySends()).toHaveLength(1);
+      expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
+    } finally { await combos.deleteCombo(combo.id); }
+  });
+
+  it("records uncertainty on the whole-call deadline", async () => {
+    vi.stubEnv("MINIMAX_CODE_GATEWAY_TIMEOUT_MS", "40");
+    transport.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }));
+    expect((await chat()).status).toBe(500);
+    expect(gatewaySends()).toHaveLength(1);
+    expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves abort after dispatch and records uncertainty once", async () => {
+    const controller = new AbortController();
+    transport.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      controller.abort(new DOMException("cancelled", "AbortError"));
+    }));
+    expect((await chat(undefined, controller.signal)).status).toBe(499);
+    expect(gatewaySends()).toHaveLength(1);
+    expect(usage.saveRequestUsage).toHaveBeenCalledTimes(1);
   });
 
   it("lets a sibling serve a request the first account provably never sent", async () => {

@@ -45,3 +45,52 @@ DurinDoor applies the managed-gateway limits OmniRoute ships (`MINIMAX_CODE_*`),
 - [OmniRoute gateway transport and refresh](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/open-sse/executors/minimaxCodeGateway.ts)
 
 - [OmniRoute provider page](https://github.com/cheaper-inference/OmniRoute/blob/4265bb2ad5477450a07d3a43ea33a62c6c874878/docs/providers/MINIMAX_CODE.md)
+
+## Accepted-work follow-up (Refs #2034)
+
+The previous transport inherited an unsafe assumption: HTTP 500/503/529 meant
+no work was done. Neither the pinned first-party sources above nor the pinned
+OmniRoute gateway transport establishes a no-work/no-billing guarantee for those
+statuses. A transport retry implementation is not such a guarantee. Until an
+explicit primary-source contract supplies that evidence, all bare 5xx outcomes
+are uncertain and terminal. No new vendor guarantee is asserted here.
+
+MiniMax classification now precedes base operator retry overrides. Only 429 and
+proven unsent DNS/connect failures retain automatic retry; token refresh follows
+explicit authentication rejection. Unknown outcomes retain one error receipt on
+the selected connection through the existing usage ledger, with null cost and
+unknown cost/token/outcome provenance. Frozen numeric token columns use zero
+placeholders, explicitly marked unmeasured; they are not successful usage or a
+zero-cost assertion. Other providers and Codex quota handling are unchanged.
+
+Focused coverage strengthens the obsolete bare-500/503/529 retry assertions,
+keeps proven ECONNREFUSED fallback, and adds dropped/5xx uncertainty and operator
+override cases. The real handleChat/two-account SQLite tests assert the receipt,
+selected connection, unknown provenance and absence of sibling replay.
+
+Validation uses the explicitly supplied Node v24.22.3 path and existing dependency
+links from the repository checkout after matching package manifests and lockfiles.
+No installs, full suite, provider traffic or real account data were used. The first
+focused run passed 95/96 tests; the old overloaded-error-to-429 assertion failed
+because overload is now uncertain. That assertion is strengthened to require the
+unknown-outcome code and a nonempty bounded public message. The pinned sources
+above supply no no-work guarantee for that error either.
+
+The combo executor also honors the terminal response marker before fallback and
+awaits MiniMax cancellation at its own deadline, so the race cannot start another
+model before uncertainty is recorded. Added mock cases cover combo terminality,
+whole-call deadline and dispatched cancellation. `git diff --check` passes.
+The parent supplied the repository author identity for command-scoped Git variables;
+no global configuration or real-home configuration was read or copied.
+
+Focused rerun: **96 tests passed in 3 files** (17.58 s), using at most two
+workers, with the explicit private environment and no installs:
+
+```sh
+cd tests
+node node_modules/vitest/vitest.mjs run unit/minimax-code-budget.test.js unit/provider-signin-minimax-code-parity.test.js unit/minimax-code-provider.test.js --maxWorkers=2 --silent
+```
+
+`node --check` passed for the modified executor, base, chat core, combo and two
+initially modified test files. `git diff --check` passes. Full local CI and
+independent review remain the orchestrator gate's responsibility.

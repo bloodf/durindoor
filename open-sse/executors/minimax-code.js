@@ -17,8 +17,8 @@
 //  - Budgets (open-sse/services/minimaxCodeBudget.js, MINIMAX_CODE_* settings): an input ceiling
 //    and a default max_tokens/context window are applied before sending and the whole call has one
 //    time budget. A retry (once by default, with backoff) happens only when the gateway definitely
-//    did not do the work: an explicit 429, 500, 503 or 529 answer, or a connection that never
-//    reached the gateway. A connection dropped after sending, a 502/504 from an intermediary or a
+//    did not do the work: an explicit 429 answer, or a connection that never
+//    reached the gateway. Bare 5xx responses, a connection dropped after sending or a
 //    header timeout may have been accepted; it is answered as `upstream_outcome_unknown` and never
 //    replayed, here or (via singleModel/postProcess.js) on a sibling account. Any other 4xx is
 //    never retried.
@@ -45,7 +45,7 @@ export const MINIMAX_CODE_OUTCOME_UNKNOWN = "upstream_outcome_unknown";
 /** Error codes that mean the gateway may have done the work (the whole-call timeout included). */
 export const MINIMAX_CODE_UNKNOWN_OUTCOME_CODES = new Set([MINIMAX_CODE_OUTCOME_UNKNOWN, "gateway_timeout"]);
 // Answers in which the gateway itself declined the work, so a replay cannot duplicate it.
-const DEFINITE_REFUSAL_STATUSES = new Set([429, 500, 503, 529]);
+const DEFINITE_REFUSAL_STATUSES = new Set([429]);
 // Connection failures raised before the request could reach the gateway.
 const UNSENT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "ERR_PROXY_CONNECTION_FAILED"]);
 const UNKNOWN_OUTCOME_MESSAGE =
@@ -143,7 +143,7 @@ function bodyErrorStatus(type, message) {
   if (CONTEXT_WINDOW_ERROR.test(message)) return 413;
   if (/invalid_request|not_found_error|request_too_large|permission_error/i.test(type)) return 400;
   if (/authentication/i.test(type)) return 401;
-  if (/rate_limit|quota|overloaded/i.test(type)) return 429;
+  if (/rate_limit|quota/i.test(type)) return 429;
   return 500;
 }
 
@@ -276,12 +276,15 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
       headerTimeoutMs: input.requestPolicy?.headerTimeoutMs ?? headerTimeoutMs,
     };
     let result;
+    let possiblySent = false;
     try {
       for (let unsentRetries = 0; ; unsentRetries += 1) {
         try {
+          possiblySent = !signal.aborted;
           result = await super.execute({ ...input, signal, requestPolicy, model: resolution.model, body: budgeted.body });
           break;
         } catch (error) {
+          if (isMinimaxCodeUnsentError(error)) possiblySent = false;
           if (error?.errorKind !== "network" || signal.aborted) throw error;
           // Only a connection that never reached the gateway is safe to send again, on this
           // same connection, token and proxy route.
@@ -296,19 +299,14 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
         }
       }
     } catch (error) {
+      if (input.signal?.aborted && possiblySent && error && typeof error === "object") error.minimaxOutcomeUnknown = true;
       // Our own timeout is not a verdict on the model, so it answers 500 (not 504, which
       // would take the model out of every fallback combo).
       if (budget.signal.aborted && !input.signal?.aborted) {
-        return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms.`);
+        return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms. ${UNKNOWN_OUTCOME_MESSAGE}`);
       }
       if (error?.errorKind === "connect_timeout") {
-        const timeout = new DOMException(
-          `Upstream did not send response headers within ${headerTimeoutMs} ms`,
-          "TimeoutError"
-        );
-        timeout.errorKind = "connect_timeout";
-        timeout.providerAttemptStartedAt = error.providerAttemptStartedAt;
-        throw timeout;
+        return failure(502, MINIMAX_CODE_OUTCOME_UNKNOWN, UNKNOWN_OUTCOME_MESSAGE);
       }
       throw error;
     } finally {
@@ -329,9 +327,10 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
         message = "MiniMax Code rejected the connection's access token. Refresh failed or the sign-in was revoked; sign in again.";
       } else if (status === 429) {
         code = "quota_exceeded";
-      } else if (status === 502 || status === 504) {
+      } else if (status >= 500) {
         // An intermediary answered for a request the gateway may already have accepted.
         code = MINIMAX_CODE_OUTCOME_UNKNOWN;
+        message = UNKNOWN_OUTCOME_MESSAGE;
       } else if (status === 400 && CONTEXT_WINDOW_ERROR.test(upstream)) {
         // A request that does not fit the window says nothing about the model's health.
         status = 413;
@@ -350,7 +349,7 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
     const error = bodyError(doc);
     if (!error) return result;
     const status = bodyErrorStatus(error.type, error.message);
-    return { ...result, response: failure(status, status === 413 ? "context_length_exceeded" : status === 429 ? "quota_exceeded" : "gateway_error", publicMessage(status)).response };
+    return { ...result, response: failure(status, status === 413 ? "context_length_exceeded" : status === 429 ? "quota_exceeded" : status >= 500 ? MINIMAX_CODE_OUTCOME_UNKNOWN : "gateway_error", status >= 500 ? UNKNOWN_OUTCOME_MESSAGE : publicMessage(status)).response };
   }
 }
 

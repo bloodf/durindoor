@@ -93,7 +93,7 @@ The source honors `providerSpecificData.baseUrl`; this adapter ignores it and se
   - 400, 401, 403, 404 and 422 pass through.
   - 402 marks quota exhausted on this connection only.
   - 429 and 503 keep a bounded `Retry-After`.
-  - Any other 5xx is an uncertain job: `acceptedJob` with `submit-unknown` and unknown cost.
+  - Every speech 5xx, including 503, is an uncertain job: `acceptedJob` with `submit-unknown` and unknown cost.
 - A provably unsent connect failure has no `acceptedJob`. A failure after send, a timeout, a caller abort after send, or a redirect carries `acceptedJob` with `submit-unknown`.
 - A 2xx with an error envelope and no audio is a refusal without `acceptedJob`.
 - A 2xx without usable audio is a lost result with `acceptedJob` `accepted`. That covers missing or non-base64 audio, a data URL, the wrong container, empty, HTML, invalid JSON, oversized, stalled or aborted bodies.
@@ -120,10 +120,10 @@ Only the staging block in the test file asserts unregistered state, including th
 ## Evidence
 
 ```bash
-cd tests && node node_modules/vitest/vitest.mjs run unit/native-xiaomi-tts.test.js --maxWorkers=2
+cd tests && node node_modules/vitest/vitest.mjs run unit/native-xiaomi-tts.test.js unit/xiaomi-503-replay.test.js --maxWorkers=2
 ```
 
-71 tests passed, all on closed mocks. They cover:
+88 tests passed, all on closed mocks. All 71 original cases remain; only the obsolete 503 accepted-job absence assertion now requires exact unknown-cost metadata. They cover:
 
 - source-exact headers and body, including the format enum and its aliases;
 - voice defaults, every source audio path, and raw `audio/*` answers;
@@ -138,3 +138,21 @@ cd tests && node node_modules/vitest/vitest.mjs run unit/native-xiaomi-tts.test.
 - the `handleTtsCore` contract through test-local wiring.
 
 `eslint` on the new files and the anti-slop gate (`scripts/check-anti-slop.mjs`) report nothing.
+
+## 503 replay correction (#2034)
+
+Review P2 at964924979446 reproduced the status-classification gap: `refusal`
+attached a submit-unknown job for 500 but excluded 503. The source above pins
+request shape, not a guarantee that a speech POST returning 503 did no work or
+incurred no billing. No such primary vendor guarantee is established by this
+report. Consequently 503 retains its status and bounded Retry-After while
+carrying unknown-cost `acceptedJob` metadata. No new vendor billing claim is made.
+
+The separate regression file reuses the repository's private-audio 503 test
+pattern and executes the real `runMediaAccounts` loop with two synthetic
+accounts and the TTS handler's accepted-job callback rule. It verifies that
+only the first account is selected and sent, and its uncertain job is recorded.
+Additional mocks cover body shapes, redaction, Retry-After, quota/client refusals,
+abort, stalled bodies and free GET discovery (catalog fallback, no paid job).
+This correction is local logic; the original OmniRoute MIT attribution above
+continues to apply to the ported speech request shape. No registry is changed.

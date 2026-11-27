@@ -307,7 +307,7 @@ describe("Xiaomi MiMo speech failures", () => {
     expect(limited.resetsAtMs).toBeGreaterThan(Date.now());
     expect(unavailable).toMatchObject({ success: false, status: 503 });
     expect(limited.acceptedJob).toBeUndefined();
-    expect(unavailable.acceptedJob).toBeUndefined();
+    expect(unavailable.acceptedJob).toEqual({ state: "complete", tokens: {}, nativeUnits: {}, modality: "tts", cost: null, costStatus: "unknown", costSource: "accepted-job", meta: { jobState: "submit-unknown" } });
     expectNoLeak(limited);
   });
 

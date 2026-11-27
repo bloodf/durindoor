@@ -12,13 +12,15 @@ A second independent review (of ddeef28035) found five further errors, corrected
 4. The draft let a port probe "classify a foreign listener". A probe identifies only an unattributed listener, which is never signalled and always makes cleanup fail (requirement 4 and the sketch).
 5. The draft said helper death immediately reaps the leader and that local-ci is always the helper's parent. Neither holds in general (requirement 7).
 
+A third independent review found that F15 could not reach the path it targeted: blocking `SIGTERM` and stopping the leader do not resist H's later `SIGKILL`. F15 now injects the signal and exit-observer transport, next to a native positive control.
+
 This document is still a design under review. Nothing in it is approved for implementation.
 
 No process was started or signalled for this revision. No product code, setting, or service changed. The evidence comes from reading this repository, the installed Playwright 1.63.0 and Next 16.4.5 sources under `website/node_modules/.pnpm/`, and public manual pages. Every statement is labelled:
 
 - **[fact: code]** comes from reading source in this checkout, with its location.
 - **[fact: doc]** comes from a platform manual or Node documentation. It must still be confirmed on the target macOS SDK.
-- **[hypothesis]** is unproven. A fixture in [the fixture plan](#native-disposable-fixture-plan) must confirm or refute it.
+- **[hypothesis]** is unproven. A fixture in [the fixture plan](#native-disposable-fixture-plan) must test it. A fixture can refute it or fail to refute it.
 - **[open]** is an unresolved design decision.
 
 The Linux implementation is [`scripts/lib/website-shard-server.mjs`](../../scripts/lib/website-shard-server.mjs). Do not port its `/proc` algorithm to macOS, and do not parse `ps` output.
@@ -85,7 +87,7 @@ The supervisor (H) pins the server group's ID by keeping its leader (`LS`) as an
 - **[hypothesis]** Two mechanisms can observe exit without reaping: `waitid(P_PID, LS, &info, WEXITED | WNOHANG | WNOWAIT)` and `kqueue` `EVFILT_PROC`/`NOTE_EXIT`. Both must be verified on each supported macOS version. Apple's `waitid` man page lists `WNOWAIT`, but its behaviour isn't verified until fixture F1 passes. If neither is reliable, the design has no non-reaping exit observer and stays blocked.
 - H must reset `SIGCHLD` to `SIG_DFL` and must never set `SA_NOCLDWAIT`. **[fact: doc]** A `SIG_IGN` disposition for `SIGCHLD` survives `exec` and causes automatic reaping, which would silently drop the pin.
 
-**Reaping rule.** A blocking `waitpid(LS, …, 0)` waits until `LS` exits. **[fact: doc]** If `LS` ignores or survives the signals, or is stopped, that call may never return. So:
+**Reaping rule.** A blocking `waitpid(LS, …, 0)` waits until `LS` exits. **[fact: doc]** A signal call that returns success is not an observed exit, and it sets no time limit on that exit. `SIGKILL` cannot be caught, blocked or ignored, and it also terminates a stopped process (**[fact: doc]**), so neither a blocked `SIGTERM` nor `SIGSTOP` protects `LS` from it. H still must not assume that `LS` has exited, or will exit before the deadline. So:
 
 - H calls `waitpid` on `LS` **only after** the non-reaping observer (F1) has reported that `LS` has exited. **[hypothesis]** The call then returns at once, because the zombie is already there. Fixture F15 checks this.
 - If the deadline passes and H has **not** observed `LS` exit, H must not call `waitpid` in any form that can block. `LS` may still be alive. H reports a bounded failure with what it enumerated, sends **no further signal** to `GS` or `LS`, and leaves `LS` unreaped.
@@ -96,13 +98,13 @@ The supervisor (H) pins the server group's ID by keeping its leader (`LS`) as an
 
 `killpg` returning 0 only means the signal was queued for at least one member. It does not prove that any process exited. **[fact: doc]** `kill(-GS, 0)` can't be the completion test either: the zombie leader that keeps the pin may itself make the group look non-empty. The test would then never pass, or it would pass only because the pin was released. **[hypothesis]** That behaviour is unverified on macOS.
 
-**Proposed predicate [hypothesis, to be proven by F4/F5].** The tree counts as gone only when all of these hold in one pass:
+**Proposed predicate [hypothesis, to be tested by F4/F5].** This is a group predicate for `GS`, plus a session predicate only if an exhaustive session enumeration is verified. It is not a verdict on the descendant tree. It is satisfied only when every condition below that applies holds in one pass:
 
 - `sysctl {CTL_KERN, KERN_PROC, KERN_PROC_PGRP, GS}` succeeds without truncation. It returns exactly one `kinfo_proc`, whose PID is `LS` and whose `p_stat` is `SZOMB`.
 - A session-scoped enumeration of `LS`'s session returns the same single zombie. This would catch members that moved to a different group but stayed in the session. Such a member could later `setpgid` back into `GS`.
   - The only candidate named so far is `sysctl` `KERN_PROC_SESSION`. **[hypothesis]** Whether macOS implements it, what its argument means, whether it is exhaustive, and whether it lists zombies are all unverified (F0, F4, F16).
   - `proc_listpgrppids` is **not** a session enumeration. Its `libproc.h` declaration takes one process-group ID and lists that group's members (**[fact: doc]**, to be confirmed in the SDK by F0). It can serve at most as a second reading of `GS`, next to `KERN_PROC_PGRP`. It cannot find a member that moved to another group.
-  - **[open]** If no exhaustive session enumeration is verified, the predicate has group evidence only. A member that moved to another group in the same session is then undetected, and the design must either find another independent and exhaustive discovery mechanism or record that gap as a residual that blocks any session-level claim.
+  - **[open]** If no exhaustive session enumeration is verified, this session condition cannot be evaluated and the predicate has group evidence only. A member that moved to another group in the same session is then undetected, and the design must either find another independent and exhaustive discovery mechanism or record that gap as a residual that blocks any session-level claim.
 - `LS` is still unreaped, as confirmed by F1's non-reaping observer.
 
 **What a passing predicate means.** Even with a verified session enumeration, a pass shows only that no **visible** member of `GS` or of the session is left. A process that called `setsid` has left the session and is invisible to both checks. **[fact: doc]** A pass is therefore conditional on no such escape. It is not proof that the whole descendant tree is gone (see requirement 4).
@@ -146,7 +148,7 @@ A free loopback port does **not** show any of the following:
 
 **[fact: doc]** POSIX groups and sessions are not containment. Any descendant can leave with `setsid`. macOS offers no unprivileged kernel handle that tracks a whole process tree. `NOTE_TRACK` is documented as unsupported, and Endpoint Security needs an entitlement. **[hypothesis]** Enumerating children recursively with `proc_listchildpids` is racy and loses the link when a process reparents to `launchd`.
 
-**Bounded supported-process contract [open, proposal].** Full-tree cleanup is claimed only for a declared supported tree: SH or T, then T, then Next `start`. That tree must:
+**Bounded supported-process contract [open, proposal].** No full-tree cleanup is claimed today. Any future claim would be limited to a declared supported tree: SH or T, then T, then Next `start`. That tree must:
 
 - Make no `setsid`/`setpgid` call. Fixture F12 records this.
 - Keep every process in `GS` and `SS`.
@@ -221,7 +223,7 @@ Run these on a **disposable** macOS runner covering every supported macOS versio
 - Each fixture has a hard timeout below 300 s.
 - Record the macOS version, architecture, Xcode CLT version and SDK.
 
-| ID | Proves or refutes | Method |
+| ID | Observation or failure condition | Method |
 |---|---|---|
 | F0 | SDK has `POSIX_SPAWN_SETSID`, `POSIX_SPAWN_CLOEXEC_DEFAULT`, `waitid`+`WNOWAIT`, `KERN_PROC_PGRP`/`KERN_PROC_SESSION`; record the `proc_listpgrppids` prototype (one group ID argument) | Compile-only probe; no process spawned |
 | F1 | Exit can be observed without reaping | Child exits; `waitid(WNOWAIT\|WNOHANG\|WEXITED)` and `EVFILT_PROC NOTE_EXIT`; then `KERN_PROC_PID` must still show `SZOMB`; final `waitpid` reaps |
@@ -238,12 +240,21 @@ Run these on a **disposable** macOS runner covering every supported macOS versio
 | F12 | Supported-tree contract for Next | Run `next start` on a fixture build at a loopback port inside the temporary directory; record every descendant and any `setsid`/`setpgid` |
 | F13 | Helper crash | Kill H with `SIGKILL` during each phase. Record when `LS` is reparented and when (or whether) it is reaped; it may stay alive. Confirm loss is detected through the control channel, and through exit status only under placement (b); confirm no further signal is sent to `GS` |
 | F14 | macOS `watchRunner` weakness | Confirm `processStartTime` is `null` and liveness is `kill(pid,0)` only (inspection plus a fixture with a non-recycled PID; do not attempt to force PID reuse) |
-| F15 | Unobserved leader exit | Fixture leader blocks `SIGTERM` and is stopped with `SIGSTOP` (only `SIGCONT`/`SIGKILL` from the fixture's own cleanup, after H has finished, may touch it). H must hit its deadline, report `ok: false, leaderExitObserved: false`, send no further signal, make no `waitpid` call, and exit within its bound. Positive control: a leader that exits, where the observer fires and the following `waitpid` returns at once |
+| F15 | Bounded failure when exit is not observed. The injected run fails if H misses its deadline or bound, reports anything but `ok: false, leaderExitObserved: false`, requests a signal after deciding on failure, or calls `waitpid`. The control fails if the observer does not fire, or the following `waitpid` does not return at once | Injected run and native positive control, described [below the table](#f15-method) |
 | F16 | Moved groups | Member calls `setpgid` into a new group in the same session, then optionally back into `GS`. Record what `KERN_PROC_PGRP`, `proc_listpgrppids(GS)` and `KERN_PROC_SESSION` each show. Expected: the group listings miss it; the predicate must fail if the session listing sees it, and the gap is recorded if no exhaustive session listing exists |
 | F17 | Escaped listener | Server descendant calls `setsid` and binds the reserved loopback port, then the group is cleaned. The helper predicate may pass; the Node port check must find an unattributed listener, report failure, keep the state file, and send no signal. The fixture itself stops the escaped process afterwards by the PID it recorded at creation |
 | F18 | No listener | (1) Server never listens; (2) server closes its listener but stays alive. Port is free in both; the predicate must stay false while the member lives, so a free port never yields success alone |
 | F19 | Placement (a) fork/exec | Start a fixture helper through `spawn(…, {shell: true, detached: true})`. Record whether it leads its group, that `setsid()` returns `EPERM` when it does, and the behaviour of the specified fork/exec arrangement under Playwright-style `SIGKILL` to the group |
 | F20 | Pipe behaviour across helper and placements | For each placement: control and report pipes between local-ci, the in-group process and H. Kill each holder with `SIGKILL`; record EOF timing, `EPIPE` on the next write, `SIGPIPE` disposition, and any leaked write end that delays EOF |
+
+#### F15 method
+
+A real leader cannot be relied on to force this path. Blocking `SIGTERM` or stopping the leader with `SIGSTOP` does not resist H's later `SIGKILL` (requirement 1).
+
+- **Injected run (deterministic).** H's signal send, exit observer, enumeration and `waitpid` go through a fixture-only seam. The signal transport records each requested signal, returns success and delivers nothing. The exit observer never reports exit. The enumeration keeps reporting a live leader. The `waitpid` stub records any call and returns at once. The leader's identity is a placeholder, so this run spawns no leader and calls no real `killpg` or `kill`. It expects `SIGTERM`, then `SIGKILL`, then a bounded failure with no later request.
+- **Native positive control.** H uses the real transport, observer and `waitpid` on a disposable fixture leader that exits by itself. The observer must report the exit before H calls `waitpid`, and that call must return at once.
+
+The injected run observes only how H reacts to the transport's answers. It is not evidence that macOS delays or withholds an exit after `SIGKILL`, or that the native observer is reliable. **[open]** The design must show that a production build cannot select the injected transport.
 
 **Scope of fixture results.** Each fixture observes behaviour in a finite number of runs on specific macOS versions. A pass shows what happened in those runs. It does not prove that no process can ever escape the group or session, and it does not prove the behaviour on untested releases.
 

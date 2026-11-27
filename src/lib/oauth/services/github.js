@@ -21,6 +21,7 @@ export class GitHubService extends OAuthService {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
       },
+      redirect: "manual",
       body: new URLSearchParams({
         client_id: GITHUB_CONFIG.clientId,
         scope: GITHUB_CONFIG.scopes,
@@ -28,17 +29,23 @@ export class GitHubService extends OAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get device code: ${error}`);
+      throw new Error(`Failed to get device code (HTTP ${response.status})`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    if (!data?.device_code || !data.user_code || data.verification_uri !== "https://github.com/login/device" ||
+        !Number.isInteger(data.expires_in) || data.expires_in <= 0 || data.expires_in > 3600 ||
+        (data.interval !== undefined && (!Number.isInteger(data.interval) || data.interval < 0 || data.interval > 3600))) {
+      throw new Error("Invalid GitHub device response");
+    }
+    return data;
   }
 
   /**
    * Poll for access token using device code
    */
-  async pollAccessToken(deviceCode, verificationUri, userCode, interval = 5000) {
+  async pollAccessToken(deviceCode, verificationUri, userCode, interval = 5000, expiresIn = 900, signal) {
+    const deadline = Date.now() + expiresIn * 1000;
     const spinner = createSpinner("Waiting for GitHub authentication...").start();
     
     // Show user code and verification URL
@@ -55,7 +62,15 @@ export class GitHubService extends OAuthService {
 
     // Poll for access token
     while (true) {
-      await new Promise(resolve => setTimeout(resolve, interval));
+      const remaining = deadline - Date.now();
+      if (remaining <= 0 || interval >= remaining) throw new Error("Device code expired");
+      await new Promise((resolve, reject) => {
+        if (signal?.aborted) return reject(new Error("Device authentication cancelled"));
+        const onAbort = () => { clearTimeout(timer); reject(new Error("Device authentication cancelled")); };
+        const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, interval);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+      if (Date.now() >= deadline) throw new Error("Device code expired");
 
       const response = await fetch(`${GITHUB_CONFIG.tokenUrl}`, {
         method: "POST",
@@ -63,6 +78,8 @@ export class GitHubService extends OAuthService {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
         },
+        redirect: "manual",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]) : AbortSignal.timeout(Math.max(1, deadline - Date.now())),
         body: new URLSearchParams({
           client_id: GITHUB_CONFIG.clientId,
           device_code: deviceCode,
@@ -94,7 +111,7 @@ export class GitHubService extends OAuthService {
         throw new Error("Access denied");
       } else {
         spinner.fail("Failed to get access token.");
-        throw new Error(data.error_description || data.error);
+        throw new Error("GitHub token request failed");
       }
     }
   }
@@ -104,6 +121,7 @@ export class GitHubService extends OAuthService {
    */
   async getCopilotToken(accessToken) {
     const response = await fetch(`${GITHUB_CONFIG.copilotTokenUrl}`, {
+      redirect: "manual",
       headers: {
         Authorization: `Bearer ${accessToken}`, // GitHub API typically uses Bearer
         Accept: "application/json",
@@ -113,8 +131,7 @@ export class GitHubService extends OAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get Copilot token: ${error}`);
+      throw new Error(`Failed to get Copilot token (HTTP ${response.status})`);
     }
 
     return await response.json();
@@ -125,6 +142,7 @@ export class GitHubService extends OAuthService {
    */
   async getUserInfo(accessToken) {
     const response = await fetch(`${GITHUB_CONFIG.userInfoUrl}`, {
+      redirect: "manual",
       headers: {
         Authorization: `Bearer ${accessToken}`, // GitHub API typically uses Bearer
         Accept: "application/json",
@@ -134,8 +152,7 @@ export class GitHubService extends OAuthService {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to get user info: ${error}`);
+      throw new Error(`Failed to get user info (HTTP ${response.status})`);
     }
 
     return await response.json();
@@ -153,7 +170,9 @@ export class GitHubService extends OAuthService {
       const tokenResponse = await this.pollAccessToken(
         deviceResponse.device_code, 
         deviceResponse.verification_uri, 
-        deviceResponse.user_code
+        deviceResponse.user_code,
+        Math.max(1, deviceResponse.interval || 5) * 1000,
+        deviceResponse.expires_in || 900
       );
       
       // Get Copilot token
@@ -210,8 +229,7 @@ export class GitHubService extends OAuthService {
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to connect to server");
+        throw new Error(`Failed to connect to server (HTTP ${response.status})`);
       }
       
       spinner.succeed("GitHub Copilot connected successfully!");

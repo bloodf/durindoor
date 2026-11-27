@@ -10,6 +10,7 @@
 import { PROVIDER_OAUTH } from "../../../open-sse/providers/index.js";
 import { GITHUB_COPILOT } from "../../../open-sse/config/appConstants.js";
 import { gheCopilotTokenUrl, gheOAuthTokenUrl, normalizeGheUrl } from "../../../open-sse/config/gheCopilot.js";
+import { decodeCopilotPollResponse } from "./providerParity/copilot/index.js";
 import { gheCopilotClientId } from "../../../open-sse/services/gheCopilotAuth.js";
 
 const GHE_OAUTH = PROVIDER_OAUTH["ghe-copilot"] || {};
@@ -21,12 +22,7 @@ function requireGheUrl(value) {
 }
 
 async function readJsonOrError(response) {
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: "invalid_response", error_description: text.slice(0, 200) };
-  }
+  return decodeCopilotPollResponse(await response.text());
 }
 
 async function getJson(url, accessToken, proxyOptions) {
@@ -37,7 +33,8 @@ async function getJson(url, accessToken, proxyOptions) {
       "X-GitHub-Api-Version": GHE_OAUTH.apiVersion,
       "User-Agent": GITHUB_COPILOT.USER_AGENT
     },
-    proxyOptions
+    proxyOptions,
+    redirect: "manual"
   });
   return response.ok ? response.json() : {};
 }
@@ -51,7 +48,8 @@ export default {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams({ client_id: config.clientId, scope: config.scopes }),
-      proxyOptions
+      proxyOptions,
+      redirect: "manual"
     });
     if (!response.ok) {
       throw new Error(`GitHub Enterprise device code request failed (HTTP ${response.status})`);
@@ -68,7 +66,8 @@ export default {
         device_code: deviceCode,
         grant_type: "urn:ietf:params:oauth:grant-type:device_code"
       }),
-      proxyOptions
+      proxyOptions,
+      redirect: "manual"
     });
     return { ok: response.ok, data: await readJsonOrError(response) };
   },

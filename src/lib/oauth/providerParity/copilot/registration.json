@@ -1,0 +1,7 @@
+{
+  "status": "staged",
+  "module": "src/lib/oauth/providerParity/copilot/index.js",
+  "exports": ["decodeCopilotPollResponse"],
+  "integrationSlots": ["src/lib/oauth/providers.js: github.pollToken response decoding"],
+  "notes": "Use within the existing provider and flow ownership checks; this helper is not registered."
+}

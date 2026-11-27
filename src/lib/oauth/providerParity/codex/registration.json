@@ -1,0 +1,8 @@
+{
+  "status": "staged",
+  "provider": "codex",
+  "module": "src/lib/oauth/providerParity/codex/index.js",
+  "exports": {
+    "exchangeCodexCode": "Replace codex.exchangeToken in src/lib/oauth/providers.js; retain mapTokens, flowStore ownership/state/PKCE guards, workspace validation and selected proxy. Forward the existing abort signal as argument eight."
+  }
+}

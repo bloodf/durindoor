@@ -1,4 +1,3 @@
-import { ANTIGRAVITY_DESKTOP_PROFILE, ANTIGRAVITY_DESKTOP_REDIRECT_URI, assertAntigravityOAuthConfig } from "../../../../open-sse/providers/shared.js";
 import open from "open";
 import { generatePKCE } from "../utils/pkce.js";
 import { ANTIGRAVITY_CONFIG, getOAuthClientMetadata } from "../constants/oauth.js";
@@ -15,18 +14,26 @@ export class AntigravityService {
     this.config = ANTIGRAVITY_CONFIG;
   }
 
+  /** Fail locally on a blank or incomplete client override; never fall back. */
+  assertConfigured() {
+    if (this.config.oauthConfigError || !this.config.clientId) {
+      throw new Error(this.config.oauthConfigError || "Antigravity OAuth client is not configured");
+    }
+  }
+
   /**
    * Build Antigravity authorization URL
    */
   buildAuthUrl(redirectUri, state, codeChallenge) {
-    assertAntigravityOAuthConfig();
+    this.assertConfigured();
     if (!isString(codeChallenge) || !codeChallenge) {
       throw new Error("Antigravity authorization requires a PKCE challenge");
     }
     const params = new URLSearchParams({
       client_id: this.config.clientId,
       response_type: "code",
-      redirect_uri: redirectUri,
+      // The desktop client has one registered callback; both legs send it.
+      redirect_uri: this.config.fixedRedirectUri || redirectUri,
       scope: this.config.scopes.join(" "),
       state: state,
       access_type: "offline",
@@ -42,7 +49,7 @@ export class AntigravityService {
    * Exchange authorization code for tokens
    */
   async exchangeCode(code, redirectUri, codeVerifier) {
-    assertAntigravityOAuthConfig();
+    this.assertConfigured();
     if (!isString(codeVerifier) || !codeVerifier) {
       throw new Error("Antigravity token exchange requires a PKCE verifier");
     }
@@ -57,7 +64,7 @@ export class AntigravityService {
         client_id: this.config.clientId,
         client_secret: this.config.clientSecret,
         code: code,
-        redirect_uri: redirectUri,
+        redirect_uri: this.config.fixedRedirectUri || redirectUri,
         code_verifier: codeVerifier
       })
     });
@@ -244,12 +251,17 @@ export class AntigravityService {
 
       // Start local server for callback
       let callbackParams = null;
+      this.assertConfigured();
+      // The built-in desktop client is registered for one loopback callback
+      // (CLIProxyAPI internal/auth/antigravity/auth.go @47f18e4d); a custom
+      // client keeps the random-port /callback listener.
+      const fixed = this.config.fixedRedirectUri ? new URL(this.config.fixedRedirectUri) : null;
       const { port, close } = await startLocalServer((params) => {
         callbackParams = params;
-      }, ANTIGRAVITY_DESKTOP_PROFILE ? 51121 : null);
+      }, fixed ? Number(fixed.port) : null);
       closeServer = close;
 
-      const redirectUri = ANTIGRAVITY_DESKTOP_PROFILE ? ANTIGRAVITY_DESKTOP_REDIRECT_URI : `http://localhost:${port}/callback`;
+      const redirectUri = fixed ? this.config.fixedRedirectUri : `http://localhost:${port}/callback`;
       spinner.succeed(`Local server started on port ${port}`);
 
       const { codeVerifier, codeChallenge, state } = generatePKCE();

@@ -307,26 +307,80 @@ export const ANTIGRAVITY_IDE_VERSION = "2.33.0";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
-// Public desktop profile ported from CLIProxyAPI internal/auth/antigravity/
-// constants.go and auth.go at 47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e.
-export const ANTIGRAVITY_DESKTOP_PROFILE = process.env.ANTIGRAVITY_OAUTH_CLIENT_ID === undefined &&
-  process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET === undefined;
-export const ANTIGRAVITY_DESKTOP_REDIRECT_URI = "http://localhost:51121/oauth-callback";
-const antigravityClientId = ANTIGRAVITY_DESKTOP_PROFILE ?
-  "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com" :
-  (process.env.ANTIGRAVITY_OAUTH_CLIENT_ID || "").trim();
-const antigravityClientSecret = ANTIGRAVITY_DESKTOP_PROFILE ?
-  "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" :
-  (process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET || "").trim();
-export function assertAntigravityOAuthConfig() {
-  if (!antigravityClientId || !antigravityClientSecret) {
-    throw new Error("Set both ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET to nonblank values, or unset both to use the public desktop profile; restart DurinDoor.");
+// Antigravity OAuth client profile.
+//
+// Default ("desktop"): the public Antigravity desktop client pair published in
+// CLIProxyAPI internal/auth/antigravity/constants.go at revision
+// 47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e (ClientID, ClientSecret,
+// CallbackPort 51121, Scopes) and the loopback callback built by
+// BuildAuthURL in internal/auth/antigravity/auth.go at the same revision.
+// An installed-app client secret is not confidential; it is already public in
+// that source. It applies only when BOTH override variables are absent.
+//
+// Override ("custom"): ANTIGRAVITY_OAUTH_CLIENT_ID and
+// ANTIGRAVITY_OAUTH_CLIENT_SECRET both set to non-blank values. The operator's
+// registered redirect URIs and the existing scope set are kept.
+//
+// Anything else (one variable set, or either set but blank) is "invalid": no
+// client is configured, sign-in fails locally with a configuration message and
+// nothing falls back to the built-in pair.
+export const ANTIGRAVITY_DESKTOP_OAUTH_CLIENT = Object.freeze({
+  clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+  clientSecret: "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"
+});
+export const ANTIGRAVITY_DESKTOP_CALLBACK_PORT = 51121;
+export const ANTIGRAVITY_DESKTOP_REDIRECT_URI = `http://localhost:${ANTIGRAVITY_DESKTOP_CALLBACK_PORT}/oauth-callback`;
+export const ANTIGRAVITY_DESKTOP_SCOPES = Object.freeze([
+  "https://www.googleapis.com/auth/cloud-platform",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/aicode",
+  "https://www.googleapis.com/auth/cclog",
+  "https://www.googleapis.com/auth/experimentsandconfigs"
+]);
+
+/**
+ * Resolve the Antigravity OAuth client from an environment object.
+ * @param {Record<string, string|undefined>} env
+ * @returns {{ profile: "desktop"|"custom"|"invalid", clientId: string, clientSecret: string, configError: string|null }}
+ */
+export function resolveAntigravityOAuthClient(env = process.env) {
+  const rawId = env?.ANTIGRAVITY_OAUTH_CLIENT_ID;
+  const rawSecret = env?.ANTIGRAVITY_OAUTH_CLIENT_SECRET;
+  if (rawId === undefined && rawSecret === undefined) {
+    return { profile: "desktop", ...ANTIGRAVITY_DESKTOP_OAUTH_CLIENT, configError: null };
   }
+  const clientId = isString(rawId) ? rawId.trim() : "";
+  const clientSecret = isString(rawSecret) ? rawSecret.trim() : "";
+  if (clientId && clientSecret) {
+    return { profile: "custom", clientId, clientSecret, configError: null };
+  }
+  const missing = [
+    clientId ? null : "ANTIGRAVITY_OAUTH_CLIENT_ID",
+    clientSecret ? null : "ANTIGRAVITY_OAUTH_CLIENT_SECRET"
+  ].filter(Boolean).join(" and ");
+  return {
+    profile: "invalid",
+    clientId: "",
+    clientSecret: "",
+    configError: `Antigravity OAuth client override is incomplete: ${missing} is blank or unset. ` +
+      "Set both ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET to your own client, " +
+      "or unset both to use the built-in Antigravity desktop client, then restart DurinDoor."
+  };
 }
+
+const ANTIGRAVITY_RESOLVED_CLIENT = resolveAntigravityOAuthClient(process.env);
+
 export const ANTIGRAVITY_OAUTH_CLIENT = {
-  clientId: antigravityClientId,
-  clientSecret: antigravityClientSecret
+  clientId: ANTIGRAVITY_RESOLVED_CLIENT.clientId,
+  clientSecret: ANTIGRAVITY_RESOLVED_CLIENT.clientSecret
 };
+
+/** Non-secret profile facts read at startup, alongside ANTIGRAVITY_OAUTH_CLIENT. */
+export const ANTIGRAVITY_OAUTH_PROFILE = Object.freeze({
+  profile: ANTIGRAVITY_RESOLVED_CLIENT.profile,
+  configError: ANTIGRAVITY_RESOLVED_CLIENT.configError
+});
 
 // Gemini (Google) OAuth client credentials (public CLI client — shared by gemini, gemini-cli, src/lib/oauth)
 // Set via env vars — see SECRETS_AND_CONFIG.md

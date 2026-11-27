@@ -1,9 +1,24 @@
 // Guards the deduped Antigravity OAuth client: same values across all 3 sources after refactor.
 import { describe, it, expect } from "vitest";
+import { afterAll, vi } from "vitest";
+
+// The canonical-credential checks below run under an explicit operator
+// override. The built-in default (both variables absent) and invalid
+// overrides are covered at the end of this file.
+const previousEnv = { ...process.env };
+process.env.ANTIGRAVITY_OAUTH_CLIENT_ID = "synthetic-override.apps.example.test";
+process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET = "synthetic-override-secret";
+afterAll(() => { process.env = previousEnv; });
+// Public desktop pair pinned from CLIProxyAPI
+// internal/auth/antigravity/constants.go @ 47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e.
+const DESKTOP = {
+  clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+  clientSecret: "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",
+};
 
 const EXPECTED = {
-  clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID ?? "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-  clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET ?? "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",
+  clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID || "",
+  clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET || "",
 };
 const GOOGLE = {
   clientId: process.env.GEMINI_OAUTH_CLIENT_ID || "",
@@ -51,5 +66,58 @@ describe("antigravity oauth client (deduped)", () => {
     if (GOOGLE.clientSecret) {
       expect(src).not.toContain(GOOGLE.clientSecret);   // gemini secret no longer hardcoded here
     }
+  });
+});
+
+describe("antigravity oauth client profiles", () => {
+  it("both overrides absent selects the desktop pair everywhere, with six scopes and the loopback", async () => {
+    vi.resetModules();
+    const saved = { ...process.env };
+    delete process.env.ANTIGRAVITY_OAUTH_CLIENT_ID;
+    delete process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET;
+    try {
+      const shared = await import("../../open-sse/providers/shared.js");
+      expect(shared.ANTIGRAVITY_OAUTH_CLIENT).toEqual(DESKTOP);
+      expect(shared.ANTIGRAVITY_OAUTH_PROFILE).toEqual({ profile: "desktop", configError: null });
+      const ag = (await import("../../open-sse/providers/registry/antigravity.js")).default;
+      expect(ag.transport.clientId).toBe(DESKTOP.clientId);
+      const { ANTIGRAVITY_CONFIG } = await import("../../src/lib/oauth/constants/oauth.js");
+      expect(ANTIGRAVITY_CONFIG.clientId).toBe(DESKTOP.clientId);
+      expect(ANTIGRAVITY_CONFIG.scopes).toContain("https://www.googleapis.com/auth/aicode");
+      expect(ANTIGRAVITY_CONFIG.scopes).toHaveLength(6);
+      expect(ANTIGRAVITY_CONFIG.fixedRedirectUri).toBe("http://localhost:51121/oauth-callback");
+    } finally {
+      process.env = saved;
+      vi.resetModules();
+    }
+  });
+
+  it("an explicit override keeps the existing five scopes and the caller redirect", async () => {
+    const { ANTIGRAVITY_CONFIG } = await import("../../src/lib/oauth/constants/oauth.js");
+    expect(ANTIGRAVITY_CONFIG.oauthProfile).toBe("custom");
+    expect(ANTIGRAVITY_CONFIG.scopes).not.toContain("https://www.googleapis.com/auth/aicode");
+    expect(ANTIGRAVITY_CONFIG.scopes).toHaveLength(5);
+    expect(ANTIGRAVITY_CONFIG.fixedRedirectUri).toBeNull();
+  });
+
+  it("invalid overrides resolve to no client, never the desktop pair", async () => {
+    const { resolveAntigravityOAuthClient } = await import("../../open-sse/providers/shared.js");
+    expect(resolveAntigravityOAuthClient({})).toMatchObject({ profile: "desktop", ...DESKTOP });
+    for (const env of [
+      { ANTIGRAVITY_OAUTH_CLIENT_ID: "", ANTIGRAVITY_OAUTH_CLIENT_SECRET: "" },
+      { ANTIGRAVITY_OAUTH_CLIENT_ID: "only-id" },
+      { ANTIGRAVITY_OAUTH_CLIENT_SECRET: "only-secret" },
+    ]) {
+      const result = resolveAntigravityOAuthClient(env);
+      expect(result).toMatchObject({ profile: "invalid", clientId: "", clientSecret: "" });
+      expect(result.configError).toMatch(/ANTIGRAVITY_OAUTH_CLIENT_(ID|SECRET)/);
+    }
+  });
+
+  it("the pinned desktop pair lives only in open-sse/providers/shared.js", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../../src/lib/oauth/constants/oauth.js", import.meta.url), "utf8");
+    expect(src).not.toContain(DESKTOP.clientSecret);
+    expect(src).not.toContain(DESKTOP.clientId);
   });
 });

@@ -11,6 +11,7 @@ import { encodeToolCallIdWithSignature } from "../concerns/signatureTransport.js
 import { storeAccountThoughtSignature, storeGeminiThoughtSignature } from "../../services/thoughtSignatureStore.js";
 import { geminiPlaceholderStripperFor } from "../concerns/geminiPlaceholderArgs.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { randomUUID } from "node:crypto";
 import { chargeRetained, replaceRetained, retainedSize } from "../../utils/streamRetainedBudget.js";
 
 // The one signature held for the next function call; replacing or clearing it frees the old one.
@@ -24,6 +25,21 @@ function rememberId(state, ids, id) {
   if (ids.has(id)) return;
   chargeRetained(state, retainedSize(id));
   ids.add(id);
+}
+
+// Providers whose streamed captures are bound to the selected account (#2034).
+const ACCOUNT_BOUND_SIGNATURE_PROVIDERS = new Set(["antigravity", "agy"]);
+
+/**
+ * Generated id for a functionCall without a usable upstream id. The middle field
+ * is random (from `crypto.randomUUID`), so two responses in the same millisecond
+ * never share an id; the `<name>_<digits>_<index>` shape keeps the request
+ * translator's name recovery for orphaned results, and the digits keep the id
+ * inside the Anthropic tool_use alphabet once the name is sanitized.
+ */
+export function generatedGeminiToolCallId(prefix, index) {
+  const random = BigInt(`0x${randomUUID().replaceAll("-", "").slice(0, 16)}`).toString().padStart(20, "0");
+  return `${prefix}_${random}_${index}`;
 }
 
 // Build chunk meta for current gemini state
@@ -53,15 +69,18 @@ function emitFunctionCall(functionCall, state, thoughtSignature = null) {
   if (!state.seenToolCallIds) state.seenToolCallIds = new Set();
   const rawId = upstreamId && !state.seenToolCallIds.has(upstreamId)
     ? upstreamId
-    : `${fcName}_${Date.now()}_${toolCallIndex}`;
+    : generatedGeminiToolCallId(fcName, toolCallIndex);
   // Persist the provider-issued signature keyed by the raw call id (session-
   // namespaced) so the request translator can replay it even when the client
   // did not round-trip the transport id (upstream c08efdbe).
   // A buffered Antigravity collector instead scopes it to the selected account and
   // model family, and writes nothing for an unknown account (OmniRoute PR 21439).
+  // A streamed Antigravity capture keeps its session rows but records the selected
+  // account, so no other account, session or bare-id fallback can read it (#2034).
   if (thoughtSignature) {
     if (state.accountSignatures) storeAccountThoughtSignature(rawId, thoughtSignature, state.accountSignatures.accountId, state.accountSignatures.model);
-    else storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model);
+    else storeGeminiThoughtSignature(rawId, thoughtSignature, state.sessionId, state.model,
+      ACCOUNT_BOUND_SIGNATURE_PROVIDERS.has(state.provider) ? state.signatureNamespace : null);
   }
   const id = encodeToolCallIdWithSignature(rawId, thoughtSignature);
   rememberId(state, state.seenToolCallIds, id);

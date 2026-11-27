@@ -18,13 +18,19 @@ import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";
 import { isObject, isString, isNumber } from "../../src/shared/utils/typeChecks.js";
-import { getAccountThoughtSignature, getAccountThoughtSignatureSync, getGeminiThoughtSignature, getGeminiThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
+import { getProvenThoughtSignature, getProvenThoughtSignatureSync, signatureFamily } from "../services/thoughtSignatureStore.js";
 import { isGeminiTrailingModelTurnRejectingModel } from "../translator/concerns/geminiTrailingModelTurn.js";
 
 // The selected account whose responses a persisted signature may come from (OmniRoute PR 21439).
 function signatureAccountId(credentials) {
   const id = credentials?._signatureNamespace || credentials?.connectionId;
   return isString(id) && id.trim() ? id.trim() : null;
+}
+
+// The client session the streaming translator captured under (`state.sessionId`).
+function signatureSessionId(credentials, body) {
+  const id = credentials?._clientSessionId || body?.request?.sessionId;
+  return isString(id) && id ? id : null;
 }
 
 /**
@@ -341,9 +347,11 @@ export class AntigravityExecutor extends BaseExecutor {
     // Restore persisted tool-call signatures from SQLite on a cold RAM cache before dispatch (#5894).
     const contents = options.body?.request?.contents;
     if (Array.isArray(contents) && !isImageModel(options.model)) {
-      const sessionId = options.credentials?._clientSessionId || options.body.request.sessionId;
-      const model = options.body.model || options.model;
-      const accountId = signatureAccountId(options.credentials);
+      const scope = {
+        accountId: signatureAccountId(options.credentials),
+        sessionId: signatureSessionId(options.credentials, options.body),
+        model: options.body.model || options.model,
+      };
       const lookups = new Map();
       const restored = await Promise.all(contents.map(async (content) => {
         if (!content || !Array.isArray(content.parts)) return content;
@@ -353,8 +361,9 @@ export class AntigravityExecutor extends BaseExecutor {
             const id = part?.functionCall?.id;
             const signature = part?.thoughtSignature;
             if (!id || (signature && signature !== DEFAULT_THINKING_AG_SIGNATURE && signature !== DEFAULT_THINKING_GEMINI_CLI_SIGNATURE)) return part;
-            // The selected account's own signature first; then the session-scoped store.
-            if (!lookups.has(id)) lookups.set(id, getAccountThoughtSignature(id, accountId, model).then((own) => own || getGeminiThoughtSignature(id, sessionId, model)));
+            // Only a signature this account or this client session provably produced;
+            // never a bare-id row of unknown or foreign provenance (#2034).
+            if (!lookups.has(id)) lookups.set(id, getProvenThoughtSignature(id, scope));
             const saved = await lookups.get(id);
             return saved ? { ...part, thoughtSignature: saved } : part;
           }))
@@ -516,6 +525,7 @@ export class AntigravityExecutor extends BaseExecutor {
       // In parallel function calls, only the first call needs a signature; siblings stay unsigned.
       let firstFunctionCallSeen = false;
       const targetModel = body.model || model;
+      const signatureScope = { accountId: signatureAccountId(credentials), sessionId: signatureSessionId(credentials, body), model: targetModel };
       const defaultSignature = signatureFamily(targetModel) === "claude"
         ? DEFAULT_THINKING_AG_SIGNATURE
         : DEFAULT_THINKING_GEMINI_CLI_SIGNATURE;
@@ -532,7 +542,7 @@ export class AntigravityExecutor extends BaseExecutor {
         }
         if (!p.functionCall) return p;
         const callId = p.functionCall.id;
-        const cachedSig = callId ? getAccountThoughtSignatureSync(callId, signatureAccountId(credentials), targetModel) || getGeminiThoughtSignatureSync(callId, sessionId, targetModel) : null;
+        const cachedSig = callId ? getProvenThoughtSignatureSync(callId, signatureScope) : null;
         const callSig = p.thoughtSignature || cachedSig || (!firstFunctionCallSeen ? defaultSignature : undefined);
         firstFunctionCallSeen = true;
         if (callSig) {

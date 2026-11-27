@@ -1,0 +1,113 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/musicRegistry.ts",
+      "open-sse/handlers/musicGeneration.ts",
+      "open-sse/handlers/mediaGeneration/geminiMusic.ts",
+      "open-sse/executors/vertexMedia.ts",
+      "src/lib/providerModels/geminiModelsParser.ts"
+    ],
+    "registryEntry": {
+      "id": "gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/models",
+      "authType": "apikey",
+      "authHeader": "x-goog-api-key",
+      "format": "gemini-lyria",
+      "models": [
+        { "id": "lyria-3-pro-preview", "name": "Lyria 3 Pro (preview)" },
+        { "id": "lyria-3-clip-preview", "name": "Lyria 3 Clip (preview)" },
+        { "id": "lyria-3.5", "name": "Lyria 3.5" }
+      ]
+    }
+  },
+  "modules": {
+    "index": "open-sse/services/providerParity/native-google-music/index.js",
+    "config": "open-sse/services/providerParity/native-google-music/config.js",
+    "discovery": "open-sse/services/providerParity/native-google-music/discovery.js",
+    "transport": "open-sse/services/providerParity/native-google-music/transport.js"
+  },
+  "exports": [
+    "GEMINI_MUSIC_PROVIDER_ID",
+    "GEMINI_MUSIC_PROVIDER_ALIASES",
+    "GEMINI_MUSIC_FORMAT",
+    "GEMINI_MUSIC_ORIGIN",
+    "GEMINI_MUSIC_BASE_URL",
+    "GEMINI_MUSIC_CONFIG",
+    "GEMINI_MUSIC_MIME_TO_FORMAT",
+    "buildGeminiMusicAuth",
+    "listGeminiMusicModels",
+    "parseGeminiMusicModels",
+    "geminiMusicDiscoveryUrl",
+    "discoverGeminiMusicModels",
+    "isGeminiMusicProvider",
+    "isGeminiMusicModel",
+    "buildGeminiMusicRequest",
+    "buildGeminiMusicUrl",
+    "geminiMusicFormat",
+    "audioMatchesFormat",
+    "wavDurationSeconds",
+    "extractGeminiInlineAudio",
+    "handleGeminiMusicGeneration",
+    "default"
+  ],
+  "provider": "gemini",
+  "aliases": [],
+  "aliasNote": "The source registry key is `gemini` with no alias. The local gemini registry `alias` is also `gemini`. `gemini-cli`, `gemini-web`, `gemini-interactions`, `vertex`/`vx` are different providers and must not dispatch here.",
+  "serviceKinds": ["music"],
+  "models": [
+    { "id": "lyria-3-pro-preview", "name": "Lyria 3 Pro (preview)", "kind": "music" },
+    { "id": "lyria-3-clip-preview", "name": "Lyria 3 Clip (preview)", "kind": "music" },
+    { "id": "lyria-3.5", "name": "Lyria 3.5", "kind": "music" }
+  ],
+  "connectionModes": {
+    "api_key": "credentials.apiKey (trimmed) sent as `x-goog-api-key`; wins when an access token is also present (source precedence)",
+    "oauth": "credentials.accessToken sent as `Authorization: Bearer`; existing gemini OAuth connections keep their token refresh path"
+  },
+  "endpoints": {
+    "generate": "POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+    "discovery": "GET https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000[&pageToken=...] (key in header, not query)",
+    "origin": "fixed; no base URL override",
+    "redirects": "manual; any 3xx is refused"
+  },
+  "request": {
+    "accepted": ["model", "prompt", "response_format=b64_json", "stream=false", "user"],
+    "wireBody": "{ contents: [{ role: 'user', parts: [{ text: <trimmed prompt> }] }] } (no generationConfig)"
+  },
+  "response": {
+    "shape": "{ object: 'music.generation', created, provider: 'gemini', model, status: 'completed', data: [{ b64_json, format, mime_type, duration_seconds? }] }",
+    "formats": ["mp3", "wav", "ogg", "flac", "aac", "m4a", "webm"],
+    "resultContract": "musicGenerationCore: { success, outcome, connectionId, accounting, response } | createErrorResult(...) + { outcome, connectionId, acceptedJob? }"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/musicGenerationCore.js",
+      "point": "handleMusicGenerationCore",
+      "change": "dispatch provider 'gemini' (isGeminiMusicProvider) to handleGeminiMusicGeneration({ model, body, credentials, signal }) before the MUSIC_ADAPTERS cookie lookup; reject requestId (synchronous, nothing to poll)"
+    },
+    {
+      "file": "src/sse/handlers/music.js",
+      "point": "handleSingleModelMusic",
+      "change": "none beyond the existing acceptedJob branch: it already records recordAcceptedJobUsage and refuses fallback after an accepted job"
+    },
+    {
+      "file": "open-sse/providers/registry/gemini.js",
+      "point": "serviceKinds + models + musicConfig",
+      "change": "add 'music' service kind, the three Lyria models with kind 'music', and musicConfig { baseUrl, authType: 'apikey', authHeader: 'x-goog-api-key', format: 'gemini-lyria' }"
+    },
+    {
+      "file": "src/app/api/providers/[id]/models/modelsConfig.js",
+      "point": "gemini parseResponse / model kind inference",
+      "change": "classify `lyria-*` models that list generateContent as music (not chat), using parseGeminiMusicModels"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "point": "Gemini row",
+      "change": "list music (Lyria 3, b64_json, synchronous)"
+    }
+  ],
+  "discovery": "discoverGeminiMusicModels({ credentials, signal }) pages models.list for the selected connection and keeps `lyria-*` ids that list generateContent; listGeminiMusicModels() returns the pinned static list"
+}

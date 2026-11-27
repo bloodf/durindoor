@@ -135,6 +135,18 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
 
   // A RenderHour plan sign-in is refreshed before its job is submitted.
   const dispatched = modelInfo.provider === "renderhour" ? await checkAndRefreshToken(modelInfo.provider, credentials) : credentials;
+  /**
+   * Health boundary: the one immutable dispatch context for this attempt,
+   * taken after the optional RenderHour refresh and before any provider work
+   * is awaited. Outcome writes reuse it as-is, so the fingerprint, the
+   * dispatch time and the presented credential describe what was sent, not
+   * whatever the credential object or the clock hold once the job settles.
+   * A derived or exchanged token keeps a null fingerprint (fail-open).
+   */
+  const dispatch = Object.freeze({
+    usedCredential: dispatched?.accessToken || dispatched?.apiKey || null,
+    ...credentialDispatchSnapshot(dispatched),
+  });
   const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials: dispatched, signal: request.signal, log });
   if (!result.success) {
     // Account health for the selected connection only, as /v1/videos does it.
@@ -144,8 +156,7 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
     if (credentials.connectionId && !request.signal?.aborted && Number(result.status) !== 499 && shouldMarkAccountUnavailable(result.status)) {
       const evidence = result.rateLimitEvidence ?? null;
       await markAccountUnavailable(credentials.connectionId, result.status, result.error, modelInfo.provider, modelInfo.model, evidence?.resetAtMs ?? null, {
-        usedCredential: dispatched.accessToken || dispatched.apiKey || null,
-        ...credentialDispatchSnapshot(dispatched),
+        ...dispatch,
         ...(evidence ? { rateLimitEvidence: evidence } : null),
         ...(result.quotaExhausted === true ? { quotaExhausted: true } : null),
       });

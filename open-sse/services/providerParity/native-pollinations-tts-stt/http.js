@@ -33,7 +33,7 @@ export const pollinationsSecrets = (credentials) => ({ apiKey: credentials?.apiK
 
 /** Accounting for work Pollinations may have done (and may bill) whose outcome is not known. */
 export function pollinationsAcceptedJob(modality, jobState = "accepted") {
-  return { ...mediaAccounting(null, POLLINATIONS_PROVIDER_ID, modality), costSource: "accepted-job", meta: { jobState } };
+  return { ...mediaAccounting(null, POLLINATIONS_PROVIDER_ID, modality), costSource: "accepted-job", meta: { jobState, authScope: "apikey" } };
 }
 
 export const withAcceptedJob = (result, modality, jobState = "accepted") => ({ ...result, acceptedJob: pollinationsAcceptedJob(modality, jobState) });

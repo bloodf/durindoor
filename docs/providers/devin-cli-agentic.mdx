@@ -20,5 +20,7 @@ and executable before including either local Devin CLI provider in its candidate
 pool. This is an advisory host check, not a credential health check; direct and
 saved-combo requests retain their normal diagnostics. The agentic provider
 requires an absolute `CLI_DEVIN_BIN`, while the credentialed CLI also supports
-its normal executable discovery and `PATH`. The binary may still become
+its normal executable discovery and `PATH`. On Windows, where the credentialed CLI
+runs through the command shell, the check follows `PATH` and `PATHEXT`, so
+`CLI_DEVIN_BIN=devin` matches `devin.exe`. The binary may still become
 unavailable between the check and dispatch.

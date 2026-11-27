@@ -1,6 +1,8 @@
 {
   "issue": "#1241",
-  "relatedIssues": ["#2034"],
+  "relatedIssues": [
+    "#2034"
+  ],
   "status": "staged-unregistered",
   "source": {
     "repository": "OmniRoute",
@@ -12,10 +14,10 @@
       "open-sse/executors/uc/stream.ts",
       "open-sse/executors/uc/toolDialect.ts",
       "open-sse/executors/uc/ws.ts",
-      "open-sse/executors/uc/constants.ts"
+      "open-sse/executors/uc/constants.ts",
+      "open-sse/executors/uc/media.ts"
     ],
     "notPorted": {
-      "open-sse/executors/uc/media.ts": "blob upload for image and document input; media input is refused with 400 instead",
       "open-sse/executors/uc/clerkAuth.ts": "replaced by the staged native-uc-signin session controller",
       "open-sse/executors/uc/credentials.ts": "replaced by the staged native-uc-tts resolveUcCredential plus the sign-in metadata guard"
     }
@@ -55,19 +57,28 @@
     "__setUcChatWebSocketForTesting": "swap the WebSocket constructor; returns a restore function",
     "parseUcExtraDialects": "code-style and <tool_code> tool calls",
     "detectUcSoftError": "source soft-error apology detection",
-    "estimateUcTokens": "source usage estimate"
+    "estimateUcTokens": "source usage estimate",
+    "createUcAttachmentChatExecutor": "Attachment-enabled factory; one inline image/document, fail-closed uploads; original createUcChatExecutor stays text-only"
   },
   "provider": {
     "canonicalId": "uc",
-    "aliases": ["ucn"],
-    "addServiceKinds": ["llm"],
+    "aliases": [
+      "ucn"
+    ],
+    "addServiceKinds": [
+      "llm"
+    ],
     "baseUrl": "https://internal-6.pubyar.com",
     "socket": "wss://internal-6.pubyar.com/ws/{uid}?token={jwt}&_t={epoch ms}",
-    "handshakeHeaders": { "Origin": "https://uncensored.com" },
+    "handshakeHeaders": {
+      "Origin": "https://uncensored.com"
+    },
     "appVersion": "1.0.0-web",
     "auth": "web-cookie via the staged sign-in session controller; no apiKey, no Authorization header, no Cookie on the socket"
   },
-  "models": { "llm": "UC_CHAT_MODELS (19 ids, sent verbatim as the frame model)" },
+  "models": {
+    "llm": "UC_CHAT_MODELS (19 ids, sent verbatim as the frame model)"
+  },
   "bounds": {
     "totalMs": 120000,
     "handshakeMs": 15000,
@@ -83,9 +94,21 @@
     "quota": "message_limit_exceeded / paywall_exceeded / rate_limit_exceeded frames -> 429"
   },
   "integrationPoints": [
-    { "file": "open-sse/executors/index.js", "change": "map `uc` (and alias `ucn`) to one process-wide createUcChatExecutor()" },
-    { "file": "open-sse/providers/registry/uc.js", "change": "add `llm` with UC_CHAT_REGISTRY_MODELS next to the staged TTS kind" },
-    { "file": "open-sse/executors/staged.json", "change": "none while staged; the module is outside open-sse/executors" },
-    { "file": "docs/providers/catalog.mdx", "change": "list the persona models once registered" }
+    {
+      "file": "open-sse/executors/index.js",
+      "change": "map `uc` (and alias `ucn`) to one process-wide createUcAttachmentChatExecutor()"
+    },
+    {
+      "file": "open-sse/providers/registry/uc.js",
+      "change": "add `llm` with UC_CHAT_REGISTRY_MODELS next to the staged TTS kind"
+    },
+    {
+      "file": "open-sse/executors/staged.json",
+      "change": "none while staged; the module is outside open-sse/executors"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the persona models once registered"
+    }
   ]
 }

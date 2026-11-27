@@ -28,10 +28,11 @@
 //   - a socket that closes before end_of_stream is a failure, not a success;
 //   - the streamed remainder after raw_text is emitted only when raw_text
 //     extends the streamed deltas (the source could repeat the whole answer);
-//   - media input is refused (the blob upload path is not ported);
+//   - the default is text-only; attachmentExecutor.js enables the bounded
+//     source image/document upload path without changing that default;
 //   - tool-mode SSE keeps reasoning and usage, and numbers tool-call deltas.
 import { BaseExecutor } from "../../../executors/base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "../../../executors/sendRequest.js";
+import { bindsConnectionRoute, createExecutorSender, requestAbortError, withBillableDispatch } from "../../../executors/sendRequest.js";
 import { prepareToolMessages, buildToolAwareResult, parseToolCallsFromText } from "../../../translator/webTools.js";
 import { sanitizeErrorMessageWithSecrets } from "../../../utils/error.js";
 import { resolveWebSocketProxyRoute } from "../../../utils/proxyFetch.js";
@@ -260,8 +261,10 @@ export class UcChatExecutor extends BaseExecutor {
     const url = UC_CHAT_BASE_URL;
     let secrets = ucSecrets(credentials).apiKey;
     let capture = null;
+    let acceptedUpload = null;
     const fail = (failure, acceptedTurn = null) => ({
       response: errorResponse(failure, secrets),
+      ...(acceptedUpload ? { acceptedUpload } : null),
       url,
       headers: capture?.headers ?? {},
       transformedBody: capture?.transformedBody ?? null,
@@ -275,7 +278,11 @@ export class UcChatExecutor extends BaseExecutor {
     if (!credential) return fail({ status: 401, code: "uc_unconfigured", message: UC_CHAT_MESSAGES.unconfigured });
     const messages = isRecord(body) && Array.isArray(body.messages) ? body.messages : null;
     if (!messages || messages.length === 0) return fail({ status: 400, code: "uc_invalid_request", message: UC_CHAT_MESSAGES.noMessages });
-    if (currentTurnHasMedia(messages)) return fail({ status: 400, code: "uc_media_unsupported", message: UC_CHAT_MESSAGES.mediaUnsupported });
+    if (!this.attachments && currentTurnHasMedia(messages)) return fail({ status: 400, code: "uc_media_unsupported", message: UC_CHAT_MESSAGES.mediaUnsupported });
+
+    let attachment = null;
+    try { attachment = this.attachments?.extract(messages); }
+    catch (error) { return fail({ status: 400, code: error.code, message: error.message }); }
 
     const codestyle = ucUsesCodestyle(modelId);
     const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(body, messages);
@@ -283,7 +290,9 @@ export class UcChatExecutor extends BaseExecutor {
     if (!assembled.text) return fail({ status: 400, code: "uc_empty_request", message: UC_CHAT_MESSAGES.empty });
     const text = codestyle && hasTools ? applyCodestylePreamble(assembled.text) : assembled.text;
 
-    const token = await this.sessions.getSessionToken(credentials, { signal });
+    if (attachment && bindsConnectionRoute(proxyOptions)) return fail({ status: 400, code: "uc_attachment_route", message: "UC attachment uploads do not support a bound proxy route" });
+
+    let token = await this.sessions.getSessionToken(credentials, { signal });
     if (!token.ok) {
       const failure = mintFailure(token);
       if (!failure) throw requestAbortError(signal?.reason);
@@ -292,14 +301,38 @@ export class UcChatExecutor extends BaseExecutor {
     secrets = ucSecrets(credentials, credential, token.jwt).apiKey;
     if (token.rotated) await this.persistRotation(input, token.rotated);
 
-    const wsUrl = buildUcWsUrl(credential.uid, token.jwt);
+    let wsUrl = buildUcWsUrl(credential.uid, token.jwt);
     let agent;
     try {
       agent = await proxyAgent(wsUrl, proxyOptions);
     } catch {
       return fail({ status: 502, code: "uc_proxy_unavailable", message: UC_CHAT_MESSAGES.proxy });
     }
+    let media = null;
+    if (attachment) {
+      try {
+        media = await this.attachments.upload(attachment, {
+          jwt: token.jwt, uid: credential.uid, signal,
+          onState: (state) => { acceptedUpload = state; },
+        });
+      } catch (error) {
+        return fail({ status: signal?.aborted ? 499 : 502, code: "uc_attachment_upload", message: error.message });
+      }
+    }
+    // A slow upload may cross the JWT refresh skew. Reuse only this account's
+    // controller cache, and refresh the socket token without repeating the upload.
+    if (media) {
+      token = await this.sessions.getSessionToken(credentials, { signal });
+      if (!token.ok) return fail(mintFailure(token) ?? { status: 499, code: "uc_aborted", message: "UC attachment request aborted" });
+      secrets = ucSecrets(credentials, credential, token.jwt).apiKey;
+      if (token.rotated) await this.persistRotation(input, token.rotated);
+      wsUrl = buildUcWsUrl(credential.uid, token.jwt);
+    }
     const frame = buildPersonaFrame({ model: modelId, text, history: assembled.history, uid: credential.uid });
+    if (media) {
+      frame.media_blob_name = media.blobName;
+      frame.media_content_type = media.contentType;
+    }
     capture = { headers: { Origin: UC_ORIGIN }, transformedBody: frame };
 
     const meta = { id: `chatcmpl-uc-${Date.now().toString(36)}`, created: Math.floor(Date.now() / 1000), model };
@@ -308,23 +341,30 @@ export class UcChatExecutor extends BaseExecutor {
     const turnAbort = new AbortController();
     let turn = null;
     // Opening the socket and handing it the frame stands in for response headers.
-    await billed(await sender.sendRequest(UC_CHAT_BASE_URL, { signal }, proxyOptions, {
-      transport: (options) => new Promise((resolve) => {
-        turn = runUcTurn({
-          ...this.turnOptions,
-          url: wsUrl,
-          frame,
-          agent,
-          signal: AbortSignal.any([options.signal, turnAbort.signal]),
-          onSent: () => resolve({ turn }),
-          onEvent: (evt) => hub.push(evt),
-        });
-        turn.then(() => resolve({ turn }));
-      }),
-    }));
+    try {
+      await billed(await sender.sendRequest(UC_CHAT_BASE_URL, { signal }, proxyOptions, {
+        transport: (options) => new Promise((resolve) => {
+          turn = runUcTurn({
+            ...this.turnOptions,
+            url: wsUrl,
+            frame,
+            agent,
+            signal: AbortSignal.any([options.signal, turnAbort.signal]),
+            onSent: () => resolve({ turn }),
+            onEvent: (evt) => hub.push(evt),
+          });
+          turn.then(() => resolve({ turn }));
+        }),
+      }));
+    } catch (error) {
+      if (!acceptedUpload) throw error;
+      const run = turn ? await turn : null;
+      return fail({ status: signal?.aborted ? 499 : 502, code: "uc_attachment_turn", message: "UC attachment turn did not complete; do not replay the upload" },
+        run?.sent ? { state: run.received ? "accepted" : "uncertain", outcome: run.outcome } : null);
+    }
 
     const failTurn = async (run) => {
-      if (run.outcome === "aborted" && signal?.aborted) throw requestAbortError(signal.reason);
+      if (run.outcome === "aborted" && signal?.aborted && !acceptedUpload) throw requestAbortError(signal.reason);
       const failure = socketFailure(run);
       if (failure.auth) this.sessions.forget(credentials);
       log?.warn?.("UC", `persona turn ${run.outcome}${run.errorCode ? ` (${run.errorCode})` : ""}`);
@@ -336,7 +376,7 @@ export class UcChatExecutor extends BaseExecutor {
       if (!run.content) return fail({ status: 502, code: "uc_empty_response", message: UC_CHAT_MESSAGES.emptyResponse }, { state: "accepted", outcome: "empty" });
       return null;
     };
-    const ok = (response) => ({ response, url, headers: capture.headers, transformedBody: capture.transformedBody });
+    const ok = (response) => ({ response, ...(acceptedUpload ? { acceptedUpload } : null), url, headers: capture.headers, transformedBody: capture.transformedBody });
 
     if (hasTools || !stream) {
       const run = await turn;

@@ -14,9 +14,9 @@ OmniRoute `c71f0065a7efe9230ec23b96a12253b050c4d7ad` (MIT). The commit is presen
 - `open-sse/executors/uc/toolDialect.ts`: the code-style preamble, the code-style and `<tool_code>` parsers, and refusal detection.
 - `open-sse/executors/uc/ws.ts`: one socket per turn. The upgrade carries only `Origin`, and auth is the `?token=` query parameter.
 
-These source files were not ported:
+Source-file disposition:
 
-- `uc/media.ts` (blob upload). Media input is refused with a 400.
+- `uc/media.ts` is now ported by `attachments.js` for one inline image/document (see attachment contract below).
 - `uc/clerkAuth.ts` and `uc/credentials.ts`. The staged `native-uc-signin` session controller and the staged `native-uc-tts` credential resolver replace them.
 
 ## Local equivalence check
@@ -24,7 +24,7 @@ These source files were not ported:
 There is no equivalent. This module is the whole delta.
 
 - No `uc` or `ucn` entry exists in `open-sse/providers/registry`, and no executor is mapped in `open-sse/executors/index.js`.
-- `uc-direct` is the metered REST API at `api.uncensored.com` with a `uai_` API key. It is a different backend. This module never reads an API key, never sends `Authorization`, and never falls back to uc-direct.
+- `uc-direct` is the metered REST API at `api.uncensored.com` with a `uai_` API key. It is a different backend. This module never reads an API key, never sends a uc-direct API key, and never falls back to uc-direct.
 - `native-uc-video-image` uses the same host only for `/generate-signed-url`. A checkout search for the persona socket path finds nothing outside this module.
 
 ## Reused staged modules (read-only)
@@ -105,7 +105,7 @@ Tests cover real request and response translation for both gateway formats. Clau
   - An assistant turn with tool calls keeps them in its history text as `<tool_call>{json}</tool_call>`.
   - A trailing tool result takes its name from the matching `tool_call_id`.
   - A request with no user text is a 400, where the source sent only the steer.
-- **Media.** Image, file or audio parts in the current turn are refused with 400 `uc_media_unsupported` instead of being dropped.
+- **Media default.** The original `createUcChatExecutor()` remains text-only and refuses image/file/audio with 400 `uc_media_unsupported`. Registration now selects the separate `createUcAttachmentChatExecutor()` wrapper described below.
 - **Tool-mode SSE.** The replay keeps `reasoning_content` and usage, and numbers tool-call deltas with `index`.
 
 ## Evidence
@@ -118,4 +118,76 @@ cd tests && node node_modules/vitest/vitest.mjs run unit/uc-chat-reauth-contract
 
 ## Registration (not done here)
 
-See `registration.json` `integrationPoints`. Register one `createUcChatExecutor()` per process for `uc` and `ucn`, and add `llm` with `UC_CHAT_REGISTRY_MODELS` to the `uc` registry entry next to the staged TTS kind. Then replace the staging-only test block with positive registry checks.
+See `registration.json` `integrationPoints`. Register one `createUcAttachmentChatExecutor()` per process for `uc` and `ucn`, and add `llm` with `UC_CHAT_REGISTRY_MODELS` to the `uc` registry entry next to the staged TTS kind. Then replace the staging-only test block with positive registry checks.
+
+
+## Attachment contract (#1241 follow-up)
+
+Pinned source inspected in `/tmp/omni-2034` at
+`c71f0065a7efe9230ec23b96a12253b050c4d7ad`:
+
+- `uc.ts:49,212-229,275` imports and calls `extractCurrentTurnMedia` and
+  `uploadUcTurnMedia`, then passes `media` into the socket turn.
+- `uc/media.ts` (`extractCurrentTurnMedia`, `uploadUcBlob`, `uploadUcTurnMedia`) is the actual implementation. There are no tracked
+  `uc/upload*` files at this pin. Extraction accepts inline image data URLs,
+  OpenAI file data, Responses input_file data, and base64 Claude documents.
+  Remote image URLs are collected separately but `uc.ts` only consumes `inline`.
+  There is no input_audio extraction branch: audio is unsupported locally.
+- `uc/protocol.ts:160-195` attaches the primary blob through
+  `media_blob_name` and `media_content_type`, keeping `no_media_in_chat: true`.
+  It calls its multiple-file fields untested forward compatibility; this port
+  rejects multiple attachments instead of claiming that capability.
+- `uc/ws.ts:126` forwards the media descriptors to the persona frame.
+
+The attachment-enabled wrapper validates the complete active turn before token
+mint, upload or billable socket dispatch. It supports one inline PNG/JPEG/GIF/WebP
+image or PDF/text/Markdown/CSV/JSON/Word document, with strict canonical base64,
+nonempty bytes and a 10 MiB decoded ceiling. It rejects remote URLs, file ids,
+audio, unknown MIME types, multiple attachments and media outside the last user
+message in the active turn with local 400. Historical media is not uploaded again.
+Source percent-encoded non-base64 data URLs and unknown octet-stream files are
+also refused. A text prompt remains required.
+
+The upload follows the source sequence and headers exactly: fixed-origin
+`POST /generate-signed-url` with Bearer session JWT, JSON content type, Origin
+and Referer; body `{ content_type, user_identifier }`; then raw-byte PUT to the
+returned signed URL with only Content-Type. Optional source readiness polling is
+omitted. Signed responses are bounded at 16 KiB, the whole operation at 30 s,
+and caller aborts stop waiting even for a transport that ignores cancellation.
+Every redirect or foreign response URL is refused. Only HTTPS
+`d.moveinwater.com/up/...` destinations are allowed, without userinfo, custom
+ports or fragments. The existing outbound URL connector enforces public-only DNS
+at connection time and pins all checked results, including mixed-answer refusal.
+The JWT and cookies never reach the CDN or socket headers. Bound proxy routes
+are refused with 400 before mint/upload because this transport cannot honor them.
+
+The wrapper reuses the existing account-scoped session cache and rotation
+callback, then checks token freshness again after upload before opening the
+socket. It shares no blob cache or socket across requests or accounts. Opt-in,
+consented sign-in metadata, model and auth challenge guards run before upload.
+Every upload failure fails closed rather than sending a text-only turn. There
+are no retries. Results retain `acceptedUpload: { state, outcome }` from the first
+signed request onward, including socket failures after successful upload; existing
+`acceptedTurn` semantics remain. Callers must not replay these outcomes.
+The default executor and all 59 existing tests are unchanged in contract.
+
+### Follow-up evidence
+
+The new synthetic attachment suite has 58 passing tests and covers actual POST/PUT/socket dispatch,
+OpenAI identity and Anthropic image/document translation, streaming, concurrent
+accounts, real session-controller rotation/freshness, admission limits, destination
+and DNS checks, redirects, auth failures, cancellation, deadlines and no replay.
+No live account, provider call, browser or credentials were used.
+
+Root `pnpm run lint` passes (349 existing warnings, zero errors; anti-slop zero diagnostics). Scoped ESLint and `git diff --check` pass. The exact evidence command is:
+
+```sh
+cd tests && test -f unit/uc-chat-attachments.test.js && node node_modules/vitest/vitest.mjs run unit/uc-chat-attachments.test.js unit/native-uc-chat.test.js --maxWorkers=2
+```
+
+On top of the corrected chat base (`c1abe99f6e`, mint 401/403 -> 401
+`uc_auth_error`, mint URL with only `_clerk_js_version`), the combined command
+exits 0 with 117 passing tests: 58 attachment tests and the 59 chat tests,
+unchanged from that base. No tests or failure baseline were altered. Full local CI
+and independent merge review remain outstanding; this is staged work, not a
+merge-ready or live-provider claim.

@@ -15,3 +15,5 @@ export {
 } from "./toolDialect.js";
 export { __setUcChatWebSocketForTesting, buildUcWsUrl, runUcTurn } from "./ws.js";
 export { UcChatExecutor, classifyUcTurnError, createUcChatExecutor, resolveUcChatCredential } from "./executor.js";
+
+export { UcAttachmentChatExecutor, createUcAttachmentChatExecutor } from "./attachmentExecutor.js";

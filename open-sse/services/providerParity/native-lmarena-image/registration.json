@@ -1,0 +1,309 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered; source has no native image transport (fail-fast only)",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (lmarena entry)",
+      "open-sse/config/providers/registry/lmarena/directModels.ts (27 category Image rows, LMARENA_DIRECT_IMAGE_MODELS, resolveLmarenaArenaId)",
+      "open-sse/handlers/imageGeneration.ts (handleImageGeneration fall-through, handleOpenAIImageGeneration)",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts (fetchImageEndpoint)",
+      "open-sse/executors/lmarena.ts and executors/lmarena/{cookie,models,stream}.ts (chat-only Arena transport)"
+    ],
+    "registryEntry": {
+      "id": "lmarena",
+      "alias": "lma",
+      "baseUrl": "https://arena.ai/nextjs-api/stream/create-evaluation",
+      "authType": "apikey",
+      "authHeader": "cookie",
+      "format": "openai",
+      "models": "LMARENA_DIRECT_IMAGE_MODELS",
+      "supportedSizes": [
+        "1024x1024",
+        "1024x1792",
+        "1792x1024"
+      ]
+    },
+    "nonNativeEvidence": [
+      "handleImageGeneration has no lmarena or cookie branch; format openai falls through to handleOpenAIImageGeneration",
+      "handleOpenAIImageGeneration sets Authorization only for authHeader bearer and x-api-key only for x-api-key; authHeader cookie sends no credential at all",
+      "the body is an OpenAI images body { model: <catalog id>, prompt, n, size, quality, response_format, style }, not the Arena envelope { id, mode: direct-battle, modelAId: <arena UUID>, userMessage, modality, recaptchaV3Token }",
+      "fetchImageEndpoint uses plain fetch, while the Arena chat executor needs the Chrome-TLS client (services/lmarenaTlsClient.ts) behind Cloudflare",
+      "the reply is parsed as OpenAI image JSON; create-evaluation answers an AI-SDK SSE stream and executors/lmarena/stream.ts has no image event",
+      "the Arena executor only ever sends modality chat; no source file builds an image modality request"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no lmarena or lma entry; open-sse/providers/registry/lmarena.js declares serviceKinds [\"llm\"] and no image models; open-sse/executors/lmarena.js is chat only (modality chat, 6-model ALLOW map)",
+    "sharedPieces": "the local lmarena cookie connection (authType cookie, cookieImport arena-auth-prod-v1 + numbered chunks) is the credential a future native image transport would use; it is not changed"
+  },
+  "module": "open-sse/services/providerParity/native-lmarena-image/index.js",
+  "exports": {
+    "lmarenaImageAdapter": "default instance: { unsupported: true, responseFormats: [\"url\", \"b64_json\"], defaultResponseFormat: \"url\", generate({ model, body }) -> 400 unknown model | 501 unsupportedReason }",
+    "createLmarenaImageAdapter": "factory; options { unsupportedReason }",
+    "LMARENA_IMAGE_PROVIDER_METADATA": "frozen provider metadata (supported: false)",
+    "LMARENA_IMAGE_MODELS": "27 source Image rows { id, arenaId, publicName, name, organization, vision, inputModalities }",
+    "resolveLmarenaImageModel": "source resolveLmarenaArenaId restricted to Image rows; null otherwise",
+    "buildLmarenaSourceImageWire": "dormant: the exact request the pinned source would send (evidence; never sent)",
+    "LMARENA_SOURCE_WIRE_DEFECTS": "dormant: why that request is not an Arena contract",
+    "resolveLmarenaImageCookie": "dormant: source readLMArenaCookie precedence with chunk reconstruction",
+    "reconstructLmarenaImageCookie": "dormant: source reconstructLMArenaCookie"
+  },
+  "provider": {
+    "canonicalId": "lmarena",
+    "aliases": [
+      "lma"
+    ],
+    "modelPrefixesStripped": [
+      "lmarena/",
+      "lma/",
+      "arena/"
+    ],
+    "existingDefinition": "open-sse/providers/registry/lmarena.js (chat, webCookie, authType cookie)",
+    "serviceKinds": [
+      "image"
+    ],
+    "authModes": [
+      "cookie"
+    ],
+    "auth": {
+      "sourceDeclaration": "authType apikey, authHeader cookie (never honored by the source image handler)",
+      "credentialFields": [
+        "cookie",
+        "apiKey",
+        "arena-auth-prod-v1[.N] top-level fields",
+        "providerSpecificData.cookie",
+        "providerSpecificData arena-auth-prod-v1[.N] fields"
+      ],
+      "sentTo": [],
+      "note": "the adapter reads no credential; the local cookie connection mode is preserved"
+    },
+    "supported": false
+  },
+  "models": [
+    {
+      "id": "cosmos3-super",
+      "arenaId": "019f4270-5d10-723c-8a7e-dfd5dd2214e5",
+      "name": "cosmos3-super",
+      "organization": "nvidia",
+      "vision": false
+    },
+    {
+      "id": "cosmos3-super-agentic",
+      "arenaId": "019f4270-9eea-79c3-b18f-71303ee41ff8",
+      "name": "cosmos3-super-agentic",
+      "organization": "nvidia",
+      "vision": false
+    },
+    {
+      "id": "flux-2-dev",
+      "arenaId": "019b478d-74ae-7d19-9a8f-6cfde89ab4ca",
+      "name": "flux-2-dev",
+      "organization": "bfl",
+      "vision": true
+    },
+    {
+      "id": "flux-2-pro",
+      "arenaId": "019b7541-5e4b-7ff7-a34b-b0255b6ca9aa",
+      "name": "flux-2-pro",
+      "organization": "bfl",
+      "vision": true
+    },
+    {
+      "id": "gemini-2.5-flash-image-preview (nano-banana)",
+      "arenaId": "0199ef2a-583f-7088-b704-b75fd169401d",
+      "name": "gemini-2.5-flash-image-preview (nano-banana)",
+      "organization": "google",
+      "vision": true
+    },
+    {
+      "id": "instant-ramen",
+      "arenaId": "019ed3b3-c4f8-7e67-b72d-385d740096d0",
+      "name": "gemini-3.1-flash-lite-image (nano-banana-2-lite)",
+      "organization": "google",
+      "vision": true
+    },
+    {
+      "id": "gpt-image-1",
+      "arenaId": "6e855f13-55d7-4127-8656-9168a9f4dcc0",
+      "name": "gpt-image-1",
+      "organization": "openai",
+      "vision": true
+    },
+    {
+      "id": "blue-crab",
+      "arenaId": "019e4271-4717-7dd9-a0e2-90783fbabd25",
+      "name": "grok-imagine-image-quality (20260519)",
+      "organization": "xai",
+      "vision": true
+    },
+    {
+      "id": "hidream-o1-image",
+      "arenaId": "019e1cd7-5cc5-75d2-8b3e-275616dec624",
+      "name": "hidream-o1-image",
+      "organization": "hidream",
+      "vision": false
+    },
+    {
+      "id": "sungod",
+      "arenaId": "019bec2d-e92c-745d-ae46-c7166590237a",
+      "name": "hunyuan-image-3.0-instruct",
+      "organization": "tencent",
+      "vision": true
+    },
+    {
+      "id": "ideogram-v3-quality",
+      "arenaId": "73378be5-cdba-49e7-b3d0-027949871aa6",
+      "name": "ideogram-v3-quality",
+      "organization": "Ideogram",
+      "vision": false
+    },
+    {
+      "id": "krea-2-large",
+      "arenaId": "019e8ebd-6cfb-7492-949c-a2c4a00301aa",
+      "name": "krea-2-large",
+      "organization": "krea",
+      "vision": false
+    },
+    {
+      "id": "krea-2-turbo",
+      "arenaId": "019f049d-7de4-7fae-8237-1c2103b9e730",
+      "name": "krea-2-turbo",
+      "organization": "krea",
+      "vision": false
+    },
+    {
+      "id": "lucid-origin",
+      "arenaId": "5a3b3520-c87d-481f-953c-1364687b6e8f",
+      "name": "lucid-origin",
+      "organization": "leonardo-ai",
+      "vision": false
+    },
+    {
+      "id": "kakarot-v2",
+      "arenaId": "019e80aa-37bf-7e89-8a28-41e4ab72ed9f",
+      "name": "mai-image-2.5 (image-edit)",
+      "organization": "microsoft-ai",
+      "vision": true
+    },
+    {
+      "id": "baryonyx",
+      "arenaId": "019e530d-2a50-75e3-95d1-a5ef41d4c24c",
+      "name": "mai-image-2.5 (text-to-image)",
+      "organization": "microsoft-ai",
+      "vision": false
+    },
+    {
+      "id": "iron-bloom",
+      "arenaId": "019ef780-25ef-7878-8b91-307f8f879d42",
+      "name": "muse-image",
+      "organization": "meta",
+      "vision": true
+    },
+    {
+      "id": "photon",
+      "arenaId": "e7c9fa2d-6f5d-40eb-8305-0980b11c7cab",
+      "name": "photon",
+      "organization": "luma-ai",
+      "vision": false
+    },
+    {
+      "id": "qwen-image-2.0",
+      "arenaId": "019d287c-4906-7f9c-8b78-8a2a86cf00a5",
+      "name": "qwen-image-2.0",
+      "organization": "alibaba",
+      "vision": true
+    },
+    {
+      "id": "qwen-image-2.0-pro",
+      "arenaId": "019d287b-b718-7daa-ad65-502596d0813d",
+      "name": "qwen-image-2.0-pro",
+      "organization": "alibaba",
+      "vision": true
+    },
+    {
+      "id": "recraft-v4",
+      "arenaId": "019c6e76-a7c0-7b05-8dce-bbe3d52c8f4e",
+      "name": "recraft-v4",
+      "organization": "Recraft",
+      "vision": false
+    },
+    {
+      "id": "avalon",
+      "arenaId": "019e7091-f73f-7338-b5e2-4ab5fba37dc2",
+      "name": "reve-2.0 (image-edit)",
+      "organization": "reve",
+      "vision": true
+    },
+    {
+      "id": "babylon",
+      "arenaId": "019e86c6-a3dc-73ac-9adc-8c5f304dc2fb",
+      "name": "reve-2.0 (text-to-image)",
+      "organization": "reve",
+      "vision": false
+    },
+    {
+      "id": "seedream-5.0-pro",
+      "arenaId": "019f42b5-8c52-7793-9be8-de35eecf7ea9",
+      "name": "seedream-5.0-pro",
+      "organization": "bytedance",
+      "vision": true
+    },
+    {
+      "id": "uni-1.1-max",
+      "arenaId": "019ed208-69ca-7f3f-85ee-182d5f0ea08b",
+      "name": "uni-1.1-max",
+      "organization": "luma-ai",
+      "vision": true
+    },
+    {
+      "id": "wan2.7-image-pro",
+      "arenaId": "019db3f0-b024-7478-bd4d-55ea1ec1d421",
+      "name": "wan2.7-image-pro",
+      "organization": "wan",
+      "vision": true
+    },
+    {
+      "id": "zen-bear-v3",
+      "arenaId": "019f38c2-002d-7f0f-a391-db6df024b734",
+      "name": "zen-bear-v3",
+      "organization": "alibaba",
+      "vision": false
+    }
+  ],
+  "endpoints": {
+    "generate": "POST https://arena.ai/nextjs-api/stream/create-evaluation (source declaration; never called)",
+    "dynamicDiscovery": "none: static scrape 2026-07-09; live arena.ai HTML discovery disabled in source"
+  },
+  "publicContract": {
+    "route": "POST /v1/images/generations",
+    "accepted": [],
+    "response": "400 for an id outside the 27 Image rows; 501 { error.message: unsupportedReason } for every other request",
+    "accounting": "none: nothing is submitted; no acceptedJob, usage, quota or cost record",
+    "sizes": "source supportedSizes recorded only; no size is honored"
+  },
+  "recommendedRegistration": "none while no native Arena image transport exists. Registering would only turn the generic 400 \"does not support image generation\" into this 501 diagnostic.",
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "only if a fail-fast diagnostic is wanted: add lmarena: lmarenaImageAdapter and lma: lmarenaImageAdapter (lookupMediaAdapter does not resolve aliases)"
+    },
+    {
+      "file": "open-sse/handlers/imageGenerationCore.js",
+      "change": "none: the generate branch returns the error result unchanged and records no success"
+    },
+    {
+      "file": "open-sse/providers/registry/lmarena.js",
+      "change": "none: keep serviceKinds [\"llm\"]; do not list Arena image models as working"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "none"
+    },
+    {
+      "file": "tests/unit/native-lmarena-image.test.js",
+      "change": "replace the isolated staging-state block with positive identity checks if the diagnostic is registered"
+    }
+  ]
+}

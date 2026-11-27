@@ -1,9 +1,9 @@
 ---
 title: Inner.ai Web
-description: Staged and unavailable. The signed-in Inner.ai session credential, request flow, errors and limits.
+description: Available, with mocked coverage only. The signed-in Inner.ai session credential, request flow, errors and limits.
 ---
 
-> **Staged and unavailable.** The code exists, but the provider is not registered. You cannot add an Inner.ai Web connection or send requests to it yet. A later change has to register it.
+> **Available, mocked coverage only.** Inner.ai Web is registered: you can add a connection from the dashboard (manual paste or cookie import), list its models, validate it and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
 
 Inner.ai Web (`inner-ai-web`, alias `inaw`) uses the session of an account signed in at [app.innerai.com](https://app.innerai.com). It has been tested only against mocks. No real account or Inner.ai endpoint has been contacted, so there is no claim that it works against the live service or stays working.
 
@@ -13,7 +13,7 @@ It is separate from the existing `inner-ai` entry in the API-key category. The t
 
 1. Sign in at `app.innerai.com`.
 2. In the browser developer tools, open **Application → Cookies** and find the `token` cookie for `.innerai.com`. Its value is a JWT.
-3. After registration, paste it as the connection credential, followed by a space and your Inner.ai login email.
+3. Paste it as the connection credential, followed by a space and your Inner.ai login email.
 
 These forms are accepted:
 
@@ -28,9 +28,9 @@ Treat the token as a password. A full `Cookie` header with other cookies, anothe
 
 ### Cookie import and sign-in
 
-The staged import profile allows one cookie, `token`, from the origin `https://app.innerai.com`. Dashboard import stores `token=<value>` **without an email**. The gateway then depends on the account profile lookup to find the email. If that lookup fails and the token has no email in its `sub` claim, requests go out without `USER-EMAIL`; whether Inner.ai accepts them is unknown. Pasting the token and email by hand avoids this.
+Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `token`, from the origin `https://app.innerai.com`, with a cookie domain of `app.innerai.com` or `.innerai.com`. It stores `token=<value>` **without an email**. The gateway then depends on the account profile lookup to find the email. If that lookup fails and the token has no email in its `sub` claim, requests go out without `USER-EMAIL`; whether Inner.ai accepts them is unknown. Pasting the token and email by hand avoids this. **Remaining manual step:** if the profile lookup cannot return your email, edit the imported connection and append a space and the login email to the stored value.
 
-Browser extension capture is off because it cannot collect the email. There is no built-in web sign-in: the source defines no sign-in or session-ready contract for it. There is no token refresh. When the session expires, paste or import a new token.
+Browser extension capture is off: it cannot collect the email, and the extension's compiled allowlist has no Inner.ai entry. There is no built-in web sign-in: the source defines no sign-in or session-ready contract for it. There is no token refresh. When the session expires, paste or import a new token.
 
 ## What is sent, and where
 
@@ -47,6 +47,8 @@ Each request carries the token as `Cookie: token=…` and `USER-TOKEN`, with `Or
 ## Models
 
 Discovery keeps enabled text models that the account's plan allows. The plan is read from the JWT (`plan`, `tier` or `subscription`) and is only a filter; Inner.ai still decides what the account may use. A requested id matches the listed id exactly, ignoring case, or without its vendor prefix and eight-digit date suffix. If nothing matches, the gateway returns `404 model_not_found` and sends no chat. It never substitutes a similar model.
+
+The dashboard model list and the connection check (**Validate** and **Test Connection**) both run the same profile and catalog GETs for the selected connection only. Neither sends a chat.
 
 Chat reuses an account's email and catalog for up to an hour. The cache is keyed by that exact token and pasted email. A rejected session or unlisted model clears it. A direct discovery call always reads fresh. The 19-model fallback catalog is copied from the source and may not match your account.
 
@@ -78,14 +80,16 @@ A failure before the first text is an HTTP error. A failure after streaming has 
 
 ## Mocked evidence
 
-`tests/unit/inner-ai-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any other URL. It covers credential parsing, headers and request body, discovery, account separation, JSON and SSE, quota and stream errors, expiry, redirects, and estimated usage. Its gateway cases replace the executor lookup, because the provider is not registered.
+`tests/unit/inner-ai-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any other URL. It covers credential parsing, headers and request body, discovery, account separation, JSON and SSE, quota and stream errors, expiry, redirects, and estimated usage. Its gateway cases use a fresh executor instance per test so the discovery cache never crosses tests.
+
+`tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard import through the pairing and import routes into the connection store, Cookie header, cURL and HAR parsing, model discovery and validation for the selected connection, OpenAI and Anthropic JSON and SSE, account separation, expiry, redirects, server errors and recorded usage.
 
 The upstream stream is read with the shared SSE frame reader (`open-sse/utils/sseFrames.js`). `tests/unit/inner-ai-web-sse.test.js` covers LF, CRLF and CR endings, byte-fragmented reads, split UTF-8, multi-line data, comments, a final frame without a blank line, quota events, malformed or truncated frames, and the pending-frame byte bound.
 
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/inner-ai-web-provider.test.js unit/inner-ai-web-sse.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/inner-ai-web-provider.test.js unit/inner-ai-web-sse.test.js unit/provider-session-registration-1127.test.js --maxWorkers=2
 ```
 
 ## Attribution

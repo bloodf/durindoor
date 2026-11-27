@@ -28,6 +28,11 @@ const profiles = [
   ["tencent-aistudio-web", "https://aistudio.tencent.ai", ["sessionid"], true],
   ["blackbox-web", "https://app.blackbox.ai", ["next-auth.session-token"], true],
   ["conol-web", "https://conol.ai", ["__Secure-better-auth.session_token"], true],
+  // #2034 (1127): dashboard import only; the extension allowlist is unchanged.
+  ["inner-ai-web", "https://app.innerai.com", ["token"], false],
+  ["poe-web", "https://www.poe.com", ["p-b"], false],
+  ["venice-web", "https://clerk.venice.ai", ["__client"], false],
+  ["v0-vercel-web", "https://v0.dev", ["__vercel_session"], false],
 ];
 // Profiles of providers outside the web-cookie category whose credential is a localStorage item.
 const localStorageProfiles = [

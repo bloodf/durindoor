@@ -38,6 +38,10 @@ const LOCAL_USAGE_COOKIE_PROVIDERS = {
   "tencent-aistudio-web": "Tencent AI Studio Web",
   "blackbox-web": "Blackbox Web",
   "conol-web": "Conol Web",
+  "inner-ai-web": "Inner.ai Web",
+  "poe-web": "Poe Web",
+  "venice-web": "Venice Web",
+  "v0-vercel-web": "v0 Vercel Web",
 };
 
 // Detect auth-expired messages returned by usage providers instead of throwing

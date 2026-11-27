@@ -1,16 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import provider, { discoverPoeWebModels } from '../../open-sse/providers/private/poe-web.js';
+import provider, { discoverPoeWebModels } from '../../open-sse/providers/registry/poe-web.js';
 import { PoeWebExecutor, POE_WEB_URL, parsePoeCookie } from '../../open-sse/executors/poe-web.js';
+import { getExecutor, hasSpecializedExecutor } from '../../open-sse/executors/index.js';
+import { cookieImportConfig, resolveCookieImportContract } from '../../src/shared/utils/cookieImportContract.js';
 
 const executor = new PoeWebExecutor();
 const input = (apiKey = 'alpha', stream = false) => ({ credentials: { apiKey }, model: 'gpt-4o', stream, body: { messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'hello' }] } });
 const response = (text = 'answer', state = 'complete') => Response.json({ data: { chatWithBot: { text, state } } });
 const run = (args, fn = async () => response()) => executor.runSession(args, { sendBillable: fn });
 
-describe('staged Poe web session', () => {
-  it('offers only its static mapping without credential capture metadata or API-key identity', () => {
+describe('registered Poe web session', () => {
+  it('offers only its static mapping, a p-b dashboard import profile and no API-key identity', () => {
     expect(provider.id).toBe('poe-web');
-    expect(provider.cookieImport).toBeUndefined(); expect(provider.webLogin).toBeUndefined();
+    expect(hasSpecializedExecutor('poe-web')).toBe(true); expect(getExecutor('poe-web')).toBeInstanceOf(PoeWebExecutor); expect(getExecutor('poew')).toBe(getExecutor('poe-web'));
+    expect(resolveCookieImportContract(cookieImportConfig(provider))).toEqual({ origin: 'https://www.poe.com', host: 'www.poe.com', extensionCapture: false, cookieNames: ['p-b'], cookiePrefixes: [] });
+    expect(provider.webLogin).toBeUndefined();
     expect(discoverPoeWebModels()).toContainEqual({ id: 'gpt-4o', name: 'GPT-4o', toolCalling: false });
     expect(discoverPoeWebModels()).not.toBe(discoverPoeWebModels());
   });

@@ -1,4 +1,4 @@
-// Inner.ai Web, staged. Closed mocks only: every send is answered below, an
+// Inner.ai Web, registered. Closed mocks only: every send is answered below, an
 // unknown URL fails the test, and every token and email is synthetic. Passing
 // here says nothing about the live service.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +6,8 @@ import "../translator/registerAll.js";
 
 const staged = vi.hoisted(() => ({ executor: null }));
 
-// While staged, the executor map does not know this provider, so the gateway tests substitute that one lookup.
+// The executor map registers this provider (asserted below); the gateway tests swap in a fresh
+// instance per test so the per-account discovery and session caches never cross tests.
 vi.mock("../../open-sse/executors/index.js", async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, getExecutor: (id) => (id === "inner-ai-web" ? staged.executor : actual.getExecutor(id)) };
@@ -15,12 +16,14 @@ vi.mock("@/lib/network/connectionProxy", () => ({ resolveConnectionProxyConfig: 
 vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(), finishPendingRequest: vi.fn(), appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}) }));
 vi.mock("../../open-sse/handlers/chatCore/proxyTimeline.js", () => ({ startTrace: vi.fn(), record: vi.fn(), finishTrace: vi.fn() }));
 
-import provider, { INNER_AI_WEB_CHAT_URL, INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_PROFILE_URL, innerAiWebCookieProfile } from "../../open-sse/providers/private/inner-ai-web.js";
+import provider, { INNER_AI_WEB_CHAT_URL, INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_PROFILE_URL, innerAiWebCookieProfile } from "../../open-sse/providers/registry/inner-ai-web.js";
 import { InnerAiWebExecutor, discoverInnerAiWebModels, validateInnerAiWebSession } from "../../open-sse/executors/inner-ai-web.js";
 import { readInnerAiWebCredential } from "../../open-sse/executors/inner-ai-web/credential.js";
 import { findInnerAiWebModel } from "../../open-sse/executors/inner-ai-web/discovery.js";
 import { cookieImportConfig, isApprovedCookieName, cookieDomainAllowed, resolveCookieImportContract } from "../../src/shared/utils/cookieImportContract.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
+import { REGISTERED_EXECUTOR_IDS, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
+import { STAGED_PROVIDERS } from "../../open-sse/providers/staged.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { saveRequestUsage } from "@/lib/usageDb.js";
@@ -90,7 +93,14 @@ const urls = () => wire.calls.map((call) => call.url);
 const chatCalls = () => wire.calls.filter((call) => call.url === INNER_AI_WEB_CHAT_URL);
 const sseData = (raw) => raw.split("\n").filter((line) => line.startsWith("data: ") && line !== "data: [DONE]").map((line) => JSON.parse(line.slice(6)));
 
-describe("staged Inner.ai Web provider module", () => {
+describe("registered Inner.ai Web provider module", () => {
+  it("is a registry entry with its own executor and is no longer staged", () => {
+    expect(REGISTRY).toContain(provider);
+    expect(REGISTERED_EXECUTOR_IDS).toEqual(expect.arrayContaining(["inner-ai-web", "inaw"]));
+    expect(hasSpecializedExecutor("inner-ai-web")).toBe(true);
+    expect(STAGED_PROVIDERS["inner-ai-web"]).toBeUndefined();
+  });
+
   it("is a cookie identity separate from the API-key inner-ai entry", () => {
     expect(provider).toMatchObject({ id: "inner-ai-web", category: "webCookie", authType: "cookie", transport: { baseUrl: INNER_AI_WEB_CHAT_URL, executor: "inner-ai-web", authType: "cookie" } });
     expect(REGISTRY.find((entry) => entry.id === "inner-ai")).toMatchObject({ category: "apikey" });

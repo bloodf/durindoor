@@ -1,10 +1,9 @@
 ---
 title: Venice Web
-description: Staged and unavailable. The signed-in Venice session cookie, request flow, errors and limits.
-status: unreleased
+description: Available, with mocked coverage only. The signed-in Venice session cookie, request flow, errors and limits.
 ---
 
-> **Staged and unavailable.** The code exists, but the provider is not registered. You cannot add a Venice Web connection or send requests to it yet. A later change has to register it.
+> **Available, mocked coverage only.** Venice Web is registered: you can add a connection from the dashboard (manual paste or cookie import), list its models, validate it and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
 
 Venice Web (`venice-web`, alias `venw`) uses the session of an account signed in at [venice.ai](https://venice.ai). It has been tested only against mocks. No real account or Venice endpoint has been contacted, so there is no claim that it works against the live service or stays working.
 
@@ -16,7 +15,7 @@ The credential is the `__client` cookie that Clerk, Venice's sign-in service, ke
 
 1. Sign in at `venice.ai`.
 2. In the browser developer tools, open **Application → Cookies** and find the `__client` cookie listed for `.clerk.venice.ai`. You may have to open a `clerk.venice.ai` request or tab to see it.
-3. After registration, paste it as the connection credential.
+3. Paste it as the connection credential.
 
 These forms are accepted:
 
@@ -32,9 +31,9 @@ Before anything is sent, the gateway refuses an API key, a value that is not a J
 
 ### Cookie import and sign-in
 
-The staged import profile allows one cookie, `__client`, from the origin `https://clerk.venice.ai`. Dashboard import stores `__client=<value>`.
+Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `__client`, from the origin `https://clerk.venice.ai`, with a cookie domain of `clerk.venice.ai` or `.clerk.venice.ai`. A cookie for `venice.ai`, `api.venice.ai` or `outerface.venice.ai` is refused. Import stores `__client=<value>`.
 
-Capture is manual. Browser extension capture is off, and there is no built-in web sign-in: the source defines no capture or session-ready contract.
+Browser extension capture is off, and there is no built-in web sign-in: the source defines no capture or session-ready contract, and the extension's compiled allowlist has no Venice entry.
 
 ## What is sent, and where
 
@@ -58,11 +57,11 @@ A `401`, `403` or redirect from chat drops the cached token. The rejected reques
 
 ## Models and discovery
 
-Venice has no known model list for this kind of session. The staged catalog is the source's static list:
+Venice has no known model list for this kind of session. The catalog is the source's static list:
 
 `venice-uncensored`, `llama-3.3-70b`, `qwen3-235b`, `qwen3-4b`, `deepseek-r1-671b`
 
-Discovery makes one read-only `GET /v1/client` to check that the selected connection still has an active session, then returns that list. **The list does not come from your account.** It may be out of date, and a listed model may be unavailable to you. Other model ids are passed to Venice unchanged. The connection check is the same single request; it creates no session token and starts no chat.
+Discovery makes one read-only `GET /v1/client` to check that the selected connection still has an active session, then returns that list. **The list does not come from your account.** It may be out of date, and a listed model may be unavailable to you. Other model ids are passed to Venice unchanged. The connection check (**Validate** and **Test Connection**) is the same single request; it creates no session token and starts no chat.
 
 ## Responses and usage
 
@@ -98,12 +97,14 @@ A failure before the first text is an HTTP error. A failure after streaming has 
 
 ## Mocked evidence
 
-`tests/unit/venice-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any unlisted URL. It covers credential parsing, exact headers and request body, discovery, account separation, JSON and SSE, broken answers, HTTP errors, redirects, token expiry and estimated usage. Its gateway cases replace the executor lookup, because the provider is not registered.
+`tests/unit/venice-web-provider.test.js` uses synthetic tokens and a fetch mock that fails on any unlisted URL. It covers credential parsing, exact headers and request body, discovery, account separation, JSON and SSE, broken answers, HTTP errors, redirects, token expiry and estimated usage. Its gateway cases use a fresh executor instance per test so the session-token cache never crosses tests.
+
+`tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard import through the pairing and import routes into the connection store, Cookie header, cURL and HAR parsing, discovery and validation for the selected connection, OpenAI and Anthropic JSON and SSE, account separation, an ended Clerk session, expiry, redirects, server errors and recorded usage.
 
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/venice-web-provider.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/venice-web-provider.test.js unit/provider-session-registration-1127.test.js --maxWorkers=2
 ```
 
 ## Attribution

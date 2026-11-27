@@ -4,7 +4,7 @@
 import { digestMemoryKey } from "../../utils/memoryKey.js";
 import { cancelDiscardedResponse } from "../sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../../services/quota/dispatch.js";
-import { VENICE_WEB_CLIENT_URL, VENICE_WEB_ORIGIN, veniceWebTokenUrl } from "../../providers/private/venice-web.js";
+import { VENICE_WEB_CLIENT_URL, VENICE_WEB_ORIGIN, veniceWebTokenUrl } from "../../providers/registry/venice-web.js";
 import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { decodeVeniceJwt, jwtExpiryMs } from "./credential.js";
 import { expiredSession, httpFailure, isAbort, isRedirect, malformedReply, transportFailure } from "./errors.js";

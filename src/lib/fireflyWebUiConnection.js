@@ -6,6 +6,7 @@ import { isOperatorRequest } from "@/dashboardGuard";
 import { createProviderConnection, updateProviderConnection } from "@/lib/localDb";
 import { DATA_DIR } from "@/lib/dataDir.js";
 import { initializeProfile, resolveProfile } from "open-sse/services/fireflyWebUi/profile.js";
+import { retireFireflyWebUiSetup } from "open-sse/services/fireflyWebUi/setup.js";
 import { assertNoSuppliedSecrets, parseFireflyWebUiConfig, reject } from "open-sse/services/fireflyWebUi/config.js";
 
 export const FIREFLY_WEB = "adobe-firefly-web";
@@ -65,4 +66,28 @@ export async function saveFireflyConnection(request, body, existing = null) {
     const status = error?.status ?? (error?.code?.startsWith("PROVIDER_CONNECTION_") ? 409 : 500);
     return NextResponse.json({ error: status === 500 ? "Unable to save Firefly browser connection" : error.message }, { status });
   }
+}
+
+/**
+ * Delete a Firefly browser connection only after its own setup browser is
+ * closed. Operator-only. `remove()` deletes the stored row and returns whether
+ * it existed. Returns the HTTP response for a refused delete, or null once the
+ * row is gone. A browser that cannot be confirmed closed keeps the row (502).
+ */
+export async function deleteFireflyConnection(request, id, remove) {
+  if (!(await isOperatorRequest(request))) return NextResponse.json({ error: "Deleting a Firefly browser connection requires a dashboard operator" }, { status: 403 });
+  let retirement;
+  try {
+    retirement = await retireFireflyWebUiSetup(id);
+  } catch (error) {
+    return NextResponse.json({ error: error?.outcome ? error.message : "Firefly setup browser could not be closed", outcome: error?.outcome || "unknown" }, { status: error?.status || 502 });
+  }
+  let deleted = false;
+  try {
+    deleted = Boolean(await remove());
+  } finally {
+    if (deleted) retirement.commit();
+    else retirement.abort();
+  }
+  return deleted ? null : NextResponse.json({ error: "Connection not found" }, { status: 404 });
 }

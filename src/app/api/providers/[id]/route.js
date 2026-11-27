@@ -1,4 +1,4 @@
-import { FIREFLY_WEB, saveFireflyConnection } from "@/lib/fireflyWebUiConnection.js";
+import { FIREFLY_WEB, deleteFireflyConnection, saveFireflyConnection } from "@/lib/fireflyWebUiConnection.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { globalCircuitManager } from "@/lib/routing/connectionCircuitState.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
@@ -619,9 +619,16 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const existing = await getProviderConnectionById(id);
 
-    const deleted = await deleteProviderConnection(id);
-    if (!deleted) {
-      return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    if (existing?.provider === FIREFLY_WEB) {
+      // Close and await this connection's own setup browser before the row
+      // (its ownership record) disappears; refuse the delete otherwise.
+      const refused = await deleteFireflyConnection(request, id, () => deleteProviderConnection(id));
+      if (refused) return refused;
+    } else {
+      const deleted = await deleteProviderConnection(id);
+      if (!deleted) {
+        return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+      }
     }
 
     if (existing) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);

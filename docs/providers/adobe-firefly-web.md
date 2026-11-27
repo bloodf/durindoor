@@ -44,6 +44,8 @@ Use the provider dashboard browser configuration panel to create a disabled conn
 
 Setup and generation never share a profile at the same time: the second one gets `409` before any browser starts. Profiles are never deleted automatically.
 
+Deleting the connection (operator only) first closes and waits for that connection's own setup browser, including one still launching, and blocks new setup for it; other connections' sessions are untouched. If the browser cannot be confirmed closed, the delete returns `502` (`close_failed`), the connection is kept and setup status still reports it open, so you can retry.
+
 ## Requests and output
 
 Images and video accept only `model`, `prompt`, `n` (1 only) and `response_format`. Size, seconds, seed, references, edits, masks, streaming and any other field are refused with `400` before launch.

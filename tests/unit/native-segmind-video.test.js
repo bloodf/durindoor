@@ -1,4 +1,4 @@
-// Segmind native video adapter, staged and unregistered (#2034).
+// Segmind native video adapter, registered on segmind (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (videoRegistry.ts `segmind`, segmind/videoModels.ts,
@@ -70,13 +70,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered: no adapter, no registry file", () => {
-    expect(getVideoGenerationAdapter("segmind")).toBeNull();
-    expect(existsSync(new URL("../../open-sse/providers/registry/segmind.js", import.meta.url))).toBe(false);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers the adapter and the new segmind registry file", async () => {
+    expect(getVideoGenerationAdapter("segmind")).toBe(segmindVideoAdapter);
+    expect(existsSync(new URL("../../open-sse/providers/registry/segmind.js", import.meta.url))).toBe(true);
+    const { default: segmindRegistry } = await import("../../open-sse/providers/registry/segmind.js");
+    expect(segmindRegistry).toMatchObject({
+      id: SEGMIND_PROVIDER_DEFINITION.id, alias: SEGMIND_PROVIDER_DEFINITION.alias, category: "apikey", authType: "apikey",
+      serviceKinds: ["video"], transport: { baseUrl: "https://api.segmind.com/v1", authHeader: "x-api-key", auth: { header: "x-api-key", scheme: "raw" } },
+    });
+    expect(segmindRegistry.models).toEqual(SEGMIND_VIDEO_MODELS.map(({ id, name }) => ({ id, name, kind: "video" })));
+    expect(segmindRegistry.oauth).toBeUndefined();
+    expect(segmindRegistry.videoConfig).toBeUndefined();
   });
 });
 

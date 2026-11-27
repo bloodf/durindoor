@@ -1,4 +1,4 @@
-// DeepInfra native video adapter, staged and unregistered (#2034).
+// DeepInfra native video adapter, registered on deepinfra (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (videoRegistry.ts `deepinfra`, videoGeneration.ts format dispatch,
@@ -77,15 +77,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
-describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing deepinfra entry unchanged", () => {
-    expect(getVideoGenerationAdapter("deepinfra")).toBeNull();
-    expect(supportsVideoGeneration("deepinfra")).toBe(false);
-    expect(deepinfraRegistry.serviceKinds).toBeUndefined();
-    expect(deepinfraRegistry.models).toEqual([]);
-    expect(REGISTRATION.status).toBe("staged-unregistered");
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
+describe("canonical registration (isolated)", () => {
+  it("registers the video adapter on the existing deepinfra entry and keeps chat listed", () => {
+    expect(getVideoGenerationAdapter("deepinfra")).toBe(deepinfraVideoAdapter);
+    expect(supportsVideoGeneration("deepinfra")).toBe(true);
+    expect(deepinfraRegistry.serviceKinds).toEqual(expect.arrayContaining(REGISTRATION.provider.addServiceKinds));
+    expect(deepinfraRegistry.serviceKinds[0]).toBe("llm");
+    expect(deepinfraRegistry.models.filter((m) => m.kind === "video").map((m) => [m.id, m.name]))
+      .toEqual(DEEPINFRA_VIDEO_MODELS.map((m) => [m.id, m.name]));
+    expect(deepinfraRegistry.modelsFetcher).toEqual({ url: "https://api.deepinfra.com/v1/openai/models", type: "openai" });
+    expect(deepinfraRegistry.videoConfig).toBeUndefined();
   });
 });
 

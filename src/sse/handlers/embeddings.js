@@ -8,9 +8,13 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { leasedAntigravityRefresher } from "./media/antigravityRefresh.js";
-import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute } from "../services/mediaRoutes.js";
 import { resolveTypedMediaModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
+
+// combo.js ACCEPTED_JOB_HEADER: an accepted or uncertain submit stops every
+// fallback. Kept local so this route does not load the combo engine.
+const ACCEPTED_JOB_HEADER = "x-durindoor-accepted-job";
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -76,6 +80,27 @@ async function routeEmbeddings(request, body, modelStr, { settings, apiKey, auth
     log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
   }
 
+  const usageEventId = (credentials) => JSON.stringify([getRequestId(request), "embedding", provider, model, credentials.connectionId ?? null]);
+  /** A submit the provider may have billed without a usable answer (DeepInfra
+   * native). It is recorded once on the account that sent it, with the
+   * provider's receipt when one exists, and never replayed on another account,
+   * model or combo member.
+   */
+  const recordAccepted = async (result, credentials) => {
+    await recordAcceptedJobUsage(apiKey, {
+      ...result.acceptedJob,
+      billingEpoch,
+      usageEventId: usageEventId(credentials), provider, model,
+      connectionId: credentials.connectionId ?? null, endpoint: "/v1/embeddings",
+      modality: "embedding",
+      apiKeyId: apiKeyAuth.apiKeyId,
+    });
+    const response = result.response || errorResponse(result.status, result.error);
+    const headers = new Headers(response.headers);
+    headers.set(ACCEPTED_JOB_HEADER, "1");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  };
+
   return runMediaAccounts({
     provider, model,
     selectionOptions: { ...pinOptions, apiKeyId: apiKeyAuth.apiKeyId },
@@ -132,18 +157,27 @@ async function routeEmbeddings(request, body, modelStr, { settings, apiKey, auth
       const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.accounting;
       return { response: await recordApiKeyUsageForResponse(apiKey, result.response, {
         billingEpoch,
-        usageEventId: JSON.stringify([getRequestId(request), "embedding", provider, model, credentials.connectionId ?? null]), provider, model,
+        usageEventId: usageEventId(credentials), provider, model,
         connectionId: credentials.connectionId ?? null, endpoint: "/v1/embeddings",
         modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
         // The stable id of the admitted key travels with the usage.
         apiKeyId: apiKeyAuth.apiKeyId,
       }) };
     }
-    return { result, dispatch };
+    if (request.signal?.aborted && result.acceptedJob) return { response: await recordAccepted(result, credentials) };
+    return {
+      result, dispatch, resetAt: result.resetsAtMs ?? null,
+      failureContext: {
+        ...(result.rateLimitEvidence ? { rateLimitEvidence: result.rateLimitEvidence } : null),
+        ...(result.quotaExhausted === true ? { quotaExhausted: true } : null),
+      },
+    };
     },
-    onAttemptResult(result) {
-      return result.status === 499 ? result.response : null;
+    onAttemptResult(result, credentials) {
+      if (result.status !== 499) return null;
+      return result.acceptedJob ? recordAccepted(result, credentials) : result.response;
     },
+    onAccountFailure: (result, credentials) => (result.acceptedJob ? recordAccepted(result, credentials) : null),
     onFallback(result, credentials) {
       log.warn("AUTH", `Account ${credentials.connectionName} unavailable (${result.status}), trying fallback`);
     }

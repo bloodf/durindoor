@@ -434,6 +434,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `sealion` | openai | apikey | `https://api.sea-lion.ai/v1/chat/completions` |
 | `searchapi` |  | apikey | `` |
 | `searxng` |  | freeTier | `` |
+| `segmind` |  | apikey | `https://api.segmind.com/v1` |
 | `sensenova` |  | freeTier | `https://token.sensenova.cn/v1/chat/completions` |
 | `sensenova-intl` |  | apikey | `https://token.sensenova.ai/v1/chat/completions` |
 | `serper` |  | apikey | `` |

@@ -14,6 +14,9 @@ import vertex from "../../services/providerParity/native-vertex-video/adapter.js
 import { haiperVideoAdapter } from "../../services/providerParity/native-haiper-video-image/index.js";
 import { leonardoVideoAdapter } from "../../services/providerParity/native-leonardo-video-image/index.js";
 import veoAiFree from "../../services/providerParity/native-veoaifree-web-video/index.js";
+import runwayVideo from "../../services/providerParity/native-runwayml-video/index.js";
+import { deepinfraVideoAdapter } from "../../services/providerParity/native-deepinfra-video/index.js";
+import segmindVideo from "../../services/providerParity/native-segmind-video/adapter.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   "fal-ai": falVideo,
@@ -39,6 +42,13 @@ export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   // session cookie on its own AJAX calls only. One submit, never replayed.
   "veoaifree-web": veoAiFree,
   "veo-free": veoAiFree,
+  // Runway text/image-to-video tasks on the fixed API origin; result URLs only.
+  runwayml: runwayVideo,
+  runway: runwayVideo,
+  // DeepInfra /v1/inference: one synchronous render, result URL only.
+  deepinfra: deepinfraVideoAdapter,
+  // Segmind: one synchronous POST answered with MP4 bytes, returned as b64_json.
+  segmind: segmindVideo,
 });
 
 /** The adapter for `provider`, or null when it has none. */
@@ -46,5 +56,5 @@ export function getVideoGenerationAdapter(provider) {
   return lookupMediaAdapter(VIDEO_GENERATION_ADAPTERS, provider);
 }
 
-/** Output formats every adapter here can honor: result URLs, never downloaded. */
+/** Default output formats for an adapter that declares none: result URLs, never downloaded. */
 export const VIDEO_GENERATION_RESPONSE_FORMATS = Object.freeze(["url"]);

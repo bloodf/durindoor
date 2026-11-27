@@ -7,6 +7,7 @@ import gemini from "./gemini.js";
 import github from "./github.js";
 import openaiCompatNode from "./openaiCompatNode.js";
 import ollamaLocal from "./ollama-local.js";
+import { deepinfraEmbeddingAdapter } from "../../services/providerParity/native-deepinfra-embedding-rerank/index.js";
 
 const OPENAI_COMPAT_PROVIDERS = [
   "paraloncloud", "morph",
@@ -23,6 +24,9 @@ export const EMBEDDING_ADAPTERS = createMediaRegistry({
   github,
   google_ai_studio: gemini,
   "ollama-local": ollamaLocal,
+  // Marks DeepInfra as an embedding transport. embeddingsCore sends DeepInfra
+  // through the bounded native service, never through the generic fetch below.
+  deepinfra: deepinfraEmbeddingAdapter,
 });
 
 export function getEmbeddingAdapter(provider) {

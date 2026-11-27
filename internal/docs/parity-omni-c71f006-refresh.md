@@ -1,5 +1,9 @@
 # OmniRoute auth and provider delta (#2034)
 
+## Related provider capability inventory
+
+The bounded cross-source inventory of native sign-in and request capabilities is in [provider-native-capabilities-1127.md](./port-reports/provider-native-capabilities-1127.md). It compares the pinned CLIProxyAPI, EasyCLIProxyAPI, and OmniRoute source dispatchers with DurinDoor runtime routes, records the already-known staged AI Horde image registration work, and found no additional actionable native auth/request gap.
+
 ## Scope and evidence
 
 This refresh compares OmniRoute `release/v3.8.55` at `d3f06ea668109f8ac1feadfcae25f6ff9b873b5f` through `c71f0065a7efe9230ec23b96a12253b050c4d7ad`. The exact range is [the pinned compare](https://github.com/cheaper-inference/OmniRoute/compare/d3f06ea668109f8ac1feadfcae25f6ff9b873b5f...c71f0065a7efe9230ec23b96a12253b050c4d7ad). GitHub's compare response reported `ahead` by 29 commits and 31 changed files; the full inventory is below. This supersedes the earlier range in [the d3f06 refresh](./parity-omni-d3f06-refresh.md). The requested CPA `47f18e4` and Easy `29567ea` pins are unchanged and were not re-audited.

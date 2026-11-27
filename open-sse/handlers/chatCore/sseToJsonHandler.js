@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "../../shared/codexQuotaWindow.js";
 import { invalidClassifierVerdict } from "./classifierVerdict.js";
 import { collectAntigravityGeminiSSE } from "./antigravityGeminiNative.js";
 import { responsesSearchToClaudeMessage } from "../../translator/response/responses-to-claude.js";
@@ -513,6 +514,25 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
           maxBytes: MAX_PROVIDER_BODY_BYTES,
           timeoutMs: PROVIDER_BODY_TIMEOUT_MS
         });
+        // Codex billing failures after generated output are terminal even for
+        // JSON clients. Converting them to a generic 502 would replay generation.
+        if (provider === "codex") {
+          let generatedOutput = false;
+          for (const { data, done } of parseSseEvents(rawBody)) {
+            if (done) continue;
+            let event;
+            try { event = JSON.parse(data); } catch { continue; }
+            const code = codexBillingQuotaCode(event);
+            if (code) {
+              const message = "Codex credential quota exhausted";
+              const result = createErrorResult(429, message, undefined, { error: { code, type: "insufficient_quota", message } }, null, credentials, 429);
+              result.upstreamPartialOutput = generatedOutput;
+              return result;
+            }
+            if ((isString(event?.delta) && event.delta) || event?.type === "response.output_item.done" ||
+                (event?.type === "response.output_item.added" && (event.item?.arguments || event.item?.encrypted_content || event.item?.content?.length))) generatedOutput = true;
+          }
+        }
         const jsonDocument = parseJsonDocumentBehindEventStream(rawBody, targetFormat);
         const documentError = jsonDocument ? createSSEErrorResult(jsonDocument.body, credentials, sourceFormat) : null;
         if (documentError) {

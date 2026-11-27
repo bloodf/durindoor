@@ -406,6 +406,7 @@ proxyOptions = null,
   // Capture the exact issuer and credential context before invoking provider
   // code. Executors receive an isolated clone and cannot rewrite the CAS input.
   const resolveExecutor = getExecutorImpl ?? (await import("open-sse/executors/index.js")).getExecutor;
+  assertRefreshActive(signal, shouldCommit);
   const expectedRefreshContext = providerRefreshContext(connection);
   const key = refreshKey(connection);
   const shared = credentialRefreshInflight.get(key);

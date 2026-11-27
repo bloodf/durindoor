@@ -100,6 +100,26 @@ function isStorableSecret(value) {
   value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
+/** Keep legacy malformed-secret filtering while rejecting unsafe refresh lifetimes. */
+function validateRawRefresh(result) {
+  for (const value of [result.expiresIn, result.copilotTokenExpiresAt, result.providerSpecificData?.copilotTokenExpiresAt]) {
+    if (typeof value === "number" && value > 8640000000000) throw new Error("Malformed refresh expiry");
+  }
+  const filtered = withoutMalformedCopilotFields(result.providerSpecificData);
+  validatedRefreshUpdates({ providerSpecificData: result.existingProviderSpecificData }, {
+    ...result,
+    expiresIn: isPositiveTime(result.expiresIn) ? result.expiresIn : undefined,
+    expiresAt: toIsoTime(result.expiresAt) || undefined,
+    lastRefreshAt: toIsoTime(result.lastRefreshAt) || undefined,
+    accessToken: isStorableSecret(result.accessToken) ? result.accessToken : "validation-only",
+    refreshToken: isStorableSecret(result.refreshToken) ? result.refreshToken : undefined,
+    idToken: isStorableSecret(result.idToken) ? result.idToken : undefined,
+    copilotToken: isStorableSecret(result.copilotToken) ? result.copilotToken : undefined,
+    providerSpecificData: filtered || undefined,
+    copilotTokenExpiresAt: isPositiveTime(result.copilotTokenExpiresAt) ? result.copilotTokenExpiresAt : undefined
+  });
+}
+
 /** A finite, positive time (epoch number or parseable timestamp string). */
 function isPositiveTime(value) {
   if (isNumber(value)) return Number.isFinite(value) && value > 0;
@@ -176,6 +196,8 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
 export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
+    // Validate raw lifetime and metadata before legacy field filtering.
+    validateRawRefresh(newCredentials);
     // Persist only the cookie, and only while the sending session is current.
     if (isString(rotatedApiKey) && rotatedApiKey) {
       if (expectedRefreshContext?.authType !== "cookie" ||
@@ -223,11 +245,6 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       };
     }
     if (newCredentials.projectId) updates.projectId = newCredentials.projectId;
-    // Preserve legacy field filtering, then enforce the shared refresh bounds.
-    // Project-ID-only writes are not token refresh results.
-    if (updates.accessToken) validatedRefreshUpdates({
-      providerSpecificData: newCredentials.existingProviderSpecificData
-    }, updates);
     let guard = null;
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };
@@ -333,6 +350,11 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
     }
 
     if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
+      try {
+        validateRawRefresh(newCreds);
+      } catch {
+        return creds;
+      }
       const mergedCreds = {
         ...newCreds,
         // Persist saved configuration, not proxy values resolved for this request.

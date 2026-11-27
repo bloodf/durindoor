@@ -954,9 +954,10 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
-        const hasPendingData = pendingClaudeFinish && parseSseFrame(line).hasData;
+        const hasPendingData = pendingClaudeFinish && parseSseFrame(line).data.trim().length > 0;
         const receipt = hasPendingData ? parseSSELine(trimmed, targetFormat) : null;
-        // Comments and metadata cannot release the finish before its usage trailer.
+        // Comments, metadata, and empty/whitespace data heartbeats cannot release
+        // the finish before its usage trailer.
         // A usage trailer split over data lines is awaited until it is joined.
         if (hasPendingData && (receipt || !startsSplitData(trimmed))) {
           const finish = pendingClaudeFinish;

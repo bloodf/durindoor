@@ -1,0 +1,175 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "kind": "ocr-adapter",
+  "foundation": "open-sse/services/providerParity/native-ocr-foundation/index.js",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "license": "MIT",
+    "files": [
+      "open-sse/config/ocrRegistry.ts",
+      "open-sse/handlers/ocr.ts"
+    ],
+    "sha256": {
+      "open-sse/config/ocrRegistry.ts": "eaf037850f976ac950430a609a7e7ad31ce9d662733172bccebfc76e59d7b169",
+      "open-sse/handlers/ocr.ts": "f55ccda04daeb016a3d4e89e1332bf024b69dc1c8e42c7f189d05b300c5ad703"
+    },
+    "registryFields": {
+      "id": "mistral",
+      "baseUrl": "https://api.mistral.ai/v1/ocr",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "models": [
+        { "id": "mistral-ocr-latest", "name": "Mistral OCR" },
+        { "id": "mistral-ocr-2512", "name": "Mistral OCR 3" }
+      ],
+      "transformation": "none (getOcrTransformation falls back to MISTRAL_PASSTHROUGH)"
+    },
+    "builder": {
+      "name": "MISTRAL_PASSTHROUGH",
+      "url": "baseUrl as is (credentials.baseUrl overrides it in handleOcr)",
+      "method": "POST",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <accessToken || apiKey>"],
+      "body": "JSON.stringify({ ...clientBody, model: modelId })",
+      "parseResponse": "raw answer returned unchanged",
+      "pollUrl": "none"
+    },
+    "notPorted": [
+      "azure-document-intelligence and vertex-deepseek-ocr entries and transformations: separate units",
+      "the mistral-ocr-latest default model and the mistral-ocr- prefix fallback in parseOcrModel",
+      "connection baseUrl override",
+      "client body passthrough"
+    ]
+  },
+  "vendorContract": {
+    "precedence": "the vendor contract wins over the OmniRoute source where they differ",
+    "retrieved": "2026-11-27",
+    "openapi": {
+      "url": "https://docs.mistral.ai/openapi.yaml",
+      "sha256": "acf0efcbee4617601df77fc40185516ed6aae4369ce090034099317d5866b2db",
+      "operationId": "ocr_v1_ocr_post",
+      "path": "POST /v1/ocr",
+      "requestSchema": "OCRRequest (application/json; required model and document; additionalProperties false)",
+      "responseSchema": "OCRResponse (200; required pages, model, usage_info)",
+      "errors": "422 HTTPValidationError is the only documented error"
+    },
+    "models": {
+      "url": "https://docs.mistral.ai/getting-started/models/models_overview/",
+      "sha256": "1f764d4e7755a688d06dc5f1a9e01a1b27af807977884f83e5c1b634fd9e3807",
+      "current": {
+        "OCR 4.1": ["mistral-ocr-4-1", "mistral-ocr-4", "mistral-ocr-latest"],
+        "OCR 3": ["mistral-ocr-2512"]
+      },
+      "retired": {
+        "mistral-ocr-4-0": "retired 2026-09-30",
+        "mistral-ocr-2505": "retired 2026-05-31",
+        "mistral-ocr-2503": "retired 2025-12-31"
+      }
+    },
+    "guide": {
+      "url": "https://docs.mistral.ai/studio/document-processing/basic-ocr",
+      "sha256": "a9834d91bc1554d2d6269a164dde814d06d55bfd4c456cb5698018aefb8bdfe1",
+      "facts": [
+        "document_url takes a public URL or a data:application/pdf;base64 URL; image_url takes an image URL or data:image/...;base64",
+        "accepted images include PNG, JPEG, WebP, GIF and TIFF",
+        "table_format markdown or html returns tables separately instead of inline",
+        "extract_header / extract_footer move header and footer text out of the page content",
+        "uploaded documents must be 50 MB or less and 1,000 pages or fewer"
+      ]
+    }
+  },
+  "intentionalContractChanges": [
+    "only pages, image_limit and image_min_size are forwarded besides model and document; every other OCRRequest field is refused before sending because its output would be dropped or moved out of markdown",
+    "documents are rebuilt from the foundation's normalized form: DocumentURLChunk or ImageURLChunk with a string URL; document_name, image_url.detail and FileChunk file_id are refused by the foundation",
+    "the API key wins over an access token (source: accessToken || apiKey); this matches the staged Mistral STT adapter and the apikey-only mistral connection",
+    "the model list follows the vendor overview: mistral-ocr-4-1 and mistral-ocr-4 are added, mistral-ocr-latest is named Mistral OCR 4.1, and retired ids are refused instead of reaching the source prefix fallback",
+    "the answer keeps model, pages[].index, pages[].markdown and primitive usage_info values only"
+  ],
+  "module": "open-sse/services/providerParity/native-ocr-mistral/index.js",
+  "exports": {
+    "mistralOcrAdapter": "default frozen foundation adapter for provider mistral",
+    "createMistralOcrAdapter": "() -> a new adapter from defineOcrAdapter",
+    "createMistralOcrDispatcher": "(options) -> createOcrDispatcher with only the Mistral adapter; options { fetchImpl, sleepImpl, timeoutMs, maxResponseBytes }",
+    "buildMistralOcrRequest": "({ model, document, options }) -> { url, method: POST, body }",
+    "parseMistralOcrResponse": "(raw) -> { model?, pages, usage_info? } or null",
+    "mistralOcrAuthHeaders": "(credentials) -> { Authorization: Bearer <apiKey || accessToken> } or null",
+    "mistralOcrDocument": "(normalized document) -> OCRRequest document chunk",
+    "validateMistralOcrPages": "(value) -> pages selector; throws ocrReject",
+    "MISTRAL_OCR_OPTIONS": "option validators passed to defineOcrAdapter",
+    "MISTRAL_OCR_OPTION_FIELDS": "[\"pages\", \"image_limit\", \"image_min_size\"]",
+    "MISTRAL_OCR_PROVIDER_ID": "\"mistral\"",
+    "MISTRAL_OCR_LABEL": "\"Mistral\"",
+    "MISTRAL_OCR_ORIGIN": "https://api.mistral.ai",
+    "MISTRAL_OCR_URL": "https://api.mistral.ai/v1/ocr",
+    "MISTRAL_OCR_MODELS": "four current OCR model rows (kind ocr)",
+    "MISTRAL_OCR_RETIRED_MODELS": "[\"mistral-ocr-2503\", \"mistral-ocr-2505\", \"mistral-ocr-4-0\"] (refused)",
+    "MISTRAL_OCR_MAX_PAGE_SELECTORS": "1000",
+    "MISTRAL_OCR_MAX_PAGES_STRING_CHARS": "1024",
+    "mistralOcrModel": "(id) -> model row or null"
+  },
+  "provider": {
+    "canonicalId": "mistral",
+    "existingRegistryEntry": "open-sse/providers/registry/mistral.js",
+    "existingServiceKinds": ["llm", "imageToText", "embedding"],
+    "addServiceKinds": ["ocr"],
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken"]
+    },
+    "connectionBaseUrlHonored": false
+  },
+  "endpoints": {
+    "ocr": {
+      "method": "POST",
+      "url": "https://api.mistral.ai/v1/ocr",
+      "headers": ["Authorization: Bearer <key>", "Content-Type: application/json"],
+      "body": "{ model, document: { type: document_url|image_url, <type>: https URL or base64 data URL }, pages?, image_limit?, image_min_size? }",
+      "answer": "synchronous JSON OCRResponse; no polling"
+    }
+  },
+  "supportedSubset": {
+    "documentTypes": ["document_url", "image_url"],
+    "inlineMediaTypes": ["application/pdf", "image/png", "image/jpeg", "image/webp", "image/gif", "image/tiff"],
+    "options": ["pages", "image_limit", "image_min_size"],
+    "refusedVendorFields": [
+      "include_image_base64",
+      "include_blocks",
+      "confidence_scores_granularity",
+      "table_format",
+      "extract_header",
+      "extract_footer",
+      "bbox_annotation_format",
+      "document_annotation_format",
+      "document_annotation_prompt",
+      "document.document_name",
+      "document.image_url.detail",
+      "document.file_id"
+    ]
+  },
+  "bounds": "the foundation's: one 300 s deadline, 32 MiB answer cap, 50 MiB inline cap, redirects refused, no retries",
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/mistral.js (llm, imageToText, embedding; no OCR config or ocr model rows)",
+      "`git grep -n -i \"mistral-ocr\\|/v1/ocr\"` outside internal/docs (only the staged foundation's comments and registration notes)",
+      "open-sse/handlers and src/app/api/v1 (no OCR core or /v1/ocr route)"
+    ],
+    "result": "DurinDoor has no Mistral OCR path; this adapter is the delta on top of the staged foundation"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/ocrCore.js (new, foundation registration)",
+      "change": "add mistralOcrAdapter to the dispatcher's adapters"
+    },
+    {
+      "file": "open-sse/providers/registry/mistral.js",
+      "change": "serviceKinds += \"ocr\"; add MISTRAL_OCR_MODELS rows with kind \"ocr\"; keep every existing kind and the apikey auth mode"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Mistral ocr kind after registration"
+    }
+  ]
+}

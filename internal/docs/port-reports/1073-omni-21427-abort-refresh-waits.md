@@ -1,6 +1,6 @@
 # OmniRoute #21427: abort-aware refresh caller waits parity
 
-Status: implementation in this worktree branch (`orq/tp5znk/abort-refresh-waits-a1`); no DurinDoor PR link or full local CI run is claimed here.
+Status: assembled for [DurinDoor #2710](https://github.com/bloodf/durindoor/pull/2710). Unit evidence below is historical; the PR records the current exact-head review and full local CI status.
 
 ## Source and local base
 

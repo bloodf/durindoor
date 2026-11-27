@@ -1,0 +1,95 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts"
+    ],
+    "registryFields": { "id": "upstage", "baseUrl": "https://api.upstage.ai/v1/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and OPENAI_COMPAT_PROVIDERS (no upstage key; getEmbeddingAdapter('upstage') is null)",
+      "open-sse/handlers/embeddingProviders/openai.js (generic OpenAI-compatible factory; reads PROVIDER_MEDIA['upstage'].embeddingConfig, which does not exist, so its URL would be undefined)",
+      "open-sse/providers/registry/upstage.js (chat-only entry: transport https://api.upstage.ai/v1/chat/completions, no serviceKinds so ['llm'] by default, models solar-pro3 and solar-mini, no media.embeddingConfig, no embedding model rows, no modelsFetcher)",
+      "open-sse/providers/registry/nvidia.js lists upstage/solar-10.7b-instruct as an NVIDIA chat model; it is not an alias of the upstage provider",
+      "open-sse/config/providerQuota.js (no upstage entry; no quota adapter)"
+    ],
+    "result": "same provider id and key exist for chat, but no embeddings route, endpoint or adapter; the embeddings adapter and its model rows are the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-upstage-embedding/index.js",
+  "exports": {
+    "upstageEmbeddingAdapter": "default adapter instance; embed({ model, body, credentials, signal, log }) plus buildUrl/buildHeaders/buildBody for introspection",
+    "createUpstageEmbeddingAdapter": "factory; options { timeoutMs, now, fetch } for tests",
+    "buildUpstageEmbeddingRequest": "(model, body) -> { upstream, items, encodingFormat, model, dimensions }; throws status 400",
+    "normalizeUpstageEmbeddings": "(answer, { items, dimensions, encodingFormat }) -> { data, usage }; throws on unusable answers",
+    "packFloat32Base64": "little-endian float32 base64 pack (source packEmbeddingAsBase64)",
+    "upstageAcceptedJob": "(jobState) accepted-work accounting with unknown cost",
+    "upstageToken": "selected connection key: apiKey, then accessToken; null when missing or containing CR/LF",
+    "UPSTAGE_PROVIDER": "provider facts (id, alias, name, website, authType, authHint, existingServiceKinds, serviceKinds to add)",
+    "UPSTAGE_EMBEDDING_MODELS": "[{ embedding-query, 4096 }, { embedding-passage, 4096 }], kind embedding",
+    "UPSTAGE_EMBEDDINGS_URL": "https://api.upstage.ai/v1/embeddings",
+    "UPSTAGE_EMBEDDING_TIMEOUT_MS": "60000, one deadline for send and body read"
+  },
+  "provider": {
+    "canonicalId": "upstage",
+    "aliases": ["upstage"],
+    "existingRegistryEntry": "open-sse/providers/registry/upstage.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["embedding"],
+    "serviceKindsNote": "the entry has no serviceKinds field today (defaults to llm). Registration must write [\"llm\", \"embedding\"] so chat stays listed, and keep the chat transport and chat models untouched",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "tokenRefresh": "none (API key); a 401/403 is final for the call",
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "embedding": [
+      { "id": "embedding-query", "name": "Embedding Query", "dimensions": 4096 },
+      { "id": "embedding-passage", "name": "Embedding Passage", "dimensions": 4096 }
+    ],
+    "addressing": "upstage/embedding-query and upstage/embedding-passage. In the source the bare ids also resolve to upstage (first registry match); no other fork provider lists these ids",
+    "dynamicDiscovery": "none for embeddings in the source: its provider models route merges the static embedding rows into the Upstage local catalog (source tests/unit/provider-models-route.test.ts). The fork's upstage entry has no modelsFetcher; none is added"
+  },
+  "endpoints": {
+    "embeddings": {
+      "method": "POST",
+      "url": "https://api.upstage.ai/v1/embeddings",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ model, input } plus encoding_format: \"float\" only when the client sent it",
+      "redirect": "manual (refused)"
+    }
+  },
+  "supportedInput": {
+    "input": "string or 1..100 non-empty strings, each at most 20000 characters",
+    "encoding_format": ["float", "base64 (packed locally, not forwarded)"],
+    "dimensions": "absent or 4096 (not forwarded)",
+    "ignored": ["user"],
+    "refused": ["token arrays", "structured or multimodal items", "input_type and any other field", "any other model"]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import { upstageEmbeddingAdapter } and add `upstage: upstageEmbeddingAdapter` to EMBEDDING_ADAPTERS (not to OPENAI_COMPAT_PROVIDERS)"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "after getEmbeddingAdapter, `if (isFunction(adapter.embed)) return adapter.embed({ model, body, credentials, signal, log })` and call onRequestSuccess only on success; the shared fetch, refresh retry and upstream error relay must not run for upstage (same hook the deapi and nanogpt registrations add)"
+    },
+    {
+      "file": "open-sse/providers/registry/upstage.js",
+      "change": "set serviceKinds [\"llm\", \"embedding\"] and append UPSTAGE_EMBEDDING_MODELS as kind embedding rows; keep the chat transport and chat models as they are"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "it already selects the connection and enforces quota before handleEmbeddingsCore. Record result.acceptedJob as unknown-cost usage on the selected connection and do not fall through to another account for a result that carries acceptedJob, so uncertain work is never replayed"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the embedding kind on the Upstage row after registration"
+    }
+  ]
+}

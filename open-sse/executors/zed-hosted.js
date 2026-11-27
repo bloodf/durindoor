@@ -28,7 +28,7 @@ import { createExecutorSender, requestAbortError, withBillableDispatch } from ".
 import { settleProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import {
   ZED_HEADERS,
   ZED_HOSTED_CONFIG,
@@ -116,24 +116,8 @@ function convertProviderEvent(provider, event, state) {
   return event;
 }
 
-const MAX_FAILURE_MESSAGE_LENGTH = 512;
 const MAX_PENDING_OUTPUT_LENGTH = 64 * 1024;
 const STREAM_FAILURE_PUBLIC_MESSAGE = "Zed upstream stream failed";
-
-function boundedText(value) {
-  if (!isString(value) && !isNumber(value)) return null;
-  const text = String(value).trim();
-  return text ? text.slice(0, MAX_FAILURE_MESSAGE_LENGTH) : null;
-}
-
-function failureMessage(failed) {
-  const nested = record(failed.error) && !Array.isArray(failed.error) ? failed.error : null;
-  for (const candidate of [failed.message, nested?.message, nested ? undefined : failed.error, failed.code, nested?.code]) {
-    const text = boundedText(candidate);
-    if (text) return text;
-  }
-  return "request failed";
-}
 
 function sse(chunk) {
   if (!chunk) return "";
@@ -222,12 +206,11 @@ export function wrapZedCompletionStream(response, provider, model, options = {})
     if (payload.status) {
       const status = normalizeStatus(payload.status);
       if (status?.type === "failed" || status?.failed) {
-        const failed = record(status.failed) && !Array.isArray(status.failed) ? status.failed : status;
         if (forwarded) {
           pendingFailure = Object.assign(new Error(STREAM_FAILURE_PUBLIC_MESSAGE), { statusCode: 502 });
         } else {
           pending = "";
-          controller.enqueue(encoder.encode(sse(buildErrorBody(502, `Zed stream failed: ${failureMessage(failed)}`, { type: "upstream_error", code: "ZED_STREAM_FAILED" }))));
+          controller.enqueue(encoder.encode(sse(buildErrorBody(502, STREAM_FAILURE_PUBLIC_MESSAGE, { type: "upstream_error", code: "ZED_STREAM_FAILED" }))));
         }
         done = true;
         controller.terminate();
@@ -297,9 +280,9 @@ function failure(status, code, message, body, extraHeaders = {}) {
 function mapAuthError(error) {
   const status = error?.status;
   if (status === 401 || status === 403) return [401, "zed_hosted_signin_invalid", "Zed sign-in is invalid or expired. Sign in to Zed again."];
-  if (status === 429) return [429, "zed_hosted_rate_limited", `Zed rate limit or quota reached: ${error.message}`];
-  if (status >= 400 && status < 500) return [status, error.code || "zed_hosted_error", error.message];
-  return [502, "zed_hosted_error", error?.message || "Zed request failed"];
+  if (status === 429) return [429, "zed_hosted_rate_limited", "Zed rate limit or quota reached"];
+  if (status >= 400 && status < 500) return [status, "zed_hosted_error", "Zed upstream request failed"];
+  return [502, "zed_hosted_error", "Zed request failed"];
 }
 
 export class ZedHostedExecutor extends BaseExecutor {
@@ -348,7 +331,7 @@ export class ZedHostedExecutor extends BaseExecutor {
       if (quotaBearing) completion = billed(response);
       return response;
     };
-    const options = { fetch: (url, init) => credentialFetch(baseFetch, url, init), signal };
+    const options = { fetch: (url, init) => credentialFetch(baseFetch, url, init, { maxRedirects: 0 }), signal, proxyOptions };
     try {
       const provider = await this.resolveModel(model, credentials, options);
       const providerRequest = buildProviderRequest(provider, model, requestBody, stream, credentials);
@@ -375,6 +358,13 @@ export class ZedHostedExecutor extends BaseExecutor {
           body: JSON.stringify(payload),
         },
       });
+      if (!response.ok) {
+        // Never return a provider-controlled error body to a compatibility route.
+        const parsed = this.parseError(response, await response.text());
+        const retryAfter = response.headers.get("retry-after");
+        return failure(parsed.status, "zed_hosted_upstream_error", parsed.message, payload,
+          retryAfter ? { "retry-after": retryAfter } : {});
+      }
       const toolNameMap = providerRequest?._toolNameMap instanceof Map ? providerRequest._toolNameMap : toolMapFor(requestBody);
       return {
         response: response.ok ? wrapZedCompletionStream(response, provider, model, { toolNameMap }) : response,
@@ -395,13 +385,11 @@ export class ZedHostedExecutor extends BaseExecutor {
     let parsed = null;
     try { parsed = JSON.parse(bodyText || "{}"); } catch { parsed = null; }
     const code = parsed?.code || parsed?.error?.code || "";
-    const message = parsed?.message || parsed?.error?.message || bodyText || response.statusText;
-    if (code === "trial_blocked") {
-      return { status: response.status, message: `Zed trial access is blocked upstream. The account can list hosted models, but Zed refuses completions until trial or billing access is enabled. Zed says: ${message}` };
-    }
-    // The gateway's own codes (zed_hosted_*) are already self-describing.
-    if (code && !String(code).startsWith("zed_hosted_")) return { status: response.status, message: `Zed ${code}: ${message}` };
-    return { status: response.status, message: message || `Zed upstream error: ${response.status}` };
+    if (code === "zed_hosted_dispatch_disabled") return { status: response.status, message: zedDispatchDisabledError().message };
+    if (code === "trial_blocked") return { status: response.status, message: "Zed trial access is blocked upstream. Enable trial or billing access in Zed." };
+    if (response.status === 401 || response.status === 403) return { status: response.status, message: "Zed sign-in is invalid or expired. Sign in to Zed again." };
+    if (response.status === 429) return { status: 429, message: "Zed rate limit or quota reached" };
+    return { status: response.status, message: `Zed upstream error: ${response.status}` };
   }
 
   // The long-lived Zed access token has no refresh grant; expired LLM tokens are

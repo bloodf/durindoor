@@ -1,0 +1,25 @@
+{
+  "provider": "zed-hosted",
+  "recipient": "auth06",
+  "status": "dedicated-path-hardening-implemented-shared-slots-pending",
+  "predecessor": "5454c8b16c9485e2f758cee2a4c7c028b83eb1a1",
+  "protectedTests": "tests/unit/provider-signin-zed-parity.test.js (all three unchanged)",
+  "integrationSlots": [
+    {
+      "file": "src/lib/oauth/providers.js",
+      "symbol": "exchangeTokens",
+      "change": "Forward the trailing signal to zed-hosted exchangeToken as already done for antigravity. The dedicated adapter now accepts argument eight. Currently cancellation blocks commit via shared flow completion but does not abort the profile transport."
+    },
+    {
+      "file": "src/app/api/providers/[id]/models/fetchConnectionModels.js",
+      "symbol": "fetchConnectionModels zed-hosted branch",
+      "change": "Pass id: connection.id in credentials and proxyOptions: zedProxyOptions in helper options; set credentialFetch maxRedirects: 0. Existing executor already forwards proxyOptions. Until integrated, discovery transport remains selected but its catalog cache identity omits the resolved egress and account id."
+    }
+  ],
+  "residualGaps": [
+    "No live authorization or hosted service behavior established; no live account or billable probe used.",
+    "No complete local CI or independent cross-family review in this worker; required before merge.",
+    "No automatic billingPortalUrl capture, keychain import or MITM port; selected-account usage uses existing optional Orb portal contract.",
+    "Timeout relies on AbortSignal-compliant transport; mocks cover deadline-signal propagation and cancellation, not a real wall-clock network hang."
+  ]
+}

@@ -73,7 +73,13 @@ export function zedDispatchDisabledError() {
 }
 
 function fetchFor(options) {
-  return isFunction(options?.fetch) ? options.fetch : globalThis.fetch;
+  const send = isFunction(options?.fetch) ? options.fetch : globalThis.fetch;
+  return (url, init = {}) => {
+    const deadline = AbortSignal.timeout(30_000);
+    const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
+    signal.throwIfAborted();
+    return send(url, { ...init, signal });
+  };
 }
 
 const b64url = (value) => Buffer.from(value).toString("base64url");
@@ -81,7 +87,12 @@ const fromB64url = (value) => Buffer.from(String(value || ""), "base64url").toSt
 // Zed expects the public key base64url-encoded with padding kept.
 const b64urlPadded = (value) => value.toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
 const normalizeBaseUrl = (baseUrl, fallback) => String(baseUrl || fallback).replace(/\/+$/, "");
-const zedUrl = (config, key, path, fallback) => `${normalizeBaseUrl(config?.[key], fallback)}${path}`;
+const zedUrl = (config, key, path, fallback) => {
+  if (config?.[key] && normalizeBaseUrl(config[key], fallback) !== fallback) {
+    throw new ZedHostedError(400, "zed_hosted_endpoint_invalid", "Unsupported Zed endpoint");
+  }
+  return `${fallback}${path}`;
+};
 
 /** Wrap a PEM private key so it can ride in the generic OAuth `codeVerifier` slot. */
 export function encodeZedPrivateKeyVerifier(privateKeyPem) {
@@ -106,7 +117,7 @@ export function createZedNativeAuthData(config = ZED_HOSTED_CONFIG, options = {}
   const nativeAppPort = Number(options.nativeAppPort || config.defaultNativeAppPort || ZED_DEFAULT_NATIVE_APP_PORT);
   const systemId = options.systemId || crypto.randomUUID();
   const publicKeyString = b64urlPadded(publicKey);
-  const signInUrl = new URL(`${normalizeBaseUrl(config.webBaseUrl, ZED_WEB_BASE_URL)}/native_app_signin`);
+  const signInUrl = new URL(zedUrl(config, "webBaseUrl", "/native_app_signin", ZED_WEB_BASE_URL));
   signInUrl.searchParams.set("native_app_port", String(nativeAppPort));
   signInUrl.searchParams.set("native_app_public_key", publicKeyString);
   signInUrl.searchParams.set("system_id", systemId);
@@ -181,16 +192,15 @@ export function buildZedUserAuthHeader(credentials) {
 const getSystemId = (credentials) => String(credentials?.providerSpecificData?.systemId || credentials?.systemId || "");
 
 async function fetchJson(fetchImpl, url, init) {
-  const res = await fetchImpl(url, init);
+  const res = await fetchImpl(url, { ...init, redirect: "error" });
   const text = await res.text();
   let data = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
   }
   if (!res.ok) {
-    const message = data?.message || data?.error?.message || (isString(data?.error) ? data.error : "") || text || `HTTP ${res.status}`;
+    const message = `Zed upstream request failed (HTTP ${res.status})`;
     const error = new ZedHostedError(res.status, `zed_hosted_http_${res.status}`, String(message).slice(0, 512));
-    error.body = data;
     throw error;
   }
   return data;
@@ -227,16 +237,19 @@ export function resolveZedOrganizationId(credentials, userInfo = null) {
 
 // Cache keys hash the full credential so two connections can never share an entry,
 // even when their user ids, organizations or token tails collide.
-function credentialKey(credentials, organizationId) {
+function credentialKey(credentials, organizationId, options = {}) {
   const psd = credentials?.providerSpecificData || {};
   const token = credentials?.accessToken || credentials?.apiKey || "";
   return crypto
     .createHash("sha256")
-    .update([psd.userId || credentials?.userId || "", organizationId || "", token].join("\n"))
+    .update(JSON.stringify([psd.userId || credentials?.userId || "", organizationId || "", token,
+      credentials?.id || credentials?.connectionId || "", getSystemId(credentials),
+      options.proxyOptions || null]))
     .digest("hex");
 }
 
 export async function fetchZedLlmToken(credentials, options = {}) {
+  options.signal?.throwIfAborted();
   const fetchImpl = fetchFor(options);
   let organizationId = options.organizationId || resolveZedOrganizationId(credentials);
   if (!organizationId) {
@@ -244,7 +257,7 @@ export async function fetchZedLlmToken(credentials, options = {}) {
   }
   if (!organizationId) throw new ZedHostedError(400, "zed_hosted_no_organization", "No Zed organization selected");
 
-  const cacheKey = credentialKey(credentials, organizationId);
+  const cacheKey = credentialKey(credentials, organizationId, options);
   const cached = llmTokenCache.get(cacheKey);
   if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.token;
 
@@ -256,6 +269,7 @@ export async function fetchZedLlmToken(credentials, options = {}) {
   });
   const token = isString(data?.token) ? data.token : data?.token?.[0] || data?.token?.value;
   if (!token) throw new ZedHostedError(502, "zed_hosted_empty_llm_reply", "Zed did not return an LLM token");
+  options.signal?.throwIfAborted();
   llmTokenCache.set(cacheKey, { token, expiresAt: Date.now() + LLM_TOKEN_TTL_MS });
   return token;
 }
@@ -268,18 +282,23 @@ export function shouldRefreshZedLlmToken(response) {
 
 /** Fetch a cloud.zed.dev LLM path, re-exchanging the LLM token once when it expired. */
 export async function zedLlmFetch(credentials, path, options = {}) {
+  if (path !== "/models" && path !== "/completions") {
+    throw new ZedHostedError(400, "zed_hosted_endpoint_invalid", "Unsupported Zed endpoint");
+  }
   const fetchImpl = fetchFor(options);
   const url = zedUrl(options.config, "llmBaseUrl", path, ZED_LLM_BASE_URL);
   const send = async (forceRefresh) => {
     const token = await fetchZedLlmToken(credentials, { ...options, forceRefresh });
+    options.signal?.throwIfAborted();
     return fetchImpl(url, {
       ...options.fetchOptions,
+      redirect: "error",
       headers: { ...(options.fetchOptions?.headers || {}), Authorization: `Bearer ${token}` },
       signal: options.signal ?? undefined,
     });
   };
   let response = await send(Boolean(options.forceRefresh));
-  if (shouldRefreshZedLlmToken(response)) {
+  if (shouldRefreshZedLlmToken(response) && (path !== "/completions" || response.status === 401)) {
     await response.body?.cancel?.().catch(() => {});
     response = await send(true);
   }
@@ -315,8 +334,9 @@ export function mapZedModel(model) {
 
 /** Live catalog for one credential, cached for an hour and coalesced per credential. */
 export async function resolveZedModels(credentials, options = {}) {
+  options.signal?.throwIfAborted();
   if (!credentials?.accessToken) return null;
-  const key = credentialKey(credentials, credentials?.providerSpecificData?.organizationId || "");
+  const key = credentialKey(credentials, credentials?.providerSpecificData?.organizationId || "", options);
   const cached = modelCache.get(key);
   if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) return cached;
   const existing = modelInflight.get(key);
@@ -328,8 +348,8 @@ export async function resolveZedModels(credentials, options = {}) {
       fetchOptions: { method: "GET", headers: { Accept: "application/json", [ZED_HEADERS.clientSupportsXai]: "true" } },
     });
     if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new ZedHostedError(response.status, `zed_hosted_http_${response.status}`, `Zed models failed: ${response.status} ${text}`.slice(0, 512));
+      await response.body?.cancel?.().catch(() => {});
+      throw new ZedHostedError(response.status, `zed_hosted_http_${response.status}`, `Zed models failed: ${response.status}`);
     }
     const data = await response.json();
     const rawModels = Array.isArray(data?.models) ? data.models : [];

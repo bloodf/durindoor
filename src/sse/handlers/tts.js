@@ -13,7 +13,8 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { handleComboChat, comboPolicyRejection } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getComboRoutingPolicy } from "open-sse/services/comboRoutingPolicy.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
@@ -24,6 +25,10 @@ const CREDENTIALED_PROVIDERS = new Set(
     .filter(([, p]) => p.serviceKinds?.includes("tts") && !p.noAuth && p.ttsConfig?.authType !== "none")
     .map(([id]) => id)
 );
+
+// Submit-and-poll speech providers: a stored sign-in is refreshed before each job,
+// and the client's named response_format reaches the adapter (never an upstream body).
+const REFRESHED_BEFORE_DISPATCH = new Set(["renderhour"]);
 
 async function handleTtsHandler(request) {
   await captureRequestBillingEpoch(request);
@@ -122,6 +127,21 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
   if (resolvedPolicyError) return reportComboPolicyRejections && resolvedPolicyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : resolvedPolicyError;
   const kindError = await modelKindError(provider, model, await getSettings(), "tts");
   if (kindError) return kindError;
+  // The format the client named, if any. `responseFormat` falls back to mp3 for
+  // providers that encode to order; an adapter that cannot (RenderHour) refuses
+  // a named format it cannot honor before anything is sent.
+  const requestedResponseFormat = new URL(request.url).searchParams.get("response_format") || body.response_format || null;
+  const recordAcceptedTts = async (result, credentials) => {
+    await recordAcceptedJobUsage(apiKey, {
+      ...result.acceptedJob,
+      billingEpoch,
+      usageEventId: `${getRequestId(request)}:tts`, provider, model,
+      connectionId: credentials.connectionId || null,
+      endpoint: "/v1/audio/speech", modality: "tts",
+      apiKeyId,
+    });
+    return result.response;
+  };
   const preferredConnectionId = request.headers.get("x-connection-id") || null;
   const pinOptions = preferredConnectionId ? { preferredConnectionId, strictConnectionId: preferredConnectionId } : {};
   /** Reuse request identity across retries; never parse or buffer audio for usage.
@@ -229,15 +249,20 @@ async function handleSingleModelTts(body, modelStr, responseFormat, language, re
       if (attempted === 0) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     },
-    async runAttempt(credentials) {
-    log.info("AUTH", `\x1b[32mUsing ${provider} account: ${credentials.connectionName}\x1b[0m`);
+    async runAttempt(selected) {
+    log.info("AUTH", `\x1b[32mUsing ${provider} account: ${selected.connectionName}\x1b[0m`);
 
+    // A RenderHour plan sign-in is refreshed before its job is submitted.
+    const credentials = REFRESHED_BEFORE_DISPATCH.has(provider) ? await checkAndRefreshToken(provider, selected) : selected;
     const dispatch = credentialDispatchSnapshot(credentials);
-    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, language, signal: request.signal });
+    const result = await handleTtsCore({ ...body, provider, requestProvider: body.provider, routingPolicy: (await getSettings()).openrouterRouting, model, input: body.input, credentials, responseFormat, ...(REFRESHED_BEFORE_DISPATCH.has(provider) ? { requestedResponseFormat } : null), language, signal: request.signal });
 
     if (result.success) return { response: await recordSuccess(result, credentials) };
+    // A job the provider may bill is recorded once, on this account, and never resubmitted elsewhere.
+    if (request.signal?.aborted && result.acceptedJob) return { response: await recordAcceptedTts(result, credentials) };
     return { result, dispatch, failureContext: { usedCredential: credentials.accessToken || credentials.apiKey || null } };
     },
+    onAccountFailure: (result, credentials) => (result.acceptedJob ? recordAcceptedTts(result, credentials) : null),
     buildFailureResponse: (result) => result.response || errorResponse(result.status, result.error),
   });
 }

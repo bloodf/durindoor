@@ -1,6 +1,5 @@
-// Adobe Firefly Services API image generation: async submit + bounded poll.
-// STAGED: not in IMAGE_ADAPTERS, so no route reaches it. See
-// docs/providers/adobe-firefly-api.md.
+// Adobe Firefly Services API image generation: async submit + bounded poll,
+// registered in IMAGE_ADAPTERS. See docs/providers/adobe-firefly-api.md.
 //
 // Written from Adobe's published contract, AdobeDocs/ffs-firefly-api at
 // 1027f559cdb1509a61b34e2f2da9618ec431f2cb (static/firefly-api.json,
@@ -16,13 +15,14 @@ import { nowSec } from "./_base.js";
 import {
   ADOBE_FIREFLY_API_MODEL_IDS,
   ADOBE_FIREFLY_GENERATE_URL,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache, refreshAdobeFireflyToken, resolveAdobeFireflyAuth } from "../../services/adobeFireflyApi/auth.js";
 import {
   ADOBE_FIREFLY_MAX_IMAGES,
   ADOBE_FIREFLY_REQUEST_TIMEOUT_MS,
   awaitAdobeFireflyImages,
 } from "../../services/adobeFireflyApi/job.js";
+import { describeAdobeFireflySubmitRefusal } from "../../services/adobeFireflyApi/refusal.js";
 import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS = new Set(ADOBE_FIREFLY_API_MODEL_IDS);
@@ -82,6 +82,9 @@ export function createAdobeFireflyApiImageAdapter({
     submitTimeoutMs,
     submitOutcomeUnknown: true,
     retryAfterResets: true,
+    // Read by imageGenerationCore before dispatch: pre-signed URLs only, never
+    // downloaded into b64_json or binary output.
+    responseFormats: ["url"],
     // A submit 401 drops the token it carried. With `retry`, one new token is
     // minted (client-credentials mode only) so the core may resend the refused,
     // never accepted submit once. The token stays in the in-memory cache only.
@@ -90,6 +93,11 @@ export function createAdobeFireflyApiImageAdapter({
       if (!auth || status !== 401) return false;
       return refreshAdobeFireflyToken(auth, { cache, credentials, signal, retry });
     },
+    // A refused submit is described from its status and Adobe's documented
+    // `x-access-error` / `x-access-rate-limit-level` / `retry-after` headers
+    // only; the body is never repeated. A `quota_exhausted` 403 is flagged as
+    // resetless quota for the selected connection; other 403s stay ordinary.
+    describeSubmitError: (response) => describeAdobeFireflySubmitRefusal(response, "image"),
     // The temporary token is redacted from error text like stored credentials.
     submitSecrets: (requestBody) => {
       const auth = requestAuth.get(requestBody);

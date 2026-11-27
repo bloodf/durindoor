@@ -16,7 +16,9 @@ export ANTIGRAVITY_OAUTH_CLIENT_ID="CHANGE_ME"
 export ANTIGRAVITY_OAUTH_CLIENT_SECRET="CHANGE_ME"
 ```
 
-Keep those values available for token refresh and quota checks. Changing them later invalidates refresh for connections made with the old client. See [Environment variables](../reference/environment.mdx).
+Keep those values available for token refresh and quota checks. DurinDoor reads them once at startup. See [Environment variables](../reference/environment.mdx).
+
+Sign-in and reconnect record which client issued the refresh token, as a SHA-256 digest of the client ID. The client ID itself and the secret are not stored. If you change or clear `ANTIGRAVITY_OAUTH_CLIENT_ID` later, DurinDoor will not refresh those connections. Refresh stops before any lease or Google request, reports `reauth_required`, and leaves the stored tokens and status unchanged. Restore the original client and restart to resume refresh, or reconnect the account under the new client. Connections made before this record existed have no digest and refresh as before.
 
 ## Connect
 

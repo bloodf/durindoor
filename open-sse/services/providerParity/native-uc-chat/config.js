@@ -15,8 +15,8 @@
 // Session tokens come only from the staged native-uc-signin session
 // controller, which reads the selected connection's providerSpecificData.
 // The `uc-direct` provider (api.uncensored.com, metered REST, `uai_` API key)
-// is a different backend: nothing here reads an API key, sends a Bearer
-// header or falls back to uc-direct.
+// is a different backend: nothing here reads an API key or falls back to
+// uc-direct. The attachment signed-URL POST alone carries the scoped JWT.
 import { UC_PROVIDER_ALIAS, UC_PROVIDER_DEFINITION, UC_PROVIDER_ID } from "../native-uc-tts/config.js";
 import { UC_AUTH_SOURCES, UC_SIGNIN_OPT_IN_ENV, isUcConsumerSignInEnabled } from "../native-uc-signin/config.js";
 import { UC_CHAT_MODELS, UC_CHAT_REGISTRY_MODELS } from "./catalog.js";
@@ -90,7 +90,7 @@ export const UC_CHAT_MESSAGES = Object.freeze({
 export const UC_CHAT_PROVIDER_DEFINITION = Object.freeze({
   ...UC_PROVIDER_DEFINITION,
   serviceKinds: Object.freeze(["llm"]),
-  executor: Object.freeze({ module: "open-sse/services/providerParity/native-uc-chat/executor.js", export: "UcChatExecutor", baseUrl: UC_CHAT_BASE_URL }),
+  executor: Object.freeze({ module: "open-sse/services/providerParity/native-uc-chat/attachmentExecutor.js", export: "UcAttachmentChatExecutor", baseUrl: UC_CHAT_BASE_URL }),
   chatModels: UC_CHAT_REGISTRY_MODELS,
   modelIds: Object.freeze(UC_CHAT_MODELS.map((model) => model.id)),
 });

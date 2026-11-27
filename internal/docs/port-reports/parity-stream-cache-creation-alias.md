@@ -37,3 +37,9 @@ timeout 300 node node_modules/vitest/vitest.mjs run unit/parity-stream-cache-cre
 The final run used an empty child environment with PATH, locale and private temporary HOME, DATA_DIR, cache and tmp directories. It received no provider or publisher credentials. Coverage includes top-level and nested aliases, canonical zero, negative/nonfinite/malformed aliases, numeric-string validation, ordinary usage, inline/trailing counts, completion callback accounting and exactly one terminal pair. Nonfinite aliases reach shared extraction directly and serialize as null over SSE, matching JSON transport behavior. `git diff --check` passed.
 
 No full suite, build, production service operation or GitHub write ran. Failure baseline unchanged. Full local CI and independent cross-family review remain PR gates outside this work order. This report belongs to the same commit as the implementation and regression tests; the handoff records its exact commit SHA.
+
+## Gate follow-up
+
+The external gate reported 714 passing tests across 79 files, but rejected the new runtime `typeof` expression under `anti-slop(no-runtime-typeof)`. Replaced that expression with the already imported `isNumber` predicate, matching the Claude converter and existing validation conventions. Finite and nonnegative checks remain intact. No baseline or generated artifact was changed.
+
+After the correction, `pnpm run lint:anti-slop` passed with zero diagnostics across 3226 files. The exact four-file command above passed again with 36 tests in a private child environment. `git diff --check` passed.

@@ -194,7 +194,7 @@ export function normalizeUsage(usage) {
   assignNumber("cache_read_input_tokens", usage?.cache_read_input_tokens);
   const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
   // #5904's top-level alias is an inclusive subset, with typed nonnegative counters.
-  const creationAlias = typeof usage.cache_creation_tokens === "number" &&
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
     Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
     details?.cache_creation_tokens ?? details?.cache_write_tokens;

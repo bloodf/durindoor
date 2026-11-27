@@ -10,7 +10,7 @@ Port in part of [OmniRoute PR #21440](https://github.com/cheaper-inference/OmniR
 | `open-sse/services/accountFallback.ts` | Credit result uses a parsed ISO reset as cooldown, with `retryHintSource: "body_iso_reset"` | Ported into the Anthropic branch of `classifyFallbackError` in [`accountFallback.js`](../../open-sse/services/accountFallback.js), and carried through [`accountErrors.js`](../../src/sse/services/auth/accountErrors.js). |
 | `open-sse/services/quotaResetParsing.ts` | Shared ISO parser learns `regain access on <date> at <time> UTC` | Not ported as a shared parser change: DurinDoor has no equivalent shared parser. `parseAnthropicRegainAccessResetMs` reads only this clause, from the Anthropic message already validated by the credit check. |
 | `open-sse/services/accountFallback/creditExhaustionSignals.ts` | Adds `free quota has been exhausted` and the usage-limit phrase to the generic credit substring list | **Rejected.** A substring list applies to every provider and to any position in the text, so a caller-echoed 400 could lock a shared key. The usage-limit phrase is recognized only by the anchored Anthropic check. The 403 sentence already matched DurinDoor's anchored `detectQuotaExhaustion`. |
-| `tests/unit/credit-and-free-quota-400-403-21250.test.ts` | Fixtures | Re-expressed in [`port-omniroute-anthropic-usage-limit-21440.test.js`](../../tests/unit/port-omniroute-anthropic-usage-limit-21440.test.js) with synthetic text and no upstream error captures. |
+| `tests/unit/credit-and-free-quota-400-403-21250.test.ts` | Fixtures | Re-expressed in [`anthropic-credit-quota-21440.test.js`](../../tests/unit/anthropic-credit-quota-21440.test.js) with synthetic text and no upstream error captures. |
 
 ## Call path and resulting behavior
 

@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "module": "./errors.js",
+  "exports": ["kilocodeDeviceInitiationError"],
+  "integration": "In src/lib/oauth/providers.js kilocode.requestDeviceCode, replace the non-OK response branch with throw kilocodeDeviceInitiationError(response.status); do not read or return the upstream response body. Existing OAuth routes retain flow ownership and storage."
+}

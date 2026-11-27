@@ -5,7 +5,7 @@ const path = require("path");
 // The installed launcher keeps the shared data-directory module in its app bundle.
 const dataDirPath = fs.existsSync(path.join(__dirname, "../../app/src/lib/updater/dataDir.cjs"))
   ? "../../app/src/lib/updater/dataDir.cjs" : "../../../src/lib/updater/dataDir.cjs";
-const { ensurePrivateDir } = require(dataDirPath);
+const { ensurePrivateDir, resolveDataDirWith } = require(dataDirPath);
 
 /** Match the server data-directory contract, including isolated DATA_DIR. */
 function getAppDataDir({
@@ -18,37 +18,10 @@ function getAppDataDir({
   stat = fs.statSync,
   warn = console.warn,
 } = {}) {
-  const pathImpl = platform === "win32" ? path.win32 : path;
-  const fallback = platform === "win32"
-    ? pathImpl.join(env.APPDATA || pathImpl.join(homedir(), "AppData", "Roaming"), "9router")
-    : pathImpl.join(homedir(), ".9router");
-
   const protect = (dir) => ensurePrivateDir(dir, { platform, mkdir, chmod, stat, warn });
-
-  const configured = env.DATA_DIR;
-  if (!configured) {
-    try {
-      protect(fallback);
-    } catch {
-      // best-effort; a real failure surfaces from the next file write instead
-    }
-    return fallback;
-  }
-  if (platform === "win32" && /^\//.test(configured)) {
-    warn(`[DATA_DIR] '${configured}' is a Unix path on Windows → fallback to default`);
-    return fallback;
-  }
-  const resolved = pathImpl.resolve(cwd(), configured);
-  try {
-    protect(resolved);
-    return resolved;
-  } catch (error) {
-    if (error?.code === "EACCES" || error?.code === "EPERM") {
-      warn(`[DATA_DIR] '${resolved}' not writable → fallback ~/.9router`);
-      return fallback;
-    }
-    throw error;
-  }
+  return resolveDataDirWith({
+    env, platform, homedir, cwd, warn, ensureDir: protect, ensureDefault: protect,
+  });
 }
 
 function getGlobalMitmStateDir({ platform = process.platform, userInfo = os.userInfo } = {}) {

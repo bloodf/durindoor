@@ -23,10 +23,10 @@ export default {
     authHeader: "bearer",
     costPerQuery: 0.002,
     freeMonthlyQuota: 500,
+    // Firecrawl /v2/scrape supports markdown and html (not plain text; upstream #5888).
     formats: [
       "markdown",
-      "html",
-      "text"
+      "html"
     ],
     maxCharacters: 200000,
     timeoutMs: 30000

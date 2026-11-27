@@ -29,6 +29,7 @@ import { isNumber, isObject, isString } from "../../../shared/utils/typeChecks.j
 import { deriveLatencyRates } from "../../../shared/utils/usageFormat.js";
 import { USAGE_COST_FIELDS } from "../../../shared/utils/usageCostAllocation.js";
 import { usageTokenColumns } from "../migrations/usage-token-columns.js";
+import { normalizeLedgerTokens } from "../helpers/ledgerTokens.js";
 import { TOKEN_SAVER_SUM_COLUMNS, TOKEN_SAVER_DAILY_COLUMNS, TOKEN_SAVER_AGGREGATES, backfillTokenSaverDaily } from "../migrations/token-saver-daily-schema.js";
 
 // Exception messages may contain credentials; keep fallback diagnostics safe.
@@ -173,40 +174,6 @@ function scheduleStatsEvent(event, delayMs = 150) {
 
 // Model label for account days saved before counters were kept per model.
 const LEGACY_ACCOUNT_MODEL = "Earlier usage (models not recorded)";
-
-// One durable representation: numeric, nonnegative integer components. Fractional
-// estimates round up before pricing and persistence. Conflicting totals cannot
-// be allocated to input/output without inventing usage, so reject them.
-function normalizeLedgerTokens(tokens = {}) {
-  const count = (value) => {
-    if (value == null) return undefined;
-    if (!isNumber(value) || !Number.isFinite(value) || value < 0 || !Number.isSafeInteger(Math.ceil(value))) {
-      throw new TypeError("Usage token counts must be finite nonnegative numbers");
-    }
-    return Math.ceil(value);
-  };
-  const first = (...values) => values.map(count).find((value) => value !== undefined);
-  const prompt = first(tokens.prompt_tokens, tokens.input_tokens, tokens.promptTokenCount) ?? 0;
-  const completion = first(tokens.completion_tokens, tokens.output_tokens, tokens.candidatesTokenCount) ?? 0;
-  const cached = first(tokens.cached_tokens, tokens.cache_read_input_tokens,
-    tokens.prompt_tokens_details?.cached_tokens, tokens.input_tokens_details?.cached_tokens) ?? 0;
-  const reasoning = first(tokens.reasoning_tokens, tokens.completion_tokens_details?.reasoning_tokens,
-    tokens.output_tokens_details?.reasoning_tokens, tokens.thoughtsTokenCount) ?? 0;
-  const creation = first(tokens.cache_creation_input_tokens,
-    tokens.prompt_tokens_details?.cache_creation_tokens, tokens.input_tokens_details?.cache_creation_tokens) ?? 0;
-  const oneHourCreation = count(tokens.cache_creation_1h_input_tokens);
-  const total = first(tokens.total_tokens, tokens.totalTokenCount);
-  if (!Number.isSafeInteger(prompt + completion) || (total !== undefined && total !== prompt + completion)) {
-    throw new TypeError("Usage total_tokens must equal input and output components");
-  }
-  return {
-    ...Object.fromEntries(["cost_usd", "cost_in_usd", "cost_in_usd_ticks", "kiro_credits", "kiro_credit_unit", "estimated"]
-      .filter((key) => Object.hasOwn(tokens, key)).map((key) => [key, tokens[key]])),
-    prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion,
-    cached_tokens: cached, reasoning_tokens: reasoning, cache_creation_input_tokens: creation,
-    ...(oneHourCreation > 0 ? { cache_creation_1h_input_tokens: oneHourCreation } : null),
-  };
-}
 
 export function aggregateEntryToDay(day, entry) {
   const promptTokens = entry.tokens?.prompt_tokens ?? entry.tokens?.input_tokens ?? 0;

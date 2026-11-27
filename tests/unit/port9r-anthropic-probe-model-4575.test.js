@@ -7,7 +7,7 @@ const PROBE_FILES = [
   "src/app/api/providers/[id]/test/testUtils.js",
   "src/app/api/providers/validate/route.js",
   "src/lib/providerHealthProbe.js",
-  "src/app/api/providers/providerProbe.js",
+  "src/lib/providerProbe.js",
 ];
 
 describe("Anthropic validation probe model", () => {

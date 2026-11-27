@@ -1,0 +1,106 @@
+// Adobe Firefly Services API (developer.adobe.com/firefly-services): image
+// generation, plus a separately staged text-to-video slice. STAGED: nothing in
+// the registry, the image adapter map or the video core imports this module
+// yet, so it is unavailable to users. See docs/providers/adobe-firefly-api.md.
+//
+// The default export describes the image service only. Video constants are
+// separate named exports (ADOBE_FIREFLY_STAGED_VIDEO and friends) so image and
+// video models never mix; registering video is left to the shared batch.
+//
+// This is the operator-entitled Services API, authenticated with an Adobe
+// Developer Console OAuth Server-to-Server credential. It is not the consumer
+// firefly.adobe.com web app: the IDs `adobe-firefly` and `firefly` stay
+// unregistered (docs/providers/adobe-firefly.md), and no web-app client ID,
+// cookie or browser header is accepted or sent.
+//
+// Contract sources, AdobeDocs/ffs-firefly-api at
+// 1027f559cdb1509a61b34e2f2da9618ec431f2cb (static/firefly-api.json blob
+// 9004da2c5d57850bb72068e6e06b93e04b1bad9e, OpenAPI 3.1.0, info.version 3.0.0,
+// last changed in 0fed5f9c3437ce1072bc7a01616b5d15c5eb1030):
+// - server https://firefly-api.adobe.io; POST /v3/images/generate-async,
+//   GET /v3/status/{jobId}, PUT /v3/cancel/{jobId}; `x-model-version` header
+// - POST /v3/videos/generate (operationId generateVideoV3): `x-model-version`
+//   enum ["video1_standard"], GenerateVideoRequestV3 body, 202
+//   AsyncAcceptResponseV3; video results per AsyncResult / VideoOutput
+// - src/pages/getting-started/usage-notes/index.md (blob
+//   975ebb6e3e875cb66c0d600abde6d7518682f8b4): "Generate Video API usage",
+//   supported aspect ratios and dimensions; per-organization rate limits
+// - src/pages/getting-started/changelog/index.md (blob
+//   6c92714c45bbe0a80aa15baf3c4bb3a79190005b): June 19, 2025 Generate Video launch
+// - src/pages/getting-started/index.md: IMS token request and scope list
+// - src/pages/guides/how-tos/using-async-apis.md: submit/poll sequence
+
+export const ADOBE_FIREFLY_API_ID = "adobe-firefly-api";
+
+// The only destinations credentials are ever sent to. Connection settings and
+// upstream responses cannot change them.
+export const ADOBE_IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3";
+export const ADOBE_FIREFLY_API_ORIGIN = "https://firefly-api.adobe.io";
+export const ADOBE_FIREFLY_GENERATE_URL = `${ADOBE_FIREFLY_API_ORIGIN}/v3/images/generate-async`;
+export const ADOBE_FIREFLY_VIDEO_GENERATE_URL = `${ADOBE_FIREFLY_API_ORIGIN}/v3/videos/generate`;
+export const adobeFireflyStatusUrl = (jobId) => `${ADOBE_FIREFLY_API_ORIGIN}/v3/status/${jobId}`;
+export const adobeFireflyCancelUrl = (jobId) => `${ADOBE_FIREFLY_API_ORIGIN}/v3/cancel/${jobId}`;
+
+// Scope list exactly as the getting-started page requests it.
+export const ADOBE_FIREFLY_SCOPE = "openid,AdobeID,session,additional_info,read_organizations,firefly_api,ff_apis";
+
+// Client IDs of Adobe's own consumer web apps. These are never accepted: this
+// provider only uses the operator's own Developer Console credential.
+export const ADOBE_WEB_APP_CLIENT_IDS = Object.freeze(["clio-playground-web", "projectx_webapp"]);
+
+// `x-model-version` values that need no custom model id.
+const MODELS = [
+  ["image3", "Firefly Image 3"],
+  ["image4_standard", "Firefly Image 4"],
+  ["image4_ultra", "Firefly Image 4 Ultra"],
+];
+
+export const ADOBE_FIREFLY_API_MODEL_IDS = Object.freeze(MODELS.map(([id]) => id));
+
+// Video: the only documented `x-model-version` for POST /v3/videos/generate.
+const VIDEO_MODELS = [["video1_standard", "Firefly Video 1"]];
+
+export const ADOBE_FIREFLY_VIDEO_MODEL_IDS = Object.freeze(VIDEO_MODELS.map(([id]) => id));
+
+// The operation description: "Generate a five second video using a text prompt."
+export const ADOBE_FIREFLY_VIDEO_SECONDS = 5;
+
+// The usage notes' supported dimensions, as [width, height].
+export const ADOBE_FIREFLY_VIDEO_SIZES = Object.freeze([
+  [1920, 1080], [1280, 720], [960, 540],
+  [1080, 1920], [720, 1280], [540, 960],
+  [1080, 1080], [720, 720], [540, 540],
+].map((size) => Object.freeze(size)));
+
+// Staged video description, for the registration batch. Not part of the
+// default export, whose serviceKinds stay ["image"].
+export const ADOBE_FIREFLY_STAGED_VIDEO = Object.freeze({
+  serviceKinds: Object.freeze(["video"]),
+  models: Object.freeze(VIDEO_MODELS.map(([id, name]) => Object.freeze({
+    id, name, kind: "video", params: Object.freeze(["size", "seconds", "seed"]),
+  }))),
+  videoConfig: Object.freeze({ baseUrl: ADOBE_FIREFLY_VIDEO_GENERATE_URL }),
+});
+
+export default {
+  id: ADOBE_FIREFLY_API_ID,
+  alias: ADOBE_FIREFLY_API_ID,
+  uiAlias: ADOBE_FIREFLY_API_ID,
+  display: {
+    name: "Adobe Firefly Services API",
+    icon: "image",
+    color: "#475569",
+    textIcon: "FS",
+    website: "https://developer.adobe.com/firefly-services/docs/firefly-api/",
+    notice: {
+      text: "Image generation only. Needs a Firefly Services API entitlement and an OAuth Server-to-Server credential from Adobe Developer Console. A Firefly or Creative Cloud subscription alone does not grant API access.",
+      apiKeyUrl: "https://developer.adobe.com/console",
+    },
+  },
+  category: "apikey",
+  authType: "apikey",
+  transport: null,
+  models: MODELS.map(([id, name]) => ({ id, name, params: ["size", "n"], kind: "image" })),
+  serviceKinds: ["image"],
+  imageConfig: { baseUrl: ADOBE_FIREFLY_GENERATE_URL },
+};

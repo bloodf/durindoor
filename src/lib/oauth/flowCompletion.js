@@ -15,6 +15,8 @@ import { requireCodexWorkspace } from "@/lib/oauth/codexWorkspace.js";
 import { resolveCodexAccountId } from "../../../open-sse/shared/codexAccountId.js";
 import { isDurableCredentialProvider } from "../../../open-sse/services/accountFallback.js";
 import { resetM365RefreshCircuit } from "../../../open-sse/services/tokenRefresh/copilotM365.js";
+import { ANTIGRAVITY_OAUTH_CLIENT } from "../../../open-sse/providers/shared.js";
+import { withClientBinding } from "@/lib/antigravity/clientBinding.js";
 
 /** Merge durable OAuth routing without erasing provider-owned metadata. */
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
@@ -47,10 +49,15 @@ extra = {},
 flowClaim = null)
 {
   const { connectionId = null, ...extraFields } = extra || {};
-  const providerSpecificData = withOAuthProxyMetadata(
+  let providerSpecificData = withOAuthProxyMetadata(
     tokenData?.providerSpecificData,
     resolvedProxy
   );
+  // Successful sign-in or reauthorization records the issuing client. Refresh
+  // never stamps, so legacy rows stay unmarked.
+  if (provider === "antigravity" || provider === "agy") {
+    providerSpecificData = withClientBinding(providerSpecificData, ANTIGRAVITY_OAUTH_CLIENT.clientId);
+  }
   const expiresAt = tokenData?.expiresIn ?
   new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() :
   null;

@@ -23785,7 +23785,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+      "sourceSha256": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23809,7 +23809,7 @@
             "api-key"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23832,7 +23832,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23854,7 +23854,7 @@
             "bulk add success"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23876,7 +23876,7 @@
             "retained-final-error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -24272,7 +24272,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#ChatgptWebCookieSteps",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "ChatgptWebCookieSteps",
-      "sourceSha256": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+      "sourceSha256": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -24293,7 +24293,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "22ad9c4ce5ccc158f8c89d7687563640b6349ad213c1ab6ad475ca4d7adb7ac3",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -25802,7 +25802,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js#CookieImportModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js",
       "symbol": "CookieImportModal",
-      "sourceSha256": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
+      "sourceSha256": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -25824,7 +25824,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -25837,7 +25837,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -25850,7 +25850,7 @@
             "source-association-pending-review"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "8ae2a33de6f436249e65af2dc7139f77b67da174f84df9ebe8adec7be6020306",
+            "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.js": "b98c127a0b6cc9095075f6aebcd721452a6e7c12c998699b101a18f639056fdb",
             "src/app/(dashboard)/dashboard/providers/[id]/CookieImportModal.stories.jsx": "88c8f2397a47d8ae3f66091f1d6e1906f8a142df7ca24a47d8ad7b497e1498ec"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
@@ -26742,7 +26742,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/ModelRow.js": "cf0cae93d69b73d48a84f0f02acc5f7a315e53adce33252ec1b004a8e5a6ca46",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28384,7 +28384,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28397,7 +28397,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28410,7 +28410,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28423,7 +28423,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -28461,7 +28461,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28484,7 +28484,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28506,7 +28506,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28528,7 +28528,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28704,7 +28704,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28717,7 +28717,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28730,7 +28730,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28743,7 +28743,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         },
@@ -28756,7 +28756,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
         }
@@ -28792,7 +28792,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -28824,7 +28824,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91"
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb"
           },
           "expectedAbsentRole": {
             "role": "dialog",
@@ -28939,7 +28939,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -29027,7 +29027,7 @@
           ],
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/providers/[id]/page.js": "c0f83746be5d1987bd3300f6d20caa31d586eb91bfea1c72152c1cceb34bc69f",
-            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+            "src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db"
@@ -29128,7 +29128,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#ProviderDetailSections",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
       "symbol": "ProviderDetailSections",
-      "sourceSha256": "0aebcd9b3be8c054cd1011a1f5ad49e7e075f3708081239c886a04c621afb767",
+      "sourceSha256": "9794bff7df287beaea09dee76cadd19929cf96110ce1835304a88a42d3429bf7",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -29148,7 +29148,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx#autoSyncPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/sections/ProviderDetailSections.jsx",
       "symbol": "autoSyncPanel",
-      "sourceSha256": "0aebcd9b3be8c054cd1011a1f5ad49e7e075f3708081239c886a04c621afb767",
+      "sourceSha256": "9794bff7df287beaea09dee76cadd19929cf96110ce1835304a88a42d3429bf7",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -39643,7 +39643,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#ProviderLimits",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "ProviderLimits",
-      "sourceSha256": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+      "sourceSha256": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -39674,7 +39674,7 @@
           ],
           "proposedSourceEvidence": "GroupedAccounts renders ProviderLimits with two Codex connections and activates the real merged-account switch. Static binding approved by UiStandardsReview; runtime proof pending.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39687,7 +39687,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Default",
@@ -39706,7 +39706,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Loading",
@@ -39724,7 +39724,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "ProviderLimits.stories.jsx Error",
@@ -39748,7 +39748,7 @@
           ],
           "proposedSourceEvidence": "Play opens reset dialog.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39763,7 +39763,7 @@
           ],
           "proposedSourceEvidence": "Play filters groups.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39778,7 +39778,7 @@
           ],
           "proposedSourceEvidence": "Credit fixture.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39793,7 +39793,7 @@
           ],
           "proposedSourceEvidence": "Play opens delete confirmation.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           }
         },
@@ -39807,7 +39807,7 @@
           ],
           "proposedSourceEvidence": "ClaudeModelWeeklyNotReported play proves two actual weekly fable (7d) rows and their not-reported state.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "expectedVisibleText": "weekly fable (7d)"
@@ -40005,7 +40005,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#QuotaThresholds",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "QuotaThresholds",
-      "sourceSha256": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+      "sourceSha256": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -40025,7 +40025,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js#renderAccountSection",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js",
       "symbol": "renderAccountSection",
-      "sourceSha256": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+      "sourceSha256": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -40048,7 +40048,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Default loads concrete codex and kiro accounts; the unmerged group branch calls renderAccountSection for each connection. Static source binding approved by UiStandardsReview; runtime proof pending."
@@ -40063,7 +40063,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "423747c2ec32aa5dbdd47926d14e7238169083ce0d165597742bda5fa2d58d2e",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/index.js": "7d5f271a3a0057db7710837f132127e2e468218b5daf6e7e693fc06f073d6e65",
             "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ProviderLimits.stories.jsx": "8b92870bd1a2953448579b0268b13764dd65a6f9c956e58a01f5d56a95d63667"
           },
           "proposedSourceEvidence": "Private account section rendered by GroupedAccounts",
@@ -40145,7 +40145,7 @@
       "id": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js#[module]",
       "sourcePath": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.js",
       "symbol": "[module]",
-      "sourceSha256": "4449584dcc583b7337e96c5ce89d8f16ed9bb45126bbcde7b82289195c10169a",
+      "sourceSha256": "b71db7263b70792398213f3e9b6df7542a8c81e813c1545ace579cbe2985f42a",
       "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49789,7 +49789,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "6b1eeeb9aeaf36a571cf70eca53e27af60626639633c13c668f856ac8ae60bcf"
           },
@@ -49813,7 +49813,7 @@
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
             ".storybook/fixtures.js": "9cdaf7a17ab7bcae1c5f59fbddc5151e3e4599e251a1023188e26b5757ec31db",
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/utils/oauthFlowLifecycle.js": "b112598afe1f8794ae9b0df2033fe4480d4356a28877e253304c4d3651cd9c59",
             "src/app/api/oauth/[provider]/[action]/route.js": "6b1eeeb9aeaf36a571cf70eca53e27af60626639633c13c668f856ac8ae60bcf"
           },
@@ -53396,7 +53396,7 @@
       "id": "src/shared/components/ModelSelectModal.js#ModelSelectModal",
       "sourcePath": "src/shared/components/ModelSelectModal.js",
       "symbol": "ModelSelectModal",
-      "sourceSha256": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+      "sourceSha256": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53421,7 +53421,7 @@
             "search"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+            "src/shared/components/ModelSelectModal.js": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "OpenLLM opens Select Model, waits for Combos, then types into rendered Search models textbox.",
@@ -53436,7 +53436,7 @@
             "selected-model"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+            "src/shared/components/ModelSelectModal.js": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithSelection supplies selected and added Claude Sonnet model; play asserts rendered pressed chip.",
@@ -53451,7 +53451,7 @@
             "selected-combo"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+            "src/shared/components/ModelSelectModal.js": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "WithCombosAndSelection supplies selected fast combo; play asserts rendered pressed fast chip.",
@@ -53466,7 +53466,7 @@
             "embedding-kind"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+            "src/shared/components/ModelSelectModal.js": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "EmbeddingKind opens Select Embedding Model with kindFilter=embedding; play verifies Combos is absent.",
@@ -53481,7 +53481,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/ModelSelectModal.js": "4a1533f4927597aaf2a65418ce7ccb512c9cb13f4c64ef5f09b631f153bbbd90",
+            "src/shared/components/ModelSelectModal.js": "a31b577c259c59e3da5f87d9bd804f0e0190f9d18983cd36649f3eedb7550544",
             "src/shared/components/ModelSelectModal.stories.jsx": "586c3e6dd66f1f44580a7b74d9f4b7b1add3cfa50f5a3f90db33a773e9d4b758"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false; play asserts Select Model dialog absent.",
@@ -53774,7 +53774,7 @@
       "id": "src/shared/components/OAuthModal.js#OAuthModal",
       "sourcePath": "src/shared/components/OAuthModal.js",
       "symbol": "OAuthModal",
-      "sourceSha256": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+      "sourceSha256": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -53799,7 +53799,7 @@
             "loading"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "proxyPoolsReady=false renders OAuthModal routing-options loading notice.",
@@ -53815,7 +53815,7 @@
             "success"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "Manual callback exchange succeeds; final OAuthModal success branch renders confirmation.",
@@ -53831,7 +53831,7 @@
             "fingerprint"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "Codex fixture with active pool renders routing selector and fingerprint selector. No visible-text matcher is fabricated for this genuinely non-text surface; actual CSF/graphical runtime evidence is required, and all approvals remain pending.",
@@ -53848,7 +53848,7 @@
             "device-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "GitHub device-code fixture renders user code and device URL controls.",
@@ -53863,7 +53863,7 @@
             "manual-code"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "xAI authorize fixture leaves OAuthModal waiting branch with provider-specific status.",
@@ -53878,7 +53878,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/shared/components/OAuthModal.js": "a2ace25ba24f249a7d39d880b0a589ac545640c9fe8a791582e5c2e2b55e86aa",
+            "src/shared/components/OAuthModal.js": "875a6ea2c8d28749e3723d3fe817046a37f7a088d6c024447294cd1657829afc",
             "src/shared/components/OAuthModal.stories.jsx": "228744b42976aaebde7a3c7d7f6400d2ba88eb357dcadf7a9954a3570e078d81"
           },
           "proposedSourceEvidence": "Authorize 503 puts OAuthModal in error result branch.",
@@ -92024,7 +92024,7 @@
     {
       "storyId": "production-providers-providerdetailpage--z-code-provider",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92034,7 +92034,7 @@
     {
       "storyId": "production-providers-providerdetailpage--claude-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92084,7 +92084,7 @@
     {
       "storyId": "production-providers-providerdetailpage--gemini-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92134,7 +92134,7 @@
     {
       "storyId": "production-providers-providerdetailpage--deepseek-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92184,7 +92184,7 @@
     {
       "storyId": "production-providers-providerdetailpage--doubao-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92234,7 +92234,7 @@
     {
       "storyId": "production-providers-providerdetailpage--zai-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92284,7 +92284,7 @@
     {
       "storyId": "production-providers-providerdetailpage--chatgpt-web-codex-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92334,7 +92334,7 @@
     {
       "storyId": "production-providers-providerdetailpage--helyxai-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92374,7 +92374,7 @@
     {
       "storyId": "production-providers-providerdetailpage--tabitoken-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92414,7 +92414,7 @@
     {
       "storyId": "production-providers-providerdetailpage--twinmind-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92454,7 +92454,7 @@
     {
       "storyId": "production-providers-providerdetailpage--hyperagent-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92494,7 +92494,7 @@
     {
       "storyId": "production-providers-providerdetailpage--maxai-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92534,7 +92534,7 @@
     {
       "storyId": "production-providers-providerdetailpage--lmarena-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92574,7 +92574,7 @@
     {
       "storyId": "production-providers-providerdetailpage--chatplayground-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92614,7 +92614,7 @@
     {
       "storyId": "production-providers-providerdetailpage--cloudflare-playground-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92654,7 +92654,7 @@
     {
       "storyId": "production-providers-providerdetailpage--poe-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92694,7 +92694,7 @@
     {
       "storyId": "production-providers-providerdetailpage--g-4-f-gemini-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92734,7 +92734,7 @@
     {
       "storyId": "production-providers-providerdetailpage--g-4-f-nvidia-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92774,7 +92774,7 @@
     {
       "storyId": "production-providers-providerdetailpage--g-4-f-ollama-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92814,7 +92814,7 @@
     {
       "storyId": "production-providers-providerdetailpage--g-4-f-pollinations-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92854,7 +92854,7 @@
     {
       "storyId": "production-providers-providerdetailpage--promptql-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92874,7 +92874,7 @@
     {
       "storyId": "production-providers-providerdetailpage--notion-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92894,7 +92894,7 @@
     {
       "storyId": "production-providers-providerdetailpage--notrack-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92914,7 +92914,7 @@
     {
       "storyId": "production-providers-providerdetailpage--tencent-aistudio-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92934,7 +92934,7 @@
     {
       "storyId": "production-providers-providerdetailpage--tinycms-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92954,7 +92954,7 @@
     {
       "storyId": "production-providers-providerdetailpage--blackbox-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92974,7 +92974,7 @@
     {
       "storyId": "production-providers-providerdetailpage--conol-web-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -92994,7 +92994,7 @@
     {
       "storyId": "production-providers-providerdetailpage--cursor-api-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -93004,7 +93004,7 @@
     {
       "storyId": "production-providers-providerdetailpage--devin-desktop-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -93014,7 +93014,7 @@
     {
       "storyId": "production-providers-providerdetailpage--workbuddy-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -93024,7 +93024,7 @@
     {
       "storyId": "production-providers-providerdetailpage--minimax-code-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -93034,7 +93034,7 @@
     {
       "storyId": "production-providers-providerdetailpage--zed-hosted-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -93044,7 +93044,7 @@
     {
       "storyId": "production-providers-providerdetailpage--freebuff-connection",
       "sourcePath": "./src/app/(dashboard)/dashboard/providers/[id]/page.stories.jsx",
-      "sourceSha256": "68bf6ef64d9343609deb0679229ccf29f9bca7f1b95e8060db509070b2271a91",
+      "sourceSha256": "bc2d32e33e24faebb3f8a791335018b4e2908600c101a47870dd35c4fb390bfb",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
@@ -104687,7 +104687,7 @@
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
     "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "35a65e3a48cb147b23b1e329c5bd26cbd146ff8e8db25bdacb134427f9a6a476",
+    "sourceCensusSha256": "93a0f796c9872d8afcd9266d4299d0a22d90efcf10377ce01325c4863da32b6d",
     "pendingRows": 452,
     "retainedApprovedRows": 196,
     "pendingReferences": 1496,

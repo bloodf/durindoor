@@ -11,6 +11,7 @@ import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js";
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { PROVIDERS } from "open-sse/config/providers.js";
+import { getAzureDeploymentPool } from "open-sse/providers/azureDeployment.js";
 import { isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
 import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
@@ -110,6 +111,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
   }
 
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && (disabledByAlias[alias] ?? []).includes(modelId);
+  // Check disabled entries across output prefix, static alias, provider id, and
+  // dashboard storage alias so models stay hidden regardless of which key wrote them (#4073).
+  const isModelDisabled = (modelId, ...keys) => keys.some((key) => key && isDisabled(key, modelId));
 
   // Unlike the other optional lookups above, a failed read here cannot fail
   // soft: an empty map means "no provider is restricted", so silently
@@ -257,7 +261,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       if (!kindFilter.includes(modelKind(model))) continue;
       if (model.requiresApiKey === true && !hasCredentials) continue;
       if (hasAllowlist && !enabledModels.includes(model.id)) continue;
-      if (isDisabled(alias, model.id)) continue;
+      if (isModelDisabled(model.id, alias, providerId, getProviderAlias(providerId))) continue;
       if (hidePaidModels && isPaidModel(`${alias}/${model.id}`)) continue;
       const caps = getCapabilitiesForModel(providerId, model.id);
       const thinkingLevels = modelKind(model) === LLM_KIND ? getThinkingLevelsFromCapabilities(caps, providerId, model.id) : null;
@@ -327,7 +331,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
       }
       for (const liveModel of live.models) {
         const modelId = liveModel.id;
-        if (!isString(modelId) || !modelId.trim() || isDisabled(alias, modelId)) continue;
+        if (!isString(modelId) || !modelId.trim() || isModelDisabled(modelId, alias, providerId, getProviderAlias(providerId))) continue;
         if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
@@ -518,7 +522,16 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         staticAlias).
         trim();
         const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
-        const enabledModels = resolveEnabledModels(providerId, conn);
+        let enabledModels = resolveEnabledModels(providerId, conn);
+        if (providerId === "azure") {
+          // port(upstream): decolua/9router#5901 — publish deployments from every active Azure pool.
+          const pooledModels = connections
+            .filter((connection) => connection.provider === providerId && (!scopedConnectionIds || scopedConnectionIds.has(connection.id)))
+            .flatMap((connection) => getAzureDeploymentPool(connection.providerSpecificData));
+          if (pooledModels.length > 0) {
+            enabledModels = Array.from(new Set([...enabledModels, ...pooledModels]));
+          }
+        }
         const hasExplicitEnabledModels = enabledModels.length > 0;
         const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
@@ -670,6 +683,15 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
                 if (m.kind || m.type) liveModelKindById.set(m.id, m.kind || m.type);
                 if (isRecord(m.capabilities)) liveCapabilitiesById.set(m.id, m.capabilities);
               }
+              if (isCompatibleProvider && enrichExistingOnly) {
+                const prefixKey = `${outputAlias}/`;
+                for (const m of live.models) {
+                  if (!isRecord(m) || !isString(m.id) || !isRecord(m.capabilities)) continue;
+                  if (m.id.startsWith(prefixKey) && servedIds.has(m.id.slice(prefixKey.length))) {
+                    liveCapabilitiesById.set(m.id, m.capabilities);
+                  }
+                }
+              }
             }
           } catch {
             // Live discovery is optional metadata; static catalog remains authoritative fallback.
@@ -763,7 +785,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
           // imageToText custom models stay in the LLM list (vision-capable chat models)
           const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
           if (!kindFilter.includes(kind) && !allowAsLlm) continue;
-          if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
+          if (isModelDisabled(modelId, outputAlias, staticAlias, providerId, getProviderAlias(providerId))) continue;
           // #6495 / F-4: drop paid provider models when the toggle is on.
           // Classify by output alias so provider-specific overrides (gh/…,
           // api-airforce (Free) markers, …) are honored identically to the
@@ -774,7 +796,7 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             ...(capabilitiesFromServiceKind(customKind || liveKind) || {}),
             ...(customCapabilitiesById.get(modelId) || {})
           };
-          const liveCaps = liveCapabilitiesById.get(modelId) || null;
+          const liveCaps = liveCapabilitiesById.get(modelId) || (isCompatibleProvider ? liveCapabilitiesById.get(`${outputAlias}/${modelId}`) : null) || null;
           const explicitCaps = { ...(liveCaps || {}), ...customCaps };
           /**
            * Compatible providers reuse proven static family limits even when

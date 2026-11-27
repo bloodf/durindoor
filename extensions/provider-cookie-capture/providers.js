@@ -136,6 +136,32 @@ export const PROVIDERS = deepFreeze({
     cookieNames: ["__Secure-better-auth.session_token"],
     cookiePrefixes: [],
   },
+  "poe-web": {
+    label: "Poe Web",
+    origin: "https://www.poe.com",
+    cookieNames: ["p-b"],
+    cookiePrefixes: [],
+  },
+  "v0-vercel-web": {
+    label: "v0 Vercel Web",
+    origin: "https://v0.dev",
+    cookieNames: ["__vercel_session"],
+    cookiePrefixes: [],
+  },
+  // The account email is never read here; the dashboard binds it to the pairing on the server.
+  "inner-ai-web": {
+    label: "Inner.ai Web",
+    origin: "https://app.innerai.com",
+    cookieNames: ["token"],
+    cookiePrefixes: [],
+  },
+  // Capture runs on the Clerk origin itself (sign in at venice.ai, then open clerk.venice.ai).
+  "venice-web": {
+    label: "Venice Web",
+    origin: "https://clerk.venice.ai",
+    cookieNames: ["__client"],
+    cookiePrefixes: [],
+  },
   // TinyCMS has no session cookie: the device UUID is a localStorage item of the site.
   "tinycms-web": {
     label: "TinyCMS Web",

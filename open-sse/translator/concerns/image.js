@@ -5,8 +5,9 @@ export function encodeDataUri(mimeType, base64) {
 }
 
 // Parse a base64 data URI → { mimeType, base64 }, or null if not a data URI.
-// [\s\S] tolerates newlines inside the base64 payload.
-const DATA_URI_RE = /^data:([^;]+);base64,([\s\S]+)$/;
+// [\s\S] tolerates newlines inside the base64 payload. Media-type parameters
+// before ";base64" (e.g. ";charset=utf-8", ";name=x.png") are skipped (9router #1).
+const DATA_URI_RE = /^data:([^;,]+)(?:;[^;,]*)*?;base64,([\s\S]+)$/i;
 export function parseDataUri(url) {
   if (!isString(url)) return null;
   const m = url.match(DATA_URI_RE);

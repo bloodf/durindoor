@@ -50,7 +50,7 @@ import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDeta
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
 import { handleStreamingResponse, buildOnStreamComplete } from "./chatCore/streamingHandler.js";
-import { resolveStreamFlag } from "./chatCore/streamFlag.js";
+import { acceptRequestsStream, resolveStreamFlag } from "./chatCore/streamFlag.js";
 import { createEmptyRetryStream } from "./chatCore/emptyStreamGuard.js";
 import { evictResponseDispatcher } from "../utils/proxyFetch.js";
 import { validateExecutorResult } from "./chatCore/executorResultGuard.js";
@@ -70,6 +70,7 @@ import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadr
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
 import { isCursorProvider } from "../providers/cursorProviders.js";
+import { getNodeReportedModalities, hasStripEligibleMedia, withNodeModalities } from "../providers/nodeModalities.js";
 import { getCachedLiveLimits } from "../services/liveModelLimits.js";
 import { getOllamaCatalogModel } from "../services/ollamaCatalog.js";
 import { resolveOllamaLocalHost } from "../config/providers.js";
@@ -332,6 +333,37 @@ async function cancelResponseBody(response) {
   {if (timer) clearTimeout(timer);}
 }
 
+/** Build the request egress proxy contract from connection providerSpecificData. */
+function buildChatProxyOptions(credentials) {
+  const proxyData = credentials?.providerSpecificData || {};
+  const oauthProxy = proxyData.oauthProxy && isObject(proxyData.oauthProxy) ? proxyData.oauthProxy : {};
+  const proxyMode = oauthProxy.mode || proxyData.proxyMode || "legacy";
+  const proxyOptions = {
+    oauthProxy,
+    proxyMode,
+    proxyPoolId: oauthProxy.poolId || proxyData.proxyPoolId || proxyData.connectionProxyPoolId || null,
+    connectionProxyPoolId: proxyData.connectionProxyPoolId || proxyData.proxyPoolId || oauthProxy.poolId || null,
+    connectionProxyEnabled: proxyData.connectionProxyEnabled === true,
+    connectionProxyUrl: proxyData.connectionProxyUrl || "",
+    connectionNoProxy: proxyData.connectionNoProxy || "",
+    vercelRelayUrl: proxyData.vercelRelayUrl || "",
+    strictProxy: proxyMode === "strict-pool" || proxyData.strictProxy === true,
+    disableEnvProxy:
+    proxyMode === "direct" ||
+    proxyMode === "strict-pool" ||
+    proxyData.disableEnvProxy === true
+  };
+  if (proxyMode === "direct") {
+    proxyOptions.proxyPoolId = null;
+    proxyOptions.connectionProxyPoolId = null;
+    proxyOptions.connectionProxyEnabled = false;
+    proxyOptions.connectionProxyUrl = "";
+    proxyOptions.connectionNoProxy = "";
+    proxyOptions.vercelRelayUrl = "";
+  }
+  return proxyOptions;
+}
+
 /**
  * Core chat handler - shared between SSE and Worker
  *
@@ -584,7 +616,8 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   // ask for a JSON completion?" answerable when the response is routed.
   const rawClientStream = clientRawRequest?.body ? clientRawRequest.body.stream : body.stream;
   const clientRequestedNonStreaming = rawClientStream === false;
-  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
+  const sseAcceptStream = acceptRequestsStream(body.stream, clientPrefersSSE, clientPrefersJson);
+  const clientRequestedStreaming = !isCompactRequest && (body.stream === true || sseAcceptStream || sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI);
   const providerRequiresStreaming = !isCompactRequest &&
   (executorOverride?.forceStream === true || PROVIDERS[provider]?.forceStream === true || getModelForceStream(alias, cleanModel) === true);
   // Image generation models require non-streaming (Google v1internal:generateContent)
@@ -605,7 +638,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   // asked for JSON; the accumulated stream is converted to JSON downstream. (#2031)
   let stream = isCompactRequest ? false : resolveStreamFlag({
     providerRequiresStreaming,
-    bodyStream: body.stream,
+    bodyStream: sseAcceptStream ? true : body.stream,
     forceNonStreaming:
     isImageGenModel && (provider === "antigravity" || provider === "gemini-cli" || provider === "agy") ||
     providerForcesNonStreaming ||
@@ -682,7 +715,17 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   // Auto-strip media blocks the model can't read (vision/audio/pdf) before translation.
   if (!passthrough) {
-    const caps = effectiveModelCapabilities;
+    let caps = effectiveModelCapabilities;
+    // A user-defined compatible node knows its own models better than the static
+    // name tables: when the request carries media that would be stripped, let
+    // guarded, connection-scoped node discovery turn support back on (#5818).
+    if ((caps.vision === false || caps.audioInput === false || caps.pdf === false) && hasStripEligibleMedia(body)) {
+      const probeProxyOptions = buildChatProxyOptions(credentials);
+      caps = withNodeModalities(caps, await getNodeReportedModalities(provider, cleanModel, credentials, {
+        proxyOptions: probeProxyOptions,
+        signal: abortSignal
+      }));
+    }
     if (stripUnsupportedModalities(body, sourceFormat, caps)) {
       log?.debug?.("MODALITY", `stripped unsupported media for ${provider}/${cleanModel}`);
     }
@@ -1357,34 +1400,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   });
   const providerSignal = composeAbortSignals(abortSignal, streamController.signal);
 
-  const proxyData = credentials?.providerSpecificData || {};
-  const oauthProxy = proxyData.oauthProxy && isObject(proxyData.oauthProxy) ?
-  proxyData.oauthProxy :
-  {};
-  const proxyMode = oauthProxy.mode || proxyData.proxyMode || "legacy";
-  const proxyOptions = {
-    oauthProxy,
-    proxyMode,
-    proxyPoolId: oauthProxy.poolId || proxyData.proxyPoolId || proxyData.connectionProxyPoolId || null,
-    connectionProxyPoolId: proxyData.connectionProxyPoolId || proxyData.proxyPoolId || oauthProxy.poolId || null,
-    connectionProxyEnabled: proxyData.connectionProxyEnabled === true,
-    connectionProxyUrl: proxyData.connectionProxyUrl || "",
-    connectionNoProxy: proxyData.connectionNoProxy || "",
-    vercelRelayUrl: proxyData.vercelRelayUrl || "",
-    strictProxy: proxyMode === "strict-pool" || proxyData.strictProxy === true,
-    disableEnvProxy:
-    proxyMode === "direct" ||
-    proxyMode === "strict-pool" ||
-    proxyData.disableEnvProxy === true
-  };
-  if (proxyMode === "direct") {
-    proxyOptions.proxyPoolId = null;
-    proxyOptions.connectionProxyPoolId = null;
-    proxyOptions.connectionProxyEnabled = false;
-    proxyOptions.connectionProxyUrl = "";
-    proxyOptions.connectionNoProxy = "";
-    proxyOptions.vercelRelayUrl = "";
-  }
+  const proxyOptions = buildChatProxyOptions(credentials);
 
   if (proxyOptions.vercelRelayUrl) {
     const connectionName = credentials?.connectionName || credentials?.connectionId || "unknown";
@@ -1589,6 +1605,17 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       finishActiveDashboardSession("error");
       finishTimeline("error", "error", "quota capacity unavailable");
       return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
+    }
+    if (error?.localSchemaError === true && error?.statusCode === HTTP_STATUS.BAD_REQUEST) {
+      finishProviderRequest();
+      finishActiveDashboardSession("error");
+      await settleQuota(false, "pre_dispatch");
+      appendRequestLog({ model: cleanModel, provider, connectionId, status: `FAILED ${HTTP_STATUS.BAD_REQUEST}` }).catch(() => {});
+      finishTimeline("error", "error", error.message);
+      const result = createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+      result.localSchemaError = true;
+      result.response[Symbol.for("durindoor.localSchemaError")] = true;
+      return { ...result, attemptStartedAt: latestProviderAttemptStartedAt };
     }
     finishProviderRequest();
     finishActiveDashboardSession("error");

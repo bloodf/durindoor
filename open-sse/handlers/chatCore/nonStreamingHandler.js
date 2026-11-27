@@ -188,12 +188,22 @@ function shouldEnableClaudeCompat(mode, sourceFormat, body) {
 
 // Reconstruct Claude cache usage the Chat converter drops without changing
 // prompt_tokens: reverse projection reports full input plus cache fields.
+// Checks the same cache-read fields as toClaudePromptUsage (OmniRoute #20949).
 function normalizeClaudeCacheUsage(claudeMsg, originalBody) {
   if (!claudeMsg || claudeMsg.type !== "message") return claudeMsg;
-  const cached = originalBody?.usage?.prompt_tokens_details?.cached_tokens;
+  const usage = originalBody?.usage;
+  const cached = [
+    usage?.prompt_tokens_details?.cached_tokens,
+    usage?.cached_tokens,
+    usage?.input_tokens_details?.cached_tokens,
+    usage?.cache_read_input_tokens
+  ].find((value) => Number.isFinite(value) && value >= 0);
   claudeMsg.usage = claudeMsg.usage || {};
   // An explicit reported zero is kept; an omitted counter is not invented.
-  if (Number.isFinite(cached) && cached >= 0) claudeMsg.usage.cache_read_input_tokens = cached;
+  if (cached !== undefined) {
+    const promptTokens = Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0 ? usage.prompt_tokens : null;
+    claudeMsg.usage.cache_read_input_tokens = promptTokens !== null ? Math.min(promptTokens, cached) : cached;
+  }
   return claudeMsg;
 }
 
@@ -636,6 +646,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       const sseError = createSSEErrorResult(errorPayload, credentials, sourceFormat);
       if (sseError) {
+        if (parsed?.upstreamPartialOutput) {
+          sseError.upstreamPartialOutput = true;
+          sseError.response.upstreamPartialOutput = true;
+        }
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
       }

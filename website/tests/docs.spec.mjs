@@ -77,10 +77,39 @@ function attachConsole(page) {
   };
 }
 
-test("every docs route returns 200 with no console errors", async ({
-  page,
-}) => {
-  test.setTimeout(10 * 60 * 1000);
+// Every test in this file is independent: each gets its own page and browser
+// context, reads the shared server only, and writes notes under file names no
+// other test uses. Parallel mode makes each test its own Playwright group, so
+// `--shard=i/N` spreads this file across shards instead of pinning all of it to
+// one serial group that has to fit inside a single shard's command ceiling.
+test.describe.configure({ mode: "parallel" });
+
+// The route sweep is the longest docs check. It runs as fixed-size slices of
+// the sorted route list so that each slice is a separate group and no single
+// test approaches the 300-second per-shard command ceiling.
+const ROUTE_CHUNK_SIZE = 36;
+const routeChunks = Array.from(
+  { length: Math.ceil(docUrls.length / ROUTE_CHUNK_SIZE) },
+  (_, index) =>
+    docUrls.slice(index * ROUTE_CHUNK_SIZE, (index + 1) * ROUTE_CHUNK_SIZE),
+);
+
+test("docs route slices cover every published route exactly once", () => {
+  const mdxCount = readdirSync(docsRoot, { recursive: true, encoding: "utf8" })
+    .filter((name) => String(name).endsWith(".mdx")).length;
+  expect(docUrls.length, "one route per published .mdx page").toBe(mdxCount);
+  expect(new Set(docUrls).size, "routes are unique").toBe(docUrls.length);
+  expect(docUrls, "routes are sorted").toEqual([...docUrls].sort());
+  expect(routeChunks.length).toBeGreaterThan(1);
+  for (const chunk of routeChunks) {
+    expect(chunk.length).toBeGreaterThan(0);
+    expect(chunk.length).toBeLessThanOrEqual(ROUTE_CHUNK_SIZE);
+  }
+  expect(routeChunks.flat(), "slices concatenate to the full route list").toEqual(docUrls);
+});
+
+// The original whole-site sweep, unchanged, applied to one slice of routes.
+async function checkDocRoutes(page, docUrls, notesFile) {
   const failures = [];
   for (const url of docUrls) {
     const log = attachConsole(page);
@@ -99,12 +128,22 @@ test("every docs route returns 200 with no console errors", async ({
   }
   mkdirSync(notesDir, { recursive: true });
   writeFileSync(
-    join(notesDir, "26-urls.json"),
+    join(notesDir, notesFile),
     `${JSON.stringify({ count: docUrls.length, urls: docUrls, failures }, null, 2)}\n`,
   );
   expect(failures, failures.join("\n")).toEqual([]);
   expect(docUrls.length).toBeGreaterThan(0);
-});
+}
+
+for (const [index, urls] of routeChunks.entries()) {
+  const part = `${index + 1}/${routeChunks.length}`;
+  test(`every docs route returns 200 with no console errors (routes ${part})`, async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await checkDocRoutes(page, urls, `26-urls-${index + 1}-of-${routeChunks.length}.json`);
+  });
+}
 
 test("search returns combo hits after visiting the demo", async ({ page }) => {
   test.setTimeout(90_000);
@@ -184,7 +223,7 @@ test("search returns combo hits after visiting the demo", async ({ page }) => {
 test("axe serious/critical are zero; phone view has no horizontal scroll", async ({
   page,
 }) => {
-  test.setTimeout(5 * 60 * 1000);
+  test.setTimeout(150_000);
   mkdirSync(shotDir, { recursive: true });
   const summary = [];
 
@@ -562,6 +601,16 @@ test("provider discovery links lead to the relevant guides", async ({ page }) =>
     await page.evaluate((value) => document.documentElement.classList.toggle("dark", value === "dark"), theme);
     const accessibility = await new AxeBuilder({ page }).analyze();
     expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact)), theme).toEqual([]);
+  }
+  // Theme flips must retain contrast even when the brand has pointer or keyboard focus.
+  const brand = page.locator("#nd-subnav").getByRole("link", { name: "DurinDoor" });
+  for (const interaction of ["hover", "focus"]) {
+    await page.evaluate(() => document.documentElement.classList.remove("dark"));
+    if (interaction === "hover") await brand.hover();
+    else await brand.focus();
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter((item) => ["serious", "critical"].includes(item.impact)), interaction).toEqual([]);
   }
   for (const [label, url, heading] of destinations) {
     await page.goto("/docs");

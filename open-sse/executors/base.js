@@ -433,7 +433,25 @@ export class BaseExecutor {
         this.transformRequest(model, body, stream, credentials, requestContext, url),
         requestContext
       );
-      const headers = this.buildHeaders(credentials, stream, requestContext, model, body, transformedBody);
+      let headers = this.buildHeaders(credentials, stream, requestContext, model, body, transformedBody);
+      // 9router #656: some OpenAI-compatible gateways reject SDK metadata.
+      // Inspect the path, not query text; Anthropic's SDK identity stays intact.
+      if (this.provider?.startsWith("openai-compatible-") ||
+          /\/v1\/(?:chat\/completions|responses)\/?$/.test(new URL(url).pathname)) {
+        headers = headers instanceof Headers ? new Headers(headers) : { ...headers };
+        const entries = headers instanceof Headers ? [...headers] : Object.entries(headers);
+        for (const [key, value] of entries) {
+          if (key.toLowerCase().startsWith("x-stainless-")) {
+            if (headers instanceof Headers) headers.delete(key);
+            else delete headers[key];
+          } else if (key.toLowerCase() === "user-agent" &&
+              /openai/i.test(value) && /node|axios|undici/i.test(value)) {
+            const userAgent = "Mozilla/5.0 (compatible; OpenAI Compatible)";
+            if (headers instanceof Headers) headers.set(key, userAgent);
+            else headers[key] = userAgent;
+          }
+        }
+      }
       const claudeOAuth = this.provider === "claude" && !credentials?.apiKey && Boolean(credentials?.accessToken);
       const claudeFast = claudeOAuth && isClaudeFastRequest(transformedBody, claudeRequestedBetas(body, requestContext.clientHeaders));
       // Relay correlation is server-owned. Never trust the client's x-request-id;
@@ -648,9 +666,10 @@ export class BaseExecutor {
       } catch (error) {
         sender.clearHeaderTimer();
         if (isQuotaDispatchUnavailable(error)) throw error;
-        lastError = error;
         const timeoutReason = sender.timeoutReason;
         const isConnectTimeout = Boolean(timeoutReason);
+        if (isConnectTimeout) error = timeoutReason;
+        lastError = error;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

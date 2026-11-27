@@ -156,11 +156,28 @@ function getUsableQuotaPercentages(quotas = []) {
   )).map(getRemainingPercentage).filter(Number.isFinite);
 }
 
+/** Earliest finite quota reset timestamp across rows, or Infinity when none is reported (#5898). */
+export function getEarliestQuotaResetTime(quotas = []) {
+  return (quotas || []).reduce((earliest, { resetAt } = {}) => {
+    const time = resetAt ? new Date(resetAt).getTime() : NaN;
+    return Number.isFinite(time) ? Math.min(earliest, time) : earliest;
+  }, Number.POSITIVE_INFINITY);
+}
+
+/**
+ * Classify a connection's measured quota availability for bulk actions (#5898).
+ * Returns "unknown" when no usable measured pool exists so unreported accounts are neither disabled nor enabled.
+ */
+export function getQuotaAvailability(quotas = [], threshold = DEPLETED_QUOTA_THRESHOLD) {
+  if (quotas?.some((quota) => quota?.unlimited)) return "available";
+  const values = getUsableQuotaPercentages(quotas);
+  if (values.length === 0) return "unknown";
+  return values.every((value) => value <= threshold) ? "depleted" : "available";
+}
+
 /** A connection is depleted when every reported usable pool is below the threshold. */
 export function isQuotaCollectionDepleted(quotas, threshold = DEPLETED_QUOTA_THRESHOLD) {
-  if (quotas?.some((quota) => quota?.unlimited)) return false;
-  const values = getUsableQuotaPercentages(quotas);
-  return values.length > 0 && values.every((value) => value <= threshold);
+  return getQuotaAvailability(quotas, threshold) === "depleted";
 }
 
 export function sortVisibleConnections(
@@ -187,22 +204,11 @@ quotaSortMode)
 
   if (!expiringFirst) return connections;
 
-  const getEarliestResetTime = (connection) => {
-    const resetTimes = (quotaData[connection.id]?.quotas || []).
-    map((quota) =>
-    quota.resetAt ?
-    new Date(quota.resetAt).getTime() :
-    Number.POSITIVE_INFINITY
-    ).
-    filter((time) => Number.isFinite(time));
-    return resetTimes.length > 0 ?
-    Math.min(...resetTimes) :
-    Number.POSITIVE_INFINITY;
-  };
-
   return [...connections].sort((a, b) => {
-    const expiryDiff = getEarliestResetTime(a) - getEarliestResetTime(b);
-    if (expiryDiff !== 0) return expiryDiff;
+    const aReset = getEarliestQuotaResetTime(quotaData[a.id]?.quotas);
+    const bReset = getEarliestQuotaResetTime(quotaData[b.id]?.quotas);
+    if (aReset !== bReset) return aReset - bReset;
+    if (!Number.isFinite(aReset)) return 0;
     return (
       (a.provider || "").localeCompare(b.provider || "") ||
       (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || ""));

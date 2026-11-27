@@ -216,6 +216,8 @@ const ALLOWED = {
     "provider-private upstream protocol parser inside its executor",
   ])),
 };
+// port(upstream): #5902 migrated executors/codebuddy-protocol.js to open-sse/utils/sseFrames.js.
+delete ALLOWED["executors/codebuddy-protocol.js"];
 
 const root = fileURLToPath(new URL("../../open-sse/", import.meta.url));
 // A `data:`/`event:` field test next to line or frame splitting.

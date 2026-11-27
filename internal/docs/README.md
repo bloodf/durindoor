@@ -29,6 +29,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
+- [Media credential verification (#2034)](./media-credential-verification-2034.md)
 - [NoTrack developer API provider (#2034)](./notrack-2034.md)
 - [Firefly consumer browser contract (#2034)](./firefly-consumer-browser-contract.md)
 - [AI Horde native images on the existing provider (#2034)](./aihorde-images-2034.md)
@@ -175,6 +176,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 
 ### Issue acceptance and audit records
 
+- [Combo runtime state and planning (#2266)](./combo-runtime-2266.md)
+
 - [2305-dashboard-cleanup.md](./2305-dashboard-cleanup.md)
 - [circuit-1108-audit.md](./circuit-1108-audit.md)
 - [executor-dispatch-2308.md](./executor-dispatch-2308.md)
@@ -193,6 +196,8 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [v5-protocol-conformance.md](./v5-protocol-conformance.md)
 
 ### Development, testing, and operating references
+
+- [Compression pipeline settings (#2289)](./compression-pipeline-2289.md)
 
 - [1129-operational-metrics-coverage.md](./1129-operational-metrics-coverage.md)
 - [ai-tooling-plan.md](./ai-tooling-plan.md)

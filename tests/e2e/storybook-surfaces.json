@@ -23771,7 +23771,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+      "sourceSha256": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23795,7 +23795,7 @@
             "api-key"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23818,7 +23818,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23840,7 +23840,7 @@
             "bulk add success"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23862,7 +23862,7 @@
             "retained-final-error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -24258,7 +24258,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#ChatgptWebCookieSteps",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "ChatgptWebCookieSteps",
-      "sourceSha256": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+      "sourceSha256": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -24279,7 +24279,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "b0e37c326cc9dc7899632d2e2889dc67a7428b33bbaf5582c73b1a09cdca9b42",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "d177eca2e591a726d9f1802018ca219364ed7af8af850e7c845d3a56a46f858e",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -29601,7 +29601,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+      "sourceSha256": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29620,7 +29620,7 @@
             "connection=connected"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Connected mounts live ConnectionsCard with Production connection; no play yet opens private AddApiKeyModal.",
@@ -29677,7 +29677,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionRow",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionRow",
-      "sourceSha256": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+      "sourceSha256": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29697,7 +29697,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Parent fixture must render its supplied connection row.",
@@ -29758,7 +29758,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#ConnectionsCard",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "ConnectionsCard",
-      "sourceSha256": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+      "sourceSha256": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29778,7 +29778,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Direct source binding.",
@@ -29839,7 +29839,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js#CooldownTimer",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js",
       "symbol": "CooldownTimer",
-      "sourceSha256": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+      "sourceSha256": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -29859,7 +29859,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "aa81a96fb72edaf1d0c1dd0b5fe9a42fffc6fd155177f7e060b8e213cb5b43d4",
+            "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.js": "cc86ba4531981aa2c7fc850aa425ba9a8c2e76e80df38e0e4965ac92299de980",
             "src/app/(dashboard)/dashboard/providers/components/ConnectionsCard.stories.jsx": "5ab61e23f3ca565f6271be6b459bb8f9ac4cc4450b3575e7709edaa6017b3d41"
           },
           "proposedSourceEvidence": "Dedicated parent cooldown fixture.",
@@ -49295,7 +49295,7 @@
       "id": "src/shared/components/EditConnectionModal.js#EditConnectionModal",
       "sourcePath": "src/shared/components/EditConnectionModal.js",
       "symbol": "EditConnectionModal",
-      "sourceSha256": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+      "sourceSha256": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -49325,7 +49325,7 @@
             "validation"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "ApiKeyOpenAI opens the actual API-key form and invokes Check; no OAuth-email expectation.",
@@ -49339,7 +49339,7 @@
             "oauth-account"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "OAuthAccount shows its configured generic account identity and no API-key input.",
@@ -49353,7 +49353,7 @@
             "azure-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "AzurePanel displays its actual provider-specific configuration.",
@@ -49367,7 +49367,7 @@
             "search-engine-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "GooglePsePanel displays its own configuration and edits the engine ID.",
@@ -49381,7 +49381,7 @@
             "fingerprint-control"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "CodexFingerprintPanel opens and closes the actual OAuth fingerprint selector.",
@@ -49395,7 +49395,7 @@
             "cloudflare-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "CloudflareAccountIdPanel renders its own provider panel.",
@@ -49409,7 +49409,7 @@
             "snowflake-settings"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "SnowflakeAccountIdPanel renders its own provider panel.",
@@ -49424,7 +49424,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "OpenAIResponsesStore toggles the actual store switch and leaves it checked.",
@@ -49439,7 +49439,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "RegionPickerXiaomi renders the actual Region combobox, not account email.",
@@ -49453,7 +49453,7 @@
             "test-error"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "TestFailureBadge invokes a failed production connection test and shows the Failed outcome.",
@@ -49468,7 +49468,7 @@
             "absence"
           ],
           "sourceHashes": {
-            "src/shared/components/EditConnectionModal.js": "7f9ccb55117563c594dc43600acfdec2951fedf2cf4057a1a5509bd8a3ab2577",
+            "src/shared/components/EditConnectionModal.js": "74281b6caa8aecd9a09ad753dd787ffb36a157a7bb9bfb5fba5c01fd8fa75c9d",
             "src/shared/components/EditConnectionModal.stories.jsx": "52978695e44ce02a5d03186b6fff6ead57f037b558c06804e9138e464f5f8778"
           },
           "proposedSourceEvidence": "Closed sets isOpen=false and play asserts no Edit Connection dialog.",

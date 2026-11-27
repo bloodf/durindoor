@@ -103,7 +103,7 @@ function isStorableSecret(value) {
 /** Keep legacy malformed-secret filtering while rejecting unsafe refresh lifetimes. */
 function validateRawRefresh(result) {
   for (const value of [result.expiresIn, result.copilotTokenExpiresAt, result.providerSpecificData?.copilotTokenExpiresAt]) {
-    if (typeof value === "number" && value > 8640000000000) throw new Error("Malformed refresh expiry");
+    if (isNumber(value) && value > 8640000000000) throw new Error("Malformed refresh expiry");
   }
   const filtered = withoutMalformedCopilotFields(result.providerSpecificData);
   validatedRefreshUpdates({ providerSpecificData: result.existingProviderSpecificData }, {

@@ -9,6 +9,7 @@ import { assertOutboundUrlAllowed, guardedProbeFetch, PROVIDER_URL_BLOCKED_MESSA
 import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../services/oauthCredentialManager.js";
+import { transcribeVertex } from "../services/providerParity/native-vertex-tts-stt/transcription.js";
 
 // OpenAI-compatible transcription path appended to a user-supplied origin. The
 // resolver deliberately returns only the origin, so the route stays fixed and a
@@ -497,6 +498,12 @@ export async function handleSttCore({ provider, model, formData, credentials, st
     cfg = { ...cfg, baseUrl: resolvedBaseUrl };
   } else if (translate) {
     cfg = { ...cfg, baseUrl: cfg.baseUrl.replace(TRANSCRIPTION_SUFFIX_RE, "/audio/translations") };
+  }
+
+  // Vertex Gemini transcription owns its auth modes (service account, ADC,
+  // access token or Express key), endpoint and accepted-job receipts.
+  if (cfg.format === "vertex-gemini") {
+    return transcribeVertex({ model, formData, credentials, kind, signal, log });
   }
 
   const token = cfg.authType === "none" ? null : credentials?.apiKey || credentials?.accessToken;

@@ -14,7 +14,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import * as log from "../utils/logger.js";
-import { enforceApiKeyModelPolicy, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { nativeUsageFromValue } from "../services/nativeUsage.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions, supportsTranslation } from "../services/mediaRoutes.js";
@@ -132,6 +132,22 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
       apiKeyId,
     });
   };
+  /** A call the provider may have billed without a usable answer (Vertex). It is
+   * recorded once with unknown cost on the account that sent it, and the route
+   * never falls back to another account with the same audio.
+   */
+  const recordAccepted = async (result, credentials) => {
+    await recordAcceptedJobUsage(apiKey, {
+      ...result.acceptedJob,
+      billingEpoch,
+      usageEventId: `${getRequestId(request)}:stt`, provider, model,
+      connectionId: credentials.connectionId || null,
+      endpoint: kind === "translation" ? "/v1/audio/translations" : "/v1/audio/transcriptions",
+      modality: "stt",
+      apiKeyId,
+    });
+    return result.response || errorResponse(result.status, result.error);
+  };
   log.info("ROUTING", `Provider: ${provider}, Model: ${model}`);
 
   // Local/no-auth execution remains unrestricted only for keys with zero
@@ -201,10 +217,12 @@ async function handleSingleModelStt(formData, modelStr, kind, request, apiKey, a
     if (isCodex) {
       if (request.signal?.aborted) return { response: errorResponse(HTTP_STATUS.GATEWAY_TIMEOUT, "Transcription cancelled") };
     }
+    if (request.signal?.aborted && result.acceptedJob) return { response: await recordAccepted(result, credentials) };
     // Bad audio, unsupported options, a missing ffmpeg and local capacity are not account faults.
     if (result.local) return { response: result.response || errorResponse(result.status, result.error) };
     return { result, dispatch, failureContext: { usedCredential: credentials.accessToken || credentials.apiKey || null } };
     },
+    onAccountFailure: (result, credentials) => (result.acceptedJob ? recordAccepted(result, credentials) : null),
     buildFailureResponse: (result) => result.response || errorResponse(result.status, result.error),
   });
 }

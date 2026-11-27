@@ -10,7 +10,7 @@ Source: MIT-licensed cheaper-inference/OmniRoute PR #21441 (open when staged), h
 
 ## What is verified
 
-`tests/unit/native-ttoken-contract.test.js` injects the staged definition and runs production code with a mocked
+`tests/unit/native-ttoken-provider.test.js` injects the staged definition and runs production code with a mocked
 transport and synthetic keys. It covers this router's behaviour only.
 
 Unverified, and not to be restated as fact:

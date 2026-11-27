@@ -3,7 +3,9 @@
 // body alone looked "unset" and a `-high` suffix re-enabled thinking. Provider
 // `none`/`off` must stay authoritative over a resolved `-<effort>` suffix,
 // while explicit request fields, provider levels, literal IDs and `(level)`
-// suffixes keep their precedence. Offline: settings and fetch are fixtures.
+// suffixes keep their precedence. #2676: `none` also strips every other
+// accepted thinking/effort shape, and `off` drops output_config.effort when it
+// injects a disable. Offline: settings and fetch are fixtures.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../translator/registerAll.js";
 
@@ -34,7 +36,8 @@ vi.mock("@/lib/routing/connectionRecovery.js", () => ({
 
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.js");
 const { dispatchAttempt } = await import("../../src/sse/handlers/chat/singleModel/dispatch.js");
-const { catalogEffortIntent } = await import("../../open-sse/translator/concerns/thinkingUnified.js");
+const { catalogEffortIntent, extractThinking } = await import("../../open-sse/translator/concerns/thinkingUnified.js");
+const { applyProviderThinkingOverride } = await import("../../open-sse/config/providerModels.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
 
 const BASE = "claude-haiku-9.9";
@@ -122,8 +125,6 @@ describe("provider thinking none against a resolved effort suffix (chatCore)", (
   });
 
   it("keeps thinking off when the request also asked for thinking (none strips it)", async () => {
-    // output_config is not one of the fields provider none strips, so it is
-    // left out here; this case covers only what the resolved effort could revive.
     expectThinkingOff(await viaChatCore({ thinking: { type: "adaptive" } }, { mode: "none" }));
     expectThinkingOff(await viaChatCore({ thinking: { type: "enabled", budget_tokens: 4096 } }, { mode: "none" }));
     expectThinkingOff(await viaChatCore({ reasoning_effort: "medium" }, { mode: "none" }));
@@ -165,22 +166,112 @@ describe("provider thinking none against a resolved effort suffix (dispatch)", (
   });
 });
 
-// Pre-existing gap, separate from #2640 and reproduced without any resolved
-// suffix: provider `none` strips thinking/reasoning_effort/reasoning but not a
-// client's Claude `output_config.effort`, which then turns adaptive thinking
-// back on. That contradicts applyProviderThinkingOverride's "strip thinking
-// params entirely" intent. Kept as an expected failure so the reproduction
-// stays concrete; when the gap is fixed this flips red and should become a
-// plain `it`.
-describe("provider none and a client output_config.effort (pre-existing)", () => {
+// DurinDoor #2676: provider `none` used to strip thinking/reasoning_effort/
+// reasoning but leave a client's Claude `output_config.effort`, which turned
+// adaptive thinking back on even for a literal model. `none` now strips every
+// shape extractThinking accepts and keeps unrelated output_config fields.
+describe("provider none and a client output_config.effort (#2676)", () => {
   beforeEach(() => proxyAwareFetch.mockReset());
 
-  it.fails("REPRO: literal model, provider none, client output_config.effort still enables thinking", async () => {
+  it("literal model: provider none drops a client output_config.effort", async () => {
     expectThinkingOff(await viaChatCore({ output_config: { effort: "low" } }, { mode: "none" }, { provider: "anthropic", model: BASE }));
+    expectThinkingOff(await viaChatCore({ output_config: { effort: "max" }, thinking: { type: "adaptive" } }, { mode: "none" }, { provider: "anthropic", model: BASE }));
   });
 
-  it("never applies the resolved suffix effort in that case", async () => {
-    const sent = await viaChatCore({ output_config: { effort: "low" } }, { mode: "none" });
-    expect(sent.output_config?.effort).toBe("low");
+  it("resolved suffix: neither the client effort nor the suffix effort survives", async () => {
+    expectThinkingOff(await viaChatCore({ output_config: { effort: "low" } }, { mode: "none" }));
+  });
+
+  it("keeps unrelated output_config fields", async () => {
+    const format = { type: "json_schema", schema: { type: "object", properties: { a: { type: "string" } }, required: ["a"], additionalProperties: false } };
+    const sent = await viaChatCore({ output_config: { effort: "high", format } }, { mode: "none" }, { provider: "anthropic", model: BASE });
+    expectThinkingOff(sent);
+    expect(sent.output_config).toEqual({ format });
+  });
+
+  it("dispatch reads provider none from settings and drops output_config.effort", async () => {
+    expectThinkingOff(await viaDispatch({ output_config: { effort: "high" } }, { mode: "none" }));
+    expectThinkingOff(await viaDispatch({ output_config: { effort: "low" }, reasoningEffort: "high" }, { mode: "none" }));
+  });
+
+  it("keeps the documented model(level) suffix precedence over provider none", async () => {
+    const sent = await viaChatCore({ output_config: { effort: "low" } }, { mode: "none" }, { provider: "anthropic", model: `${BASE}(high)` });
+    expect(sent.model).toBe(BASE);
+    expect(sent.output_config?.effort).toBe("high");
+  });
+
+  it("dispatch without a disabling setting still forwards the client effort", async () => {
+    expect((await viaDispatch({ output_config: { effort: "low" } }, null)).output_config?.effort).toBe("low");
+    expect((await viaDispatch({ output_config: { effort: "low" } }, { mode: "auto" })).output_config?.effort).toBe("low");
+  });
+});
+
+describe("applyProviderThinkingOverride none strips every accepted shape", () => {
+  const none = { mode: "none" };
+
+  it("removes Claude, OpenAI, Responses, Ollama and Qwen controls", () => {
+    const body = {
+      model: "m", messages: [],
+      thinking: { type: "enabled", budget_tokens: 2048 },
+      output_config: { effort: "high" },
+      reasoning_effort: "high", reasoningEffort: "high", reasoning: { effort: "high", summary: "auto" },
+      think: true, enable_thinking: true, thinking_budget: 4096,
+      thinkingLevel: "high", thinking_level: "high",
+    };
+    const out = applyProviderThinkingOverride(body, none);
+    expect(out).toEqual({ model: "m", messages: [] });
+    expect(extractThinking(out)).toBeNull();
+    expect(body.output_config).toEqual({ effort: "high" });
+  });
+
+  it("removes Gemini thinking configs at every path and keeps the rest", () => {
+    const body = {
+      thinkingConfig: { thinkingBudget: 1024 },
+      thinking_config: { thinking_level: "high" },
+      generationConfig: { temperature: 0.2, thinkingConfig: { thinkingLevel: "high" } },
+      generation_config: { thinking_config: { thinking_budget: -1 } },
+      request: {
+        contents: [],
+        thinkingConfig: { thinkingBudget: 1 },
+        generationConfig: { maxOutputTokens: 10, thinking_config: { thinkingBudget: 2048 } },
+      },
+    };
+    const out = applyProviderThinkingOverride(body, none);
+    expect(out).toEqual({
+      generationConfig: { temperature: 0.2 },
+      request: { contents: [], generationConfig: { maxOutputTokens: 10 } },
+    });
+    expect(extractThinking(out, "gemini-3-pro", "gemini")).toBeNull();
+  });
+
+  it("returns the same body when nothing names thinking", () => {
+    const body = { model: "m", output_config: { format: { type: "json_schema" } }, generationConfig: { temperature: 1 } };
+    expect(applyProviderThinkingOverride(body, none)).toBe(body);
+  });
+
+  it("leaves auto alone and keeps an explicit client thinking under off", () => {
+    const body = { output_config: { effort: "low" } };
+    expect(applyProviderThinkingOverride(body, { mode: "auto" })).toBe(body);
+    const explicit = { thinking: { type: "adaptive" }, output_config: { effort: "low" } };
+    expect(applyProviderThinkingOverride(explicit, { mode: "off" })).toBe(explicit);
+  });
+
+  it("off injects disabled and drops only output_config.effort", () => {
+    expect(applyProviderThinkingOverride({ output_config: { effort: "low" } }, { mode: "off" })).toEqual({ thinking: { type: "disabled" } });
+    expect(applyProviderThinkingOverride({ output_config: { effort: "low", format: { type: "json_schema" } } }, { mode: "off" }))
+      .toEqual({ output_config: { format: { type: "json_schema" } }, thinking: { type: "disabled" } });
+  });
+});
+
+describe("provider off and a client effort (#2676 review)", () => {
+  beforeEach(() => proxyAwareFetch.mockReset());
+
+  it("keeps thinking disabled against output_config.effort and reasoning_effort", async () => {
+    const literal = { provider: "anthropic", model: BASE };
+    const viaEffort = await viaChatCore({ output_config: { effort: "low" } }, { mode: "off" }, literal);
+    expectThinkingOff(viaEffort);
+    expect(viaEffort.thinking).toEqual({ type: "disabled" });
+    expectThinkingOff(await viaChatCore({ reasoning_effort: "high" }, { mode: "off" }, literal));
+    expectThinkingOff(await viaDispatch({ output_config: { effort: "high" } }, { mode: "off" }));
   });
 });

@@ -26,6 +26,13 @@ export const OPENROUTER_DECISIONS_MODELS_URL = `${OPENROUTER_MODELS_URL}?output_
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const FAILURE_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
+// How long a merged lookup waits for the secondary decisions listing after the
+// primary catalog is ready. Model-list callers give the whole lookup
+// LIVE_CATALOG_WAIT_MS (3s, src/shared/models/catalogDeadline.js); waiting the
+// full FETCH_TIMEOUT_MS here would turn a fast primary answer into a static
+// fallback. A slower decisions fetch keeps running (still capped by
+// FETCH_TIMEOUT_MS) and fills the per-route cache for later lookups.
+const DECISIONS_WAIT_MS = 1000;
 // The full catalog is ~0.7 MiB / ~450 models today; the caps leave headroom
 // while bounding a hostile or corrupted response.
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -199,18 +206,40 @@ async function loadDecisionModels(routeKey, transport) {
 }
 
 /**
+ * Wait at most `waitMs` for the decisions listing. On timeout, answer with the
+ * route's last good decisions (or `null`) while the coalesced fetch continues
+ * in the background; its settlement, including any rejection, is consumed here.
+ */
+async function loadDecisionModelsBounded(routeKey, transport, waitMs) {
+  const lastGood = () => lastGoodDecisions.get(routeKey) || null;
+  const pending = loadDecisionModels(routeKey, transport).catch(lastGood);
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(lastGood()), waitMs);
+  });
+  try {
+    return await Promise.race([pending, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Return the mapped catalog (cached, coalesced, fail-open: `null` on any
  * error with no earlier good catalog, so callers keep their static list).
  *
  * When `includeDecisions` is true, also fetches OpenRouter's separate
  * `output_modalities=decisions` listing and merges its entries with the
  * primary catalog; a failed secondary request leaves the primary catalog
- * usable. `freeOnly` keeps only free models (plus `systemone` decision models
+ * usable. The secondary request is awaited for at most `decisionsWaitMs`
+ * after the primary catalog is ready; a slower one continues in the
+ * background and is merged on a later call. `freeOnly` keeps only free models (plus `systemone` decision models
  * when `includeDecisions` is true).
  */
 export async function resolveOpenRouterModels({
   freeOnly = false,
   includeDecisions = false,
+  decisionsWaitMs = DECISIONS_WAIT_MS,
   proxyOptions = null,
   fetchImpl = null
 } = {}) {
@@ -227,7 +256,7 @@ export async function resolveOpenRouterModels({
 
   let models = primary;
   if (includeDecisions) {
-    const decisions = await loadDecisionModels(routeKey, transport);
+    const decisions = await loadDecisionModelsBounded(routeKey, transport, decisionsWaitMs);
     models = mergeOpenRouterCatalogs(primary, decisions || []);
   }
 

@@ -48,6 +48,7 @@ import {
 import { classifyModelKind, normalizeSyncedModels } from "../../src/lib/modelAutoSync/catalog.js";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { GET as getModelsByKind } from "../../src/app/api/v1/models/[...model]/route.js";
+import { LIVE_CATALOG_WAIT_MS } from "../../src/shared/models/catalogDeadline.js";
 
 const CHAT_FREE = {
   id: "google/gemma-4-31b-it:free",
@@ -259,12 +260,17 @@ describe("OpenRouter catalog discovery with decisions", () => {
       }),
     });
 
-    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
-    await vi.advanceTimersByTimeAsync(8100);
-    const models = await pending;
+    let settled = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl }).then((models) => { settled = models; });
+    // The primary answer is returned after the bounded secondary wait, long before the 8s fetch timeout.
+    await vi.advanceTimersByTimeAsync(1000);
+    await pending;
+    expect(settled.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    expect(seenSignal?.aborted).toBe(false);
 
+    // The background decisions fetch is still bounded by its own timeout.
+    await vi.advanceTimersByTimeAsync(7100);
     expect(seenSignal?.aborted).toBe(true);
-    expect(models.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
   });
 
   it("caches merged results within TTL and coalesces concurrent calls", async () => {
@@ -326,6 +332,135 @@ describe("OpenRouter catalog discovery with decisions", () => {
     expect(directFetch).not.toHaveBeenCalled();
     expect(mocks.proxyAwareFetch).toHaveBeenCalledTimes(5);
     expect(await resolveOpenRouterDecisionModels({ proxyOptions: brokenStrict })).toBeNull();
+  });
+});
+
+function hangingDecisions() {
+  const signals = [];
+  const onDecisions = vi.fn(() => new Promise((_resolve, reject) => {
+    const signal = onDecisions.fetchImpl?.mock.calls.at(-1)?.[1]?.signal;
+    signals.push(signal);
+    signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+  }));
+  return { onDecisions, signals };
+}
+
+function openRouterIds(models) {
+  return models.filter((m) => m.owned_by === "openrouter").map((m) => m.id);
+}
+
+describe("bounded secondary decisions wait (regression for #2637 review)", () => {
+  it("keeps a fast primary catalog listed through the real /v1/models deadline when decisions hang", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "or-hang-deadline", provider: "openrouter", isActive: true, apiKey: "sk-or-hang" },
+    ]);
+    const hang = hangingDecisions();
+    const fetchMock = catalogFetch({ onDecisions: hang.onDecisions });
+    hang.onDecisions.fetchImpl = fetchMock;
+    vi.stubGlobal("fetch", fetchMock);
+
+    let listed = null;
+    const pending = buildModelsList([LLM_KIND]).then((models) => { listed = models; });
+    // Answered before the model-list deadline would fall back to static rows.
+    await vi.advanceTimersByTimeAsync(LIVE_CATALOG_WAIT_MS - 1);
+    await pending;
+    expect(listed).not.toBeNull();
+    expect(openRouterIds(listed)).toContain(`openrouter/${CHAT_FREE.id}`);
+    expect(hang.signals).toHaveLength(1);
+    expect(hang.signals[0].aborted).toBe(false);
+
+    // The hanging fetch aborts at its own timeout without an unhandled rejection
+    // (Vitest fails the run on one) and without dropping the primary catalog.
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(hang.signals[0].aborted).toBe(true);
+    const later = await buildModelsList([LLM_KIND]);
+    expect(openRouterIds(later)).toContain(`openrouter/${CHAT_FREE.id}`);
+  });
+
+  it("merges a slow but successful decisions listing on the next call without refetching", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const fetchImpl = catalogFetch({
+      onDecisions: () => new Promise((resolve) => {
+        setTimeout(() => resolve(jsonResponse({ data: [DECISIONS_JEV] })), 2500);
+      }),
+    });
+
+    let first = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl }).then((m) => { first = m; });
+    await vi.advanceTimersByTimeAsync(1000);
+    await pending;
+    expect(first.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    const second = await resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    expect(second.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(await resolveOpenRouterDecisionModels({ fetchImpl })).toHaveLength(1);
+  });
+
+  it("negatively caches a timed-out decisions fetch and retries it after the failure TTL", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    let hangDecisions = true;
+    const hang = hangingDecisions();
+    const fetchImpl = catalogFetch({
+      onDecisions: (url) => hangDecisions ? hang.onDecisions(url) : jsonResponse({ data: [DECISIONS_MERCURY] }),
+    });
+    hang.onDecisions.fetchImpl = fetchImpl;
+
+    const first = resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await first).map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    await vi.advanceTimersByTimeAsync(7100);
+    expect(hang.signals[0].aborted).toBe(true);
+
+    // Inside the 5-minute failure TTL: no new decisions request, immediate primary answer.
+    vi.setSystemTime(new Date("2026-11-27T00:04:00Z"));
+    const cached = await resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    expect(cached.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    hangDecisions = false;
+    vi.setSystemTime(new Date("2026-11-27T00:06:00Z"));
+    const retried = await resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    expect(retried.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_MERCURY.id]);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("serves the route's last good decisions while a refresh hangs, without crossing routes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    let hangDecisions = false;
+    const hang = hangingDecisions();
+    const fetchImpl = catalogFetch({
+      onDecisions: (url) => hangDecisions ? hang.onDecisions(url) : jsonResponse({ data: [DECISIONS_JEV] }),
+    });
+    hang.onDecisions.fetchImpl = fetchImpl;
+    const proxied = { source: "legacy", connectionProxyEnabled: true, connectionProxyUrl: "http://proxy-c.local:8080" };
+    mocks.proxyAwareFetch.mockImplementation((url, init) => fetchImpl(url, init));
+
+    expect((await resolveOpenRouterModels({ includeDecisions: true, fetchImpl })).map((m) => m.id))
+      .toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+
+    // Both caches expire; the primary refresh is fast, the decisions refresh hangs.
+    hangDecisions = true;
+    vi.setSystemTime(new Date("2026-11-27T00:31:00Z"));
+    const direct = resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    const otherRoute = resolveOpenRouterModels({ includeDecisions: true, proxyOptions: proxied });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await direct).map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+    expect((await otherRoute).map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(hang.signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("still merges a fast decisions listing in the same call", async () => {
+    const fetchImpl = catalogFetch();
+    const models = await resolveOpenRouterModels({ includeDecisions: true, decisionsWaitMs: 1000, fetchImpl });
+    expect(models.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id, DECISIONS_MERCURY.id]);
   });
 });
 

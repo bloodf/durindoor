@@ -9,11 +9,12 @@
 //   { realtimeInput: { audio: { data: <base64 PCM>, mimeType: "audio/pcm;rate=16000" } } }   (3200-byte chunks)
 //   { realtimeInput: { audioStreamEnd: true } }
 //
-// Fork deviation: the source pipes any other container through ffmpeg; this
-// staged adapter spawns no process and accepts only what the source's
-// no-ffmpeg path accepts (a RIFF/WAVE file whose fmt chunk is PCM, mono,
-// 16 kHz, 16-bit). Everything else, and every field the source silently
-// dropped, is refused before a socket is opened.
+// The source pipes any other container through ffmpeg. Without a
+// `convertAudio` hook (the default adapter) this module spawns no process and
+// accepts only what the source's no-ffmpeg path accepts (a RIFF/WAVE file
+// whose fmt chunk is PCM, mono, 16 kHz, 16-bit). The conversion-enabled
+// adapter passes ./convert.js as the hook. Every field the source silently
+// dropped is refused, and conversion finishes, before a socket is opened.
 import { Buffer } from "node:buffer";
 import { HTTP_STATUS } from "../../../config/runtimeConfig.js";
 import { createErrorResult } from "../../../utils/error.js";
@@ -100,7 +101,7 @@ function optionalText(formData, name) {
  *
  * @returns {Promise<{ plan: { model, setup, pcm, audioSeconds, language } } | object>}
  */
-export async function buildGeminiLiveTranscriptionRequest(model, formData, { kind = "transcription" } = {}) {
+export async function buildGeminiLiveTranscriptionRequest(model, formData, { kind = "transcription", convertAudio = null, signal = null, deadlineAt = null } = {}) {
   if (kind !== "transcription") return invalid("Gemini Live audio translations are not supported");
   const entry = geminiLiveSttModel(model);
   if (!entry) return invalid(`Unsupported Gemini Live transcription model: ${model}. Use one of: ${GEMINI_LIVE_STT_MODELS.map((m) => m.id).join(", ")}`);
@@ -127,7 +128,14 @@ export async function buildGeminiLiveTranscriptionRequest(model, formData, { kin
   const bytes = Buffer.from(await file.arrayBuffer());
   if (bytes.length === 0) return invalid("Gemini Live transcription file is empty");
   if (bytes.length > GEMINI_LIVE_MAX_INPUT_BYTES) return invalid("Audio file is too large for Gemini Live transcription", 413);
-  const pcm = extractPcmFrom16kWav(bytes);
+  let pcm = extractPcmFrom16kWav(bytes);
+  if (!pcm && isFunction(convertAudio)) {
+    // Conversion-enabled adapter only (./convert.js): decode before any credential use or socket.
+    const converted = await convertAudio(bytes, { signal, deadlineAt });
+    if (!Buffer.isBuffer(converted?.wav)) return converted?.error ? converted : invalid("Gemini Live audio conversion failed", HTTP_STATUS.SERVER_ERROR);
+    pcm = extractPcmFrom16kWav(converted.wav);
+    if (!pcm) return invalid("Gemini Live audio conversion produced a malformed WAV", HTTP_STATUS.SERVER_ERROR);
+  }
   if (!pcm) {
     return invalid("Gemini Live transcription accepts only 16 kHz, 16-bit, mono PCM WAV audio; other formats need conversion first", 415);
   }

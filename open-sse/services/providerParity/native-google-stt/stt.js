@@ -23,6 +23,7 @@ import { isFunction, isNumber, isRecord, isString } from "../../../../src/shared
 import {
   GEMINI_LIVE_STT_MODELS, GEMINI_LIVE_TOTAL_TIMEOUT_MS, GEMINI_LIVE_WS_URL, GEMINI_PROVIDER_ID,
 } from "./config.js";
+import { createGeminiLiveAudioConverter } from "./convert.js";
 import { GEMINI_LIVE_RESPONSE_FORMATS, buildGeminiLiveTranscriptionRequest } from "./request.js";
 import { runGeminiLiveSocket } from "./socket.js";
 
@@ -139,8 +140,12 @@ function usageMetadataOf(usage) {
  * @param {Function} [options.agentFactory] - (proxyUrl) => agent; tests inject a mock
  * @param {number} [options.timeoutMs] - total session deadline
  * @param {object} [options.socketOptions] - extra bounds passed to runGeminiLiveSocket (tests)
+ * @param {Function} [options.convertAudio] - (bytes, { signal, deadlineAt }) => { wav } | error result.
+ *   Absent (the default) means only 16 kHz mono 16-bit PCM WAV is accepted. When set, conversion
+ *   shares the total deadline with the session and finishes before credentials are read.
  */
-export function createGeminiLiveSttAdapter({ WebSocketImpl, agentFactory = defaultAgentFactory, timeoutMs = GEMINI_LIVE_TOTAL_TIMEOUT_MS, socketOptions = {} } = {}) {
+export function createGeminiLiveSttAdapter({ WebSocketImpl, agentFactory = defaultAgentFactory, timeoutMs = GEMINI_LIVE_TOTAL_TIMEOUT_MS, socketOptions = {}, convertAudio = null } = {}) {
+  const converting = isFunction(convertAudio);
   return {
     provider: GEMINI_PROVIDER_ID,
     models: GEMINI_LIVE_STT_MODELS,
@@ -153,8 +158,10 @@ export function createGeminiLiveSttAdapter({ WebSocketImpl, agentFactory = defau
      */
     async transcribe({ model, formData, credentials, kind, signal }) {
       if (signal?.aborted) return { ...createErrorResult(CLIENT_CLOSED, `${LABEL} aborted; no audio was sent`), local: true };
-      const built = await buildGeminiLiveTranscriptionRequest(model, formData, { kind });
+      const deadlineAt = converting ? Date.now() + timeoutMs : null;
+      const built = await buildGeminiLiveTranscriptionRequest(model, formData, converting ? { kind, convertAudio, signal, deadlineAt } : { kind });
       if (!built.plan) return built;
+      if (converting && signal?.aborted) return { ...createErrorResult(CLIENT_CLOSED, `${LABEL} aborted; no audio was sent`), local: true };
       const headers = geminiLiveAuthHeaders(credentials);
       if (!headers) return createErrorResult(HTTP_STATUS.UNAUTHORIZED, "No credentials for Gemini Live transcription");
       const secrets = secretsOf(credentials);
@@ -167,7 +174,8 @@ export function createGeminiLiveSttAdapter({ WebSocketImpl, agentFactory = defau
       const { plan } = built;
       const run = await runGeminiLiveSocket({
         ...socketOptions,
-        url: GEMINI_LIVE_WS_URL, headers, setup: plan.setup, pcm: plan.pcm, signal, agent, timeoutMs,
+        url: GEMINI_LIVE_WS_URL, headers, setup: plan.setup, pcm: plan.pcm, signal, agent,
+        timeoutMs: converting ? Math.max(1, deadlineAt - Date.now()) : timeoutMs,
         ...(WebSocketImpl ? { WebSocketImpl } : null),
       });
       if (run.outcome !== "complete") return socketFailure(run, secrets);
@@ -185,4 +193,17 @@ export function createGeminiLiveSttAdapter({ WebSocketImpl, agentFactory = defau
       };
     },
   };
+}
+
+/**
+ * The adapter registration uses: the default adapter plus the source's
+ * upload conversion (./convert.js), so MP3, FLAC, Ogg, M4A, WebM, AAC and
+ * non-16 kHz WAV uploads are decoded locally before any credential is read
+ * or socket dialed. A normalized 16 kHz mono 16-bit PCM WAV skips ffmpeg.
+ *
+ * @param {object} [options] - createGeminiLiveSttAdapter options, plus
+ * @param {object} [options.converterOptions] - createGeminiLiveAudioConverter options (tests inject spawn/access)
+ */
+export function createGeminiLiveConvertingSttAdapter({ converterOptions = {}, ...options } = {}) {
+  return createGeminiLiveSttAdapter({ ...options, convertAudio: createGeminiLiveAudioConverter(converterOptions) });
 }

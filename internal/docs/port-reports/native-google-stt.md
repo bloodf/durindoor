@@ -46,7 +46,7 @@ File-mode Live transcription is therefore the remaining delta.
 
 The following are refused locally before any socket opens, so nothing is sent or billed:
 
-- Any audio other than 16 kHz/16-bit/mono PCM WAV (415). The source spawned ffmpeg for other containers. This staged adapter spawns no process, and conversion remains a registration-time decision.
+- On the default `geminiLiveSttAdapter` only: any audio other than 16 kHz/16-bit/mono PCM WAV (415). That instance spawns no process. Registration wires `geminiLiveConvertingSttAdapter`, which converts other uploads as the source does (see "Uploaded-audio conversion").
 - Translations, `stream=true` (live sessions belong to `/v1/realtime/native`), a `url` input, `response_format` other than `json`, and fields the source silently dropped (`timestamp_granularities`, `temperature`, `diarization*`, `custom_vocabulary`, `mode`, `chunking_strategy`, `include`).
 
 Transport and result handling:
@@ -60,10 +60,32 @@ Transport and result handling:
 - A non-1000/1005 close after `audioStreamEnd` and before `turnComplete` is a lost result. The source returned it as success.
 - Not ported: interim hypotheses (the source omits them too), `modelTurn` output, and proxy pools for WebSocket egress (only the connection proxy URL and environment proxy are resolved, as in the realtime relay).
 
+## Uploaded-audio conversion
+
+Source: `geminiLiveTranscribe.ts` `convertToPcm16k`/`runFfmpegPcm16k` at the same commit. The source keeps the WAV fast path and otherwise pipes the upload through `ffmpeg ... -protocol_whitelist pipe -i pipe:0 -vn -t 600 -f s16le -acodec pcm_s16le -ac 1 -ar 16000 pipe:1`, with a 60 s timeout, an 8 KiB stderr cap, a decoded-PCM cap and SIGKILL on timeout, abort or overflow. It converts before it resolves the socket URL and headers.
+
+`convert.js` ports this as `createGeminiLiveAudioConverter`. `createGeminiLiveConvertingSttAdapter` passes it to `createGeminiLiveSttAdapter` through the new `convertAudio` option, and `geminiLiveConvertingSttAdapter` is the instance named in `registration.json`. Without `convertAudio`, the factory and `geminiLiveSttAdapter` behave exactly as before, and `tests/unit/native-google-stt.test.js` is unchanged.
+
+The existing helper `open-sse/handlers/codexSttAudio.js` is not reused. It writes the upload to a temp file, whitelists the `file` protocol, finds ffmpeg on `PATH` and gives the child the full server environment.
+
+Contract:
+
+- Order: field checks, then upload size, then the WAV bypass (`extractPcmFrom16kWav`), then conversion, then the PCM checks, and only after that credentials, the proxy agent and the socket. A conversion failure therefore sends nothing and never carries `acceptedJob`. Every conversion failure is `local`.
+- Executable: the first executable of `/usr/bin/ffmpeg`, `/usr/local/bin/ffmpeg` and `/opt/homebrew/bin/ffmpeg`. There is no `PATH` lookup and no caller value.
+- Input: the uploaded bytes only, written to stdin. Filename, content type and any `url` field are ignored. The container is sniffed from magic bytes: WAV, MP3 (ID3 or frame sync), FLAC, Ogg, M4A/MP4 (`ftyp`), WebM/Matroska (EBML) and ADTS AAC. Anything else, including playlists, concat scripts, URLs and paths, gets 415 before spawning.
+- Argv: a fixed array. Only the demuxer varies, and it comes from the container table. That demuxer is forced with `-f` and is the only entry of `-format_whitelist`. `-protocol_whitelist pipe` matches the source. Output is the first audio stream as s16le, mono, 16 kHz, on stdout.
+- Child: `shell: false`, `cwd: "/"`, and `env` limited to `{ LC_ALL: "C", AV_LOG_FORCE_NOCOLOR: "1" }`, so no server or provider credential is inherited. stdio uses pipes only, and no file is written.
+- Bounds: 25 MiB input, 60 s conversion (source), and the shared 120 s total deadline, so the socket gets only the time left. Decoded PCM is capped at 600 s and longer audio gets 413; the source cut it silently at 600 s with `-t 600`. stderr is drained, capped at 8 KiB and never surfaced. On timeout, abort or overflow the child gets SIGKILL and its pipes are destroyed. The result returns once the child is reaped, or after a 2 s reap window.
+- Output: odd-length PCM gives 500. Empty output gives 400. A non-zero exit gives 400 without quoting stderr. The PCM is framed with `encodePcm16kWav` (exact 44-byte header) and read back with `extractPcmFrom16kWav` before use.
+- Missing ffmpeg: a local 503 that names ffmpeg and the checked paths. It needs no account and does not penalize one. 16 kHz mono 16-bit PCM WAV still works without ffmpeg.
+- Limits: M4A/MP4 files whose `moov` atom follows the media data cannot be read from a pipe, the same as in the source. Windows hosts have no candidate path and get the 503.
+
+Public docs: `docs/providers/catalog.mdx` is outside this unit. The registration integration point records the text to publish: non-WAV uploads need ffmpeg in one of the fixed locations (the Docker image installs `/usr/bin/ffmpeg`), and without it those uploads get HTTP 503.
+
 ## Registration (serial, after this stage)
 
-See `registration.json` `integrationPoints`. Expose `gemini-3.5-transcribe-live` to STT in `gemini.js` and keep its `live` row and the existing `gemini-stt` models. Add a branch in `handleSttCore` ahead of the format switch for `provider === "gemini" && model === "gemini-3.5-transcribe-live"`. `src/sse/handlers/stt.js` already honors `acceptedJob`. At registration, promote the isolated staging block in `tests/unit/native-google-stt.test.js` to positive identity assertions.
+See `registration.json` `integrationPoints`. Expose `gemini-3.5-transcribe-live` to STT in `gemini.js` and keep its `live` row and the existing `gemini-stt` models. Add a branch in `handleSttCore` ahead of the format switch for `provider === "gemini" && model === "gemini-3.5-transcribe-live"` that calls `geminiLiveConvertingSttAdapter`. `src/sse/handlers/stt.js` already honors `acceptedJob`. At registration, promote the isolated staging block in `tests/unit/native-google-stt.test.js` to positive identity assertions.
 
 ## Evidence
 
-`cd tests && node node_modules/vitest/vitest.mjs run unit/native-google-stt.test.js --maxWorkers=2`. The tests use closed synthetic WebSocket mocks only. They make no network calls and launch no browser.
+`cd tests && node node_modules/vitest/vitest.mjs run unit/gemini-live-audio-inputs.test.js unit/native-google-stt.test.js --maxWorkers=2`: 83 tests (34 + the original 49). The tests use closed synthetic WebSocket mocks and an injected synthetic ffmpeg child only. They run no ffmpeg binary, make no network calls and launch no browser, so they say nothing about a real ffmpeg build.

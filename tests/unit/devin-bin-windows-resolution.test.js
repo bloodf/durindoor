@@ -69,9 +69,35 @@ describe("isDevinBinAvailable on Windows", () => {
     expect(win({ ...narrow, CLI_DEVIN_BIN: ".\\bin\\devin.exe" }, { "bin\\devin.exe": "file" })).toBe(true);
   });
 
-  it("does not stretch the explicit-path exemption to bare names, other extensions, or missing files", () => {
+  it("finds a bare name with .exe/.com/.bat/.cmd on PATH even when PATHEXT omits its extension", () => {
+    // cmd searches each PATH directory for the exact file name when the command includes an extension.
     const narrow = { PATH, PATHEXT: ".BAT;.CMD" };
-    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "DEVIN.EXE" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: '"devin.exe"' }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    expect(win({ PATH, PATHEXT: ".EXE", CLI_DEVIN_BIN: "devin.com" }, { "C:\\Tools\\devin.com": "file" })).toBe(true);
+    expect(win({ PATH, PATHEXT: ".EXE", CLI_DEVIN_BIN: "devin.cmd" }, { "C:\\Tools\\devin.cmd": "file" })).toBe(true);
+    expect(win({ PATH, PathExt: ".JS", CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+    // The unset-CLI_DEVIN_BIN fallback is the bare name devin.exe.
+    expect(win({ LOCALAPPDATA: "C:\\Users\\u\\AppData\\Local", PATH, PATHEXT: ".CMD" }, { "C:\\Tools\\devin.exe": "file" })).toBe(true);
+  });
+
+  it("keeps the bare-name exemption to exact, launchable files found on PATH", () => {
+    const narrow = { PATH, PATHEXT: ".BAT;.CMD" };
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe.bat": "file" })).toBe(false); // exact name only
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "dir" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Other\\devin.exe": "file" })).toBe(false); // not on PATH
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe", PATH: "" }, { "devin.exe": "file" })).toBe(false); // cwd is not searched
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.ps1" }, { "C:\\Tools\\devin.ps1": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.js" }, { "C:\\Tools\\devin.js": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, {})).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: '"devin.exe' }, { "C:\\Tools\\devin.exe": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe&x" }, { "C:\\Tools\\devin.exe&x": "file" })).toBe(false);
+    expect(win({ ...narrow, CLI_DEVIN_BIN: "devin.exe" }, { "C:\\Tools\\devin.exe": "file" }, { agentic: true })).toBe(false);
+  });
+
+  it("does not stretch the inherent-extension exemption to other extensions or missing files", () => {
+    const narrow = { PATH, PATHEXT: ".BAT;.CMD" };
     expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.ps1" }, { "C:\\Tools\\devin.ps1": "file" })).toBe(false);
     expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.js" }, { "C:\\Tools\\devin.js": "file" })).toBe(false);
     expect(win({ ...narrow, CLI_DEVIN_BIN: "C:\\Tools\\devin.exe" }, { "C:\\Tools\\devin.exe.bat": "file" })).toBe(false);
@@ -149,5 +175,7 @@ describe("isDevinBinAvailable on POSIX (injected)", () => {
     expect(posix({ CLI_DEVIN_BIN: '"/opt/bin/devin"', PATH: "" }, { "/opt/bin/devin": "exec" })).toBe(false);
     expect(posix({ CLI_DEVIN_BIN: "/opt/my bin/devin", PATH: "" }, { "/opt/my bin/devin": "exec" })).toBe(true);
     expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin.exe", PATH: "" }, { "/opt/bin/devin.exe": "file" })).toBe(false);
+    expect(posix({ CLI_DEVIN_BIN: "devin.exe", PATH: "/opt/bin", PATHEXT: ".CMD" }, { "/opt/bin/devin.exe": "file" })).toBe(false);
+    expect(posix({ CLI_DEVIN_BIN: "devin.exe", PATH: "/opt/bin", PATHEXT: ".CMD" }, { "/opt/bin/devin.exe": "exec" })).toBe(true);
   });
 });

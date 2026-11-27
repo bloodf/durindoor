@@ -129,21 +129,30 @@ export function sanitizeErrorMessage(value = "") {
   slice(0, 2000);
 }
 
+function abortError(signal) {
+  return signal?.reason ?? new DOMException("Aborted", "AbortError");
+}
+
+/** Read UTF-8 text, cancelling pending reads when the signal aborts. */
 export async function readTextStream(body, signal) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  const onAbort = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
-      if (signal?.aborted) throw signal.reason ?? abortError();
+      if (signal?.aborted) throw abortError(signal);
       const { value, done } = await reader.read();
-      if (signal?.aborted) throw abortError();
+      if (signal?.aborted) throw abortError(signal);
       if (done) break;
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
     return text;
   } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (signal?.aborted) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -159,15 +168,13 @@ export async function* readStreamLines(body, { signal, tail = true } = {}) {
   let pending = "";
   let finished = false;
   // Cancel pending reads too: checking only before read() leaves idle bodies stuck.
-  const abortError = () => signal.reason?.name === "AbortError"
-    ? signal.reason : new DOMException("Aborted", "AbortError");
   const onAbort = () => { void reader.cancel().catch(() => {}); };
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
-      if (signal?.aborted) throw signal.reason ?? abortError();
+      if (signal?.aborted) throw abortError(signal);
       const { value, done } = await reader.read();
-      if (signal?.aborted) throw abortError();
+      if (signal?.aborted) throw abortError(signal);
       if (done) break;
       pending += decoder.decode(value, { stream: true });
       const lines = pending.split(/\r?\n/);

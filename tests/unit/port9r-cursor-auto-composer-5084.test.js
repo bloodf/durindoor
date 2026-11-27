@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../open-sse/services/cursorModels.js", async (importOriginal) => {
+vi.mock("../../open-sse/services/catalogs/cursorModels.js", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -8,7 +8,7 @@ vi.mock("../../open-sse/services/cursorModels.js", async (importOriginal) => {
   };
 });
 
-import { resolveAutoModelSelection, resolveCursorModels } from "../../open-sse/services/cursorModels.js";
+import { resolveAutoModelSelection, resolveCursorModels } from "../../open-sse/services/catalogs/cursorModels.js";
 import { CursorExecutor } from "../../open-sse/executors/cursor.js";
 import { encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";
 

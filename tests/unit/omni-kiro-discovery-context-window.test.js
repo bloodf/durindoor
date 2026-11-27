@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.fetch }));
 
-import { clearKiroModelCache, resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { clearKiroModelCache, resolveKiroModels } from "open-sse/services/catalogs/kiroModels.js";
 import { effectiveSyncedModels, mergeSyncedCatalog, normalizeSyncedModels } from "@/lib/modelAutoSync/catalog.js";
 
 describe("Kiro discovery context limits", () => {

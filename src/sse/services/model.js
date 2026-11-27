@@ -1,7 +1,7 @@
 import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js";
 import { capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
-import { getOpenRouterModelCapabilities } from "open-sse/services/openrouterCatalog.js";
+import { getOpenRouterModelCapabilities } from "open-sse/services/catalogs/openrouterCatalog.js";
 import { effectiveSyncedModels, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
 

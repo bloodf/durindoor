@@ -14,7 +14,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 import {
   clearQoderCatalog,
   resolveQoderModels,
-} from "../../open-sse/services/qoderModels.js";
+} from "../../open-sse/services/catalogs/qoderModels.js";
 import { getQoderUsage } from "../../open-sse/services/usage/misc.js";
 import { QoderExecutor } from "../../open-sse/executors/qoder.js";
 

@@ -38,7 +38,7 @@ vi.mock("@/lib/oauth/services/kiro", () => ({
   },
 }));
 
-vi.mock("open-sse/services/kiroModels.js", () => ({
+vi.mock("open-sse/services/catalogs/kiroModels.js", () => ({
   resolveKiroCredentialsFromSsoCache: mocks.resolveCache,
 }));
 

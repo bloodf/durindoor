@@ -44,7 +44,7 @@ describe("Qoder regional device sign-in", () => {
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: vi.fn() }));
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
-import { clearQoderCatalog, resolveQoderModels } from "../../open-sse/services/qoderModels.js";
+import { clearQoderCatalog, resolveQoderModels } from "../../open-sse/services/catalogs/qoderModels.js";
 
 describe("Qoder catalog credential isolation", () => {
   it("does not reuse a catalog for another credential with the same regional user ID", async () => {

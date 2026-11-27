@@ -26,7 +26,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { normalizeProviderId } from "@/lib/providerNormalization";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { KiroExecutor } from "open-sse/executors/kiro.js";
-import { clearKiroModelCache, resolveKiroModels } from "open-sse/services/kiroModels.js";
+import { clearKiroModelCache, resolveKiroModels } from "open-sse/services/catalogs/kiroModels.js";
 
 const kiroCreds = {
   accessToken: "kiro-api-key",

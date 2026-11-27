@@ -1,5 +1,5 @@
-import { sanitizeErrorMessage } from "../utils/error.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 
 const SEARCH_PAGE_SIZE = 100;
 const MAX_SEARCH_PAGES = 20;

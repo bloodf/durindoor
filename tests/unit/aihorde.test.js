@@ -57,7 +57,7 @@ import { clearLiveModelLimitsCache } from "../../open-sse/services/liveModelLimi
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { getProviderCredentials } from "../../src/sse/services/auth.js";
 import { handleChat } from "../../src/sse/handlers/chat.js";
-import { AI_HORDE_CATALOG_URL, aiHordeImageCatalog } from "../../open-sse/services/aihordeImageCatalog.js";
+import { AI_HORDE_CATALOG_URL, aiHordeImageCatalog } from "../../open-sse/services/catalogs/aihordeImageCatalog.js";
 
 const LIVE_MODEL_ID = "koboldcpp/Llama-3.2-3B";
 const IMAGE_LIKE_MODEL_ID = "koboldcpp/Qwen-Image-2.1-Turbo-Uncensored-AD-Q2_K";

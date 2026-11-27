@@ -25,9 +25,9 @@ vi.mock("@/lib/localDb", () => ({ getProviderConnectionById: vi.fn() ,
   getCombos: mocks.getCombos,
   getCustomModels: mocks.getCustomModels,
   getModelAliases: mocks.getModelAliases}));
-vi.mock("open-sse/services/cursorModels.js", () => ({ resolveCursorModels: mocks.resolveCursorModels }));
-vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
-vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/cursorModels.js", () => ({ resolveCursorModels: mocks.resolveCursorModels }));
+vi.mock("open-sse/services/catalogs/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
 
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { fetchConnectionModels } from "../../src/app/api/providers/[id]/models/fetchConnectionModels.js";

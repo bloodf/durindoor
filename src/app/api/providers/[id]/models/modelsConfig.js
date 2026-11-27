@@ -7,34 +7,34 @@ import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/to
 import { KIMI_WEB_DISCOVERY_HEADERS } from "@/lib/providers/webCookieAuth";
 import { resolveKimiTokens } from "open-sse/executors/kimi-web.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
-import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
+import { discoverOllamaCatalog } from "open-sse/services/catalogs/ollamaCatalog.js";
 import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { discoverRenderHourModels } from "open-sse/services/renderhour/media.js";
 import { readAdobeFireflyCredential } from "open-sse/services/adobeFireflyApi/auth.js";
-import { resolveKiroModels } from "open-sse/services/kiroModels.js";
-import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
+import { resolveKiroModels } from "open-sse/services/catalogs/kiroModels.js";
+import { resolveCopilotModels } from "open-sse/services/catalogs/copilotModels.js";
 import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
 import { updateProviderConnection } from "@/lib/localDb";
 import { resolveGheCopilotApiBase } from "open-sse/config/gheCopilot.js";
 import { GITHUB_COPILOT } from "open-sse/config/appConstants.js";
-import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
-import { resolveQoderModels } from "open-sse/services/qoderModels.js";
-import { resolveCommandCodeModels } from "open-sse/services/commandcodeModels.js";
+import { resolveKimchiModels } from "open-sse/services/catalogs/kimchiModels.js";
+import { resolveQoderModels } from "open-sse/services/catalogs/qoderModels.js";
+import { resolveCommandCodeModels } from "open-sse/services/catalogs/commandcodeModels.js";
 import { META_MODEL_API_MODELS_URL } from "open-sse/config/museCode.js";
 import {
   ANTIGRAVITY_CATALOG_URL,
   buildAntigravityCatalogBody,
   classifyAntigravityCatalogStatus,
   parseAntigravityCatalogModels
-} from "open-sse/services/antigravityCatalog.js";
-import { resolveCursorModels } from "open-sse/services/cursorModels.js";
+} from "open-sse/services/catalogs/antigravityCatalog.js";
+import { resolveCursorModels } from "open-sse/services/catalogs/cursorModels.js";
 import { discoverCursorApiModels, isCursorApiDispatchEnabled } from "open-sse/executors/cursor-api.js";
 import { discoverDevinDesktopModels, isDevinDesktopDispatchEnabled } from "open-sse/executors/devin-desktop.js";
 import { modelsConfig as workbuddyModelsConfig } from "open-sse/providers/registry/workbuddy.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
-import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
+import { isOpenRouterFreeModel } from "open-sse/services/catalogs/openrouterCatalog.js";
 import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
@@ -46,7 +46,7 @@ import {
   ORCAROUTER_ID } from
 "open-sse/providers/orcarouterCatalog.js";
 import { discoverGisooModels } from "open-sse/providers/gisooCatalog.js";
-import { discoverCloudflareModels } from "open-sse/services/cloudflareModels.js";
+import { discoverCloudflareModels } from "open-sse/services/catalogs/cloudflareModels.js";
 import { chatPlaygroundCatalog } from "open-sse/executors/chatplayground.js";
 import { discoverInnerAiWebModels } from "open-sse/executors/inner-ai-web.js";
 import { discoverVeniceWebModels } from "open-sse/executors/venice-web.js";

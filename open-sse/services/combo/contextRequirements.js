@@ -43,7 +43,7 @@
 
 import REGISTRY from "../../providers/registry/index.js";
 import { resolveModelLimits } from "../../providers/capabilities.js";
-import { getOpenRouterModelCapabilities } from "../openrouterCatalog.js";
+import { getOpenRouterModelCapabilities } from "../catalogs/openrouterCatalog.js";
 
 // Alias→entry map for resolving the provider half of a model string.
 // REGISTRY is an array keyed by nothing; mirror pricing.js's map (id, alias,

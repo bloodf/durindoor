@@ -25,7 +25,7 @@ vi.mock("@/lib/localDb", () => ({
   getProviderConnections: vi.fn(async () => []),
   getSettings: vi.fn(async () => ({})),
 }));
-vi.mock("../../open-sse/services/openrouterCatalog.js", () => ({
+vi.mock("../../open-sse/services/catalogs/openrouterCatalog.js", () => ({
   getOpenRouterModelCapabilities: vi.fn(() => null),
 }));
 vi.mock("../../open-sse/services/liveModelLimits.js", () => ({

@@ -80,6 +80,9 @@ function imageFailureMessage(body) {
  * @param {AbortSignal} [options.signal] - Client abort signal; forwarded to upstream fetches and async polling
  * @param {function} [options.onCredentialsRefreshed]
  * @param {function} [options.onRequestSuccess]
+ * @param {function} [options.onUpstreamDispatch] - Called synchronously with (sentCredentials, dispatchedAt)
+ * each time the provider answers a dispatch, including the retry after a 401/403 refresh. The
+ * credentials are a copy taken before the send, so later refreshes cannot change them.
  * @param {function} [options.onStreamComplete] - Awaited once with ({status, statusCode, accounting, error}, response); statusCode carries a classified terminal provider failure.
  * Codex completion resolves (never rejects) after this callback and upstream cleanup.
  * Status is success, failure, or abort; only success has complete accounting.
@@ -105,6 +108,7 @@ export async function handleImageGenerationCore({
   refreshCredentials,
   onRequestSuccess,
   onStreamComplete,
+  onUpstreamDispatch,
   signal
 }) {
   const { provider, model } = modelInfo;
@@ -115,6 +119,21 @@ export async function handleImageGenerationCore({
   // Client disconnects are not provider failures: callers must not cool down the account.
   const isAbort = (error) => signal?.aborted || error?.name === "AbortError";
   const abortedResult = () => createErrorResult(499, "Image generation request aborted");
+  // Report a dispatch only once the provider answered it. A transport error is
+  // not an answer; an executor error tagged with an HTTP status is.
+  const dispatchUpstream = async (send) => {
+    const sent = { ...credentials };
+    const dispatchedAt = Date.now();
+    const answered = () => { if (isFunction(onUpstreamDispatch)) onUpstreamDispatch(sent, dispatchedAt); };
+    try {
+      const value = await send();
+      answered();
+      return value;
+    } catch (error) {
+      if (!isAbort(error) && Number.isInteger(Number(error?.status))) answered();
+      throw error;
+    }
+  };
   // A 2xx async submit means the provider took the job and may bill it, whatever we
   // observe afterwards. No measured units or receipt exist, so the cost stays unknown.
   const withAcceptedJob = (result) => ({
@@ -164,7 +183,7 @@ export async function handleImageGenerationCore({
   if (adapter.useExecutor && adapter.executeViaExecutor) {
     try {
       log?.debug?.("IMAGE", `${provider.toUpperCase()} | ${model} | prompt="${body.prompt.slice(0, 50)}..." (executor)`);
-      const execute = () => adapter.executeViaExecutor(model, body, credentials, log, proxyOptions, signal, onCredentialsRefreshed);
+      const execute = () => dispatchUpstream(() => adapter.executeViaExecutor(model, body, credentials, log, proxyOptions, signal, onCredentialsRefreshed));
       let responseBody;
       try {
         responseBody = await execute();
@@ -244,13 +263,13 @@ export async function handleImageGenerationCore({
 
   let providerResponse;
   try {
-    providerResponse = await fetch(url, {
+    providerResponse = await dispatchUpstream(() => fetch(url, {
       method: "POST",
       headers,
       body: serializeRequestBody(requestBody),
       signal,
       proxyOptions
-    });
+    }));
   } catch (error) {
     if (isAbort(error)) return abortedResult();
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
@@ -278,13 +297,13 @@ export async function handleImageGenerationCore({
         requestBody = await adapter.buildBody(model, body, adapterOptions);
         headers = adapter.buildHeaders(credentials, requestBody, model, body);
         url = adapter.buildUrl(model, credentials, body, adapterOptions);
-        providerResponse = await fetch(url, {
+        providerResponse = await dispatchUpstream(() => fetch(url, {
           method: "POST",
           headers,
           body: serializeRequestBody(requestBody),
           signal,
           proxyOptions
-        });
+        }));
       } catch (error) {
         if (isAbort(error)) return abortedResult();
         log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
@@ -305,13 +324,13 @@ export async function handleImageGenerationCore({
     try {
       requestBody = fallbackBody;
       headers = adapter.buildHeaders(credentials, requestBody, model, body);
-      providerResponse = await fetch(url, {
+      providerResponse = await dispatchUpstream(() => fetch(url, {
         method: "POST",
         headers,
         body: serializeRequestBody(requestBody),
         signal,
         proxyOptions
-      });
+      }));
       upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
     } catch (error) {
       if (isAbort(error)) return abortedResult();

@@ -1,5 +1,5 @@
 import { parseAutoModel, getAutoModelCandidates } from "../services/autoModel.js";
-import { credentialDispatchSnapshot } from "@/shared/utils/credentialFingerprint.js";
+import { credentialDispatchSnapshot, credentialFingerprint } from "@/shared/utils/credentialFingerprint.js";
 import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from "../utils/requestCorrelation.js";
 import {
   getNoAuthProviderCredentials,
@@ -206,8 +206,10 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
     },
     async runAttempt(credentials) {
       const refreshedCredentials = await checkAndRefreshToken(provider, credentials);
-      const dispatch = credentialDispatchSnapshot(refreshedCredentials);
-      const usedCredential = refreshedCredentials.accessToken || refreshedCredentials.apiKey || null;
+      const initialSecret = sentSecret(refreshedCredentials);
+      // Health writes use the dispatch the provider last answered. The core may
+      // refresh after a 401/403 and retry, so this is replaced per answered dispatch.
+      let dispatch = dispatchContext(refreshedCredentials);
       // Cores and executors mutate the dispatched credentials before the callback runs.
       const presentedRefreshToken = refreshedCredentials.refreshToken;
       // Without a sent refresh token there is nothing to guard against.
@@ -229,10 +231,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
             (outcome.statusCode === 401 || outcome.statusCode === 403 || outcome.statusCode === 404 || outcome.statusCode === 429 || outcome.statusCode >= 500 && outcome.statusCode <= 599)) {
             // Headers are committed, so update health without retrying or changing
             // the response. Guard the update with the credential actually sent.
-            await markAccountUnavailable(credentials.connectionId, outcome.statusCode, outcome.error?.message, provider, model, null, {
-              usedCredential,
-              ...dispatch,
-            });
+            await markAccountUnavailable(credentials.connectionId, outcome.statusCode, outcome.error?.message, provider, model, null, dispatch);
           }
         },
         onCredentialsRefreshed: async (newCreds) => {
@@ -244,6 +243,9 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
           }, ...refreshGuard);
         },
         refreshCredentials: leasedAntigravityRefresher(refreshedCredentials),
+        onUpstreamDispatch: (sent, dispatchedAt) => {
+          dispatch = dispatchContext(sent, dispatchedAt, sentSecret(sent) !== initialSecret);
+        },
         onRequestSuccess: async () => {
           await clearAccountError(credentials.connectionId, credentials, model, dispatch);
         }
@@ -289,6 +291,24 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       });
     },
   });
+}
+
+function sentSecret(credentials) {
+  return credentials?.accessToken || credentials?.apiKey || null;
+}
+
+/**
+ * The frozen health context of one dispatch: the secret sent, its fingerprint,
+ * and when it was sent. A secret refreshed during the attempt is fingerprinted
+ * directly. The write then applies only while the row stores that secret, so a
+ * lost refresh race or a concurrent re-login is not charged with this outcome.
+ */
+function dispatchContext(sent, dispatchedAt = Date.now(), refreshed = false) {
+  const usedCredential = sentSecret(sent);
+  const snapshot = refreshed && usedCredential ?
+    { credentialFingerprint: credentialFingerprint(usedCredential), dispatchedAt } :
+    credentialDispatchSnapshot(sent, dispatchedAt);
+  return Object.freeze({ usedCredential, ...snapshot });
 }
 
 /**

@@ -260,6 +260,11 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         await recordAcceptedImageJob(apiKey, result.acceptedJob, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
         return { response: markAcceptedJob(result.response) };
       }
+      // An upstream abort after a receipt was read: the provider may bill that
+      // work, so record it once for this account, then keep health and fallback.
+      if (result.cancelledUsage) {
+        await recordCancelledImage(apiKey, result.cancelledUsage, request, provider, model, credentials.connectionId, billingEpoch, apiKeyId);
+      }
       return {
         result,
         dispatch,

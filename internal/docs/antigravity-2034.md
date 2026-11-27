@@ -128,7 +128,7 @@ An empty body is not bound to the signed-in account, so the answer was not that 
 
 ### What changed
 
-`open-sse/services/antigravityCatalog.js` (new) holds the contract: the pinned URL, the project resolution, the request body, the status classifier and the payload parser.
+`open-sse/services/catalogs/antigravityCatalog.js` (new) holds the contract: the pinned URL, the project resolution, the request body, the status classifier and the payload parser.
 
 - The project comes from the connection, validated by the shared `normalizeCloudCodeProjectId` (`open-sse/services/usage/shared.js`) — the same validator the quota path uses. It accepts the plain string and the `{ id }` object shapes Google uses and trims both. A value in any other shape is not a project.
 - The body is `{ "project": "<id>" }` when the connection has a valid project, and `{}` when it does not. An unusable value is omitted rather than sent as a placeholder.
@@ -162,7 +162,7 @@ Upstream persists the probed model ids per account in credential metadata under 
 
 DurinDoor now stores the same shape on the connection's `providerSpecificData.antigravity_capability_hints`:
 
-- Nested hints are written only through `updateProviderConnection` after a successful probe (`open-sse/services/antigravityCatalog.js`, `src/app/api/providers/[id]/models/fetchConnectionModels.js`). Tokens are not patched; PSD deep-merge leaves credentials alone.
+- Nested hints are written only through `updateProviderConnection` after a successful probe (`open-sse/services/catalogs/antigravityCatalog.js`, `src/app/api/providers/[id]/models/fetchConnectionModels.js`). Tokens are not patched; PSD deep-merge leaves credentials alone.
 - The selective-transfer contract still drops the nested object (`TRANSFER_SAFE_PSD_FIELDS` and the scalar check), so hints stay local and credential-free. Proxy userinfo is stripped from the persisted endpoint; the fingerprint never contains tokens.
 - A later catalog GET for the same connection, project, sanitized endpoint and route fingerprint reuses the persisted model ids without another Cloud Code call. A different connection, project or egress contract probes again.
 - `tests/unit/antigravity-capability-hints.test.js` covers persistence, reuse, isolation and fingerprint application with synthetic fixtures.

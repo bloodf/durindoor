@@ -4,7 +4,7 @@
 // AI Horde acceptance.
 import { describe, expect, it } from "vitest";
 import { createAiHordeImageAdapter, mapHordeImageRequest } from "../../open-sse/handlers/imageProviders/aihorde.js";
-import { AI_HORDE_CLIENT_AGENT, HordeImageCatalog } from "../../open-sse/services/aihordeImageCatalog.js";
+import { AI_HORDE_CLIENT_AGENT, HordeImageCatalog } from "../../open-sse/services/catalogs/aihordeImageCatalog.js";
 
 const KEY_A = "hordekey-account-a-111111";
 const KEY_B = "hordekey-account-b-222222";

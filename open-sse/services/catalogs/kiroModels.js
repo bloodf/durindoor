@@ -26,22 +26,22 @@ import { homedir } from "os";
 import { join } from "path";
 // Runtime user profiles are not standalone assets; avoid recursive NFT globs.
 const runtimeJoin = join.bind(null);
-import { refreshKiroToken } from "./tokenRefresh.js";
+import { refreshKiroToken } from "../tokenRefresh.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { resolveDefaultProfileArn } from "../config/kiroConstants.js";
-import { buildKiroIdentityHeaders } from "../shared/kiroHeaders.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { sanitizeErrorMessage } from "../utils/error.js";
+import { resolveDefaultProfileArn } from "../../config/kiroConstants.js";
+import { buildKiroIdentityHeaders } from "../../shared/kiroHeaders.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
 import {
   KIRO_DEFAULT_REGION,
   regionFromProfileArn,
   resolveKiroRegion } from
-"../config/kiroRegions.js";
+"../../config/kiroRegions.js";
 import {
   buildKiroModelVariants,
   stripKiroSyntheticSuffixes } from
-"../providers/models/kiroVariants.js";
-import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+"../../providers/models/kiroVariants.js";
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes per credential

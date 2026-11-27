@@ -1,6 +1,6 @@
-import { buildClineHeaders } from "../shared/clineAuth.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { buildClineHeaders } from "../../shared/clineAuth.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { createCatalogCache } from "./catalogCache.js";
 
 const CLINE_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";

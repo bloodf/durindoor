@@ -12,7 +12,7 @@ import { isFreeNoAuthProviderDisabled } from "@/sse/services/freeProviderGate.js
 import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { getAzureDeploymentPool } from "open-sse/providers/azureDeployment.js";
-import { isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
+import { isLegacyOllamaEmbeddingModel } from "open-sse/services/catalogs/ollamaCatalog.js";
 import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";

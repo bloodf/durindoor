@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getKnownContextWindow, filterByContextRequirements, sortByContextSize } from "../../open-sse/services/combo/contextRequirements.js";
 import { materializeRequestModel } from "../../src/sse/services/model.js";
-import { clearOpenRouterCatalogCache, resolveOpenRouterModels } from "../../open-sse/services/openrouterCatalog.js";
+import { clearOpenRouterCatalogCache, resolveOpenRouterModels } from "../../open-sse/services/catalogs/openrouterCatalog.js";
 
 describe("strict context routing with custom caps map", () => {
   it("uses an explicitly persisted contextWindow from the map", () => {

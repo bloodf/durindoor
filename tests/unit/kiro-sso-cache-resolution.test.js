@@ -68,7 +68,7 @@ async function loadModules(fsImpl) {
     const actual = await importOriginal();
     return { ...actual, homedir: () => "/home/tester" };
   });
-  const kiroModels = await import("../../open-sse/services/kiroModels.js");
+  const kiroModels = await import("../../open-sse/services/catalogs/kiroModels.js");
   const providers = await import("../../open-sse/services/tokenRefresh/providers.js");
   const dedup = await import("../../open-sse/services/tokenRefresh/dedup.js");
   dedup.__clearRefreshDedupCacheForTesting();

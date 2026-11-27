@@ -18,11 +18,11 @@ vi.mock("../../open-sse/services/tokenRefresh.js", () => ({
 import {
   clearKiroModelCache,
   resolveKiroModels,
-} from "../../open-sse/services/kiroModels.js";
+} from "../../open-sse/services/catalogs/kiroModels.js";
 import {
   clearCopilotModelCache,
   resolveCopilotModels,
-} from "../../open-sse/services/copilotModels.js";
+} from "../../open-sse/services/catalogs/copilotModels.js";
 
 const strictRoute = Object.freeze({
   connectionProxyEnabled: true,

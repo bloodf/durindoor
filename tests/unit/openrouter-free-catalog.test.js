@@ -26,7 +26,7 @@ import {
   isOpenRouterFreeModel,
   mapOpenRouterModel,
   resolveOpenRouterModels,
-} from "../../open-sse/services/openrouterCatalog.js";
+} from "../../open-sse/services/catalogs/openrouterCatalog.js";
 import { resolveModelLimits } from "../../open-sse/providers/capabilities.js";
 import { getKnownContextWindow } from "../../open-sse/services/combo/contextRequirements.js";
 import { applyVisionBridgeReroute } from "../../open-sse/services/model.js";

@@ -3,7 +3,7 @@
 // short ids, so unlisted ones must regain the cline-pass/ prefix on the wire.
 // Offline: global fetch is stubbed for every case.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveClinepassModels } from "../../open-sse/services/clinepassModels.js";
+import { resolveClinepassModels } from "../../open-sse/services/catalogs/clinepassModels.js";
 import { getModelUpstreamId, PROVIDER_MODELS } from "../../open-sse/config/providerModels.js";
 
 const MODELS_URL = "https://api.cline.bot/api/v1/models";

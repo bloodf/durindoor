@@ -5,7 +5,7 @@
 //
 // Ported from cheaper-inference/OmniRoute at
 // c71f0065a7efe9230ec23b96a12253b050c4d7ad (MIT, Copyright (c) 2026 Cheaper
-// Inference - Created by Diego Souza): open-sse/services/aihordeImageCatalog.ts.
+// Inference - Created by Diego Souza): open-sse/services/catalogs/aihordeImageCatalog.js.
 //
 // Kept from the source: `GET https://aihorde.net/api/v2/status/models?type=image`,
 // only rows with `count > 0`, exact Horde model names, a 30 s freshness window,
@@ -18,7 +18,7 @@
 // payload read is byte-bounded; `lastError` is a fixed short message, never a
 // raw transport error. The catalog is public and anonymous: it never takes,
 // sends or stores a credential.
-import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const AI_HORDE_API_BASE = "https://aihorde.net/api";
 export const AI_HORDE_ANONYMOUS_KEY = "0000000000";

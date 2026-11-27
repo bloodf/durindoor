@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchMock = vi.fn();
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: (...args) => fetchMock(...args) }));
-vi.mock("../../open-sse/services/qoderModels.js", () => ({
+vi.mock("../../open-sse/services/catalogs/qoderModels.js", () => ({
   getQoderModelConfig: vi.fn().mockResolvedValue({ key: "auto", max_output_tokens: 1024, is_reasoning: false }),
   resolveQoderModels: vi.fn(),
 }));

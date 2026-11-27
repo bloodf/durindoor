@@ -40,7 +40,7 @@ vi.mock("../../open-sse/providers/capabilities.js", async (importOriginal) => ({
   resolveModelLimits: mocks.resolveModelLimits,
 }));
 
-vi.mock("../../open-sse/services/openrouterCatalog.js", () => ({
+vi.mock("../../open-sse/services/catalogs/openrouterCatalog.js", () => ({
   getOpenRouterModelCapabilities: mocks.getOpenRouterModelCapabilities,
 }));
 

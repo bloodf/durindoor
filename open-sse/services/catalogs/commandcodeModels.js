@@ -8,8 +8,8 @@
  * provider page and GET /v1/models resolve the catalog live.
  */
 
-import { isString } from "../../src/shared/utils/typeChecks.js";
-import commandcodeProvider from "../providers/registry/commandcode.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
+import commandcodeProvider from "../../providers/registry/commandcode.js";
 import { createCatalogCache } from "./catalogCache.js";
 
 export const COMMANDCODE_MODELS_URL = "https://api.commandcode.ai/provider/v1/models?view=client";

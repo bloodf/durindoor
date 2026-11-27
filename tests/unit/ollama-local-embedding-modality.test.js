@@ -21,10 +21,10 @@ vi.mock("@/lib/db/repos/settingsRepo", () => ({
   getSettings: vi.fn(() => Promise.resolve({ hidePaidModels: false })),
 }));
 
-vi.mock("open-sse/services/kiroModels.js", () => ({ resolveKiroModels: vi.fn() }));
-vi.mock("open-sse/services/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
-vi.mock("open-sse/services/copilotModels.js", () => ({ resolveCopilotModels: vi.fn() }));
-vi.mock("open-sse/services/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/kiroModels.js", () => ({ resolveKiroModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/qoderModels.js", () => ({ resolveQoderModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/copilotModels.js", () => ({ resolveCopilotModels: vi.fn() }));
+vi.mock("open-sse/services/catalogs/clinepassModels.js", () => ({ resolveClinepassModels: vi.fn() }));
 // The ollama-local resolver routes through proxyAwareFetch; delegate to
 // global.fetch so this file's fetch-shape assertions stay meaningful.
 vi.mock("open-sse/utils/proxyFetch.js", () => ({

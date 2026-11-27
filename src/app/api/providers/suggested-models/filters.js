@@ -1,6 +1,6 @@
 import huggingface from "../../../../../open-sse/providers/registry/huggingface.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
-import { isOpenRouterFreeModel, mapOpenRouterModel } from "open-sse/services/openrouterCatalog.js";
+import { isOpenRouterFreeModel, mapOpenRouterModel } from "open-sse/services/catalogs/openrouterCatalog.js";
 const KNOWN_FREE_OPENCODE_MODELS = [
 "qwen/qwen2.5-coder-32b-instruct",
 "deepseek/deepseek-chat",

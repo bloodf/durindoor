@@ -523,16 +523,50 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         trim();
         const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
         let enabledModels = resolveEnabledModels(providerId, conn);
+        // An explicit provider-level allowlist restricts what this provider may
+        // publish, even when the intersection ends up empty. Only Azure needs the
+        // flag today; other providers keep the plain "list is non-empty" rule.
+        let hasProviderAllowlist = false;
         if (providerId === "azure") {
-          // port(upstream): decolua/9router#5901 — publish deployments from every active Azure pool.
-          const pooledModels = connections
-            .filter((connection) => connection.provider === providerId && (!scopedConnectionIds || scopedConnectionIds.has(connection.id)))
-            .flatMap((connection) => getAzureDeploymentPool(connection.providerSpecificData));
+          // port(upstream): decolua/9router#5901 — Azure deployment pools publish one
+          // model per deployment, and only the connections inside the caller's
+          // scope may contribute: a key scoped to one pool must never see another
+          // pool's deployments. A provider-level allowlist restricts those
+          // deployments; it never adds to them.
+          const scopedAzureConnections = connections.filter(
+            (connection) => connection.provider === providerId &&
+              (!scopedConnectionIds || scopedConnectionIds.has(connection.id))
+          );
+          const pooledModels = [];
+          const servedModels = [];
+          for (const connection of scopedAzureConnections) {
+            const pool = getAzureDeploymentPool(connection.providerSpecificData);
+            if (pool.length > 0) {
+              pooledModels.push(...pool);
+              continue;
+            }
+            // Legacy single-deployment connections name the models they serve.
+            const own = connection.providerSpecificData?.enabledModels;
+            if (Array.isArray(own)) {
+              servedModels.push(...own.filter((id) => isString(id) && id.trim() !== ""));
+            }
+          }
+          const providerAllowlist = storedAllowlist(providerId, staticAlias) || [];
+          hasProviderAllowlist = providerAllowlist.length > 0;
           if (pooledModels.length > 0) {
-            enabledModels = Array.from(new Set([...enabledModels, ...pooledModels]));
+            const candidates = Array.from(new Set([...pooledModels, ...servedModels]));
+            enabledModels = hasProviderAllowlist
+              ? candidates.filter((modelId) => providerAllowlist.includes(modelId))
+              : candidates;
+          } else {
+            // No pool in scope: legacy connections keep their own allowlist, read
+            // only from a connection inside the caller's scope.
+            enabledModels = scopedAzureConnections.length > 0
+              ? resolveEnabledModels(providerId, scopedAzureConnections[0])
+              : [];
           }
         }
-        const hasExplicitEnabledModels = enabledModels.length > 0;
+        const hasExplicitEnabledModels = enabledModels.length > 0 || hasProviderAllowlist;
         const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
         const liveModelKindById = new Map();

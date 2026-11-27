@@ -13,6 +13,8 @@
 // native Arena image request. This bundle records that state and does NOT
 // claim a working provider.
 
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
+
 export const LMARENA_IMAGE_PROVIDER_ID = "lmarena";
 export const LMARENA_IMAGE_PROVIDER_ALIASES = Object.freeze(["lma"]);
 /** Model prefixes the source strips (resolveLmarenaArenaId). */
@@ -88,7 +90,7 @@ const PREFIX_RE = /^(?:lmarena|lma|arena)\//i;
  * chat or search model, or an unknown UUID, never resolves here.
  */
 export function resolveLmarenaImageModel(requested) {
-  if (typeof requested !== "string") return null;
+  if (!isString(requested)) return null;
   const raw = requested.replace(PREFIX_RE, "").trim();
   if (!raw) return null;
   if (UUID_RE.test(raw)) {

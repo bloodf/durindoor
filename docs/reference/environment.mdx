@@ -172,6 +172,7 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `CODEX_OAUTH_CALLBACK_BIND_ALL` | unset (`127.0.0.1`) | Set to `true` to bind the fixed-port (`1455`) Codex OAuth callback listener on `0.0.0.0` for Docker bridge networking while preserving the loopback `Origin` check. |
 | `MIMO_LOGIN_PROXY` | unset | HTTP proxy for non-CN Xiaomi MiMo browser login. Without it, login probes local HTTP proxies; CN login stays direct. |
 | `GEMINI_OAUTH_CLIENT_ID` | empty | Gemini CLI OAuth client id. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | empty | Gemini CLI OAuth client secret. |

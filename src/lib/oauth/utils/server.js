@@ -353,7 +353,10 @@ export function startCodexProxy(appPort) {
       await stopCodexProxy(server);
     });
 
-    server.listen(CODEX_PORT, "127.0.0.1", () => {
+    // port(upstream): decolua/9router#5897 — allow Docker bridge networking to bind
+    // the Codex callback listener on 0.0.0.0 while keeping the loopback Origin guard above.
+    const host = process.env.CODEX_OAUTH_CALLBACK_BIND_ALL === "true" ? "0.0.0.0" : "127.0.0.1";
+    server.listen(CODEX_PORT, host, () => {
       codexProxyServer = server;
       armCodexProxyTimeout(server, generation);
       resolve({ success: true });

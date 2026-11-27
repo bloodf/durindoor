@@ -77,34 +77,68 @@ function attachConsole(page) {
   };
 }
 
-test("every docs route returns 200 with no console errors", async ({
-  page,
-}) => {
-  test.setTimeout(10 * 60 * 1000);
-  const failures = [];
-  for (const url of docUrls) {
-    const log = attachConsole(page);
-    try {
-      const response = await page.goto(url, { waitUntil: "domcontentloaded" });
-      const status = response?.status() ?? 0;
-      await expect(page.locator("h1").first()).toBeVisible();
-      if (status !== 200) failures.push(`${url} status ${status}`);
-      if (log.errors.length)
-        failures.push(`${url} console.error: ${log.errors.join(" | ")}`);
-    } catch (error) {
-      failures.push(`${url} ${error.message}`);
-    } finally {
-      log.detach();
-    }
+// Every test in this file is independent: each gets its own page and browser
+// context, reads the shared server only, and writes notes under file names no
+// other test uses. Parallel mode makes each test its own Playwright group, so
+// `--shard=i/N` spreads this file across shards instead of pinning all of it to
+// one serial group that has to fit inside a single shard's command ceiling.
+test.describe.configure({ mode: "parallel" });
+
+// The route sweep is the longest docs check. It runs as fixed-size slices of
+// the sorted route list so that each slice is a separate group and no single
+// test approaches the 300-second per-shard command ceiling.
+const ROUTE_CHUNK_SIZE = 36;
+const routeChunks = Array.from(
+  { length: Math.ceil(docUrls.length / ROUTE_CHUNK_SIZE) },
+  (_, index) =>
+    docUrls.slice(index * ROUTE_CHUNK_SIZE, (index + 1) * ROUTE_CHUNK_SIZE),
+);
+
+test("docs route slices cover every published route exactly once", () => {
+  const mdxCount = readdirSync(docsRoot, { recursive: true, encoding: "utf8" })
+    .filter((name) => String(name).endsWith(".mdx")).length;
+  expect(docUrls.length, "one route per published .mdx page").toBe(mdxCount);
+  expect(new Set(docUrls).size, "routes are unique").toBe(docUrls.length);
+  expect(docUrls, "routes are sorted").toEqual([...docUrls].sort());
+  expect(routeChunks.length).toBeGreaterThan(1);
+  for (const chunk of routeChunks) {
+    expect(chunk.length).toBeGreaterThan(0);
+    expect(chunk.length).toBeLessThanOrEqual(ROUTE_CHUNK_SIZE);
   }
-  mkdirSync(notesDir, { recursive: true });
-  writeFileSync(
-    join(notesDir, "26-urls.json"),
-    `${JSON.stringify({ count: docUrls.length, urls: docUrls, failures }, null, 2)}\n`,
-  );
-  expect(failures, failures.join("\n")).toEqual([]);
-  expect(docUrls.length).toBeGreaterThan(0);
+  expect(routeChunks.flat(), "slices concatenate to the full route list").toEqual(docUrls);
 });
+
+for (const [index, urls] of routeChunks.entries()) {
+  const part = `${index + 1}/${routeChunks.length}`;
+  test(`every docs route returns 200 with no console errors (routes ${part})`, async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const failures = [];
+    for (const url of urls) {
+      const log = attachConsole(page);
+      try {
+        const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+        const status = response?.status() ?? 0;
+        await expect(page.locator("h1").first()).toBeVisible();
+        if (status !== 200) failures.push(`${url} status ${status}`);
+        if (log.errors.length)
+          failures.push(`${url} console.error: ${log.errors.join(" | ")}`);
+      } catch (error) {
+        failures.push(`${url} ${error.message}`);
+      } finally {
+        log.detach();
+      }
+    }
+    mkdirSync(notesDir, { recursive: true });
+    writeFileSync(
+      join(notesDir, `26-urls-${index + 1}-of-${routeChunks.length}.json`),
+      `${JSON.stringify({ part, count: urls.length, total: docUrls.length, urls, failures }, null, 2)}\n`,
+    );
+    expect(failures, failures.join("\n")).toEqual([]);
+    expect(urls.length).toBeGreaterThan(0);
+  });
+}
 
 test("search returns combo hits after visiting the demo", async ({ page }) => {
   test.setTimeout(90_000);
@@ -184,7 +218,7 @@ test("search returns combo hits after visiting the demo", async ({ page }) => {
 test("axe serious/critical are zero; phone view has no horizontal scroll", async ({
   page,
 }) => {
-  test.setTimeout(5 * 60 * 1000);
+  test.setTimeout(150_000);
   mkdirSync(shotDir, { recursive: true });
   const summary = [];
 

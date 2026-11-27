@@ -50,6 +50,8 @@ Only use a no-auth upstream that is already locked down by the network or that r
 
 AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`. With no saved key, DurinDoor sends AI Horde's documented sentinel `0000000000` against `https://oai.aihorde.net/v1`. A saved Horde API key replaces that sentinel and can receive better queue priority. Model ids come from the live `/v1/models` facade and can contain `/`. Treat Horde as a low-priority fallback: volunteer workers join and leave, queues move, and prompts are processed on community machines. Do not send secrets. The facade rejects `max_tokens` below 16.
 
+AI Horde images run on the same provider through AI Horde's native job API (`apikey` header: the selected key or `0000000000`), text-to-image `b64_json` only, with served models from the public worker catalog in `/v1/models/image`. Mock-tested only; see [AI Horde native images](../../aihorde-images-2034.md) and the public [Free and local providers](../../../../docs/providers/free-and-local.mdx) page.
+
 ## Browser-cookie providers
 
 Same paste flow as [Connecting accounts](../../../../docs/providers/connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.

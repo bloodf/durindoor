@@ -1,3 +1,6 @@
+import { resolveProfile } from "open-sse/services/fireflyWebUi/profile.js";
+import { DATA_DIR } from "@/lib/dataDir.js";
+import { parseFireflyWebUiConfig } from "open-sse/services/fireflyWebUi/config.js";
 import { isPromptQlSessionError, readPromptQlCredentials } from "open-sse/executors/promptql.js";
 import {
   antigravityCatalogRouteFingerprint,
@@ -23,6 +26,7 @@ import { credentialFetch } from "open-sse/utils/credentialFetch.js";
 import { classifyUpstreamError, sanitizeErrorMessage } from "open-sse/utils/error.js";
 import { discoverZedHostedModels } from "open-sse/shared/zedHostedAuth.js";
 import { updateProviderConnection } from "@/lib/localDb";
+import { PROVIDER_MEDIA_CATALOGS, resolveProviderMediaCatalog } from "@/shared/models/modelCatalogSources.js";
 import { isFunction, isString } from "../../../../../shared/utils/typeChecks.js";
 
 // The public Kilo catalog is shared across accounts. Never send stored credentials
@@ -111,6 +115,19 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
 }
 
 /**
+ * Append a provider's native media catalog (AI Horde image models) to its chat
+ * discovery. A chat failure is returned unchanged, so a known catalog is never
+ * replaced by a media-only list; a chat id keeps its chat row.
+ */
+async function withProviderMediaCatalog(provider, result) {
+  const catalog = PROVIDER_MEDIA_CATALOGS[provider];
+  if (!catalog || result?.error || !Array.isArray(result?.models)) return result;
+  const chatIds = new Set(result.models.map((model) => model?.id));
+  const rows = (await resolveProviderMediaCatalog(provider, catalog.kinds)).filter((row) => !chatIds.has(row.id));
+  return { ...result, models: [...result.models, ...rows] };
+}
+
+/**
  * Fetch a stored connection's raw model list from its provider's list-models
  * API. Shared by `GET /api/providers/[id]/models` and the model auto-sync
  * service (src/lib/modelAutoSync), so both hit the same endpoint with the same
@@ -123,6 +140,15 @@ async function fetchRegistryFetcherModels(connection, fetcher, proxyOptions) {
  * @returns {Promise<{ models: object[], warning?: string, source?: string, degraded?: boolean, provider?: string, connectionId?: string } | { error: string, status: number, classification?: string }>}
  */
 export async function fetchConnectionModels(connection, { requestUrl = null, signal = null } = {}) {
+  if (connection.provider === "adobe-firefly-web") {
+    try {
+      const config = parseFireflyWebUiConfig(connection);
+      resolveProfile({ dataDir: DATA_DIR, connectionId: connection.id, profileHandle: config.profileHandle });
+      return { provider: connection.provider, connectionId: connection.id, source: "operator_configured", warning: "Configured labels only; live entitlement is unknown", models: Object.entries(config.modelMap).map(([id, entry]) => ({ id, name: entry.label, kind: entry.kind })) };
+    } catch (error) {
+      return { error: error.message, status: error.status || 400, outcome: error.outcome };
+    }
+  }
   if (connection.provider === "kilocode") return fetchKiloCatalog();
 
   // T3 Chat, Adapta and the staged web-session providers publish a curated
@@ -264,7 +290,7 @@ export async function fetchConnectionModels(connection, { requestUrl = null, sig
     // (e.g. Qiniu) but have no hard-coded PROVIDER_MODELS_CONFIG entry.
     const fetcher = AI_PROVIDERS[connection.provider]?.modelsFetcher;
     if (fetcher && isString(fetcher.url)) {
-      return fetchRegistryFetcherModels(connection, fetcher, proxyOptions);
+      return withProviderMediaCatalog(connection.provider, await fetchRegistryFetcherModels(connection, fetcher, proxyOptions));
     }
     return { error: `Provider ${connection.provider} does not support models listing`, status: 400 };
   }

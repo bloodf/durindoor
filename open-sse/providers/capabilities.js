@@ -1414,6 +1414,11 @@ function freeSeatAlternate(id) {
   return id;
 }
 
+// Custom gateways often spell dotted GLM versions with hyphens (e.g. glm-5-3 -> glm-5.3, #5895).
+function normalizeGlmVersion(id) {
+  return isString(id) ? id.replace(/^glm-(\d+)-(\d+)(?=-|$)/i, "glm-$1.$2") : id;
+}
+
 export function getCapabilitiesForModel(provider, model, kind = undefined) {
   const finalize = (caps) => {
     let result = enforceCursorCapabilities(provider, provider === "huggingchat" ? { ...caps, vision: false } : caps);
@@ -1483,7 +1488,8 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
     }
   }
 
-  const exactId = [capabilityBaseModel, normalizedModel, freeSeatAlternate(capabilityBaseModel), freeSeatAlternate(normalizedModel)].find((id) => MODEL_CAPABILITIES[id]);
+  const glmNormalized = normalizeGlmVersion(capabilityBaseModel);
+  const exactId = [capabilityBaseModel, normalizedModel, glmNormalized, freeSeatAlternate(capabilityBaseModel), freeSeatAlternate(normalizedModel), freeSeatAlternate(glmNormalized)].find((id) => MODEL_CAPABILITIES[id]);
   const exactCaps = MODEL_CAPABILITIES[exactId];
   if (exactCaps) {
     const merged = { ...DEFAULT_CAPABILITIES, ...exactCaps };
@@ -1496,7 +1502,7 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, normalizedModel)) {
+    if (matchPattern(pattern, capabilityBaseModel) || matchPattern(pattern, normalizedModel) || matchPattern(pattern, glmNormalized)) {
       const merged = { ...DEFAULT_CAPABILITIES, ...caps };
       if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);
@@ -1592,7 +1598,8 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
     }
   }
 
-  for (const id of [capabilityBaseModel, baseModel, model]) {
+  const glmNormalized = normalizeGlmVersion(capabilityBaseModel);
+  for (const id of [capabilityBaseModel, baseModel, model, glmNormalized]) {
     const hit = MODEL_CAPABILITIES[id] && asLimits(MODEL_CAPABILITIES[id], "exact", hasUnpublishedOutput(provider, id));
     if (hit) return applyPreferred(hit);
     if (MODEL_CAPABILITIES[id]?.contextWindow === null) {
@@ -1609,7 +1616,7 @@ export function resolveModelLimits(provider, model, customCaps = null, connectio
   }
 
   for (const { pattern, caps } of PATTERN_CAPABILITIES) {
-    if (!matchPattern(pattern, capabilityBaseModel) && !matchPattern(pattern, baseModel) && !matchPattern(pattern, model)) continue;
+    if (!matchPattern(pattern, capabilityBaseModel) && !matchPattern(pattern, baseModel) && !matchPattern(pattern, model) && !matchPattern(pattern, glmNormalized)) continue;
     const hit = asLimits(caps, "pattern", hasUnpublishedOutput(provider, baseModel));
     if (hit) return applyPreferred(hit);
     if (caps?.contextWindow === null) break;

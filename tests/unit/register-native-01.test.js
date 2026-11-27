@@ -346,7 +346,7 @@ describe("registration identity", () => {
     ["video", "agnes", ["agnes-video-v2.0", "agnes-video-2.5-flash", "agnes-video-2.5"]],
     ["video", "vx", ["veo-3.1-generate-001", "veo-3.1-fast-generate-001"]],
     ["tts", "vx", VERTEX_TTS_CONFIG.models.map((model) => model.id)],
-    ["stt", "vx", ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]],
+    ["stt", "vx", ["gemini-2.5-flash", "gemini-2.5-pro"]],
     ["music", "vx", ["lyria-002"]],
   ])("actual typed listing /v1/models/%s shows the static %s rows", async (kind, owner, ids) => {
     // Agnes chat discovery may run for the saved connection; answer it with chat rows only.
@@ -796,6 +796,15 @@ describe("POST /v1/audio/transcriptions vertex", () => {
     const response = await sttPost({ model: `vx/${STT}`, ...fields }, file);
     expect(response.status).toBe(400);
     expect(calls).toEqual([]);
+    expect(usage()).toEqual([]);
+  });
+
+  it("refuses the retired vx/gemini-2.0-flash before any network call", async () => {
+    const response = await sttPost({ model: "vx/gemini-2.0-flash" });
+    expect(response.status).toBe(400);
+    await expectNoLeak(response);
+    expect(calls).toEqual([]);
+    expect(m.refresh).not.toHaveBeenCalled();
     expect(usage()).toEqual([]);
   });
 });

@@ -123,7 +123,7 @@ describe("source-derived metadata", () => {
     expect(VERTEX_TTS_MODEL_IDS).toEqual([
       "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts",
     ]);
-    expect(VERTEX_STT_MODEL_IDS).toEqual(["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]);
+    expect(VERTEX_STT_MODEL_IDS).toEqual(["gemini-2.5-flash", "gemini-2.5-pro"]);
     expect(listVertexAudioModels("tts").every((m) => m.kind === "tts")).toBe(true);
     expect(listVertexAudioModels("stt").map((m) => m.id)).toEqual(VERTEX_STT_MODEL_IDS);
     expect(listVertexAudioModels("image")).toEqual([]);
@@ -435,8 +435,8 @@ describe("STT transcriber", () => {
   it("uses a caller prompt, plain text output and the MIME type from the extension", async () => {
     serve(textAnswer("hello"));
     const file = new File([Buffer.from("ID3synthetic")], "clip.mp3", { type: "" });
-    const result = await stt()({ model: "gemini-2.0-flash", formData: form({ prompt: "Transcribe names carefully.", response_format: "text" }, file), credentials: { apiKey: EXPRESS_KEY_A } });
-    expect(calls[0].url).toBe(`https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(EXPRESS_KEY_A)}`);
+    const result = await stt()({ model: "gemini-2.5-pro", formData: form({ prompt: "Transcribe names carefully.", response_format: "text" }, file), credentials: { apiKey: EXPRESS_KEY_A } });
+    expect(calls[0].url).toBe(`https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(EXPRESS_KEY_A)}`);
     expect(bodyOf(calls[0]).contents[0].parts[0]).toEqual({ text: "Transcribe names carefully." });
     expect(bodyOf(calls[0]).contents[0].parts[1].inlineData.mimeType).toBe("audio/mpeg");
     expect(result.response.headers.get("content-type")).toContain("text/plain");
@@ -456,6 +456,7 @@ describe("STT transcriber", () => {
     ["prompt with language", { prompt: "x", language: "en" }],
     ["a malformed language", { language: "english please" }],
     ["an unknown model", {}, wavFile(), "whisper-1"],
+    ["the retired gemini-2.0-flash", {}, wavFile(), "gemini-2.0-flash"],
     ["a non-audio file", {}, new File([Buffer.from("x")], "notes.txt", { type: "text/plain" })],
     ["an empty file", {}, wavFile(Buffer.alloc(0))],
     ["no file", {}, null],

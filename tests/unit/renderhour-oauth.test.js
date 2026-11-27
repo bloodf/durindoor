@@ -30,7 +30,7 @@ import {
   renderhourOAuthProvider,
   selectRenderHourConnection,
 } from "../../src/lib/oauth/services/renderhour.js";
-import renderhourProvider, { RENDERHOUR_STAGED_OAUTH } from "../../open-sse/providers/private/renderhour.js";
+import renderhourProvider, { RENDERHOUR_OAUTH } from "../../open-sse/providers/registry/renderhour.js";
 import { renderHourAuthorization } from "../../open-sse/services/renderhour/media.js";
 import { __clearRefreshDedupCacheForTesting } from "../../open-sse/services/tokenRefresh/dedup.js";
 
@@ -511,10 +511,13 @@ describe("RenderHour refresh through the shared persistence model", () => {
   });
 });
 
-describe("RenderHour staging boundaries", () => {
-  it("keeps rh_ API-key mode and the image-only default export unchanged", () => {
-    expect(renderhourProvider).toMatchObject({ authType: "apikey", category: "apikey", serviceKinds: ["image"] });
+describe("RenderHour registration boundaries", () => {
+  it("keeps rh_ API-key mode beside the sign-in, and picks the credential by the connection's auth type", () => {
+    expect(renderhourProvider).toMatchObject({ authType: "apikey", category: "apikey", authModes: ["apikey", "oauth"], serviceKinds: ["image", "video", "tts"] });
     expect(renderhourProvider).not.toHaveProperty("oauth");
+    expect(renderHourAuthorization({ authType: "oauth", accessToken: "rhat_access_1" })).toBe("Bearer rhat_access_1");
+    expect(() => renderHourAuthorization({ authType: "oauth", accessToken: "rh_live_key" })).toThrow(expect.objectContaining({ status: 401 }));
+    expect(() => renderHourAuthorization({ authType: "oauth", apiKey: "rh_live_key" })).toThrow(expect.objectContaining({ status: 401 }));
     expect(renderHourAuthorization({ apiKey: "rh_live_key" })).toBe("Bearer rh_live_key");
     expect(() => renderHourAuthorization({ apiKey: "rhat_access_1" })).toThrow(expect.objectContaining({ status: 401 }));
     expect(() => renderHourAuthorization({ accessToken: "rhat_access_1" })).toThrow(expect.objectContaining({ status: 401 }));
@@ -523,14 +526,17 @@ describe("RenderHour staging boundaries", () => {
     expect(() => renderHourOAuthAuthorization({})).toThrow(expect.objectContaining({ status: 401 }));
   });
 
-  it("describes the staged sign-in without registering it anywhere shared", () => {
-    expect(RENDERHOUR_STAGED_OAUTH).toMatchObject({ authType: "oauth", flowType: "authorization_code_pkce", clientIdEnv: "RENDERHOUR_OAUTH_CLIENT_ID" });
+  it("registers the sign-in in the OAuth map and the refresh table only, with no chat executor or shared refresh lane", async () => {
+    expect(RENDERHOUR_OAUTH).toMatchObject({ authType: "oauth", flowType: "authorization_code_pkce", clientIdEnv: "RENDERHOUR_OAUTH_CLIENT_ID" });
+    const { getProvider } = await import("../../src/lib/oauth/providers.js");
+    // Same module graph as the providers map (this file resets modules between tests).
+    const handlers = await import("../../src/lib/oauth/services/renderhour.js");
+    expect(getProvider("renderhour")).toBe(handlers.renderhourOAuthProvider);
+    expect(getProvider("renderhour")).toMatchObject({ flowType: renderhourOAuthProvider.flowType, config: renderhourOAuthProvider.config });
+    expect(fs.readFileSync(path.join(ROOT, "open-sse/services/tokenRefresh.js"), "utf8")).toMatch(/renderhour: \(c, log, p\) => createRenderHourRefreshHooks\(\)\.refreshCredentials\(c, log, p\)/);
     for (const file of [
-      "src/lib/oauth/providers.js",
       "src/lib/oauth/services/index.js",
-      "open-sse/services/tokenRefresh.js",
       "open-sse/services/tokenRefresh/capabilities.js",
-      "open-sse/providers/registry/index.js",
       "open-sse/executors/index.js",
     ]) {
       expect(fs.readFileSync(path.join(ROOT, file), "utf8"), file).not.toMatch(/renderhour/i);

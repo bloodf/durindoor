@@ -18,7 +18,7 @@ import {
   ADOBE_FIREFLY_SCOPE,
   ADOBE_IMS_TOKEN_URL,
   ADOBE_WEB_APP_CLIENT_IDS,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { resolveCredentialProxyOptions } from "../oauthCredentialManager.js";
 import { readBoundedResponseText } from "../../utils/error.js";
 import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";

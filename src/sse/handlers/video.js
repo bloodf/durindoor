@@ -11,6 +11,7 @@ import { captureRequestBillingEpoch, getRequestId, withRequestCorrelation } from
 import { getProviderCredentialsWithQuotaPreflight, markAccountUnavailable, clearAccountError } from "../services/auth.js";
 import { getProviderConnectionById, getApiKeyProviderConnectionIds } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
+import { checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleVideoGenerationCore } from "open-sse/handlers/videoGenerationCore.js";
 import { handleVideoProxyCore, getVideoConfig, sanitizeSecrets, VIDEO_ACTIONS } from "open-sse/handlers/videoCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -132,8 +133,25 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   }
   if (!credentials) return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${modelInfo.provider}`);
 
-  const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials, signal: request.signal });
-  if (!result.success) return result.response;
+  // A RenderHour plan sign-in is refreshed before its job is submitted.
+  const dispatched = modelInfo.provider === "renderhour" ? await checkAndRefreshToken(modelInfo.provider, credentials) : credentials;
+  const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials: dispatched, signal: request.signal, log });
+  if (!result.success) {
+    // The provider took a job whose outcome is unknown: record it once on this
+    // account with unknown cost. This route never resubmits it elsewhere.
+    if (result.acceptedJob) {
+      await recordAcceptedJobUsage(apiKey, {
+        ...result.acceptedJob,
+        billingEpoch,
+        usageEventId: `${getRequestId(request)}:/v1/video/generations`,
+        provider: modelInfo.provider, model: modelInfo.model,
+        connectionId: credentials.connectionId ?? null,
+        endpoint: "/v1/video/generations", modality: "video", comboName,
+        apiKeyId,
+      });
+    }
+    return result.response;
+  }
   return recordApiKeyUsageForResponse(apiKey, result.response, {
     ...result.accounting,
     billingEpoch,

@@ -1,7 +1,7 @@
 // Adobe Firefly Services text-to-video job: one bounded submit to the fixed
 // generate endpoint, the bounded status poll and accepted-job accounting.
-// STAGED: only handlers/videoProviders/adobe-firefly-api.js imports this, and
-// no router imports that adapter.
+// Used by handlers/videoProviders/adobe-firefly-api.js, which
+// /v1/video/generations runs through videoGenerationCore.js.
 //
 // Written from Adobe's published contract, AdobeDocs/ffs-firefly-api at
 // 1027f559cdb1509a61b34e2f2da9618ec431f2cb. No third-party code was ported.
@@ -36,7 +36,7 @@ import {
   ADOBE_FIREFLY_VIDEO_GENERATE_URL,
   adobeFireflyCancelUrl,
   adobeFireflyStatusUrl,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache, refreshAdobeFireflyToken, resolveAdobeFireflyAuth } from "./auth.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 

@@ -5,6 +5,10 @@ description: Not available. Why the pinned source gives no bearer-only image con
 
 > **Not available.** DurinDoor has no Adobe Firefly provider. There is no adapter, staged or registered. You cannot add a connection or send requests to it.
 
+For Adobe's own API, use the separate, registered [Adobe Firefly Services API](./adobe-firefly-api.md) provider (`adobe-firefly-api`). It needs a Firefly Services API entitlement, not a consumer subscription.
+
+**Scope of this finding.** The inspected pinned source established no qualifying contract for generating through the firefly.adobe.com browser UI with a pasted credential and without browser emulation. That is a statement about the examined source, not a claim that live consumer generation is impossible. Nothing was tested against Adobe.
+
 This page records why an adapter for a pasted Adobe sign-in (IMS) bearer token was not built. The finding comes from reading source code. No Adobe account or endpoint was contacted, so nothing here is verified against the live service.
 
 ## Finding
@@ -39,7 +43,7 @@ DurinDoor excluded these for this work: browser sign-in, device fingerprinting, 
 
 [CLIProxyAPI at `47f18e4`](https://github.com/router-for-me/CLIProxyAPI/tree/47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e), the other pinned source, adds no Firefly contract. A search for `firefly` and `adobe` found only Adobe file types in its MIME table.
 
-Adobe's separately documented Firefly Services API uses a different credential and contract: an operator-entitled OAuth Server-to-Server credential from Adobe Developer Console and the published [AdobeDocs/ffs-firefly-api](https://github.com/AdobeDocs/ffs-firefly-api/tree/1027f559cdb1509a61b34e2f2da9618ec431f2cb) contract. That separate decision is the staged [Adobe Firefly Services API](./adobe-firefly-api.md) provider (`adobe-firefly-api`). It does not reuse this web-app route, its client IDs, cookies or browser headers, and it does not make `adobe-firefly` or `firefly` known IDs.
+Adobe's separately documented Firefly Services API uses a different credential and contract: an operator-entitled OAuth Server-to-Server credential from Adobe Developer Console and the published [AdobeDocs/ffs-firefly-api](https://github.com/AdobeDocs/ffs-firefly-api/tree/1027f559cdb1509a61b34e2f2da9618ec431f2cb) contract. That separate decision is the registered [Adobe Firefly Services API](./adobe-firefly-api.md) provider (`adobe-firefly-api`), available for images and Adobe's native video and tested only against mocks. It does not reuse this web-app route, its client IDs, cookies or browser headers, and it does not make `adobe-firefly` or `firefly` known IDs.
 
 ## What DurinDoor does today
 

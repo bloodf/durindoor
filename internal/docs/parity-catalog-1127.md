@@ -64,11 +64,13 @@ gateway keys and its own agent name. See the
 `oauth`, `enrollment`, `model-list`, `inference` and `gateway-dispatch` files.
 No sign-in or request was made to OpenAI.
 
-### Staged, not registered: `renderhour`
+### Registered, mock-tested: `renderhour`
 
 | Pinned contract | DurinDoor state | Remaining |
 | --- | --- | --- |
-| Media jobs with an `rh_` key or subscription OAuth: [models](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/renderhour/mediaModels.ts), [job client](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/mediaGeneration/renderhour.ts) | Image generation with an `rh_` key is **staged and mock-covered** in `tests/unit/renderhour-images.test.js`. It is not registered, available or verified live. | Registration and the shared-handler gaps in the [provider note](../../docs/providers/renderhour.md#before-registration). Video, speech, reference uploads and OAuth are not ported. |
+| Media jobs with an `rh_` key or subscription OAuth: [models](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/config/providers/registry/renderhour/mediaModels.ts), [job client](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/mediaGeneration/renderhour.ts) | **Registered.** Image, text-to-video and speech with an `rh_` key or a plan sign-in (operator `RENDERHOUR_OAUTH_CLIENT_ID`), connection create/validate and pinned-list discovery. Closed-mock evidence: `tests/unit/provider-media-registration-1127.test.js` and the `renderhour-*` files. Not verified live. | Reference uploads, image-to-video and voice choice are refused. Only `url` output for images and video. Live account and sign-in acceptance. See the [provider note](../../docs/providers/renderhour.md). |
+
+The separate Adobe Firefly Services API (`adobe-firefly-api`) is registered the same way for images and Adobe's native video; it is not a consumer Firefly route. See [the provider note](../../docs/providers/adobe-firefly-api.md).
 
 ### Retired candidates
 
@@ -111,6 +113,6 @@ The open tracker list on 2026-11-27 includes [#2034](https://github.com/bloodf/d
 and distinct architecture items. This document makes no claims for #2642 or
 architecture lanes and changes no GitHub issue. All source identities and
 unmatched status refer to the pins above; the local evidence refers to
-`1184034cec8dbe158ae3e69479a06b1bb7a93359`, except the staged `renderhour`
-modules, which were added after it. Live provider behavior, accepted
+`1184034cec8dbe158ae3e69479a06b1bb7a93359`, except the `renderhour` and
+`adobe-firefly-api` modules, which were added and registered after it. Live provider behavior, accepted
 credentials, pricing, regional availability and account quotas were not tested.

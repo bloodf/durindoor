@@ -19,6 +19,8 @@ import nvidia from "./nvidia.js";
 import magnific from "./magnific.js";
 import deepai from "./deepai.js";
 import copilotM365 from "./copilotM365.js";
+import renderhour from "./renderhour.js";
+import adobeFireflyApi from "./adobe-firefly-api.js";
 import { PROVIDER_MEDIA } from "../../providers/index.js";
 
 export const IMAGE_ADAPTERS = createMediaRegistry({
@@ -55,6 +57,11 @@ export const IMAGE_ADAPTERS = createMediaRegistry({
   "cloudflare-ai": cloudflareAi,
   // One chat turn plus a Designer artifact download; needs a native sign-in connection.
   "copilot-m365-web": copilotM365,
+  // Async submit-and-poll jobs on fixed origins; file URLs only (#2034, 1127).
+  renderhour,
+  // Adobe Firefly Services API (operator S2S credential). Never the consumer
+  // firefly.adobe.com web app: `adobe-firefly` and `firefly` stay unknown.
+  "adobe-firefly-api": adobeFireflyApi,
 });
 
 export function getImageAdapter(provider) {

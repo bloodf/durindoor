@@ -23771,7 +23771,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#AddApiKeyModal",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "AddApiKeyModal",
-      "sourceSha256": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+      "sourceSha256": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -23795,7 +23795,7 @@
             "api-key"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23818,7 +23818,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23840,7 +23840,7 @@
             "bulk add success"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -23862,7 +23862,7 @@
             "retained-final-error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",
@@ -24258,7 +24258,7 @@
       "id": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js#ChatgptWebCookieSteps",
       "sourcePath": "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js",
       "symbol": "ChatgptWebCookieSteps",
-      "sourceSha256": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+      "sourceSha256": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
       "proposedClassification": "visual",
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -24279,7 +24279,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "4430c949f3dee676de3d56bf7ed29f5188212a4a4241af5072cfee45c19b9723",
+            "src/app/(dashboard)/dashboard/providers/[id]/AddApiKeyModal.js": "09d2d3685fca5e6ae5155fd918d3d3747f9838e16fb67b78b23e3b18be7d8541",
             "src/app/(dashboard)/dashboard/providers/[id]/widgets.stories.jsx": "cff5532e58ebce56620749a5c2cb8ecd70a6e09e8e5ef81e8eee5451f184685d",
             ".storybook/network.js": "3c23236168af130a771bb80a62701ff86f8319caf16f66a1730e4aaeb8fe83e2",
             ".storybook/preview.jsx": "ddd7d260b7f0b5a552ed2a054277862e86ca5c27f3946164ba68e275ae03cff0",

@@ -3,13 +3,14 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 404 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 406 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
 | 360 AI | `360ai` | apikey | 0 | [site](https://ai.360.cn) |
 | 9router | `9router` | apikey | 1 | [site](https://www.npmjs.com/package/9router) |
 | Adapta Web | `adapta-web` | cookie | 26 | [site](https://agent.adapta.one) |
+| Adobe Firefly Services API | `adobe-firefly-api` | apikey | 4 | [site](https://developer.adobe.com/firefly-services/docs/firefly-api/) |
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
 | Agnes | `agnes` | apikey | 4 |  |
 | Agnes (China) | `agnes-cn` | apikey | 3 |  |
@@ -329,6 +330,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Recraft | `recraft` | apikey | 2 | [site](https://recraft.ai) |
 | Regolo | `regolo` | apikey | 0 |  |
 | Reka | `reka` | freeTier | 3 | [site](https://docs.reka.ai/chat/overview) |
+| RenderHour | `renderhour` | apikey | 30 | [site](https://renderhour.com) |
 | Replicate | `replicate` | apikey | 1 | [site](https://replicate.com) |
 | Requesty | `requesty` | freeTier | 0 | [site](https://requesty.ai) |
 | Routeway | `routeway` | apikey | 8 |  |

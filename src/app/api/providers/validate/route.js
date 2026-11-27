@@ -32,6 +32,8 @@ import { JEV_ENDPOINT_PATH } from "open-sse/config/jev.js";
 import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
+import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
+import { createAdobeTokenCache, resolveAdobeFireflyAuth } from "open-sse/services/adobeFireflyApi/auth.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -299,6 +301,28 @@ async function validateProviderKey(request) {
     // Skipping chat must not accept a cookie that could never authenticate.
     if (provider === "zenmux-free" && !extractZenmuxCtoken(apiKey)) {
       return NextResponse.json({ valid: false, error: "Invalid ZenMux cookie - paste the full zenmux.ai Cookie header including ctoken" });
+    }
+
+    // RenderHour publishes no read-only key check, and a job would bill: check the
+    // rh_ format locally, then skip. The account itself is verified by the first job.
+    if (provider === "renderhour") {
+      try {
+        renderHourAuthorization({ apiKey });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error.message });
+      }
+      return NextResponse.json({ valid: true, skipped: true, error: null, note: "Key format checked; RenderHour has no read-only key check" });
+    }
+
+    // Adobe Firefly Services: mint one IMS token with the client credentials, the
+    // documented token request. Nothing is generated and the token is not kept.
+    if (provider === "adobe-firefly-api") {
+      try {
+        await resolveAdobeFireflyAuth({ apiKey, providerSpecificData }, { cache: createAdobeTokenCache(), signal: request.signal });
+        return NextResponse.json({ valid: true, error: null });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error?.message || "Adobe IMS refused the credential" });
+      }
     }
 
     // Local-only, no request: a JWT access token past its exp is reported as expired. Other

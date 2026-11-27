@@ -99,6 +99,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `360ai` |  | apikey | `https://api.360.cn/v1/chat/completions` |
 | `9router` | openai | apikey | `http://127.0.0.1:20130/v1` |
 | `adapta-web` | openai | webCookie | `https://agent.adapta.one/api/chat/stream/v1` |
+| `adobe-firefly-api` |  | apikey | `` |
 | `agentrouter` | claude | apikey | `https://agentrouter.org/v1/messages` |
 | `agnes` |  | apikey | `https://apihub.agnes-ai.com/v1/chat/completions` |
 | `agnes-cn` |  | apikey | `https://api.agnes-ai.cn/v1/chat/completions` |
@@ -418,6 +419,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `recraft` |  | apikey | `` |
 | `regolo` |  | apikey | `https://api.regolo.ai/v1/chat/completions` |
 | `reka` |  | freeTier | `https://api.reka.ai/v1/chat/completions` |
+| `renderhour` |  | apikey | `` |
 | `replicate` | openai | apikey | `https://api.replicate.com/v1` |
 | `requesty` |  | freeTier | `https://router.requesty.ai/v1/chat/completions` |
 | `routeway` |  | apikey | `https://api.routeway.ai/v1/chat/completions` |

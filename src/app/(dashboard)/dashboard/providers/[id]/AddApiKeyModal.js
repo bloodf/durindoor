@@ -86,6 +86,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
   const requiresAccountId = requiresProviderAccountId(provider);
+  // Adobe Firefly Services API: the S2S credential's client ID travels with its secret.
+  const requiresClientId = provider === "adobe-firefly-api";
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
@@ -100,6 +102,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const [formData, setFormData] = useState(initialState.formData);
   const [azureData, setAzureData] = useState(initialState.azureData);
   const [accountIdData, setAccountIdData] = useState(initialState.accountIdData);
+  const [clientId, setClientId] = useState("");
   const [awsData, setAwsData] = useState(initialState.awsData);
   const [region, setRegion] = useState(initialState.region);
   const [validating, setValidating] = useState(false);
@@ -131,6 +134,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setFormData(reset.formData);
     setAzureData(reset.azureData);
     setAccountIdData(reset.accountIdData);
+    setClientId("");
     setAwsData(reset.awsData);
     setRegion(reset.region);
   }, [isOpen, existingConnectionNames, defaultRegion]);
@@ -151,6 +155,9 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     }
     if (requiresAccountId) {
       return { accountId: accountIdData.accountId.trim() };
+    }
+    if (requiresClientId) {
+      return { clientId: clientId.trim() };
     }
     if (usesAwsCredentialForm) {
       // Only send what the user filled in: an empty `profile` would still select profile mode
@@ -180,6 +187,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
   const handleValidate = async () => {
     if (requiresAccountId && !accountIdData.accountId.trim()) return;
+    if (requiresClientId && !clientId.trim()) return;
     setValidating(true);
     try {
       const res = await fetch("/api/providers/validate", {
@@ -232,6 +240,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     if (!hasConfigurableHost && !formData.name) return;
     if (isCompatible && !formData.defaultModel.trim()) return;
     if (requiresAccountId && !accountIdData.accountId.trim()) return;
+    if (requiresClientId && !clientId.trim()) return;
 
     setSaving(true);
     try {
@@ -447,7 +456,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               className="flex-1" />
             
             <div className="pt-6">
-              <Button onClick={handleValidate} disabled={!apiKeySatisfied() || requiresAccountId && !accountIdData.accountId.trim() || validating || saving} variant="secondary">
+              <Button onClick={handleValidate} disabled={!apiKeySatisfied() || requiresAccountId && !accountIdData.accountId.trim() || requiresClientId && !clientId.trim() || validating || saving} variant="secondary">
                 {validating ? "Checking..." : "Check"}
               </Button>
             </div>
@@ -529,6 +538,19 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
               <>Find your Account ID in the right sidebar of <a href="https://dash.cloudflare.com" target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">dash.cloudflare.com</a>.</> :
               <>Use the organization-account identifier shown in <a href="https://app.snowflake.com" target="_blank" rel="noopener noreferrer" className="text-dd-accent underline">Snowsight</a>.</>
               }
+            </p>
+          </div>
+          }
+        {requiresClientId &&
+          <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
+            <h3 className="font-semibold mb-3 text-sm">Adobe Developer Console</h3>
+            <Input
+              label="Client ID"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="OAuth Server-to-Server client ID" />
+            <p className="text-xs text-dd-muted mt-2">
+              Put the credential&apos;s client secret in the API key field. It needs a Firefly Services API entitlement; a Firefly or Creative Cloud subscription alone does not work.
             </p>
           </div>
           }
@@ -638,7 +660,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
           </div>
         ) : null}
         <div className="flex gap-2">
-          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim()) || isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId}>
+          <Button variant="primary" onClick={handleSubmit} className="w-full" loading={saving} disabled={saving || isCerebrium && (!formData.ollamaHostUrl.trim() || !formData.apiKey.trim()) || isOpenCodeServer && (!formData.ollamaHostUrl.trim() || !apiKeySatisfied()) || !hasConfigurableHost && (!formData.name || !apiKeySatisfied()) || isCompatible && !formData.defaultModel.trim() || isAzure && (!azureData.azureEndpoint || !azureData.deployment || !azureData.organization) || requiresAccountId && !accountIdData.accountId || requiresClientId && !clientId.trim()}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" className="w-full">

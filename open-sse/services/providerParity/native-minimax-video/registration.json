@@ -1,0 +1,75 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/minimaxHandler.ts",
+      "open-sse/handlers/videoGeneration/pollRetry.ts",
+      "open-sse/utils/pollBounds.ts"
+    ]
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/minimax.js: alias minimax, category apikey, serviceKinds include video, video models MiniMax-H3, MiniMax-H3-Max, MiniMax-Hailuo-2.3, MiniMax-Hailuo-2.3-Fast, MiniMax-Hailuo-02 (no T2V-01-Director)",
+    "asyncVideoConfig": "videoConfig format minimax-multi: v2 task API for H3 models, and legacyCreateUrl/legacyQueryUrl/legacyFileRetrieveUrl = the same three v1 endpoints for legacyModels (Hailuo 2.3, 2.3 Fast, 02), served by the async /v1/videos job proxy (open-sse/handlers/videoCore.js + videoProviders/minimax.js) with minimax-v1: job ids handed to the client",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('minimax') is null; /v1/video/generations answers 'does not support synchronous video generation ... Use /v1/videos')",
+    "equivalenceNote": "same endpoints and Bearer auth, different public contract: the async proxy returns a job id, requires duration and resolution, does not check base_resp.status_code, and has no accepted-job accounting; the source's synchronous create-poll-retrieve flow is the delta staged here"
+  },
+  "module": "open-sse/services/providerParity/native-minimax-video/index.js",
+  "exports": {
+    "minimaxVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createMinimaxVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, wait, now } for tests",
+    "buildMinimaxVideoRequest": "(model, body) -> { model, prompt, duration?, resolution?, first_frame_image?, prompt_optimizer?, fast_pretreatment? }; throws status 400",
+    "resolveMinimaxTiming": "(body) -> { timeoutMs, pollIntervalMs } from timeout_ms / poll_interval_ms with source ceilings; throws status 400",
+    "runMinimaxVideoTask": "create + bounded poll + file retrieve; { success, url, taskId, fileId, accounting } or error result with acceptedJob",
+    "minimaxAcceptedJob": "(jobState) accepted-job accounting with unknown cost",
+    "minimaxPublicUrl": "public https URL check used for first frames and results",
+    "MINIMAX_VIDEO_MODELS": "video catalog metadata (id, name, kind, textToVideo, imageToVideo)",
+    "MINIMAX_VIDEO_CREATE_URL": "https://api.minimax.io/v1/video_generation",
+    "MINIMAX_VIDEO_QUERY_URL": "https://api.minimax.io/v1/query/video_generation",
+    "MINIMAX_FILES_RETRIEVE_URL": "https://api.minimax.io/v1/files/retrieve",
+    "MINIMAX_VIDEO_FORMAT": "minimax-video"
+  },
+  "provider": {
+    "canonicalId": "minimax",
+    "aliases": ["minimax"],
+    "existingRegistryEntry": "open-sse/providers/registry/minimax.js",
+    "existingServiceKinds": ["llm", "image", "tts", "stt", "video", "music"],
+    "addServiceKinds": [],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "notCovered": ["minimax-cn", "minimax-code"]
+  },
+  "models": {
+    "video": [
+      { "id": "MiniMax-Hailuo-2.3", "name": "Hailuo 2.3", "existingRegistryRow": true },
+      { "id": "MiniMax-Hailuo-02", "name": "Hailuo 02", "existingRegistryRow": true },
+      { "id": "T2V-01-Director", "name": "T2V 01 Director", "existingRegistryRow": false }
+    ],
+    "dynamicDiscovery": "none in the source; static list only. The provider's chat model discovery must not feed video"
+  },
+  "endpoints": {
+    "submit": { "method": "POST", "url": "https://api.minimax.io/v1/video_generation" },
+    "status": { "method": "GET", "url": "https://api.minimax.io/v1/query/video_generation?task_id={task_id}" },
+    "file": { "method": "GET", "url": "https://api.minimax.io/v1/files/retrieve?file_id={file_id}" }
+  },
+  "responseFormats": { "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { minimaxVideoAdapter } and add `minimax: minimaxVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors. The async /v1/videos path (videoConfig minimax-multi) stays unchanged"
+    },
+    {
+      "file": "open-sse/providers/registry/minimax.js",
+      "change": "add { id: \"T2V-01-Director\", name: \"MiniMax T2V 01 Director\", params: [\"duration\",\"resolution\"], kind: \"video\" }; keep alias, category apikey, transports, serviceKinds and videoConfig as they are"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "note synchronous /v1/video/generations for MiniMax Hailuo 2.3, Hailuo 02 and T2V-01-Director after registration"
+    }
+  ]
+}

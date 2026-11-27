@@ -1,0 +1,89 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/providers/leonardo.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/leonardoHandler.ts",
+      "open-sse/config/providers/registry/leonardo/index.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-leonardo-video-image/index.js",
+  "exports": {
+    "leonardoImageAdapter": "default image adapter instance (guarded generate adapter, responseFormats [url])",
+    "leonardoVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createLeonardoImageAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "createLeonardoVideoAdapter": "factory; same options as createLeonardoImageAdapter",
+    "buildLeonardoImageRequest": "(model, body) -> { modelId, prompt, width, height, num_images: 1 }; throws status 400",
+    "buildLeonardoVideoRequest": "(model, body) -> { model, prompt, resolution, width, height, isPublic: false }; throws status 400",
+    "resolveLeonardoImageModelId": "catalog id -> platform-model UUID; UUID passthrough; empty -> phoenix",
+    "resolveLeonardoImageSize": "width/height, then WxH size, then 1024; bounded 32..1536, multiple of 8",
+    "resolveLeonardoVideoModel": "catalog id -> MOTION2 / MOTION2FAST; legacy phoenix -> MOTION2; upper-case enum passthrough",
+    "resolveLeonardoVideoSize": "source RESOLUTION_480 / RESOLUTION_720 and 2:3 / 4:5 portrait mapping",
+    "runLeonardoJob": "submit + bounded poll; { success, result, generationId } or error result with acceptedJob",
+    "leonardoAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "leonardoPublicUrl": "public https URL check used for results",
+    "LEONARDO_IMAGE_MODELS": "image catalog metadata with platformModelId",
+    "LEONARDO_VIDEO_MODELS": "video catalog metadata with modelEnum",
+    "LEONARDO_IMAGE_SIZES": "source supportedSizes"
+  },
+  "provider": {
+    "canonicalId": "leonardo",
+    "aliases": ["leo"],
+    "existingRegistryEntry": "open-sse/providers/registry/leonardo.js",
+    "existingServiceKinds": [],
+    "existingHiddenKinds": ["image"],
+    "addServiceKinds": ["image", "video"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "notEquivalent": {
+      "cloudflare-ai @cf/leonardo/*": "Workers AI endpoint, Cloudflare auth and envelope; not the Leonardo REST API",
+      "generic OpenAI image adapter": "OpenAI body and synchronous data[] answer; Leonardo needs modelId UUID, width/height and a generation poll"
+    }
+  },
+  "models": {
+    "image": [
+      { "id": "phoenix", "name": "Phoenix", "platformModelId": "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3" },
+      { "id": "sdxl", "name": "SDXL", "platformModelId": "16e7060a-803e-4df3-97ee-edcfa5dc9cc8" }
+    ],
+    "video": [
+      { "id": "motion-2.0", "name": "Motion 2.0", "modelEnum": "MOTION2" },
+      { "id": "motion-2.0-fast", "name": "Motion 2.0 Fast", "modelEnum": "MOTION2FAST" }
+    ],
+    "videoLegacyAliases": { "phoenix": "motion-2.0" },
+    "rawIds": { "image": "any Leonardo platform-model UUID", "video": "any upper-case Leonardo model enum" },
+    "dynamicDiscovery": "none in the source; static lists. The source names GET /api/rest/v1/platformModels only as the origin of the two UUIDs."
+  },
+  "endpoints": {
+    "imageSubmit": { "method": "POST", "url": "https://cloud.leonardo.ai/api/rest/v1/generations", "jobField": "sdGenerationJob.generationId" },
+    "videoSubmit": { "method": "POST", "url": "https://cloud.leonardo.ai/api/rest/v1/generations-text-to-video", "jobField": "motionVideoGenerationJob.generationId" },
+    "status": { "method": "GET", "url": "https://cloud.leonardo.ai/api/rest/v1/generations/{generationId}", "headers": ["Authorization"] },
+    "notStaged": { "initImage": "POST https://cloud.leonardo.ai/api/rest/v1/init-image plus presigned S3 upload (source /v1/images/edits only)" }
+  },
+  "responseFormats": { "image": ["url"], "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { leonardoImageAdapter } and add `leonardo: leonardoImageAdapter, leo: leonardoImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { leonardoVideoAdapter } and add `leonardo: leonardoVideoAdapter, leo: leonardoVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/leonardo.js",
+      "change": "serviceKinds [\"image\", \"video\"]; drop hiddenKinds; keep the phoenix / sdxl image rows and add motion-2.0 / motion-2.0-fast rows with kind video; keep imageConfig and the apikey connection; no videoConfig (the /v1/videos proxy has no accepted-job ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Leonardo image and video kinds after registration"
+    }
+  ]
+}

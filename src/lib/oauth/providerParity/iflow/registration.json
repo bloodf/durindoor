@@ -1,0 +1,9 @@
+{
+  "status": "staged",
+  "module": "src/lib/oauth/providerParity/iflow/cookie.js",
+  "exports": ["importIflowCookie"],
+  "integration": [
+    "src/app/api/oauth/iflow/cookie/route.js: replace provider GET/POST and normalization with importIflowCookie; pass request.signal and persist the returned connection with createProviderConnection",
+    "src/app/api/oauth/iflow/cookie/route.js: return generic errors and a secret-free connection response; retain existing authentication and ownership guards"
+  ]
+}

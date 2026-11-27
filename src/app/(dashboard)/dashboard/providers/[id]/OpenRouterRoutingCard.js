@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useEffect, useId, useState } from "react";
 import PropTypes from "prop-types";
 import { Card, Badge } from "@/shared/components";
@@ -25,10 +27,9 @@ export default function OpenRouterRoutingCard({ providerId }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/providers/openrouter/routing", { cache: "no-store" })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load routing policy");
+    api.get("/api/providers/openrouter/routing", { cache: "no-store", defaultHeaders: false })
+      .catch((error) => { if (error.status) throw new Error(error.body?.error || "Failed to load routing policy"); throw error; })
+      .then((data) => {
         if (cancelled) return;
         const policy = data.routing || {};
         setRouting(policy);
@@ -50,18 +51,10 @@ export default function OpenRouterRoutingCard({ providerId }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/providers/openrouter/routing", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routing: policy ? {
-          ...policy,
-          quantizations: policy.quantizations?.length ? policy.quantizations : undefined,
-        } : null }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to save routing policy");
-      }
+      await api.put("/api/providers/openrouter/routing", { routing: policy ? {
+        ...policy,
+        quantizations: policy.quantizations?.length ? policy.quantizations : undefined,
+      } : null }).catch((error) => { if (error.status) throw new Error(error.body?.error || "Failed to save routing policy"); throw error; });
       setRouting(policy || {});
       setPreset(precisionPreset(policy?.quantizations));
       notify.success(policy ? "Routing policy saved" : "Routing policy reset");

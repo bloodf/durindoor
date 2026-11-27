@@ -142,6 +142,13 @@ describe("#2289 ordered runtime pipeline", () => {
     expect(headroomStack).not.toHaveBeenCalled();
     rtkStack.mockRestore(); headroomStack.mockRestore();
   });
+  it("keeps low-level omitted RTK off while settings resolution defaults it on", async () => {
+    const { sent } = await run({ body: toolBody(), rtkEnabled: undefined, compressionEnabled: false,
+      compressionEngines: { rtk: { enabled: true } } });
+    expect(mocks.rtk).not.toHaveBeenCalled();
+    expect(sent.messages.find((message) => message.role === "tool").content).toBe(toolBody().messages[2].content);
+    expect(resolveCompressionConfig({}).rtkEnabled).toBe(true);
+  });
   it("restores the source body after headroom mutates then throws", async () => {
     mocks.headroom.mockImplementation(async (source) => { source.messages = []; throw new Error("private test failure"); });
     const input = body();

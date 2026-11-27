@@ -56,10 +56,12 @@ cover headroom formats, frozen migrations, Cursor, fidelity, telemetry and real
 combo routing. No live provider, real data, full suite or deployment is needed
 for this work order.
 
-Validation: the required three-file command passes all 45 assertions. The retained
+Validation: the required three-file command passes all 46 assertions. The retained
 RTK stack suite also passes all ten cases, including legacy plain-RTK policy.
-Its off-case fixture explicitly supplies `rtkEnabled: false`; omission now
-correctly inherits the on default.
+The existing RTK test file remains unchanged from the base. Low-level chatCore
+callers retain their historical omitted-RTK opt-in contract; production dispatch
+passes the resolver's default-on setting explicitly. Missing stored settings
+continue to inherit `DEFAULT_SETTINGS`.
 Expanded focused coverage passes for real nested/fusion combo routing, saver
 accounting, headroom formats, frozen migrations, stack headers, fidelity and
 adaptive budgets. Scoped ESLint and anti-slop pass with no diagnostics. A transient

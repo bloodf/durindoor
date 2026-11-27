@@ -394,7 +394,7 @@ export async function handleChatCore(options) {
   }
 }
 
-async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false, accountFailoverAvailable = false }, pendingGuard) {
+async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCredentials, executorOverride, log, refreshCredentials, onCredentialsRefreshed, onRequestSuccess, onEmptyStream, onProviderAttempt, quotaReservation = null, abortSignal = null, onDisconnect, onUpstreamEmptyExhausted, clientRawRequest, connectionId, comboId = null, comboName = null, comboNoLog = false, userAgent, apiKey, apiKeyId = null, billingEpoch, apiKeyName = "Local (No API Key)", ccFilterNaming, rtkEnabled = false, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, comboPrompts = [], pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, pxpipeAllowedModels, onPxpipeEvent, onHeadroomEvent, onTokenSaverEvent, sourceFormatOverride, providerThinking, providerConcurrencyLimit, globalConcurrentRequests = 0, compressionEnabled, compressionEngines, contentMasking = null, compressionFidelityGate = false, compressionAdaptive = null, skipPonytailCommands = false, claudeClassifierCompat, modelCapabilities = null, accountSwitched = false, accountFailoverAvailable = false }, pendingGuard) {
   const sourceFormat = sourceFormatOverride || detectFormat(body);
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
@@ -760,6 +760,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 
+  // Low-level callers historically opt into RTK; dispatch supplies the resolved
+  // settings default (on) explicitly. Keep that invocation contract separate from
+  // missing stored settings, which the shared resolver defaults centrally.
   // One runtime config view; stack aliases retain the historical flat OR map read.
   ({ rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages,
     headroomTimeoutMs, cavemanEnabled, cavemanLevel, pxpipeEnabled, pxpipeMinChars,

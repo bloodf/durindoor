@@ -51,6 +51,8 @@ AI Horde is the public anonymous exception. Registry id `aihorde`, alias `horde`
 
 DurinDoor uses the AI Horde facade for chat. The anonymous catalog only publishes models for service kinds the provider supports, so an image-like name in the facade does not create an entry in `/v1/models/image`.
 
+AI Horde image generation is **staged and unavailable**. `/v1/images/generations` refuses `aihorde` and `horde`, and Horde image models are not listed. A native adapter for AI Horde's own image job API exists in the source tree but is not registered. It has only been tested against mocks: nothing has been accepted by the live service. When it is enabled, jobs will wait in a volunteer queue that can take minutes or fail, and their cost will show as unknown because Horde charges kudos, not money. Chat through `aihorde` keeps working as described above.
+
 ## Browser-cookie providers
 
 Same paste flow as [Connecting accounts](./connecting-accounts.mdx): Dashboard, Providers, cookie card, cookie value. These sessions die when the browser session dies. Fine for a personal box; a poor fit for a shared team gateway.

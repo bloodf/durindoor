@@ -33,6 +33,6 @@ describe("sourced recurring offers", () => {
       expect(row).toMatchObject({ freeType: "discontinued", monthlyTokens: 0, creditTokens: 0 });
       expect(isFreeModel("llm7", { id: row.modelId })).toBe(false);
     }
-    expect(RETIRED_FREE_ROWS.filter((row) => row.provider === "llm7")).toEqual([]);
+    expect(RETIRED_FREE_ROWS.filter((row) => row.provider === "llm7").reduce((sum, row) => sum + row.lastListedMonthlyTokens, 0)).toBe(3_000_000);
   });
 });

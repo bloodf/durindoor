@@ -1,5 +1,5 @@
 // Ended offers retired from the free catalog, with the last quota this catalog
-// listed for each. Ported from OmniRoute #21096 (cbe1172862a5), limited to rows
+// evidenced for each. Ported from OmniRoute #21096 (cbe1172862a5), limited to rows
 // DurinDoor carries; evidence strings are upstream's 2026-11-23 source checks.
 // Record only: nothing routes or classifies from it. Every entry must stay a
 // zeroed `discontinued` row in `freeModelCatalog.data.js`.
@@ -20,6 +20,14 @@ function block(provider, poolKey, modelIds, lastListedMonthlyTokens, reason, evi
 }
 
 export const RETIRED_FREE_ROWS = [
+  ...block(
+    "llm7",
+    "llm7-free",
+    ["gpt-4o-mini-2024-07-18"],
+    3000000,
+    "unverifiable",
+    "https://docs.llm7.io/limits listed 100,000 tokens per 24 hours on 2026-11-18 and answered 404 on 2026-11-23",
+  ),
   ...block(
     "mistral",
     "mistral",

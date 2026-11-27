@@ -29,9 +29,17 @@ describe("xAI CLI authorization code service", () => {
     expect(fetchMock.mock.calls.map(([, options]) => [options.body.get("code_verifier"), options.proxyOptions])).toEqual([["verifier-code-a", proxyA], ["verifier-code-b", proxyB]]);
   });
 
-  it("does not expose a rejected exchange response body", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("synthetic-secret", { status: 401 })));
-    await expect(new XaiService().exchangeXaiCode({ tokenUrl: XAI_CONFIG.tokenUrl, code: "code", redirectUri: XAI_CONFIG.redirectUri, codeVerifier: "verifier" })).rejects.toThrow("xAI token exchange failed (HTTP 401)");
+  // The CLI exchange keeps the upstream reason because tests/unit/oauth-callback-cleanup.test.js:117
+  // pins "xAI token exchange failed: exchange rejected"; credential shapes are still redacted.
+  it("redacts credentials from a rejected CLI exchange reason", async () => {
+    const leaked = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJzeW50aGV0aWMifQ.c2lnbmF0dXJl";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`rejected Bearer synthetic-bearer ${leaked}`, { status: 401 })));
+    const error = await new XaiService().exchangeXaiCode({ tokenUrl: XAI_CONFIG.tokenUrl, code: "code", redirectUri: XAI_CONFIG.redirectUri, codeVerifier: "verifier" }).catch((e) => e);
+    expect(error.message).toMatch(/^xAI token exchange failed: rejected /);
+    expect(error.message).not.toContain("synthetic-bearer");
+    expect(error.message).not.toContain(leaked);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 503 })));
+    await expect(new XaiService().exchangeXaiCode({ tokenUrl: XAI_CONFIG.tokenUrl, code: "code", redirectUri: XAI_CONFIG.redirectUri, codeVerifier: "verifier" })).rejects.toThrow(/^xAI token exchange failed: HTTP 503$/);
   });
 });
 

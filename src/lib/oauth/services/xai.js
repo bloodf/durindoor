@@ -20,6 +20,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
  */
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 import { oauthFailureMessage } from "../providerParity/xai-grok-cli/oauthError.js";
+import { sanitizeErrorMessage } from "../../../../open-sse/utils/error.js";
 
 const BASE64_BLOCK_SIZE = 4;
 
@@ -152,7 +153,10 @@ export class XaiService extends OAuthService {
     });
 
     if (!res.ok) {
-      throw new Error(await oauthFailureMessage("xAI token exchange failed", res));
+      // Interactive CLI flow: keep the upstream reason (pinned by
+      // tests/unit/oauth-callback-cleanup.test.js) but redact credential shapes.
+      const detail = await res.text().catch(() => "");
+      throw new Error(`xAI token exchange failed: ${detail ? sanitizeErrorMessage(detail) : `HTTP ${res.status}`}`);
     }
     const tokens = await res.json();
     if (!isString(tokens.access_token) || !tokens.access_token.trim()) {

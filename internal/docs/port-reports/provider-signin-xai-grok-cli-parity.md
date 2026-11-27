@@ -17,7 +17,10 @@ This unit keeps commit `cba1a6d82a` (staged browser/import helpers, per-proxy CL
 | `grok-cli` (cli-chat-proxy.grok.com) | Device code | Choose Grok CLI, open the verification URI, enter the user code | Device request validates codes and URIs; each poll sends the device code with the selected proxy; denied and expired responses are not pending |
 | Both | Refresh | None | `refreshXaiToken` serves both providers. Refresh errors carry `HTTP <status>: <oauth error code>` and never the response text, so `invalid_grant` still marks the connection invalid; 5xx returns `null` for retry |
 
-This unit corrected one regression in `cba1a6d82a`: replacing refresh errors with `HTTP <status>` alone stopped `open-sse/services/tokenRefresh/providers.js` from detecting `invalid_grant`. `src/lib/oauth/services/xai.js` now builds both exchange and refresh errors with `oauthFailureMessage`, which keeps only a code that matches `^[a-z][a-z0-9_]{0,63}$`.
+This unit corrected two regressions in `cba1a6d82a`:
+
+- Refresh errors had become `HTTP <status>` alone, which stopped `open-sse/services/tokenRefresh/providers.js` from detecting `invalid_grant`. `src/lib/oauth/services/xai.js` now builds refresh errors with `oauthFailureMessage`, which keeps only a code that matches `^[a-z][a-z0-9_]{0,63}$`.
+- The CLI code-exchange error had dropped the upstream reason, which the existing regression test `tests/unit/oauth-callback-cleanup.test.js:117` pins as `xAI token exchange failed: exchange rejected`. The interactive CLI exchange now keeps the reason, passed through `sanitizeErrorMessage` so bearer values and JWT-shaped strings are redacted. An empty body gives `HTTP <status>`. The candidate's own assertion that the CLI exchange showed only `HTTP 401` contradicted that regression test. It was replaced with a redaction contract in the same file. Web exchange (staged) and refresh remain code-only.
 
 Request identity is production behavior and covered without changes. The `grok-cli` executor sends each account's own bearer, `x-email` and `x-grok-agent-id`, plus `x-grok-client-version` = `GROK_CLI_VERSION` (1.0.44). That is above the CLIProxyAPI server floor of 1.0.13 (`internal/runtime/executor/helps/xai_version.go`). `grok-build` sends the grok-shell fingerprint without `x-xai-token-auth`. The `xai` executor sends no `x-grok-*` or `x-xai-*` headers. Model discovery uses the static `grok-cli` registry list with `passthroughModels`, covered by `tests/unit/grok-cli-missing-models.test.js`; no live `/v1/models` fetch is wired. Request and stream translation are covered by the existing `grok-cli-*` and `xai-*` suites and were not changed.
 
@@ -59,4 +62,4 @@ Production does not offer Grok browser login or auth.json import. Production `gr
 
 ## Evidence
 
-`cd tests && node node_modules/vitest/vitest.mjs run unit/provider-signin-xai-grok-cli-parity.test.js --maxWorkers=2` runs 27 tests with synthetic tokens and mocked `fetch` only. The device-poll tests use fake clocks and aborts. One isolated block, marked as staging-only, asserts that the helpers are not yet registered.
+`cd tests && node node_modules/vitest/vitest.mjs run unit/provider-signin-xai-grok-cli-parity.test.js --maxWorkers=2` runs 27 tests. The 110 unit files that reference these modules, including `oauth-callback-cleanup.test.js`, pass (1149 tests). The new file uses synthetic tokens and mocked `fetch` only. The device-poll tests use fake clocks and aborts. One isolated block, marked as staging-only, asserts that the helpers are not yet registered.

@@ -1,0 +1,117 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/upscaleRegistry.ts (UPSCALE_PROVIDERS adobe-firefly alias firefly, stability-ai, topaz, syntx alias stx; parseUpscaleModel; getAllUpscaleModels { id, name, provider, format }; normalizeUpscaleFactor / normalizeCreativityPercent helpers)",
+      "open-sse/handlers/imageUpscale.ts (POST /v1/images/upscale: model parse, 400 for unknown provider/model, dispatch by format)",
+      "open-sse/handlers/imageUpscale/shared.ts (14 source-image aliases + provider_options + messages parts, 20 MiB source cap, untrusted remote fetch, { created, data, upscale } envelope)",
+      "open-sse/handlers/imageUpscale/topaz.ts (multipart /image/v1/enhance, X-API-Key, Accept image/<format>, factor → output_width/height)",
+      "open-sse/handlers/imageUpscale/stability.ts (/v2beta/stable-image/upscale/{fast,conservative,creative}, creativity ranges, async creative poll of /v2beta/results/{id})",
+      "open-sse/handlers/imageUpscale/syntx.ts + services/syntxMedia.ts + services/syntxAuth.ts + services/syntxMediaCatalog.ts (upload-files, chats, design/generate, chat message poll, upscale rows)",
+      "open-sse/handlers/imageUpscale/adobeFirefly.ts (firefly-3p /v2/3p-images/upsample with a consumer session: not ported, see dispositions)"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-image-upscale/index.js",
+  "exports": {
+    "createImageUpscaleService": "factory; options { topaz, stability, syntx } adapter option objects (fetchImpl, sourceFetchImpl, downloadFetchImpl, timeouts, now, sleep) or prebuilt `adapters`; returns { adapters, listModels, describeModel, upscale({ body, credentials, signal, log }) }",
+    "listImageUpscaleModels": "source getAllUpscaleModels rows { id: <prefix>/<model>, name, provider, format } for every provider id and alias",
+    "describeImageUpscaleModel": "capability row { id, name, provider, format, factors, supportsCreativity, supportsPrompt, promptRequired, description } or null",
+    "resolveUpscaleModel": "provider/model | alias/model | unambiguous bare id -> { provider, model, entry, config } | { unavailable: consumer | services }; throws 400",
+    "createTopazUpscaleAdapter / createStabilityUpscaleAdapter / createSyntxUpscaleAdapter": "per-vendor adapters with upscale({ model, body, credentials, signal, log })",
+    "adobeFireflyUpscaleUnavailable": "fixed 501 result with `unavailable: true`",
+    "parse*/build*/collect*/encode*": "pure request, form and answer helpers for tests"
+  },
+  "route": {
+    "method": "POST",
+    "path": "/v1/images/upscale",
+    "discovery": { "method": "GET", "path": "/v1/images/upscale", "body": "{ object: \"list\", data: listImageUpscaleModels() } (source catalog shape); describeImageUpscaleModel for per-model capabilities" },
+    "request": {
+      "model": "provider/model (stability-ai/fast | conservative | creative, topaz/topaz-enhance, syntx|stx/magnific/magnific | topaz_ai/topaz | ideogram/upscale) or an unambiguous bare model id",
+      "image": "exactly one distinct source image via image_url, imageUrl, input_image, source_image, promptImage, prompt_image, image, images, image_urls, imageUrls, input_images, reference_images, referenceImages, reference_image (also under provider_options) or messages[].content[] image parts",
+      "factor": "factor | scale | upscale_factor | upscaleFactor | upsampler_factor | upsamplerFactor; must be one of the model's factors (SYNTX: `factor` as a number only)",
+      "creativity": "creativity | creativity_percent | creativityPercent (Stability), creativity | face_enhancement_creativity (Topaz, with face_enhancement), creativity number (SYNTX)",
+      "prompt": "required by stability-ai conservative/creative, optional for SYNTX (default \"upscale\"), refused elsewhere",
+      "response_format": "url (default; data: URL for byte results, vendor URL for SYNTX) | b64_json",
+      "n": "1 only",
+      "stream": "false only"
+    },
+    "response": "{ created, data: [{ url } | { b64_json }], upscale: { provider, model, factor, ... } }",
+    "integrationNotes": "No route file exists yet; a later src/app/api/v1/images/upscale route must authenticate the gateway API key, select one connection of the resolved provider (with the usual fallback/combo rules), call service.upscale, record `accounting` on success and `acceptedJob` on failure, and never retry a result that carries `acceptedJob`."
+  },
+  "providers": [
+    {
+      "id": "topaz",
+      "aliases": [],
+      "status": "active",
+      "existingConnection": "open-sse/providers/registry/topaz.js (apikey)",
+      "auth": { "header": "X-API-Key", "credentialFields": ["apiKey", "accessToken (source fallback)"], "sentTo": ["https://api.topazlabs.com"] },
+      "models": [{ "id": "topaz-enhance", "factors": [2, 4] }],
+      "endpoints": { "enhance": { "method": "POST", "url": "https://api.topazlabs.com/image/v1/enhance", "body": "multipart image, output_format, [output_width, output_height], [model, sharpen, denoise, fix_compression, face_enhancement, face_enhancement_creativity, face_enhancement_strength]", "answer": "raw image bytes", "billable": true } }
+    },
+    {
+      "id": "stability-ai",
+      "aliases": [],
+      "status": "active",
+      "existingConnection": "open-sse/providers/registry/stability-ai.js (apikey)",
+      "auth": { "header": "Authorization: Bearer", "credentialFields": ["apiKey", "accessToken (source fallback)"], "sentTo": ["https://api.stability.ai"] },
+      "models": [{ "id": "fast", "factors": [4] }, { "id": "conservative", "factors": [4], "promptRequired": true }, { "id": "creative", "factors": [4], "promptRequired": true, "async": true }],
+      "endpoints": {
+        "upscale": { "method": "POST", "url": "https://api.stability.ai/v2beta/stable-image/upscale/{fast|conservative|creative}", "accept": "application/json", "answer": "{ image, finish_reason, seed } | { id } (creative)", "billable": true },
+        "result": { "method": "GET", "url": "https://api.stability.ai/v2beta/results/{id}", "answer": "202 pending | 200 { image, finish_reason, seed }", "billable": false }
+      }
+    },
+    {
+      "id": "syntx",
+      "aliases": ["stx"],
+      "status": "active-adapter, identity staged separately",
+      "existingConnection": "none in this checkout; the SYNTX identity (JWT selection from a connection) is a separate staging (native-syntx-chat-auth) that this module neither imports nor edits",
+      "auth": { "header": "Authorization: Bearer <JWT> + browser-shaped accept, accept-language, origin, referer, user-agent", "credentialFields": ["token (selected scoped credential, raw JWT)"], "sentTo": ["https://api.syntx.ai"] },
+      "models": [{ "id": "magnific/magnific", "factors": [2, 4] }, { "id": "topaz_ai/topaz", "factors": [2, 4] }, { "id": "ideogram/upscale", "factors": [2, 4] }],
+      "endpoints": {
+        "upload": { "method": "POST", "url": "https://api.syntx.ai/api/v1/chats/upload-files", "billable": false },
+        "chat": { "method": "POST", "url": "https://api.syntx.ai/api/v1/chats", "billable": false },
+        "generate": { "method": "POST", "url": "https://api.syntx.ai/api/v1/design/generate?ai_name={aiName}", "billable": true },
+        "poll": { "method": "GET", "url": "https://api.syntx.ai/api/v1/chats/{uuid}/messages?page_size=50", "billable": false },
+        "download": "result URL (https, public at every hop, <= 3 redirects, no credential), b64_json only"
+      }
+    }
+  ],
+  "dispositions": [
+    {
+      "id": "adobe-firefly",
+      "aliases": ["firefly"],
+      "status": "unavailable",
+      "answer": "501 with `unavailable: true`, before any credential read or network call; models topaz, topaz-standard, topaz-bloom (also as bare ids)",
+      "reason": "consumer firefly-3p upsample needs a firefly.adobe.com session cookie / ARP; DurinDoor keeps adobe-firefly / firefly unregistered and accepts no consumer cookie or web token (docs/providers/adobe-firefly.md); the guard is not bypassed"
+    },
+    {
+      "id": "adobe-firefly-api",
+      "status": "unavailable",
+      "answer": "501 with `unavailable: true`, before any credential read or network call",
+      "reason": "the pinned Firefly Services contract used by open-sse/providers/registry/adobe-firefly-api.js documents no upscale operation equivalent to the source's Topaz upsample job; a Services credential is never presented as a consumer session"
+    }
+  ],
+  "safety": {
+    "sourceImages": "data: URI / bare base64 (Topaz, Stability) or data: URI (SYNTX) sniffed as PNG/JPEG/WebP, declared MIME must agree, <= 20 MiB (SYNTX 50 MiB); remote http(s) sources (Topaz, Stability) fetched via fetchPublic (<= 3 redirects, each hop re-validated) over guardedProbeFetch public-only (connection-time DNS pinned), no credential/cookie/vendor header, 30 s, caller signal; SYNTX remote sources must be https on a public literal host and are passed to SYNTX, never fetched by the gateway",
+    "vendorCalls": "fixed origins only, redirect manual and refused, foreign-origin answers refused, bounded deadlines, caller signal honored, bounded body reads, upstream bodies never quoted, credentials redacted from messages",
+    "outputFidelity": "Topaz/Stability bytes must sniff as the requested output_format and are returned as-is; SYNTX url results are returned unchanged after an https/public check, b64_json results must sniff as an image",
+    "noSilentDropping": "unknown fields, unsupported factors, conflicting aliases, size with factor, oversize outputs, prompts or creativity a model does not take, unknown output/response formats, n != 1 and streaming are refused with 400"
+  },
+  "bounds": { "submitTimeoutMs": 180000, "totalTimeoutMs": 600000, "sourceFetchTimeoutMs": 30000, "sourceMaxBytes": 20971520, "syntxSourceMaxBytes": 52428800, "resultMaxBytes": 50331648, "stabilityResultTimeoutMs": 300000, "stabilityPollIntervalMs": 3000, "syntxPollTimeoutMs": 600000, "syntxPollIntervalMs": 5000, "maxTimeoutOverrideMs": 600000, "topazMaxOutputEdge": 16000 },
+  "accounting": {
+    "success": "mediaAccounting(null, provider, \"image\") with nativeUnits.images = returned images; cost unknown (no vendor receipt); meta { model, route, jobId | chatUuid }",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after a billable send, 5xx, redirect, foreign origin; accepted: any failure after a 2xx billable submit (unreadable or wrong-format result, Stability job poll failure/timeout, SYNTX poll/download failure); filtered: Stability CONTENT_FILTERED. Never resent or replayed.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed with no acceptedJob"
+  },
+  "integrationPoints": [
+    { "file": "src/app/api/v1/images/upscale/route.js (new)", "change": "POST + GET route as described in `route`; auth through the existing API-key middleware" },
+    { "file": "open-sse/handlers (new upscale core)", "change": "connection selection per resolved provider, usage recording of `accounting`, `acceptedJob` handling identical to the image core" },
+    { "file": "open-sse/providers/registry/topaz.js, stability-ai.js", "change": "add serviceKind \"upscale\" (or an upscale model list) so the dashboard and discovery can show the rows" },
+    { "file": "SYNTX identity staging", "change": "resolve the selected SYNTX connection to `{ token }` and pass it as `credentials` for syntx/stx models" },
+    { "file": "docs/providers/catalog.mdx, open-sse/AGENT-INDEX.md", "change": "regenerate after the registry edits" }
+  ]
+}

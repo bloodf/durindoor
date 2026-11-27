@@ -116,7 +116,9 @@ export class UcFrameParser {
       const msg = isString(m.message) ? m.message : effCode;
       const reset = m.next_reset;
       const detail = `${msg} (code=${effCode}${reset ? `, next_reset=${String(reset)}` : ""})`;
-      events.push({ kind: "error", code: effCode, text: `uc_${effCode}: ${detail}`.slice(0, 300), ...(reset ? { nextReset: String(reset) } : {}) });
+      const event = { kind: "error", code: effCode, text: `uc_${effCode}: ${detail}`.slice(0, 300) };
+      if (reset) event.nextReset = String(reset);
+      events.push(event);
       this.finished = true;
       return true;
     }

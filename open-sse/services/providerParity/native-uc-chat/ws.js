@@ -159,7 +159,9 @@ export function runUcTurn({
         if (settled) return;
         if (evt.kind === "done") return finish("complete", { content: evt.text });
         if (evt.kind === "error") {
-          return finish("upstream-error", { error: evt.text, errorCode: evt.code, ...(evt.nextReset ? { nextReset: evt.nextReset } : {}) });
+          const failure = { error: evt.text, errorCode: evt.code };
+          if (evt.nextReset) failure.nextReset = evt.nextReset;
+          return finish("upstream-error", failure);
         }
       }
     };

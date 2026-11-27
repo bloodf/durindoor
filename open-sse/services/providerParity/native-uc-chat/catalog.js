@@ -35,15 +35,15 @@ export const UC_CHAT_MODELS = Object.freeze([
  * `supportsVision` is the source capability of the underlying model; this
  * staged executor does not port the blob upload path, so it refuses media input.
  */
-export const UC_CHAT_REGISTRY_MODELS = Object.freeze(UC_CHAT_MODELS.map((m) => Object.freeze({
-  id: m.id,
-  name: m.name,
-  contextLength: m.contextLength,
-  toolCalling: true,
-  ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
-  ...(m.supportsReasoning ? { supportsReasoning: true } : {}),
-  ...(m.supportsVision ? { supportsVision: true } : {}),
-})));
+function registryModel(m) {
+  const model = { id: m.id, name: m.name, contextLength: m.contextLength, toolCalling: true };
+  if (m.maxOutputTokens) model.maxOutputTokens = m.maxOutputTokens;
+  if (m.supportsReasoning) model.supportsReasoning = true;
+  if (m.supportsVision) model.supportsVision = true;
+  return Object.freeze(model);
+}
+
+export const UC_CHAT_REGISTRY_MODELS = Object.freeze(UC_CHAT_MODELS.map(registryModel));
 
 export const UC_DEFAULT_CONTEXT = 128_000;
 

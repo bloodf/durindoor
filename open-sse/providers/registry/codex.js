@@ -1,6 +1,5 @@
 
-import { isString } from "../../../src/shared/utils/typeChecks.js";
-import { readNamedHeader } from "../../config/codexHeaders.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 // Default instructions for Codex models
 
@@ -167,6 +166,187 @@ function compareVersionParts(a, b) {
 export function meetsMinimalCodexClientVersion(minimalClientVersion) {
   if (!isString(minimalClientVersion) || !minimalClientVersion) return true;
   return compareVersionParts(CODEX_CLI_VERSION, minimalClientVersion) >= 0;
+}
+
+// ---------------------------------------------------------------------------
+// Client-safe Codex identity helpers.
+//
+// src/shared/constants/providers.js pulls every registry entry into the client
+// bundle, so this module must not import a Node built-in. The helpers that need
+// node:crypto live in open-sse/executors/codex/identity.js.
+// ---------------------------------------------------------------------------
+
+export const CODEX_FINGERPRINT_MODES = ["off", "device", "session", "full"];
+export const CODEX_FINGERPRINT_MODE_KEY = "codexFingerprintMode";
+
+const CODEX_IDENTITY_HEADER_NAMES = [
+  "session-id",
+  "session_id",
+  "thread-id",
+  "thread_id",
+  "x-client-request-id",
+  "x-codex-installation-id",
+  "x-codex-parent-thread-id",
+  "x-codex-turn-state",
+  "x-codex-window-id",
+  "x-codex-turn-metadata",
+];
+
+function nonEmptyString(value) {
+  if (!isString(value)) return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+/** Reads one header by name from a Headers object or a plain record. */
+export function readNamedHeader(headers, name) {
+  if (!headers) return "";
+  if (headers instanceof Headers) return headers.get(name)?.trim() || "";
+  const wanted = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === wanted && isString(value) && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+/** Account-scoped seed that Codex identity derivation keys on. */
+export function accountSeed(providerSpecificData, accountKey) {
+  return (
+    nonEmptyString(accountKey) ||
+    nonEmptyString(providerSpecificData?.connectionId) ||
+    nonEmptyString(providerSpecificData?.workspaceId) ||
+    nonEmptyString(providerSpecificData?.accountId) ||
+    nonEmptyString(providerSpecificData?.email) ||
+    "default"
+  );
+}
+
+export function isCodexOAuthCredentials(credentials) {
+  return Boolean(
+    nonEmptyString(credentials?.accessToken) || nonEmptyString(credentials?.refreshToken)
+  );
+}
+
+export function getCodexFingerprintMode(providerSpecificData, isOAuth = true) {
+  if (!isOAuth) return "off";
+  const raw = (
+    nonEmptyString(providerSpecificData?.[CODEX_FINGERPRINT_MODE_KEY]) ||
+    nonEmptyString(providerSpecificData?.codex_fingerprint_mode) ||
+    ""
+  ).toLowerCase();
+  return CODEX_FINGERPRINT_MODES.includes(raw) ? raw : "session";
+}
+
+/** Compact requests carry no identity carriers upstream. */
+export function isCompactRequestEndpoint(path) {
+  if (!isString(path)) return false;
+  const normalized = path.trim().toLowerCase().replace(/\\/g, "/");
+  return normalized === "/compact" || /(?:^|\/)responses\/compact(?:\/|$)/.test(normalized);
+}
+
+/** Preserves caller-provided Codex identity only when OAuth convergence is disabled. */
+export function resolveCodexOriginalIdentityHeaders({ credentials, clientHeaders } = {}) {
+  if (!credentials || isCompactRequestEndpoint(credentials.requestEndpointPath)) return null;
+  const providerSpecificData = credentials.providerSpecificData ?? null;
+  if (!isCodexOAuthCredentials(credentials) || getCodexFingerprintMode(providerSpecificData, true) !== "off") {
+    return null;
+  }
+
+  const result = {};
+  for (const name of CODEX_IDENTITY_HEADER_NAMES) {
+    const value = readNamedHeader(clientHeaders, name);
+    if (value) result[name] = value;
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+/** Applies saved caller identity headers when Codex OAuth convergence is off. */
+export function applyCodexOriginalIdentityHeaders(headers, original) {
+  if (!original) return headers;
+  for (const name of CODEX_IDENTITY_HEADER_NAMES) {
+    if (isString(original[name]) && original[name]) headers[name] = original[name];
+  }
+  return headers;
+}
+
+function removeCodexIdentityCarriers(target) {
+  for (const key of Object.keys(target)) {
+    if (CODEX_IDENTITY_HEADER_NAMES.includes(key.toLowerCase())) delete target[key];
+  }
+}
+
+function mergeTurnMetadata(raw, identity, includeSessionFields) {
+  let metadata = {};
+  let hadExisting = false;
+  if (isString(raw) && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && isObject(parsed) && !Array.isArray(parsed)) {
+        metadata = parsed;
+        hadExisting = true;
+      }
+    } catch {
+      // Replace malformed metadata when a complete carrier is required.
+    }
+  }
+  if (!hadExisting && includeSessionFields) {
+    metadata.thread_source = "user";
+    metadata.sandbox = "none";
+  }
+  metadata.installation_id = identity.installationId;
+  if (includeSessionFields) {
+    metadata.session_id = identity.sessionId;
+    metadata.thread_id = identity.threadId || identity.sessionId;
+    metadata.turn_id = identity.turnId;
+    metadata.window_id = identity.windowId;
+    metadata.turn_started_at_unix_ms = identity.turnStartedAtUnixMs;
+  }
+  return JSON.stringify(metadata);
+}
+
+/** Applies a resolved identity onto outbound Codex request headers. */
+export function applyCodexClientIdentityHeaders(headers, identity) {
+  if (!identity) return headers;
+  if (identity.mode !== "device") removeCodexIdentityCarriers(headers);
+  headers["x-codex-installation-id"] = identity.installationId;
+  if (identity.mode === "device") {
+    if (headers["x-codex-turn-metadata"] !== undefined) {
+      headers["x-codex-turn-metadata"] = mergeTurnMetadata(headers["x-codex-turn-metadata"], identity, false);
+    }
+    return headers;
+  }
+  headers["session-id"] = identity.sessionId;
+  headers["session_id"] = identity.sessionId;
+  headers["thread-id"] = identity.threadId || identity.sessionId;
+  headers["x-client-request-id"] = identity.threadId || identity.sessionId;
+  headers["x-codex-window-id"] = identity.windowId;
+  headers["x-codex-turn-metadata"] = mergeTurnMetadata(undefined, identity, true);
+  return headers;
+}
+
+/** Applies a resolved identity onto the outbound `client_metadata` body field. */
+export function applyCodexClientMetadata(body, identity) {
+  if (!identity) return body;
+  const existing =
+    body.client_metadata && isObject(body.client_metadata) && !Array.isArray(body.client_metadata)
+      ? { ...body.client_metadata }
+      : {};
+  if (identity.mode !== "device") removeCodexIdentityCarriers(existing);
+  existing["x-codex-installation-id"] = identity.installationId;
+  if (identity.mode === "device") {
+    if (existing["x-codex-turn-metadata"] !== undefined) {
+      existing["x-codex-turn-metadata"] = mergeTurnMetadata(existing["x-codex-turn-metadata"], identity, false);
+    }
+  } else {
+    existing.session_id = identity.sessionId;
+    existing.thread_id = identity.threadId || identity.sessionId;
+    existing.turn_id = identity.turnId;
+    existing["x-codex-window-id"] = identity.windowId;
+  }
+  body.client_metadata = existing;
+  return body;
 }
 
 export default {

@@ -23,8 +23,8 @@ is not in any local clone. Its findings were checked against current source.
   transport ID, including a pending signature from a preceding thinking-only part
   (`1073-gemini-nonstream-pending-thought-signature-2518.md`). Item 1 of the
   earlier report reads as if nonstream had no persistence. That is too broad.
-  Only the store write was missing, which matters for clients that drop the
-  transport ID.
+  #2518 already persisted OpenAI nonstream signatures; this work makes no
+  claim of a general OpenAI nonstream persistence gap.
 - **Added by `a269ea1066`.** The selected-account, model-family store write for
   the nonstream body, forced SSE-to-JSON and the native Gemini collector, with
   no bare-ID row.
@@ -86,29 +86,35 @@ sentinel, `ANTIGRAVITY_ALLOW_SIGNATURE_BYPASS` and the `context` mode stay
 unported, as recorded in the earlier report. This change adds no bypass, context
 flag or source-equivalence claim.
 
-## Remaining gap outside these paths (reported, not changed)
+## Retry correction and expanded paths
 
-The request translators read the session API before the executor runs:
+Gate 2 at `77aeb39c7e2884b73437a4af1640be47508111a5` preserved 80 passing
+assertions and exposed a failed Claude streaming cold replay (line 184). The direct
+`gemini-to-claude.js` translator wrote a connection-keyed row, while the executor
+looked for account/session provenance. Antigravity captures there now use the
+same account-bound session writer as the OpenAI stream; direct Gemini keyed
+writes retain their existing contract. Its missing-ID fallback now uses the
+shared UUID generator too.
 
-- `open-sse/translator/request/openai-to-gemini.js:282`, in `openaiToGeminiBase`.
-  `openaiToAntigravityRequest` calls `openaiToGeminiCLIRequest(model, body, stream)`
-  without credentials, so `sessionId` is null and this is a bare-only read.
-- `open-sse/translator/request/openai-to-gemini.js:574`, in
-  `wrapInCloudCodeEnvelopeForClaude`.
+The earlier candidate also documented a real remaining gateway leak:
+`openai-to-gemini.js` attached a legacy bare alias at the request translation
+stage before executor validation. Both Antigravity paths now use the proven
+reader: the Gemini CLI conversion receives explicit account/session scope and
+the Claude envelope uses that scope directly. Embedded signatures still win.
+These two translator files are essential scope expansion: executor-only checks
+cannot distinguish an already attached legacy alias from a client signature.
+Two additional mocked gateway cases preserve the legacy scenario on OpenAI and
+Claude endpoints with warm and cold caches, while retaining direct Gemini reads.
 
-Account-bound rows are now invisible to both reads, so account A's captures cannot
-reach account B through them. A **legacy or provenance-less** bare row is still
-global under the session-API contract. Those translators place it on the part,
-and the executor keeps explicit signatures. A local probe through the real
-gateway (`handleChatCore`, account B, a new session, a legacy bare row) replayed
-the legacy signature on the OpenAI and Anthropic endpoints. Native passthrough
-and the executor do not. Closing this means passing the selected account and
-session into those two reads, or using `getProvenThoughtSignatureSync` for
-Antigravity. That is a translator change outside this unit.
+No dependency graph exists in this checkout. Per the retry dependency boundary,
+local Vitest execution is not run; the isolated gate must validate these changes.
+No installs, borrowed dependency mutations, live requests, or baseline edits were
+performed. All three protected suites and every prior candidate scenario remain
+unchanged.
 
 ## Contracts
 
-`tests/unit/antigravity-signature-isolation-completion.test.js` has 15 cases. It uses the
+`tests/unit/antigravity-signature-isolation-completion.test.js` has 17 cases. It uses the
 real `handleChatCore`, translators and `AntigravityExecutor`, with only the
 outbound transport mocked. The scenarios use two synthetic accounts, client
 sessions, the same tool ID, the same model family, warm and cold caches, and a

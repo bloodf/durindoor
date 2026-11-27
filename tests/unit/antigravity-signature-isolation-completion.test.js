@@ -242,6 +242,19 @@ describe("#2034: rows of unknown or foreign provenance are never borrowed by the
     expect(await store.getGeminiThoughtSignature(legacy, "any", GEMINI)).toBe(SIG_LEGACY);
   });
 
+  it.each(["openai", "claude"])("(%s) rejects legacy global aliases before executor validation, warm and cold", async (format) => {
+    const id = uid("legacy-gateway");
+    store.storeGeminiThoughtSignature(id, SIG_LEGACY, null, GEMINI);
+    await settle();
+    for (const cold of [false, true]) {
+      if (cold) store.clearThoughtSignatureMemory();
+      expect(await replayedSignature(id, { format, account: "acct-B", session: "new-session" })).not.toBe(SIG_LEGACY);
+      expect(JSON.stringify(lastSent())).not.toContain(SIG_LEGACY);
+    }
+    // Direct Gemini callers retain their existing legacy contract.
+    expect(await store.getGeminiThoughtSignature(id, null, GEMINI)).toBe(SIG_LEGACY);
+  });
+
   it("does not let an unknown account borrow an account-bound row, and accepts exact-session legacy rows", async () => {
     const a = uid("unknown-reader");
     store.storeGeminiThoughtSignature(a, SIG_A, "antigravity:s1", GEMINI, "acct-A");

@@ -228,7 +228,7 @@ The gap and acceptance conditions below describe the historical comparison, not 
 
 **Upstream:** #15337, `cee37af66`, `fix(sse): preserve Copilot discovered endpoint routing`.
 **Upstream path:** `open-sse/services/githubCopilotModels.ts`.
-**Local surface:** `open-sse/services/copilotModels.js:69-88` (`expandCatalog`), `open-sse/executors/github.js:143-151` (`supportsResponsesEndpoint`), `github.js:182-186` (the `/responses` route selection).
+**Local surface:** `open-sse/services/catalogs/copilotModels.js:69-88` (`expandCatalog`), `open-sse/executors/github.js:143-151` (`supportsResponsesEndpoint`), `github.js:182-186` (the `/responses` route selection).
 
 **Evidence of the gap.** The fork's `expandCatalog` filters on `m.capabilities?.type !== "chat"` and, when metadata is requested, copies the raw `m.capabilities` object onto the model (`copilotModels.js:74-83`), so the upstream endpoint data may already be present in the fork's catalog. What is missing is the consumer. Endpoint selection in `open-sse/executors/github.js` is driven by `this.knownCodexModels` — a set the executor fills at runtime from an escalation signal (`github.js:210`) — combined with the name-based `supportsResponsesEndpoint` check. Upstream instead derives `supportedEndpoints` and `targetFormat` from the catalog row and routes by the endpoint contract, so a model whose catalog row declares `responses` and not `chat` is routed to `/responses` regardless of its name.
 

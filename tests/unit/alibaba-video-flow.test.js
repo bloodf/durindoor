@@ -1,4 +1,4 @@
-// Alibaba DashScope video generation, staged and unregistered. Closed mocks
+// Alibaba DashScope video generation, registered for synchronous generation. Closed mocks
 // only: every request is answered below, an unexpected request fails the test,
 // and every key is synthetic. Passing here says nothing about the live service.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,9 +83,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("staging", () => {
-  it("is not registered for /v1/video/generations yet", () => {
-    expect(getVideoGenerationAdapter("alibaba")).toBeNull();
+describe("registration", () => {
+  it("registers the canonical identity and existing alias for /v1/video/generations", () => {
+    expect(getVideoGenerationAdapter("alibaba")).toBe(defaultAdapter);
+    expect(getVideoGenerationAdapter("ali")).toBe(defaultAdapter);
     expect(defaultAdapter.async).toBe(true);
     expect(isFunction(defaultAdapter.generate)).toBe(true);
   });

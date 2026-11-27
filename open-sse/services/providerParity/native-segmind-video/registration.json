@@ -1,0 +1,81 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/config/providers/registry/segmind/videoModels.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/providers/segmind.ts",
+      "open-sse/utils/segmindClient.ts",
+      "src/shared/constants/providers/apikey/specialty-media.ts"
+    ],
+    "registryEntry": {
+      "id": "segmind",
+      "baseUrl": "https://api.segmind.com/v1",
+      "authType": "apikey",
+      "authHeader": "x-api-key",
+      "format": "segmind"
+    }
+  },
+  "localState": "no segmind provider, alias, registry file, adapter or catalog entry exists in this fork; nothing equivalent to reuse",
+  "provider": {
+    "canonicalId": "segmind",
+    "aliases": [],
+    "sourceAlias": "segmind (equal to the id)",
+    "newDefinition": "SEGMIND_PROVIDER_DEFINITION in config.js, to be written as open-sse/providers/registry/segmind.js",
+    "serviceKinds": ["video"],
+    "outOfScope": "Segmind image (source imageRegistryData.ts `segmind`) is a separate delta; adding it later appends \"image\" to serviceKinds on the same connection",
+    "connectionModes": "API key only: apiKey (or accessToken when the key is stored there), sent raw as x-api-key; connection proxy settings honored; connection base URLs ignored"
+  },
+  "models": [
+    { "id": "wan2.1-t2v", "name": "Wan 2.1 Text-to-Video", "status": "supported" },
+    { "id": "hunyuan-video-t2v", "name": "Hunyuan Video Text-to-Video", "status": "supported" },
+    { "id": "ltx-video-t2v", "name": "LTX Video Text-to-Video", "status": "supported" },
+    { "id": "kling-video-t2v", "name": "Kling Video Text-to-Video", "status": "supported" },
+    { "id": "wan2.7-i2v", "name": "Wan 2.7 Image-to-Video", "status": "refused before submit: needs an input image the source body never sends; not in SEGMIND_VIDEO_MODELS" }
+  ],
+  "acceptedModelIds": "a starter slug, `segmind/<slug>`, or any other single Segmind slug matching ^[a-z0-9][a-z0-9._-]{0,127}$ (case-insensitive, no ..); slugs naming image-to-video (i2v, image-to-video, img2vid) are refused",
+  "dynamicModels": "none discovered: the source documents routing any Segmind slug as the model id and calls no model-listing API",
+  "endpoints": {
+    "auth": "x-api-key: <key>",
+    "generate": "POST https://api.segmind.com/v1/{slug} (Content-Type: application/json; redirect manual and refused; an answer from another origin is discarded with acceptedJob)",
+    "response": "raw MP4 bytes (ftyp box), at most 64 MiB, within the 600 s deadline shared with the request",
+    "cancel": "none (Segmind has no job id; an abort only stops this client)"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-segmind-video/index.js",
+    "adapter": "default export of adapter.js (also segmindVideoAdapter from index.js): { async: true, responseFormats: [\"b64_json\"], defaultResponseFormat: \"b64_json\", generate({ model, body, credentials, signal, log }) }",
+    "factory": "createSegmindVideoAdapter({ timeoutMs, maxBytes, now })",
+    "metadata": "SEGMIND_PROVIDER_DEFINITION, SEGMIND_VIDEO_PROVIDER_METADATA, SEGMIND_VIDEO_MODELS, SEGMIND_VIDEO_MODEL_IDS, SEGMIND_SOURCE_VIDEO_MODELS, SEGMIND_PROVIDER_ID, SEGMIND_PROVIDER_ALIASES, SEGMIND_VIDEO_FORMAT, SEGMIND_ORIGIN, SEGMIND_BASE_URL, SEGMIND_AUTH_HEADER",
+    "helpers": "buildSegmindVideoRequest, segmindVideoSlug, segmindVideoUrl, segmindNeedsImage, runSegmindVideoJob, segmindVideoAcceptedJob, segmindVideoToken, isSegmindMp4"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/providers/registry/segmind.js",
+      "change": "new file: export default SEGMIND_PROVIDER_DEFINITION (as a plain object literal), then regenerate open-sse/providers/registry/index.js with scripts/gen-registry-index.mjs"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import segmindVideoAdapter from \"../../services/providerParity/native-segmind-video/adapter.js\" and add `segmind: segmindVideoAdapter` to VIDEO_GENERATION_ADAPTERS"
+    },
+    {
+      "file": "open-sse/handlers/videoGenerationCore.js",
+      "change": "none: generateWithAdapter already honors responseFormats / defaultResponseFormat and acceptedJob"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Segmind video (API key, b64_json output, the four text-to-video starter models plus custom text-to-video slugs)"
+    }
+  ],
+  "publicContract": {
+    "route": "POST /v1/video/generations",
+    "accepted": ["prompt (string, at most 10000 chars)", "negative_prompt (string)", "seed (integer 0..4294967295)", "duration (number or numeric string, above 0 and at most 60)", "aspect_ratio (N:M)", "n = 1", "stream = false", "response_format = b64_json"],
+    "refusedBeforeSubmit": ["n > 1", "stream", "response_format url", "image, image_url, image_urls, images, input_image, input_reference, reference_images, first_frame, last_frame, video, video_url, audio, audio_url, mask", "size, resolution, quality, fps, width, height", "seconds (use duration)", "mistyped or out-of-range values", "image-to-video slugs including wan2.7-i2v", "malformed slugs", "a missing key (local 401, nothing sent)"],
+    "response": "{ created, data: [{ b64_json, format: \"mp4\" }] }",
+    "errors": "401/403 -> 401; 402, or 403/406/429 whose body says the credits are spent -> 402 quotaExhausted; 429 -> 429 with a Retry-After reset when given; 404 -> 404; 400/422 -> 400; other 4xx passed; 5xx -> 502 with acceptedJob; upstream text never returned",
+    "accounting": "nativeUnits.videos = 1, cost unknown; acceptedJob (costSource accepted-job) on a 5xx, a timeout, an interruption or abort after the send, a foreign-origin answer, and a 200 without a usable MP4"
+  }
+}

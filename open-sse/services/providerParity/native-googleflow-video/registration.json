@@ -1,0 +1,84 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered; source-disabled (fail-fast only)",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/googleFlowHandler.ts",
+      "open-sse/handlers/videoGeneration/googleFlow.ts",
+      "src/app/api/v1/videos/generations/route.ts"
+    ],
+    "registryEntry": {
+      "id": "googleflow",
+      "alias": "flow",
+      "baseUrl": "https://aisandbox-pa.googleapis.com",
+      "authType": "oauth",
+      "authHeader": "bearer",
+      "format": "google-flow",
+      "unsupported": true,
+      "unsupportedReason": "Google Flow video generation requires a browser-session transport (Flow/Cloud Code session with reCAPTCHA) and is not supported over the stored OAuth bearer. Generate video via labs.google/flow directly for now."
+    },
+    "disabledEvidence": [
+      "videoRegistry.ts googleflow comment (#10285): /v1:generateVideo and /v1:fetchOperation are 404 on aisandbox-pa",
+      "the reporter's working path POST /v1/video:batchAsyncGenerateVideoText is undocumented and rejects the stored Cloud Code OAuth bearer with 401 UNAUTHENTICATED",
+      "gflow-cli: only a headed-browser reCAPTCHA session works for mutation endpoints",
+      "googleFlowHandler.ts returns { success: false, status: 501, error: unsupportedReason } without any network call"
+    ]
+  },
+  "localEquivalent": "none: no googleflow/flow provider, google-flow format, aisandbox-pa host or Flow credential mapping in open-sse/ or src/; open-sse/providers/registry/antigravity.js has chat models only",
+  "provider": {
+    "canonicalId": "googleflow",
+    "aliases": ["flow"],
+    "existingDefinition": "none",
+    "serviceKinds": ["video"],
+    "connectionModes": "none of its own; the source reads the existing antigravity Google OAuth connection (accessToken + projectId) via resolveVideoCredentialProvider. Antigravity connection modes are unchanged.",
+    "supported": false
+  },
+  "models": [
+    { "id": "veo-3.1-generate", "name": "Veo 3.1 (Google Flow)" },
+    { "id": "veo-3.1-fast-generate", "name": "Veo 3.1 Fast (Google Flow)" },
+    { "id": "veo-3.0-generate", "name": "Veo 3.0 (Google Flow)" }
+  ],
+  "endpoints": {
+    "submit": "POST https://aisandbox-pa.googleapis.com/v1:generateVideo (404 per source; never called)",
+    "poll": "POST https://aisandbox-pa.googleapis.com/v1:fetchOperation (404 per source; never called)",
+    "reportedWorking": "POST https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText (401 with OAuth bearer per source; not implemented)",
+    "auth": "Authorization: Bearer <antigravity accessToken> (source declaration; never sent)",
+    "dynamicDiscovery": "none in source; static model list"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-googleflow-video/index.js",
+    "adapter": "default export of adapter.js (also googleFlowVideoAdapter from index.js): { async: true, unsupported: true, responseFormats: [\"url\", \"b64_json\"], defaultResponseFormat: \"url\", generate() -> 501 error result }",
+    "factory": "createGoogleFlowVideoAdapter({ unsupportedReason })",
+    "metadata": "GOOGLE_FLOW_VIDEO_PROVIDER_METADATA, GOOGLE_FLOW_VIDEO_MODELS, GOOGLE_FLOW_VIDEO_MODEL_IDS, GOOGLE_FLOW_VIDEO_PROVIDER_ID, GOOGLE_FLOW_VIDEO_PROVIDER_ALIASES, GOOGLE_FLOW_VIDEO_FORMAT, GOOGLE_FLOW_HOST, GOOGLE_FLOW_UNSUPPORTED_REASON, GOOGLE_FLOW_CREDENTIAL_PROVIDER",
+    "dormantContract": "normalizeFlowVideoParams, buildGoogleFlowSubmitBody, parseFlowOperationName, parseFlowOperationResult, resolveFlowProjectId, resolveFlowAccessToken, resolveVideoCredentialProvider, googleFlowPublicArtifact"
+  },
+  "recommendedRegistration": "none while the source entry stays unsupported. Registering would add a provider that can only answer 501, and the local route would first answer 400 'No credentials for provider: googleflow' because it looks credentials up by provider id.",
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "only if a fail-fast diagnostic is wanted: add `googleflow: googleFlowVideoAdapter` (and `flow`, since lookupMediaAdapter does not resolve aliases)"
+    },
+    {
+      "file": "src/sse/handlers/video.js",
+      "change": "only with the line above: look credentials up for resolveVideoCredentialProvider(provider) (googleflow -> antigravity), or answer 501 before the credential lookup"
+    },
+    {
+      "file": "open-sse/handlers/videoGenerationCore.js",
+      "change": "none: generateWithAdapter passes the 501 error result through"
+    },
+    {
+      "file": "open-sse/providers/registry/**, docs/providers/catalog.mdx",
+      "change": "none: do not list googleflow as a working video provider"
+    }
+  ],
+  "publicContract": {
+    "route": "POST /v1/video/generations",
+    "accepted": [],
+    "response": "501 { error.message: unsupportedReason } for every request",
+    "accounting": "none: nothing is submitted; no acceptedJob, no usage"
+  }
+}

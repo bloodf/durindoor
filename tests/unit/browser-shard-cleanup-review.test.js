@@ -312,7 +312,7 @@ describe("cleanup failure fails closed", () => {
   it("fails closed without /proc when the port stays held, and signals nothing", async () => {
     const kill = vi.fn();
     const result = await cleanupShardServer({
-      owner, port: 4000, procRoot: path.join(tempDir(), "missing"), platform: "linux", kill, probe: async () => true, selfExitMs: 30, pollMs: 5,
+      owner, port: 4000, procRoot: path.join(tempDir(), "missing"), kill, probe: async () => true, selfExitMs: 30, pollMs: 5,
     });
     expect(result).toMatchObject({ ok: false, verification: "port-only" });
     expect(result.reason).toMatch(/cannot be verified/);

@@ -108,35 +108,40 @@ test("docs route slices cover every published route exactly once", () => {
   expect(routeChunks.flat(), "slices concatenate to the full route list").toEqual(docUrls);
 });
 
+// The original whole-site sweep, unchanged, applied to one slice of routes.
+async function checkDocRoutes(page, docUrls, notesFile) {
+  const failures = [];
+  for (const url of docUrls) {
+    const log = attachConsole(page);
+    try {
+      const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+      const status = response?.status() ?? 0;
+      await expect(page.locator("h1").first()).toBeVisible();
+      if (status !== 200) failures.push(`${url} status ${status}`);
+      if (log.errors.length)
+        failures.push(`${url} console.error: ${log.errors.join(" | ")}`);
+    } catch (error) {
+      failures.push(`${url} ${error.message}`);
+    } finally {
+      log.detach();
+    }
+  }
+  mkdirSync(notesDir, { recursive: true });
+  writeFileSync(
+    join(notesDir, notesFile),
+    `${JSON.stringify({ count: docUrls.length, urls: docUrls, failures }, null, 2)}\n`,
+  );
+  expect(failures, failures.join("\n")).toEqual([]);
+  expect(docUrls.length).toBeGreaterThan(0);
+}
+
 for (const [index, urls] of routeChunks.entries()) {
   const part = `${index + 1}/${routeChunks.length}`;
   test(`every docs route returns 200 with no console errors (routes ${part})`, async ({
     page,
   }) => {
     test.setTimeout(150_000);
-    const failures = [];
-    for (const url of urls) {
-      const log = attachConsole(page);
-      try {
-        const response = await page.goto(url, { waitUntil: "domcontentloaded" });
-        const status = response?.status() ?? 0;
-        await expect(page.locator("h1").first()).toBeVisible();
-        if (status !== 200) failures.push(`${url} status ${status}`);
-        if (log.errors.length)
-          failures.push(`${url} console.error: ${log.errors.join(" | ")}`);
-      } catch (error) {
-        failures.push(`${url} ${error.message}`);
-      } finally {
-        log.detach();
-      }
-    }
-    mkdirSync(notesDir, { recursive: true });
-    writeFileSync(
-      join(notesDir, `26-urls-${index + 1}-of-${routeChunks.length}.json`),
-      `${JSON.stringify({ part, count: urls.length, total: docUrls.length, urls, failures }, null, 2)}\n`,
-    );
-    expect(failures, failures.join("\n")).toEqual([]);
-    expect(urls.length).toBeGreaterThan(0);
+    await checkDocRoutes(page, urls, `26-urls-${index + 1}-of-${routeChunks.length}.json`);
   });
 }
 

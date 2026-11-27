@@ -1,0 +1,68 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "src/lib/fal/dispatch.ts",
+      "src/lib/fal/realtime.ts",
+      "src/lib/fal/runtime.ts",
+      "open-sse/handlers/fal/realtime.ts",
+      "open-sse/handlers/fal/socket.ts",
+      "open-sse/handlers/fal/output.ts",
+      "open-sse/handlers/fal/schema.ts",
+      "open-sse/handlers/fal/realtimeSchema.json",
+      "open-sse/config/falEndpoint.ts"
+    ]
+  },
+  "provider": {
+    "canonicalId": "fal-ai",
+    "aliases": ["fal"],
+    "existingDefinition": "open-sse/providers/registry/fal-ai.js (API-key connection; unchanged)",
+    "connectionModes": "unchanged: API key (credentials.apiKey, else credentials.accessToken) sent only as the WebSocket upgrade header `Authorization: Key <key>`; an HTTP(S) proxy resolved for https://fal.run is honored, any other proxy is refused (409)",
+    "notCovered": [
+      "OpenAI Realtime (/v1/realtime) bridging: no source evidence",
+      "chat-backed text bridges",
+      "fal http-websocket transport (wss://ws.fal.run)",
+      "process-local session registry, artifact store and job/accounting rows (src/lib/fal/realtime.ts, src/lib/db/fal)"
+    ]
+  },
+  "transport": {
+    "name": "realtime",
+    "url": "wss://fal.run/{endpoint_id}{path}",
+    "pathSelection": "x-fal-realtime.path (must match ^/[a-zA-Z0-9_/-]+$, no //) else /realtime for documented endpoints (fal-ai/fast-lcm-diffusion) else none",
+    "inputSchema": "x-fal-realtime.input_schema, else the bundled realtimeSchema.json for fal-ai/fast-lcm-diffusion when there is no override; a path-only override is refused",
+    "wire": "one binary MessagePack frame per input and per output; binary file content (bin) is returned as a data URI or stored-artifact URL plus { binary_base64 }",
+    "events": "SSE: `data: { artifacts, output }` per output; `event: error` with { error, status: FAILED | IDLE_TIMEOUT | SUBMISSION_UNKNOWN } before close",
+    "limits": "FAL_REALTIME_LIMITS: handshake 15 s, frame 32 MiB, send buffer 1 MiB, input 8 MiB, output high water 1 MiB, queued output 64 MiB, idle 120 s",
+    "retries": "none: no reconnect, no replay; an input without its output when the session ends is reported as SUBMISSION_UNKNOWN"
+  },
+  "exports": {
+    "module": "open-sse/services/providerParity/native-fal-realtime/index.js",
+    "connect": "connectFalRealtime({ definition, credentials, signal, onClose, artifact, proxyUrl, agentFactory, socketFactory, limits }) -> Promise<{ output: ReadableStream<Uint8Array> (SSE), send(input), close(), path, closed }>",
+    "socket": "openFalRealtimeSocket, falRealtimeSseEvent",
+    "schema": "FalRealtimeError, canonicalFalRealtimeEndpoint, falRealtimePath, falRealtimeUrl, falRealtimeInputSchema, falRealtimeInputProperties, compileFalRealtimeInput",
+    "codec": "encodeMsgpack, decodeMsgpack, FAL_MSGPACK_MAX_DEPTH",
+    "mapping": "falRealtimeFrameEvent, normalizeFalRealtimeOutput, falRealtimeToken",
+    "metadata": "FAL_REALTIME_PROVIDER_ID, FAL_REALTIME_PROVIDER_ALIASES, FAL_REALTIME_TRANSPORT, FAL_REALTIME_ORIGIN, FAL_REALTIME_PROXY_ORIGIN, FAL_DOCUMENTED_REALTIME_ENDPOINTS, FAL_REALTIME_LIMITS, FAL_REALTIME_PROVIDER_METADATA"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/providers/registry/fal-ai.js",
+      "change": "add realtimeConfig: FAL_REALTIME_PROVIDER_METADATA.realtimeConfig ({ baseUrl: \"wss://fal.run\" }); add \"realtime\" to serviceKinds only together with the route below"
+    },
+    {
+      "file": "src/app/api/v1/fal/realtime (new route, serial registration change)",
+      "change": "authenticate the client key, resolve the selected fal-ai connection (credentials server-side only), resolve its proxy for https://fal.run, obtain the endpoint definition (connection-scoped store or catalog discovery), call connectFalRealtime with the route's abort signal, send the first validated input, return `output` as text/event-stream with Cache-Control: no-store; follow-up inputs go through the session's `send` (validated there). Record usage as one dispatched realtime session; a SUBMISSION_UNKNOWN event is an uncertain billable outcome, never retried."
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list fal.ai native realtime (MessagePack WebSocket, documented endpoints or registered x-fal-realtime schemas)"
+    },
+    {
+      "file": "tests/unit/native-fal-realtime.test.js",
+      "change": "replace the isolated `staging state (pre-registration only)` block with positive identity assertions; leave every other block unchanged"
+    }
+  ]
+}

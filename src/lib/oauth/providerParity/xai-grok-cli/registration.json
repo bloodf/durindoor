@@ -1,0 +1,37 @@
+{
+  "status": "staged",
+  "providers": ["xai", "grok-cli"],
+  "module": "./index.js",
+  "exports": [
+    "GROK_BROWSER_SCOPE",
+    "GROK_BROWSER_REDIRECT_URI",
+    "buildGrokBrowserAuthUrl",
+    "exchangeGrokBrowserCode",
+    "mapGrokImportedToken",
+    "discoverXaiWebEndpoints",
+    "exchangeXaiWebCode",
+    "resetXaiWebDiscoveryCache",
+    "GROK_SIGNIN_MODES",
+    "GROK_MIN_POLL_INTERVAL_MS",
+    "GROK_SLOW_DOWN_STEP_MS",
+    "GROK_MAX_POLL_DURATION_MS",
+    "assertGrokSignInMode",
+    "pollGrokDeviceAuthorization",
+    "parseGrokAuthJsonPaste",
+    "readOAuthErrorCode",
+    "oauthFailureMessage"
+  ],
+  "productionUse": [
+    "src/lib/oauth/services/xai.js imports oauthFailureMessage from ./oauthError.js for CLI exchange and refresh errors"
+  ],
+  "integration": [
+    "src/lib/oauth/providers.js xai.prepareConfig: replace the inlined discoverXaiEndpoints with discoverXaiWebEndpoints(proxyOptions)",
+    "src/lib/oauth/providers.js xai.exchangeToken: delegate to exchangeXaiWebCode so token errors carry status and OAuth code only",
+    "src/lib/oauth/providers.js grok-cli.requestDeviceCode and pollToken: drop response text from thrown errors and error_description on non-JSON bodies",
+    "src/lib/oauth/providers.js: add Grok CLI browser PKCE capability and import mapping without replacing the device provider",
+    "src/app/api/oauth/[provider]/[action]/route.js: call assertGrokSignInMode before any fetch, then route browser and import actions through existing flow ownership, state, PKCE and connection storage guards",
+    "OAuth dashboard: expose explicit browser and selected-account import choices; feed parseGrokAuthJsonPaste(raw).accounts to the selector and mapGrokImportedToken(doc, selectedKey)",
+    "CLI or server-side device loops: use pollGrokDeviceAuthorization with the production grok-cli pollToken bound to the connection proxy and an AbortSignal",
+    "src/lib/oauth/redirectUri.js and loopback callback handling: register the distinct 56122 callback with the existing flow store"
+  ]
+}

@@ -1,7 +1,6 @@
 // RenderHour subscription sign-in: the OAuth provider handler and a standalone
-// sign-in session. STAGED: not in the PROVIDERS map of src/lib/oauth/providers.js
-// and not exported from ./index.js, so no route can start it yet.
-// See docs/providers/renderhour.md.
+// sign-in session. Registered as `renderhour` in the PROVIDERS map of
+// src/lib/oauth/providers.js. See docs/providers/renderhour.md.
 //
 // Adapted from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper
@@ -55,7 +54,7 @@ export const RENDERHOUR_OAUTH_CONFIG = Object.freeze({
   clientId: null,
 });
 
-/** Handler for the generic PKCE flow. Not registered. */
+/** Handler for the generic PKCE flow (PROVIDERS.renderhour). */
 export const renderhourOAuthProvider = Object.freeze({
   config: RENDERHOUR_OAUTH_CONFIG,
   flowType: "authorization_code_pkce",

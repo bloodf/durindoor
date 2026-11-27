@@ -62,7 +62,7 @@ vi.mock("../../src/sse/services/mediaRoutes.js", () => ({
 }));
 vi.mock("../../open-sse/services/comboRoutingPolicy.js", () => ({ getComboRoutingPolicy: vi.fn(async () => null) }));
 
-import { RENDERHOUR_GENERATIONS_URL } from "../../open-sse/providers/private/renderhour.js";
+import { RENDERHOUR_GENERATIONS_URL } from "../../open-sse/providers/registry/renderhour.js";
 import { createRenderHourImageAdapter } from "../../open-sse/handlers/imageProviders/renderhour.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
 import { ACCEPTED_JOB_HEADER } from "../../open-sse/services/combo.js";

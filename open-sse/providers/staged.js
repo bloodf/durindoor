@@ -18,14 +18,4 @@ export const STAGED_PROVIDERS = {
     staged: true,
     reason: "CliproxyapiExecutor is reachable only through an unused proxy module.",
   },
-  "adobe-firefly-api": {
-    staged: true,
-    reason: "Image-only private definition; neither the registry nor the image adapter map imports it.",
-    docs: "docs/providers/adobe-firefly-api.md",
-  },
-  renderhour: {
-    staged: true,
-    reason: "Image, video and speech private definition; neither the registry nor any media adapter map imports it.",
-    docs: "docs/providers/renderhour.md",
-  },
 };

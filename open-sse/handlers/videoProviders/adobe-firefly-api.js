@@ -1,5 +1,5 @@
 // Adobe Firefly Services API text-to-video: submit, bounded poll, video URL.
-// STAGED: videoCore.js does not import this, so no route reaches it. See
+// Registered in videoProviders/index.js for /v1/video/generations. See
 // docs/providers/adobe-firefly-api.md.
 //
 // Written from Adobe's published contract, AdobeDocs/ffs-firefly-api at
@@ -14,7 +14,8 @@
 // This slice is text-to-video only. Keyframe images (`image.conditions`) need
 // a pre-signed URL on an Adobe-allowed storage domain or an upload through
 // /v2/storage/image, so they are refused instead of forwarded. Result URLs are
-// returned without being downloaded, even for `response_format: "b64_json"`.
+// returned without being downloaded; the public route refuses any
+// response_format but "url" before submit (videoGenerationCore.js).
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import {
@@ -22,7 +23,7 @@ import {
   ADOBE_FIREFLY_VIDEO_MODEL_IDS,
   ADOBE_FIREFLY_VIDEO_SECONDS,
   ADOBE_FIREFLY_VIDEO_SIZES,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache } from "../../services/adobeFireflyApi/auth.js";
 import { ADOBE_FIREFLY_VIDEO_SUBMIT_TIMEOUT_MS, runAdobeFireflyVideoJob } from "../../services/adobeFireflyApi/video.js";
 import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";

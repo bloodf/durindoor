@@ -35,12 +35,14 @@ export function __setUcChatWebSocketForTesting(ctor) {
 export const buildUcWsUrl = (uid, jwt, now = Date.now()) =>
   `${UC_WS_HOST}/${encodeURIComponent(uid)}?token=${encodeURIComponent(jwt)}&_t=${now}`;
 
-function frameText(data) {
-  if (isString(data)) return data;
-  if (Buffer.isBuffer(data)) return data.toString("utf8");
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
-  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+// ws reassembles protocol fragments before onmessage. Binary messages themselves
+// are arbitrary bytes, however, and may split UTF-8 across message boundaries.
+function frameText(data, decoder) {
+  if (isString(data)) return decoder.decode() + data;
+  if (Buffer.isBuffer(data)) return decoder.decode(data, { stream: true });
+  if (data instanceof ArrayBuffer) return decoder.decode(data, { stream: true });
+  if (Array.isArray(data)) return decoder.decode(Buffer.concat(data), { stream: true });
+  if (ArrayBuffer.isView(data)) return decoder.decode(data, { stream: true });
   return "";
 }
 const frameBytes = (data) => (isString(data) ? Buffer.byteLength(data) : Array.isArray(data) ? data.reduce((n, b) => n + (b?.byteLength ?? 0), 0) : data?.byteLength ?? 0);
@@ -61,6 +63,7 @@ export function runUcTurn({
   return new Promise((resolve) => {
     const parser = new UcFrameParser({ maxCarryBytes: maxFrameBytes });
     const reasoning = [];
+    const decoder = new TextDecoder();
     let sent = false;
     let received = false;
     let turnBytes = 0;
@@ -149,7 +152,7 @@ export function runUcTurn({
       if (bytes > maxFrameBytes || turnBytes > maxTurnBytes) return finish("too-large");
       let events;
       try {
-        events = parser.feed(frameText(event?.data));
+        events = parser.feed(frameText(event?.data, decoder));
       } catch {
         return finish("too-large");
       }

@@ -95,7 +95,7 @@ export function parseResponsesSseData({ data, dataLines }) {
  * wire text as the non-enumerable `wire` string for transparent forwarding.
  * A final CR is held until the next chunk or flush to preserve split CRLF.
  */
-export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } = {}) {
+export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES, preserveWire = false } = {}) {
   let pendingChunks = [];
   let pendingBytes = 0;
   let scanTail = "";
@@ -142,7 +142,7 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
         const firstLength = buffer.slice(delimiterStart, delimiterStart + 2) === "\r\n" ? 2 : 1;
         const secondLength = buffer.slice(delimiterStart + firstLength, delimiterStart + firstLength + 2) === "\r\n" ? 2 : 1;
         const end = delimiterStart + firstLength + secondLength;
-        Object.defineProperty(frame, "wire", { value: !/^\s*\{/.test(raw) || !frame.hasData ? buffer.slice(offset, end) : `data: ${frame.data}\n\n` });
+        Object.defineProperty(frame, "wire", { value: preserveWire || !/^\s*\{/.test(raw) || !frame.hasData ? buffer.slice(offset, end) : `data: ${frame.data}\n\n` });
         offset = end;
         return frame;
       });
@@ -154,7 +154,7 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
       reset();
       if (!tail) return frames;
       const frame = parseSseFrame(tail);
-      if (frame.hasData && tail.trimStart().startsWith("{")) {
+      if (!preserveWire && frame.hasData && tail.trimStart().startsWith("{")) {
         Object.defineProperty(frame, "wire", { value: `data: ${frame.data}\n\n` });
       }
       return [...frames, frame];
@@ -173,7 +173,7 @@ export function formatClaudeSseError(error) {
  * The caller retains and forwards the original bytes without re-encoding them.
  */
 export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder() } = {}) {
-  const reader = createSseFrameReader();
+  const reader = createSseFrameReader({ preserveWire: true });
   const dispatch = (frames) => {
     for (const frame of frames) {
       let payload;

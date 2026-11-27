@@ -1,3 +1,4 @@
+import { createSseFrameDispatcher } from "./sseFrames.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
@@ -27,8 +28,6 @@ export function hasResponsesSnapshotOutput(payload) {
 
 /** Hold only success terminals while the completion classifier is still pending. */
 export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
-  const decoder = new TextDecoder();
-  let pending = "";
   let held = "";
   let timer = null;
   let released = false;
@@ -49,11 +48,9 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     return sawOutput || snapshot?.hasTokenLimitTerminal || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
       Number(snapshot?.usage?.completion_tokens ?? snapshot?.usage?.output_tokens ?? snapshot?.usage?.candidatesTokenCount ?? 0) > 0;
   };
-  const process = (controller, frame) => {
-    const data = frame.match(/^data:\s*(.*)$/m)?.[1];
-    let payload;
-    try { payload = JSON.parse(data); } catch { /* sentinel or non-JSON frame */ }
-    const event = frame.match(/^event:\s*(.*)$/m)?.[1] || payload?.type;
+  const process = (controller, observation) => {
+    const { wire: frame, payload } = observation;
+    const event = observation.eventName || payload?.type;
     const error = payload?.error || payload?.response?.error || event === "error" || event === "response.failed";
     if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
     // Native Claude and Responses passthrough content is not accumulated by
@@ -91,19 +88,17 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     }
     send(controller, frame);
   };
+  // One incremental decoder owns split UTF-8 and frame boundaries for this guard.
+  let outputController;
+  const frames = createSseFrameDispatcher([(frame) => process(outputController, frame)]);
   return new TransformStream({
     transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      let match;
-      while ((match = /\r?\n\r?\n/.exec(pending))) {
-        const end = match.index + match[0].length;
-        process(controller, pending.slice(0, end));
-        pending = pending.slice(end);
-      }
+      outputController = controller;
+      frames.push(chunk);
     },
     flush(controller) {
-      pending += decoder.decode();
-      if (pending) process(controller, pending);
+      outputController = controller;
+      frames.flush();
       clear();
       if (held && !sawError && !hasOutput() && getVerdict() === true) {
         held = "";

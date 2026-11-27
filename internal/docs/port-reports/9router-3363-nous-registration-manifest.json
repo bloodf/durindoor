@@ -1,0 +1,199 @@
+{
+  "canonicalProviderId": "nous-research",
+  "status": "staged-unregistered",
+  "realProviderValidation": "unverified",
+  "owners": {
+    "implementation": "auth #2034 (Nous-only implementation cleared)",
+    "publicRegistration": "auth register-auth-06"
+  },
+  "source": {
+    "repository": "decolua/9router",
+    "pullRequest": 3363,
+    "commit": "b08f006324ebc5e355a871fb46f8f5bd34f1acce",
+    "parent": "699edac3273e13d4744bc46f6082618f08560702",
+    "files": [
+      "open-sse/providers/registry/nous.js",
+      "open-sse/services/nous.js",
+      "open-sse/providers/capabilities.js",
+      "open-sse/providers/thinkingLevels.js",
+      "open-sse/translator/concerns/thinkingUnified.js",
+      "src/app/api/providers/[id]/models/route.js",
+      "src/app/api/providers/[id]/test/testUtils.js",
+      "src/app/api/providers/suggested-models/filters.js",
+      "src/app/api/providers/validate/route.js"
+    ],
+    "verifiedContracts": {
+      "id": "nous",
+      "alias": "nous",
+      "aliases": [
+        "nous-portal",
+        "nous-research"
+      ],
+      "category": "freeTier",
+      "authType": "apikey",
+      "transport.baseUrl": "https://inference-api.nousresearch.com/v1/chat/completions",
+      "modelsFetcher": {
+        "url": "https://inference-api.nousresearch.com/v1/models",
+        "type": "nous-free"
+      },
+      "sourceKeyProbe": "POST chat/completions model=poolside/laguna-xs-2.1:free max_tokens=1 (inference; NOT ported)"
+    }
+  },
+  "staged": {
+    "metadata": "open-sse/providers/staging/nous.json",
+    "metadataKind": "data-only JSON (not a JS module, so the unreachable-module inventory is unaffected)",
+    "service": "open-sse/services/nous.js",
+    "serviceExports": [
+      "NOUS_PROVIDER_ID",
+      "NOUS_CHAT_COMPLETIONS_URL",
+      "NOUS_MODELS_URL",
+      "NOUS_SEED_MODELS",
+      "NOUS_MODEL_CAPABILITIES",
+      "NOUS_THINKING_LEVELS",
+      "NOUS_KEY_VERIFICATION",
+      "toNousUpstreamModelId",
+      "getNousModelCapabilities",
+      "getNousThinkingLevels",
+      "normalizeNousModels",
+      "normalizeRoutedNousModels",
+      "normalizeNousFreeModels",
+      "fetchNousModels",
+      "NousCatalogError",
+      "checkNousApiKeyShape",
+      "verifyNousApiKey",
+      "testNousConnection",
+      "saveNousConnection",
+      "resolveNousThinkingIntent",
+      "buildNousChatBody",
+      "translateToNousRequest",
+      "NousExecutor",
+      "createNousExecutor",
+      "NOUS_PROVIDER_ALIAS",
+      "NOUS_SOURCE_PROVIDER_ID",
+      "NOUS_MODEL_PREFIX",
+      "NOUS_API_KEY_URL"
+    ],
+    "outsideRegistryScan": true,
+    "productionImports": "none",
+    "executor": "NousExecutor extends DefaultExecutor('nous-research'); not in the executor map"
+  },
+  "request": {
+    "method": "POST",
+    "url": "https://inference-api.nousresearch.com/v1/chat/completions",
+    "format": "openai",
+    "headers": {
+      "Content-Type": "application/json",
+      "Authorization": "DefaultExecutor auth descriptor for nous-research (Bearer <selected connection apiKey>); staged executor refuses to send without a well-formed apiKey",
+      "Accept": "text/event-stream (stream only)"
+    },
+    "body": "OpenAI Chat Completions; model is the upstream id (one leading 'nous/' and any '(level)' suffix removed)",
+    "thinking": {
+      "reasoningModels": [
+        "nousresearch/hermes-4-70b",
+        "nousresearch/hermes-4-405b"
+      ],
+      "levels": [
+        "none",
+        "low",
+        "medium",
+        "high"
+      ],
+      "enabled": "reasoning: { enabled: true, effort } with effort clamped to low|medium|high; auto/adaptive/unknown -> medium; budget -> budgetToLevel then clamp",
+      "disabled": "reasoning field omitted",
+      "stripped": [
+        "reasoning_effort",
+        "reasoningEffort",
+        "thinking",
+        "enable_thinking",
+        "thinking_budget",
+        "think"
+      ],
+      "nonReasoningModels": "all thinking fields removed"
+    },
+    "credentialHandling": "Selected connection credentials only; registry endpoint for nous-research (connection baseUrl not used); redirect:'error' via BaseExecutor credentialed send; selected connection proxyOptions via proxyAwareFetch; existing attribution tags kept",
+    "attributionTags": [
+      "product=durindoor",
+      "client=durindoor",
+      "user=durindoor"
+    ]
+  },
+  "models": {
+    "seeds": [
+      {
+        "id": "nousresearch/hermes-4-70b",
+        "name": "Nous: Hermes 4 70B",
+        "contextLength": 131072
+      },
+      {
+        "id": "nousresearch/hermes-4-405b",
+        "name": "Nous: Hermes 4 405B",
+        "contextLength": 131072
+      }
+    ],
+    "capabilities": {
+      "nousresearch/hermes-4-70b": {
+        "tools": false,
+        "reasoning": true,
+        "thinkingFormat": "nous",
+        "contextWindow": 131072,
+        "maxOutput": 32000
+      },
+      "nousresearch/hermes-4-405b": {
+        "tools": false,
+        "reasoning": true,
+        "thinkingFormat": "nous",
+        "contextWindow": 131072,
+        "maxOutput": 32000
+      }
+    },
+    "catalogUrl": "https://inference-api.nousresearch.com/v1/models",
+    "catalogRequest": "GET, no Authorization (public endpoint), Accept: application/json, redirect:'error', 10s timeout, 4 MiB bounded read, selected connection proxy",
+    "catalogParsing": "data|models|results|array; non-object, id-less, duplicate and non-text (embedding/image-only) entries dropped; nousresearch/ first, stable order; routed ids 'nous/<id>' with upstreamModelId",
+    "freeFilter": "zero prompt+completion price (null/empty is not zero), text output, context >= 200000"
+  },
+  "usage": {
+    "endpoint": "none in source",
+    "perRequest": "OpenAI-compatible usage object returned unchanged by the executor"
+  },
+  "probe": {
+    "supported": false,
+    "status": "saved-unverified",
+    "reason": "Nous /models is public and the source documents no read-only authenticated endpoint; the source probe is inference, which must never be used to test a key.",
+    "localChecks": "string, trimmed, 1..4096 visible ASCII characters, no whitespace",
+    "invalidKeys": "rejected before persist; persist never called"
+  },
+  "registrationRequirements": [
+    "Promote onto the existing nous-research provider; do not add registry/nous.js, a 'nous' id or a shadow alias. Connection ownership (provider='nous-research') and legacy 'nous/<model>' routing must keep working.",
+    "Decide whether to add the source alias 'nous-portal' (check collisions; baselines regenerated through their generators).",
+    "Reconcile model IDs: registered 'Hermes-4-405B'/'Hermes-4-70B' vs source 'nousresearch/hermes-4-405b'/'nousresearch/hermes-4-70b'; keep existing saved combos and model routes resolvable.",
+    "Reconcile category: registered 'apikey' vs source 'freeTier'.",
+    "Add capability rows and either a 'nous' thinking format (thinkingUnified applyFormat + thinkingLevels FORMAT_LEVELS) or dispatch nous-research through NousExecutor so the captured intent survives translateRequest.",
+    "Wire the models route to fetchNousModels/normalizeRoutedNousModels (unauthenticated GET) and a suggested-models 'nous-free' filter to normalizeNousFreeModels.",
+    "Wire validate and saved-connection test routes to verifyNousApiKey/testNousConnection; never add an inference probe.",
+    "Generated indices (registry index, AGENT-INDEX) only via their generators; staged.json/STAGED_PROVIDERS untouched by this lane.",
+    "Validate against the real provider with a disposable key; until then real-provider behaviour is unverified."
+  ],
+  "tests": {
+    "file": "tests/unit/port9r-3363-nous-provider.test.js",
+    "command": "node node_modules/vitest/vitest.mjs run unit/port9r-3363-nous-provider.test.js --maxWorkers=2 (from tests/)",
+    "testedHead": "see port report internal/docs/port-reports/9router-3363-nous.md",
+    "noDuplicateListing": "Exactly one registry entry carries a nous* token (nous-research, alias nous)"
+  },
+  "canonicalAlias": "nous",
+  "identityEvidence": {
+    "registryModule": "open-sse/providers/registry/nous-research.js",
+    "registeredBy": "6cfe40a7b8 port(omniroute): add API-key, search and fetch providers from OmniRoute (#980)",
+    "registered": {
+      "id": "nous-research",
+      "alias": "nous",
+      "category": "apikey",
+      "baseUrl": "https://inference-api.nousresearch.com/v1/chat/completions",
+      "models": [
+        "Hermes-4-405B",
+        "Hermes-4-70B"
+      ]
+    },
+    "attribution": "open-sse/executors/default.js applyNousAttribution tags nous-research requests (upstream #5707 port)",
+    "sourceConflict": "Source id 'nous' is the registered alias and source alias 'nous-research' is the registered id; a second provider or shadow alias is not created."
+  }
+}

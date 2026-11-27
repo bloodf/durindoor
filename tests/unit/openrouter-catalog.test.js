@@ -44,6 +44,7 @@ import {
   mergeOpenRouterCatalogs,
   resolveOpenRouterDecisionModels,
   resolveOpenRouterModels,
+  OPENROUTER_LOOKUP_BUDGET_MS,
 } from "../../open-sse/services/openrouterCatalog.js";
 import { classifyModelKind, normalizeSyncedModels } from "../../src/lib/modelAutoSync/catalog.js";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
@@ -109,13 +110,14 @@ function jsonResponse(body, init = {}) {
   });
 }
 
-function catalogFetch({ primary = [CHAT_FREE, CHAT_PAID], decisions = [DECISIONS_JEV, DECISIONS_MERCURY], onDecisions = null } = {}) {
+function catalogFetch({ primary = [CHAT_FREE, CHAT_PAID], decisions = [DECISIONS_JEV, DECISIONS_MERCURY], onDecisions = null, primaryDelayMs = 0 } = {}) {
   return vi.fn(async (url) => {
     const parsed = new URL(String(url));
     if (parsed.searchParams.get("output_modalities") === "decisions") {
       if (onDecisions) return onDecisions(url);
       return jsonResponse({ data: decisions });
     }
+    if (primaryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, primaryDelayMs));
     return jsonResponse({ data: primary });
   });
 }
@@ -461,6 +463,126 @@ describe("bounded secondary decisions wait (regression for #2637 review)", () =>
     const fetchImpl = catalogFetch();
     const models = await resolveOpenRouterModels({ includeDecisions: true, decisionsWaitMs: 1000, fetchImpl });
     expect(models.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id, DECISIONS_MERCURY.id]);
+  });
+});
+
+function delayedDecisions(delayMs, data = [DECISIONS_JEV]) {
+  return () => new Promise((resolve) => {
+    setTimeout(() => resolve(jsonResponse({ data })), delayMs);
+  });
+}
+
+describe("decisions wait counts against the whole lookup budget", () => {
+  it("lists a slow-but-successful primary through the real /v1/models deadline when decisions hang", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "or-slow-primary-deadline", provider: "openrouter", isActive: true, apiKey: "sk-or-slow" },
+    ]);
+    const hang = hangingDecisions();
+    const fetchMock = catalogFetch({ onDecisions: hang.onDecisions, primaryDelayMs: 2500 });
+    hang.onDecisions.fetchImpl = fetchMock;
+    vi.stubGlobal("fetch", fetchMock);
+
+    let listed = null;
+    const pending = buildModelsList([LLM_KIND]).then((models) => { listed = models; });
+    // A fixed 1s wait after a 2.5s primary would end at 3.5s, past the 3s
+    // caller deadline, and the caller would drop to its static rows.
+    await vi.advanceTimersByTimeAsync(LIVE_CATALOG_WAIT_MS - 1);
+    expect(listed).not.toBeNull();
+    await pending;
+    expect(openRouterIds(listed)).toContain(`openrouter/${CHAT_FREE.id}`);
+    expect(hang.signals).toHaveLength(1);
+    expect(hang.signals[0].aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(hang.signals[0].aborted).toBe(true);
+  });
+
+  it("returns the primary exactly at the lookup budget when decisions are still pending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const hang = hangingDecisions();
+    const fetchImpl = catalogFetch({ onDecisions: hang.onDecisions, primaryDelayMs: 2000 });
+    hang.onDecisions.fetchImpl = fetchImpl;
+
+    let settled = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl }).then((m) => { settled = m; });
+    await vi.advanceTimersByTimeAsync(OPENROUTER_LOOKUP_BUDGET_MS - 1);
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(settled.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    expect(OPENROUTER_LOOKUP_BUDGET_MS).toBeLessThan(LIVE_CATALOG_WAIT_MS);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(hang.signals[0].aborted).toBe(true);
+  });
+
+  it("merges decisions that arrive inside the remaining budget after a slow primary", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const remaining = OPENROUTER_LOOKUP_BUDGET_MS - 2000;
+    const fetchImpl = catalogFetch({ primaryDelayMs: 2000, onDecisions: delayedDecisions(remaining - 1) });
+
+    let settled = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl }).then((m) => { settled = m; });
+    await vi.advanceTimersByTimeAsync(OPENROUTER_LOOKUP_BUDGET_MS - 1);
+    await pending;
+    expect(settled.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+  });
+
+  it("does not merge decisions arriving one millisecond after the budget, but caches them for the next call", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const remaining = OPENROUTER_LOOKUP_BUDGET_MS - 2000;
+    const fetchImpl = catalogFetch({ primaryDelayMs: 2000, onDecisions: delayedDecisions(remaining + 1) });
+
+    const first = resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    await vi.advanceTimersByTimeAsync(OPENROUTER_LOOKUP_BUDGET_MS);
+    expect((await first).map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const second = await resolveOpenRouterModels({ includeDecisions: true, fetchImpl });
+    expect(second.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a primary that lands past the budget immediately and still starts the decisions fetch", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const hang = hangingDecisions();
+    const fetchImpl = catalogFetch({ onDecisions: hang.onDecisions, primaryDelayMs: LIVE_CATALOG_WAIT_MS - 100 });
+    hang.onDecisions.fetchImpl = fetchImpl;
+
+    let settled = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, fetchImpl }).then((m) => { settled = m; });
+    // Out of budget: no wait beyond a zero-delay timer, so it settles before the caller deadline.
+    await vi.advanceTimersByTimeAsync(LIVE_CATALOG_WAIT_MS - 99);
+    expect(settled).not.toBeNull();
+    await pending;
+    expect(settled.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+    expect(hang.signals).toHaveLength(1);
+    expect(hang.signals[0].aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(hang.signals[0].aborted).toBe(true);
+  });
+
+  it("honors an explicit deadlineAt and still merges already-cached decisions past it", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00Z"));
+    const fetchImpl = catalogFetch({ onDecisions: delayedDecisions(300) });
+
+    let settled = null;
+    const pending = resolveOpenRouterModels({ includeDecisions: true, deadlineAt: Date.now() + 200, fetchImpl })
+      .then((m) => { settled = m; });
+    await vi.advanceTimersByTimeAsync(200);
+    await pending;
+    expect(settled.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id]);
+
+    await vi.advanceTimersByTimeAsync(100);
+    const cached = await resolveOpenRouterModels({ includeDecisions: true, deadlineAt: Date.now() - 1, fetchImpl });
+    expect(cached.map((m) => m.id)).toEqual([CHAT_FREE.id, CHAT_PAID.id, DECISIONS_JEV.id]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
 

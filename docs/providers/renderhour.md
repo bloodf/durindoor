@@ -1,6 +1,6 @@
 ---
 title: RenderHour
-description: Staged and unavailable. RenderHour image, text-to-video and text-to-speech jobs with an rh_ API key, their job flow, errors and limits.
+description: Staged and unavailable. RenderHour image, text-to-video and text-to-speech jobs with an rh_ API key, the staged subscription sign-in, their job flow, errors and limits.
 status: unreleased
 ---
 
@@ -18,12 +18,34 @@ RenderHour (`renderhour`) generates images, videos and speech through one asynch
 | Image-to-video (start frame, end frame, reference images) | Not supported. The request is refused |
 | Speech from text, with an `rh_` API key | Staged as a standalone adapter, covered by mocks. No route reaches it |
 | Voice selection | Not supported. RenderHour picks each speech model's voice |
-| Subscription OAuth sign-in | Not supported |
+| Subscription OAuth sign-in (authorization code with PKCE, rotating refresh) | Staged as standalone modules, covered by mocks. No route, refresh table or media adapter uses it, and it needs an operator client id |
 | Chat | Not part of this provider. It has no chat transport or fallback |
 
 ## Credential
 
-Use an API key that starts with `rh_`. It is sent as `Authorization: Bearer rh_...`. A missing key, an OAuth access token or any other key format is refused with `401` before anything is sent. There is no token refresh. Each request uses the key and proxy settings of its selected connection, and polling keeps both for that job.
+Use an API key that starts with `rh_`. It is sent as `Authorization: Bearer rh_...`. A missing key, an OAuth access token or any other key format is refused with `401` before anything is sent. API keys have no refresh. Each request uses the key and proxy settings of its selected connection, and polling keeps both for that job.
+
+## Subscription sign-in (staged)
+
+The pinned source also signs in to a RenderHour plan, whose access token pays in plan credits on the same `/v1` API. DurinDoor stages that sign-in in `services/renderhour/oauth.js` (protocol) and `src/lib/oauth/services/renderhour.js` (provider handler and sign-in session). Nothing registers either one, and the media adapters above still accept only `rh_` keys.
+
+What the source shows, and what the staged code does:
+
+- **Authorize.** `GET https://renderhour.com/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri`, `state`, an S256 `code_challenge` and no `scope`. The client is public, so there is no client secret.
+- **Exchange.** `POST https://renderhour.com/api/oauth/token`, form-encoded, `grant_type=authorization_code` with `client_id`, `code`, `redirect_uri` and `code_verifier`. Then `GET https://renderhour.com/api/oauth/userinfo` with the access token reads `sub`, `email` and `name`. If that call fails, the sign-in is kept without them.
+- **Refresh.** `POST` to the same token URL with `grant_type=refresh_token`, `refresh_token` and `client_id`. The source says access tokens (`rhat_`) last an hour and refresh tokens (`rhrt_`) rotate on every refresh, last 30 days and stop working once used. The staged code depends on none of those lifetimes. It refreshes five minutes before the stored expiry, or when no expiry is stored.
+- **Refresh failures.** `invalid_grant`, `invalid_token`, `token_expired` or a `401` mean the refresh token is spent. The shared refresh path then checks whether a concurrent refresh already stored a newer pair. If none did, it marks the connection `reauth_required` and keeps the old tokens. Anything else, including `429`, `5xx`, `invalid_client`, a malformed body or a network error, keeps the stored credentials unchanged.
+- **Persistence.** A refresh writes only through the shared compare-and-swap commit, bound to the connection's stored tokens and `accountId`. A stale refresh never overwrites a newer pair. Two refreshes of the same connection, or of the same refresh token, share one request, so a single-use token is never sent twice by one process. When RenderHour sends no new refresh token, the stored one is kept.
+- **Account selection.** A repeat sign-in replaces the stored connection with the same RenderHour account id (`sub`). Email decides only when an id is missing. Two different ids never match.
+
+Fork differences from the source:
+
+- **No embedded client id.** The pinned source ships a client id named for OmniRoute. DurinDoor does not present itself as another application's client. Set `RENDERHOUR_OAUTH_CLIENT_ID` to a RenderHour client id (`rhc_...`) issued for your install. Without it, sign-in refuses to start and refresh sends nothing. Whether RenderHour issues client ids to third parties, and which redirect URIs it accepts for them, is unknown.
+- **Redirects refused.** Token and userinfo calls use fixed `https://renderhour.com` addresses with redirects disabled, and a `3xx` answer is treated as a failure. No code, verifier or token follows a redirect.
+- **Closed error text.** Only standard OAuth error codes are named. RenderHour's error descriptions, transport errors and callback `error_description` are never repeated.
+- **Bound session.** The standalone session compares `state` in constant time, requires the callback to land on the exact redirect origin and path, expires after 10 minutes and completes only once. A forged state does not use up the real session.
+
+Not proven: the mocks follow the source's own test fixtures. They do not show that RenderHour accepts a DurinDoor client, the redirect URI or these requests, or that the stated token lifetimes hold.
 
 ## What is sent, and where
 
@@ -145,6 +167,14 @@ Video and speech are not wired anywhere. Registration needs:
 
 For images, the three gaps that offline runs found in the shared image handler are closed: submit redirects, an echoed key in submit errors, and a dropped `Retry-After`. Each one is covered by closed-network tests through the shared handler and the image route.
 
+Subscription sign-in registration needs:
+
+- `renderhour: renderhourOAuthProvider` (from `src/lib/oauth/services/renderhour.js`) in the `PROVIDERS` map of `src/lib/oauth/providers.js`. The generic flow then binds state, verifier and redirect URI through `flowStore.js`. The completion step should pick the connection to update with `selectRenderHourConnection`.
+- `renderhour: (c, log, p) => createRenderHourRefreshHooks().refreshCredentials(c, log, p)` in `REFRESH_HANDLERS` (`open-sse/services/tokenRefresh.js`), and a RenderHour executor whose `needsRefresh` and `refreshCredentials` come from `createRenderHourRefreshHooks()`, so `refreshAndUpdateCredentials` persists rotations.
+- Optionally `renderhour: lane("renderhour")` in `tokenRefresh/capabilities.js`, if RenderHour turns out to revoke a whole token family when sibling accounts refresh together. The source does not say.
+- A credential choice in `services/renderhour/media.js` and the image adapter: `renderHourOAuthAuthorization` for an `oauth` connection, `renderHourAuthorization` for an `rh_` key. Today both adapters refuse an OAuth token with `401`.
+- The provider catalog declaring `RENDERHOUR_STAGED_OAUTH` beside the API-key mode, a dashboard sign-in entry, and `RENDERHOUR_OAUTH_CLIENT_ID` in the operator docs.
+
 Image registration still needs the provider catalog, the image adapter map and the usual generated indexes and dashboard files. Until then, the tests have to substitute the adapter lookup. A live check with a real account is separate and has not happened for any task. The mocks show what the gateway sends and how it reads answers shaped like the source's. They do not show that RenderHour accepts these requests. It is also unknown whether RenderHour honors `Idempotency-Key` or charges for failed jobs, how long file URLs last, and whether they work without a key.
 
 ## Source
@@ -156,6 +186,10 @@ Adapted from [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/
 - [`handlers/imageGeneration/providers/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/imageGeneration/providers/renderhour.ts)
 - [`handlers/videoGeneration/renderhourHandler.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/renderhourHandler.ts)
 - [`handlers/renderhourSpeech.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/renderhourSpeech.ts)
+- [`src/lib/oauth/providers/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/src/lib/oauth/providers/renderhour.ts)
+- [`src/lib/oauth/constants/oauth.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/src/lib/oauth/constants/oauth.ts) (`RENDERHOUR_CONFIG`)
+- [`services/tokenRefresh/providers/renderhour.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/services/tokenRefresh/providers/renderhour.ts)
+- [`tests/unit/renderhour-oauth-provider.test.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/tests/unit/renderhour-oauth-provider.test.ts)
 - [`handlers/videoGeneration/pollRetry.ts`](https://github.com/cheaper-inference/OmniRoute/blob/9671192011beb2d7f83979f40be488c5da8772b9/open-sse/handlers/videoGeneration/pollRetry.ts)
 
-Differences from the source: only `rh_` keys; no OAuth sign-in; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.
+Differences from the source: media adapters accept only `rh_` keys; the sign-in is staged without an embedded client id; fixed addresses with no base URL override; no reference or frame uploads; no voice selection; speech files downloaded only from RenderHour hosts, without the key; unsupported video ratios and durations refused; unknown job statuses stop polling; fixed polling bounds that callers cannot change; and stricter checks on job ids, results and error text.

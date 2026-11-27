@@ -10,7 +10,7 @@ export default {
     textIcon: "AH",
     website: "https://aihorde.net",
     notice: {
-      text: "Crowdsourced volunteer inference has variable availability, queues, and model limits. Anonymous requests run at lower priority; add an AI Horde API key for account-backed priority.",
+      text: "Crowdsourced volunteer inference has variable availability, queues, and model limits. Anonymous requests run at lower priority; add an AI Horde API key for account-backed priority. Images are text-to-image b64_json only, wait in a volunteer queue, and record cost as unknown (kudos are not priced).",
       apiKeyUrl: "https://aihorde.net/register",
     },
   },
@@ -30,4 +30,8 @@ export default {
   models: [],
   modelsFetcher: { url: "https://oai.aihorde.net/v1/models", type: "openai" },
   passthroughModels: true,
+  // Chat uses the facade transport above. Images use AI Horde's native job API
+  // through the `aihorde` image adapter, which owns its origin and headers;
+  // image models come from the live worker catalog, never from this file.
+  serviceKinds: ["llm", "image"],
 };

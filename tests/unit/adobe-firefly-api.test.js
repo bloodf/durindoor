@@ -20,7 +20,7 @@ import provider, {
   ADOBE_FIREFLY_GENERATE_URL,
   ADOBE_FIREFLY_SCOPE,
   ADOBE_IMS_TOKEN_URL,
-} from "../../open-sse/providers/private/adobe-firefly-api.js";
+} from "../../open-sse/providers/registry/adobe-firefly-api.js";
 import defaultAdapter, { createAdobeFireflyApiImageAdapter } from "../../open-sse/handlers/imageProviders/adobe-firefly-api.js";
 import { createAdobeTokenCache, defaultAdobeTokenCache } from "../../open-sse/services/adobeFireflyApi/auth.js";
 import * as job from "../../open-sse/services/adobeFireflyApi/job.js";
@@ -154,12 +154,13 @@ afterEach(() => {
   defaultAdobeTokenCache.clear();
 });
 
-describe("adobe-firefly-api staging", () => {
-  it("declares an image-only Services API identity with no chat transport", () => {
+describe("adobe-firefly-api registration", () => {
+  it("declares a Services API image and native-video identity with no chat transport", () => {
     expect(provider).toMatchObject({
-      id: "adobe-firefly-api", category: "apikey", authType: "apikey", transport: null, serviceKinds: ["image"],
+      id: "adobe-firefly-api", category: "apikey", authType: "apikey", transport: null, serviceKinds: ["image", "video"],
     });
-    expect(provider.models.map((model) => model.id)).toEqual(["image3", "image4_standard", "image4_ultra"]);
+    expect(provider.models.filter((model) => model.kind === "image").map((model) => model.id)).toEqual(["image3", "image4_standard", "image4_ultra"]);
+    expect(provider.models.filter((model) => model.kind !== "image").map((model) => [model.id, model.kind])).toEqual([["video1_standard", "video"]]);
     expect(ADOBE_FIREFLY_API_MODEL_IDS).toEqual(["image3", "image4_standard", "image4_ultra"]);
     for (const field of ["oauth", "authModes", "hasOAuth", "cookieImport", "webLogin", "videoConfig", "passthroughModels"]) {
       expect(provider).not.toHaveProperty(field);
@@ -178,11 +179,14 @@ describe("adobe-firefly-api staging", () => {
     expect(job.ADOBE_FIREFLY_MAX_RETRY_DELAY_MS).toBe(30_000);
   });
 
-  it("is not reachable through the registry, the adapter map or a chat executor, and leaves consumer IDs unregistered", async () => {
+  it("is reachable through the registry and the image adapter map only, and leaves consumer IDs unregistered", async () => {
     const actual = await vi.importActual("../../open-sse/handlers/imageProviders/index.js");
-    for (const id of ["adobe-firefly-api", "adobe-firefly", "firefly"]) {
+    expect(actual.getImageAdapter("adobe-firefly-api")).toBe(defaultAdapter);
+    expect(REGISTRY.filter((entry) => entry.id === "adobe-firefly-api")).toEqual([provider]);
+    expect(hasSpecializedExecutor("adobe-firefly-api")).toBe(false);
+    for (const id of ["adobe-firefly", "firefly"]) {
       expect(actual.getImageAdapter(id)).toBeNull();
-      expect(REGISTRY.some((entry) => entry.id === id)).toBe(false);
+      expect(REGISTRY.some((entry) => [entry.id, entry.alias, entry.uiAlias, ...(entry.aliases ?? [])].includes(id))).toBe(false);
       expect(hasSpecializedExecutor(id)).toBe(false);
     }
   });

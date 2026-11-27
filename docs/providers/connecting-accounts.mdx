@@ -81,7 +81,7 @@ Connections can set `providerSpecificData.refreshLeadMs` to a positive finite nu
 
 An unrecoverable grant error, such as `invalid_grant` or a reused refresh token, requires reconnecting. Revoked Codex and OrcaRouter credentials can be quarantined as `reauth_required`; sign in again or replace the credential. Quota failures are separate from credential revocation.
 
-Gemini CLI and Antigravity need operator-supplied OAuth client IDs and secrets. Set `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`, or `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`, then restart before connecting. Existing accounts may stop refreshing if you change their OAuth client.
+Gemini CLI needs an operator-supplied OAuth client: set `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`, then restart before connecting. Antigravity uses a built-in public desktop client unless you set both `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET`; see [Antigravity](./antigravity.mdx#before-you-connect). Existing accounts stop refreshing if you change their OAuth client.
 
 ## Multiple accounts and priority
 

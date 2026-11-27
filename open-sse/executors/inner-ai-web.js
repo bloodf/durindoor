@@ -1,4 +1,4 @@
-// Inner.ai Web executor. STAGED: not in the executor map yet; see
+// Inner.ai Web executor, registered in the executor map as `inner-ai-web`; see
 // docs/providers/inner-ai-web.md.
 //
 // Wire contract ported from cheaper-inference/OmniRoute (MIT) at
@@ -19,7 +19,7 @@ import { buildToolAwareResult, prepareToolMessages } from "../translator/webTool
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { errorResponse } from "../utils/error.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";
-import { INNER_AI_WEB_ALIAS, INNER_AI_WEB_CHAT_URL, INNER_AI_WEB_ID } from "../providers/private/inner-ai-web.js";
+import { INNER_AI_WEB_ALIAS, INNER_AI_WEB_CHAT_URL, INNER_AI_WEB_ID } from "../providers/registry/inner-ai-web.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { readInnerAiWebCredential } from "./inner-ai-web/credential.js";
 import { createDiscoveryCache, findInnerAiWebModel, innerAiWebHeaders, isAbort, transportFailure } from "./inner-ai-web/discovery.js";

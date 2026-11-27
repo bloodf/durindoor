@@ -69,6 +69,10 @@ through the normal connection path.
 | Blackbox Web | Extension and dashboard | `app.blackbox.ai` profile requires `next-auth.session-token`. |
 | Conol Web | Extension and dashboard | `conol.ai` profile requires `__Secure-better-auth.session_token`. |
 | TinyCMS Web | Extension and dashboard, localStorage | No cookie. The profile names the `app-config-uuid` localStorage item of `https://site.tinycms.xyz` and a credential pattern. The dashboard takes it as a pasted field; the extension reads it with `chrome.scripting`. It is stored in `providerSpecificData["app-config-uuid"]` of an API-key connection. |
+| Poe Web | Extension and dashboard | `www.poe.com` profile requires `p-b`. |
+| v0 Vercel Web | Extension and dashboard | `v0.dev` profile requires `__vercel_session`. |
+| Inner.ai Web | Extension and dashboard, optional account email | `app.innerai.com` profile requires `token` (domain `app.innerai.com` or `.innerai.com`). An optional account email is bound to the pairing by the dashboard and appended as `token=<jwt> <email>`; see [Account email](#account-email). |
+| Venice Web | Extension and dashboard | `__client` at the Clerk origin, `https://clerk.venice.ai`, which is also the extension's capture tab. The user signs in at `venice.ai` first. |
 | Adapta Web | Dashboard only | `__client` is accepted as a Cookie header at the Clerk origin, `https://clerk.agent.adapta.one`. The chat site `agent.adapta.one` has a separate origin. cURL and HAR input must identify the Clerk origin. [Pinned comparison](../../../../internal/docs/adapta-t3-web-cookie-parity-2034.md) |
 | Tencent Yuanbao Web | Extension and dashboard | The normal connection requires both `hy_user` and `hy_token` for `https://yuanbao.tencent.com`. The executor supplies `hy_source=web`. [Pinned comparison](../../../../internal/docs/yuanbao-web-signin-parity-2034.md) |
 | T3 Chat Web | Manual header | The local parser requires `convex-session-id`, and the pinned source calls for the full session cookie set. A complete narrow allowlist is unverified. [Pinned comparison](../../../../internal/docs/t3-web-signin-parity-2034.md) |
@@ -79,6 +83,15 @@ through the normal connection path.
 | ZenMux Free | Manual header | The pinned source requires `ctoken` and forwards the full header. [Pinned comparison](../../../../internal/docs/zenmux-free-signin-parity-2034.md) |
 | Suno | Manual header | The session header and separate API host are documented, with no complete cookie-name allowlist. [Pinned comparison](../../../../internal/docs/suno-signin-parity-2034.md) |
 | Udio | Manual header | The parity source forwards the supplied session header and does not specify an exact cookie set. [Pinned comparison](../../../../internal/docs/udio-signin-parity-2034.md) |
+
+## Account email
+
+A profile may set `accountEmail: "optional"` (Inner.ai Web only). `resolveCookieImportContract` accepts it only next to exactly one required cookie and no localStorage item, and exposes it as `contract.accountEmail` to the dashboard dialog, which then shows an optional **Account email** field with guidance on the profile-lookup fallback.
+
+- The pairing request may carry `accountEmail`. Absent or blank means no email. Otherwise `normalizeAccountEmail` (`src/shared/utils/cookieImportContract.js`) requires one address of at most 254 characters in the executor's grammar: printable ASCII, no spaces, quotes, `;`, `,` or `<>`. A non-string, a malformed value, or an email for a provider whose profile does not take one is a `400` and no pairing is issued.
+- The validated email is kept in the server-side pairing entry only. The pairing response does not contain it, so the extension never sees it and an edited pairing cannot change it.
+- The import route refuses a body that has an `accountEmail` key with `400` (the pairing is spent). The extension never sends one.
+- After the cookie header is composed, a paired email is appended as `<header> <email>`; without one the header is stored alone. An update replaces the stored value completely, so a replacement with a blank email drops an earlier email.
 
 ## localStorage items
 
@@ -95,12 +108,12 @@ The stored key is listed in the connections API's sensitive provider-specific fi
 ## Flow
 
 1. **Pair.** The operator, in the dashboard, calls `POST /api/providers/cookie-import/pairing` with either
-   `{ "provider", "action": "create", "name" }` or `{ "provider", "action": "update", "connectionId" }`.
+   `{ "provider", "action": "create", "name" }` or `{ "provider", "action": "update", "connectionId" }`, plus an optional `"accountEmail"` for a profile that takes one.
    The action is explicit; the other action's fields are rejected. An update target must exist, belong to the provider and be a cookie connection. The response carries the secret once, plus the contract the extension should collect:
    `{ pairing: { token, expiresAt, ttlSeconds, header, provider, action, name | connectionId, importUrl, contract: { origin, cookieNames, cookiePrefixes, optionalCookies?, localStorageKeys?, extensionCapture? } } }`.
 2. **Import.** The extension reads the approved cookies for the provider origin and calls `POST /api/providers/cookie-import` with header `x-durindoor-pairing-token: <token>` and
    `{ "provider", "origin", "cookies": [{ "name", "value", "domain"?, "secure"?, "expirationDate"? }], "localStorage"?: { "<key>": "<value>" }, "connectionId"? , "name"? }`. `cookies` is omitted for a localStorage-only profile.
-   `connectionId` is required and must match for an update pairing, and must be absent for a create pairing. `name` may be repeated for a create pairing and must then match.
+   `connectionId` is required and must match for an update pairing, and must be absent for a create pairing. `name` may be repeated for a create pairing and must then match. `accountEmail` is never accepted here.
 3. **Result.** `201` (create) or `200` (update) with `{ ok: true, action, connection: { id, provider, name } }`. Nothing else about the connection, and never a cookie, is returned.
 
 ## Authority

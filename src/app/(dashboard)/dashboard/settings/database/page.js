@@ -61,7 +61,8 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
         setPasswordError("Password rejected — try again.");
         return;
       }
-      setError(err?.status ? (err.body?.error || `Failed to load (${err.status})`) : err.message);
+      // Keep the status-load message independent of the server response body.
+      setError(err?.status ? `Failed to load (${err.status})` : err.message);
     } finally {
       if (request === refreshRequest.current) { refreshBusy.current = false; setLoading(false); setRefreshing(false); }
     }

@@ -7,7 +7,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { toExecutorCredentials } from "./typeHelpers.js";
-import { recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
+import { recordApiKeyUsageForResponse, recordCancelledUsage } from "../services/apiKeyPolicy.js";
 import { resolveImageModel, runMediaAccounts, runMediaEndpoint } from "./media/pipeline.js";
 import { readBoundedRequest } from "../utils/readBoundedRequest.js";
 import { MAX_IMAGE_BYTES } from "open-sse/config/mediaConfig.js";
@@ -129,6 +129,19 @@ async function handleSingleModelImageEdit(modelStr, formData, jsonBody, request,
           apiKeyId,
         });
         return { response };
+      }
+      if (result.cancelledUsage) {
+        // The provider answered 2xx before the client cancelled, so it may bill.
+        // No cooldown and no other account: the caller is gone.
+        const { modality, tokens, nativeUnits, cost, costStatus, costSource, meta } = result.cancelledUsage;
+        await recordCancelledUsage(apiKey, {
+          billingEpoch,
+          usageEventId: JSON.stringify([getRequestId(request), "image-edit", provider, model, credentials.connectionId ?? null]), provider, model,
+          connectionId: credentials.connectionId ?? null, endpoint: "/v1/images/edits",
+          modality, tokens, nativeUnits, cost, costStatus, costSource, meta,
+          apiKeyId,
+        });
+        return { response: result.response };
       }
       return { result, dispatch };
     },

@@ -103,6 +103,20 @@ export async function recordAcceptedJobUsage(apiKey, usage) {
 }
 
 /**
+ * Record a client-cancelled operation the provider had already accepted with a
+ * 2xx response. The caller passes the core's evidence: receipts read before the
+ * cancel, otherwise unknown cost and no units. The client has gone, so a ledger
+ * failure is logged and never replaces the cancelled response.
+ */
+export async function recordCancelledUsage(apiKey, usage) {
+  try {
+    await recordApiKeyUsage(apiKey, { ...usage, status: "cancelled" });
+  } catch (error) {
+    log.error("USAGE", `[${usage.provider}/${usage.model}] cancelled operation not recorded: ${error.message}`);
+  }
+}
+
+/**
  * Record non-chat usage only after a successful response. Validation errors,
  * policy denials, and upstream failures must not consume a caller's lifetime
  * allowance.

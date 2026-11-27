@@ -189,34 +189,25 @@ export function sonioxTranscriptBody(transcript, { verbose = false, wantWords = 
     : tokens.map((token) => (isString(token.text) ? token.text : "")).join("");
   const durationMs = tokens.length ? finite(tokens[tokens.length - 1].end_ms) : 0;
   if (!verbose) return { body: { text }, audioSeconds: durationMs / 1000 };
-  const segments = groupSonioxTokensBySpeaker(tokens).map((segment, index) => ({
-    id: index,
-    start: segment.startMs / 1000,
-    end: segment.endMs / 1000,
-    text: segment.text.trim(),
-    ...(segment.speaker !== null ? { speaker: segment.speaker } : {}),
-  }));
+  const segments = groupSonioxTokensBySpeaker(tokens).map((segment, index) => {
+    const entry = { id: index, start: segment.startMs / 1000, end: segment.endMs / 1000, text: segment.text.trim() };
+    if (segment.speaker !== null) entry.speaker = segment.speaker;
+    return entry;
+  });
   const language = tokens.find((token) => isString(token.language) && token.language)?.language;
-  return {
-    body: {
-      task: "transcribe",
-      ...(language ? { language } : {}),
-      duration: durationMs / 1000,
-      text,
-      segments,
-      ...(wantWords
-        ? {
-          words: tokens.map((token) => ({
-            word: isString(token.text) ? token.text : "",
-            start: finite(token.start_ms) / 1000,
-            end: finite(token.end_ms) / 1000,
-            ...(token.speaker !== null && token.speaker !== undefined ? { speaker: String(token.speaker) } : {}),
-          })),
-        }
-        : {}),
-    },
-    audioSeconds: durationMs / 1000,
-  };
+  const body = { task: "transcribe" };
+  if (language) body.language = language;
+  body.duration = durationMs / 1000;
+  body.text = text;
+  body.segments = segments;
+  if (wantWords) {
+    body.words = tokens.map((token) => {
+      const word = { word: isString(token.text) ? token.text : "", start: finite(token.start_ms) / 1000, end: finite(token.end_ms) / 1000 };
+      if (token.speaker !== null && token.speaker !== undefined) word.speaker = String(token.speaker);
+      return word;
+    });
+  }
+  return { body, audioSeconds: durationMs / 1000 };
 }
 
 const remaining = (deadline, now) => deadline - now();
@@ -388,15 +379,15 @@ export function createSonioxSttAdapter({
         if (isRecord(data) && errorEnvelopeMessage(data)) {
           return lostResult(MODALITY, LABEL, "answered with an error payload instead of a transcript", HTTP_STATUS.BAD_GATEWAY, "accepted", jobId);
         }
-        const shaped = sonioxTranscriptBody(data, built);
-        if (!shaped) return lostResult(MODALITY, LABEL, "returned an unreadable transcript", HTTP_STATUS.BAD_GATEWAY, "accepted", jobId);
+        const transcriptResult = sonioxTranscriptBody(data, built);
+        if (!transcriptResult) return lostResult(MODALITY, LABEL, "returned an unreadable transcript", HTTP_STATUS.BAD_GATEWAY, "accepted", jobId);
         const accounting = mediaAccounting(null, SONIOX_PROVIDER_ID, MODALITY);
         accounting.meta = { model: built.job.model, responseFormat: built.responseFormat, jobId };
-        const nativeUnits = shaped.audioSeconds > 0 ? { audioSeconds: shaped.audioSeconds } : {};
+        const nativeUnits = transcriptResult.audioSeconds > 0 ? { audioSeconds: transcriptResult.audioSeconds } : {};
         accounting.nativeUnits = { ...nativeUnits };
         const clientResponse = built.responseFormat === "text"
-          ? new Response(shaped.body.text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", ...CORS } })
-          : new Response(JSON.stringify(shaped.body), { status: 200, headers: { "Content-Type": "application/json", ...CORS } });
+          ? new Response(transcriptResult.body.text, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", ...CORS } })
+          : new Response(JSON.stringify(transcriptResult.body), { status: 200, headers: { "Content-Type": "application/json", ...CORS } });
         return { success: true, response: clientResponse, usageValue: undefined, nativeUnits, accounting };
       } finally {
         sent.clear();

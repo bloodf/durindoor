@@ -5,6 +5,7 @@ import { createErrorResult } from "../../../utils/error.js";
 import { mediaAccounting } from "../../../handlers/mediaAccounting.js";
 import { sleep } from "../../../handlers/imageProviders/_base.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
+import { isString, isRecord } from "../../../../src/shared/utils/typeChecks.js";
 import { isBlockedHost } from "../../../../src/shared/utils/ssrfGuard.js";
 
 export const config = Object.freeze({
@@ -19,14 +20,14 @@ const fail = (status = 502) => Object.assign(new Error("Veo AI Free video reques
 /** Source cookie precedence: providerSpecificData cookie/WordPress key, then apiKey. Never an OAuth bearer. */
 export function sessionCookie(credentials = {}) {
   const normalize = (value, name = "wordpress_logged_in") => {
-    if (typeof value !== "string") return "";
+    if (!isString(value)) return "";
     const text = value.trim().replace(/^bearer\s+/i, "").replace(/^cookie:/i, "").trim();
     if (!text) return "";
     if (text.startsWith("[") || text.startsWith("{")) {
       let parsed;
       try { parsed = JSON.parse(text); } catch { throw fail(400); }
       if (Array.isArray(parsed)) return parsed.map((entry) => {
-        if (!/^[\w-]+$/.test(entry?.name) || typeof entry.value !== "string" || /[;\r\n]/.test(entry.value)) throw fail(400);
+        if (!/^[\w-]+$/.test(entry?.name) || !isString(entry.value) || /[;\r\n]/.test(entry.value)) throw fail(400);
         return `${entry.name}=${entry.value}`;
       }).join("; ");
       return fromRecord(parsed);
@@ -35,8 +36,8 @@ export function sessionCookie(credentials = {}) {
     return text.includes("=") ? text : `${name}=${text}`;
   };
   const fromRecord = (record) => {
-    if (!record || typeof record !== "object") return "";
-    if (typeof record.cookie === "string" && record.cookie.trim()) return normalize(record.cookie);
+    if (!isRecord(record)) return "";
+    if (isString(record.cookie) && record.cookie.trim()) return normalize(record.cookie);
     const key = Object.keys(record).find((k) => /^wordpress_logged_in(?:_|$)/.test(k));
     return key ? normalize(record[key], key) : "";
   };
@@ -45,7 +46,7 @@ export function sessionCookie(credentials = {}) {
 
 export function buildRequest(model, body) {
   if (!config.models.some((entry) => entry.id === model)) throw fail(400);
-  if (!body || typeof body.prompt !== "string" || !body.prompt.trim() || body.prompt.length > 10000) throw fail(400);
+  if (!body || !isString(body.prompt) || !body.prompt.trim() || body.prompt.length > 10000) throw fail(400);
   const allowed = new Set(["model", "prompt", "aspect_ratio", "size", "n", "stream", "response_format"]);
   if (Object.keys(body).some((key) => !allowed.has(key)) || (body.n !== undefined && body.n !== 1) ||
       (body.stream !== undefined && body.stream !== false) || (body.response_format !== undefined && body.response_format !== "url")) throw fail(400);
@@ -78,8 +79,9 @@ export function createVeoAiFreeVideoAdapter({ timeoutMs = 660000, requestTimeout
           if (cookie) headers.Cookie = cookie;
         }
         const pending = (async () => {
-          const response = await fetch(url, { method: values ? "POST" : "GET", headers, redirect: "manual", proxyOptions,
-            ...(values ? { body: new URLSearchParams(values).toString() } : {}), signal: callSignal });
+          const init = { method: values ? "POST" : "GET", headers, redirect: "manual", proxyOptions, signal: callSignal };
+          if (values) init.body = new URLSearchParams(values).toString();
+          const response = await fetch(url, init);
           if (response.redirected || (response.url && new URL(response.url).origin !== ORIGIN) || !response.ok) {
             void response.body?.cancel().catch(() => {});
             throw fail([401, 403, 429].includes(response.status) ? response.status : 502);

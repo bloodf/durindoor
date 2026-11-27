@@ -32,3 +32,44 @@ cd tests && node node_modules/vitest/vitest.mjs run unit/native-veoaifree-web-vi
 26 tests passed, covering exact headers/body, nonce, session shapes and two connections, URL normalization, static model inventory, login/quota/failure sanitization, unsupported input rejection, malformed/oversized replies, unsafe outputs, redirects, uncertain submission without replay, network and total deadlines, and cancellation before submission and during polling. Only the isolated staging registration block asserts absence from the production adapter registry. Protocol/auth/security/accounting tests instantiate the private factory directly.
 
 No shared registry/catalog edits or production imports. No full suite run, as requested.
+
+## Contract evidence matrix
+
+The focused test file exercises the private factory independently of production
+registration. Each network response below is synthetic.
+
+| Contract | Assertion |
+| --- | --- |
+| Registry identity | Canonical ID, alias, no-auth fields, format and both model IDs match the pinned registry. |
+| Session setup | Homepage request omits Cookie; its Set-Cookie is merged into the selected connection's jar. |
+| Submission | Exact Origin, Referer, User-Agent, Cookie, content type and all six form fields are asserted. |
+| Polling | Exact nonce, sceneData and final-video-results action are asserted. |
+| Session renewal | Submit Set-Cookie is included on the subsequent poll. |
+| Connection isolation | A second credential sends its own WordPress cookie without inheriting the first call's session. |
+| Output | A returned HTTPS URL is normalized; one returned video is counted with unknown cost. |
+| Unsupported input | Duration, images, streaming, base64, multiple variations and pixel sizes fail before fetch. |
+| Authentication and quota | Login text, rate-limit text and HTTP 429 become sanitized failures. |
+| Uncertain submission | Transport failure after invoking submit retains acceptedJob and never resubmits. |
+| Unsafe results | HTTP, loopback, URL credentials and custom ports are refused. |
+| Redirects | A manual redirect response fails without requesting its destination. |
+| Deadlines | Hanging fetch, hanging response body, total polling time and exhausted poll count terminate. |
+| Cancellation | Pre-aborted calls send nothing; cancellation while polling retains accepted-job evidence. |
+| Malformed responses | Missing nonce and oversized submit text fail without quoting upstream bodies. |
+
+## Gate correction
+
+The first independent gate passed all 26 focused tests but rejected lint.
+Reproduction with `pnpm run lint:anti-slop` identified five runtime `typeof`
+checks and one conditional empty-object spread in the staged adapter.
+The adapter now uses the repository's `isString` and `isRecord` predicates
+and assigns the optional request body explicitly. No lint suppression,
+baseline change or test weakening was introduced.
+
+The earlier report contained 34 physical lines with long prose paragraphs.
+This matrix makes the verification evidence independently scannable and records
+the concrete lint correction; it does not imply broader protocol support.
+
+Correction validation: all 26 focused tests passed again; scoped ESLint and
+oxlint passed; `pnpm run lint:anti-slop` passed with zero diagnostics across
+3,255 files. The generated lint bundle was restored after verification so only
+allowed work-order paths enter the correction commit.

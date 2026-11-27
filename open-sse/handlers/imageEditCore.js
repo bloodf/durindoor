@@ -91,7 +91,9 @@ export function deriveImageEditsUrl(imageConfig) {
  * @param {object} options.modelInfo - { provider, model }
  * @param {object} [options.log]
  * @param {AbortSignal} [options.signal] - Client cancellation signal forwarded to the provider
- * @param {function} [options.onRequestSuccess]
+ * @param {function} [options.onRequestSuccess] - Called only after the 2xx body is fully read
+ * A client cancel while a non-2xx error body is read also returns 499, so the
+ * caller neither cools the account nor falls back.
  * A client cancel while the 2xx body is read returns 499 with
  * `cancelledAfterHeaders: true` and no usage: the unread body could have been an
  * error envelope, so the status alone proves no billable work and records nothing.
@@ -149,10 +151,17 @@ export async function handleImageEditCore({
     return createErrorResult(HTTP_STATUS.BAD_GATEWAY, err?.message || "Image edit request failed");
   }
   if (!res.ok) {
-    const errInfo = await parseUpstreamError(res, null);
+    let errInfo;
+    try {
+      errInfo = await parseUpstreamError(res, null, { signal });
+    } catch (err) {
+      // A client cancel mid error-body read is a cancel, not an upstream
+      // failure: no account cooldown, no fallback, no usage.
+      if (signal?.aborted) return createErrorResult(499, "Image edit request aborted");
+      throw err;
+    }
     return createErrorResult(errInfo.statusCode || res.status, errInfo.message || `Upstream error from ${provider}`);
   }
-  if (onRequestSuccess) await onRequestSuccess();
   let text;
   try {
     text = await res.text();
@@ -162,6 +171,8 @@ export async function handleImageEditCore({
     // Nothing of the body was read, so the 2xx alone proves no billable work.
     return headerOnlyCancel(createErrorResult(499, "Image edit request aborted"), log, provider, model);
   }
+  // Account health clears only once the successful body has been read.
+  if (onRequestSuccess) await onRequestSuccess();
   let value = null;
   try { value = JSON.parse(text); } catch { /* Preserve opaque successful responses. */ }
   const accounting = mediaAccounting(value, provider, "image");

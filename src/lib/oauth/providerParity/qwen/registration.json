@@ -1,0 +1,6 @@
+{
+  "status": "staged",
+  "exports": { "createQwenProviderHandlers": "Creates the existing device-code provider object from QWEN_CONFIG." },
+  "integration": [{ "file": "src/lib/oauth/providers.js", "slot": "Replace the qwen provider object with createQwenProviderHandlers(QWEN_CONFIG); import the helper." }],
+  "notes": "The shared OAuth flow retains ownership of PKCE, state, proxy selection, flow claims and connection storage. This helper is not registered."
+}

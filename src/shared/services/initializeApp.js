@@ -20,6 +20,10 @@ import { killAllBridges } from "@/lib/mcp/stdioSseBridge";
 import { killAllStdioEntries } from "@/lib/mcp/gateway/stdioClient";
 import { stopHeadroomProxy } from "@/lib/headroom/process";
 import { setOperatorProviderErrorRules } from "open-sse/config/providerErrorRules.js";
+import { drainRefreshPersistence } from "open-sse/services/refreshSerializer.js";
+
+// Bounded wait for refreshed OAuth tokens to reach the store before exit.
+const SHUTDOWN_REFRESH_DRAIN_MS = 5000;
 
 // Inject correct paths and DB hooks into manager.js (CJS) from ESM context
 (function bootstrapMitm() {
@@ -87,6 +91,13 @@ export async function initializeApp() {
           g.networkMonitorInterval = null;
           stopQuotaAutoPing();
           g.stopBackgroundTokenRefresh?.();
+          // A provider may already have rotated a single-use refresh token;
+          // exiting before its write lands forces a reauth on restart
+          // (CLIProxyAPI 32c0c459). The wait is bounded and never rejects.
+          const refreshDrain = await drainRefreshPersistence({ timeoutMs: SHUTDOWN_REFRESH_DRAIN_MS });
+          if (!refreshDrain.drained) {
+            console.warn(`[InitApp] ${refreshDrain.pending} credential refresh write(s) still pending at shutdown`);
+          }
           g.stopAntigravityScheduler?.();
           try { killAllBridges(); } catch { /* best effort */ }
           try { killAllStdioEntries(); } catch { /* best effort */ }

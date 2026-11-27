@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { buildImportTokenPayload } from "@/shared/utils/importTokenProviders";
 
 import { sortConnectionsByAvailability, persistConnectionOrder } from "@/shared/utils/connectionReorder";
@@ -69,7 +71,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
 
     setImportingToken(true);
     try {
-      const res = await fetch(`/api/oauth/${providerId}/import-token`, {
+      const res = await dashboardRequest(`/api/oauth/${providerId}/import-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -91,7 +93,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
   const handleSaveApiKey = async (formData) => {
     setAddConnectionError("");
     try {
-      const res = await fetch("/api/providers", {
+      const res = await dashboardRequest("/api/providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: providerId, ...formData })
@@ -119,7 +121,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
 
   const handleUpdateConnection = async (formData) => {
     try {
-      const res = await fetch(`/api/providers/${selectedConnection.id}`, {
+      const res = await dashboardRequest(`/api/providers/${selectedConnection.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
@@ -137,7 +139,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
 
   const handleUpdateConnectionStatus = async (id, isActive) => {
     try {
-      const res = await fetch(`/api/providers/${id}`, {
+      const res = await dashboardRequest(`/api/providers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive })
@@ -160,7 +162,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
     if (!id || clearingCooldownId) return;
     setClearingCooldownId(id);
     try {
-      const res = await fetch(`/api/providers/${id}`, {
+      const res = await dashboardRequest(`/api/providers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rateLimitedUntil: null })
@@ -187,7 +189,7 @@ export default function useConnectionActions({ clearingCooldownId, connectionFil
       const results = await Promise.all(
         idsToUpdate.map(async (id) => {
           try {
-            const res = await fetch(`/api/providers/${id}`, {
+            const res = await dashboardRequest(`/api/providers/${id}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ isActive })

@@ -96,8 +96,8 @@ for (const path of callers) {
     const refresh = vi.fn();
     const close = vi.fn();
     const select = vi.fn();
-    const factory = new Function("fetch", "selectedConnection", "fetchConnections", "fetch_", "setShowEditModal", "setSelectedConnection", "fetchQuota", "USAGE_SUPPORTED_PROVIDERS", "useCallback", `${source.slice(start, end)}; return handleUpdateConnection;`);
-    const save = factory(fetchBoundary, { id: "synthetic-edit", provider: "openai" }, refresh, refresh, close, select, vi.fn(), [], (fn) => fn);
+    const factory = new Function("fetch", "dashboardRequest", "selectedConnection", "fetchConnections", "fetch_", "setShowEditModal", "setSelectedConnection", "fetchQuota", "USAGE_SUPPORTED_PROVIDERS", "useCallback", `${source.slice(start, end)}; return handleUpdateConnection;`);
+    const save = factory(fetchBoundary, fetchBoundary, { id: "synthetic-edit", provider: "openai" }, refresh, refresh, close, select, vi.fn(), [], (fn) => fn);
     await expect(save({ name: "Draft" })).rejects.toThrow("Failed to save connection");
     await expect(save({ name: "Draft" })).rejects.toThrow("synthetic network failure");
     expect(refresh).not.toHaveBeenCalled();

@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { requestSettings } from "@/store/settingsStore";
 
 import { MAX_PROVIDER_RPM } from "@/shared/constants/providers";
@@ -212,7 +214,7 @@ export default function useProviderSettings({ autoPingQueue, providerId, provide
   // Schedule-only write: omits `enabled` so the reactive toggle queue keeps
   // sole ownership of that flag.
   const handleSaveAutoPingSchedule = async (connectionId, schedule) => {
-    const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
+    const response = await dashboardRequest(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ schedule })

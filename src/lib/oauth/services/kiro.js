@@ -1,3 +1,4 @@
+import { kiroUpstreamError } from "../kiroRefreshFailure.js";
 import { buildKiroIdentityHeaders } from "../../../../open-sse/shared/kiroHeaders.js";
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
 import { buildKiroProfileEndpoint, regionFromProfileArn } from "../../../../open-sse/config/kiroRegions.js";
@@ -96,7 +97,7 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to register client");
+      throw await kiroUpstreamError("Failed to register client", response);
     }
 
     const data = await kiroJson(response);
@@ -128,7 +129,7 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to start device authorization");
+      throw await kiroUpstreamError("Failed to start device authorization", response);
     }
 
     const data = await kiroJson(response);
@@ -221,7 +222,7 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      throw new Error("Token exchange failed");
+      throw await kiroUpstreamError("Token exchange failed", response);
     }
 
     const data = await kiroJson(response);
@@ -264,7 +265,7 @@ export class KiroService {
       });
 
       if (!response.ok) {
-        throw new Error("Token refresh failed for external_idp");
+        throw await kiroUpstreamError("Token refresh failed for external_idp", response);
       }
 
       const data = await kiroJson(response);
@@ -307,7 +308,7 @@ export class KiroService {
       });
 
       if (!response.ok) {
-        throw new Error("Token refresh failed");
+        throw await kiroUpstreamError("Token refresh failed", response);
       }
 
       const data = await kiroJson(response);
@@ -333,7 +334,7 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      throw new Error("Token refresh failed");
+      throw await kiroUpstreamError("Token refresh failed", response);
     }
 
     const data = await kiroJson(response);
@@ -500,7 +501,7 @@ export class KiroService {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to list models");
+      throw await kiroUpstreamError("Failed to list models", response);
     }
 
     const data = await kiroJson(response);

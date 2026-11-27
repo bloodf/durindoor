@@ -1433,12 +1433,16 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
     if (hasUnpublishedOutput(provider, model)) result = { ...result, maxOutput: undefined };
     return result;
   };
+  // Operator model IDs have no implied chat/model-family capabilities.
+  if (provider === "adobe-firefly-web") return finalize({ ...DEFAULT_CAPABILITIES, ...MEDIA_CAPABILITIES, ...(["image", "video"].includes(kind) ? capabilitiesFromServiceKind(kind) : null) });
   // Local names are operator aliases; cloud-family limits cannot describe their served window.
   if (provider === "ollama-local") {
     return finalize({ ...DEFAULT_CAPABILITIES, tools: false, contextWindow: null, maxOutput: null });
   }
   if (!model) return finalize({ ...DEFAULT_CAPABILITIES });
   if (provider === "aihorde" || provider === "horde") {
+    // Native image-catalog rows are image generators, not facade chat models.
+    if (kind === "image") return finalize({ ...DEFAULT_CAPABILITIES, ...MEDIA_CAPABILITIES, ...capabilitiesFromServiceKind("image") });
     return finalize({ ...DEFAULT_CAPABILITIES, ...AI_HORDE_CAPABILITIES });
   }
 

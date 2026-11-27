@@ -183,8 +183,8 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `GEMINI_OAUTH_CLIENT_SECRET` | empty | Gemini CLI OAuth client secret. |
 | `GEMINI_CLIENT_ID` | unset | Alternate Gemini client id used by model-list helpers. |
 | `GEMINI_CLIENT_SECRET` | unset | Alternate Gemini client secret for those helpers. |
-| `ANTIGRAVITY_OAUTH_CLIENT_ID` | empty | Antigravity OAuth client id. |
-| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | empty | Antigravity OAuth client secret. |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | unset (built-in desktop client) | Your own Antigravity OAuth client id. Set together with the secret; one alone, or a blank value, fails sign-in. |
+| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | unset (built-in desktop client) | Your own Antigravity OAuth client secret. Set together with the id. |
 | `CLAUDE_CODE_CLIENT_VERSION` | `2.1.312` | Claude Code version sent in the Claude `User-Agent` and billing header. Ignored unless it is a short header-safe token (`[A-Za-z0-9][A-Za-z0-9._-]{0,31}`). Read at startup. |
 | `KIMI_CODING_OAUTH_CLIENT_ID` | registry `clientId` | Kimi Coding device-code client id. |
 | `GHE_COPILOT_OAUTH_CLIENT_ID` | registry `clientId` | GitHub Enterprise Copilot device-code client id, for a GHES instance with its own OAuth app. |

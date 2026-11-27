@@ -98,7 +98,11 @@ Cursor API key and newly added web-session providers. The current local code and
 mock suites are not substitutes for those checks. These remain **live-only
 verification**, separate from implementable missing contracts; no real account
 was used for this catalog. Antigravity, CLIProxyAPI/Easy auth, and web-cookie
-groups remain excluded from this catalog's OmniRoute tables.
+groups remain excluded from this catalog's OmniRoute tables. The four web-session
+identities registered for #2034 on 2026-11-27 (`inner-ai-web`, `poe-web`,
+`venice-web`, `v0-vercel-web`) are recorded in
+[parity-web-1127.md](./parity-web-1127.md); they are available with mocked
+coverage only and join this live-only list.
 
 ## Tracker boundaries and evidence limits
 

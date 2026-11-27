@@ -28,6 +28,13 @@ const profiles = [
   ["tencent-aistudio-web", "https://aistudio.tencent.ai", ["sessionid"], true],
   ["blackbox-web", "https://app.blackbox.ai", ["next-auth.session-token"], true],
   ["conol-web", "https://conol.ai", ["__Secure-better-auth.session_token"], true],
+  // #2034 (1127): all four allow dashboard import and extension capture on their exact origin.
+  // Inner.ai's optional account email is bound to the pairing by the dashboard, never captured;
+  // Venice is captured on the Clerk origin itself.
+  ["inner-ai-web", "https://app.innerai.com", ["token"], true],
+  ["poe-web", "https://www.poe.com", ["p-b"], true],
+  ["venice-web", "https://clerk.venice.ai", ["__client"], true],
+  ["v0-vercel-web", "https://v0.dev", ["__vercel_session"], true],
 ];
 // Profiles of providers outside the web-cookie category whose credential is a localStorage item.
 const localStorageProfiles = [

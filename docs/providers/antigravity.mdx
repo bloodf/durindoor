@@ -9,16 +9,22 @@ The provider page shows a risk notice: this is a subscription session that was n
 
 ## Before you connect
 
-The Google OAuth client is not bundled. `ANTIGRAVITY_OAUTH_CLIENT_ID` and `ANTIGRAVITY_OAUTH_CLIENT_SECRET` are unset by default. Set both in the environment DurinDoor starts with, then restart. With empty values Google rejects the authorize request.
+You do not need your own Google OAuth client. When neither `ANTIGRAVITY_OAUTH_CLIENT_ID` nor `ANTIGRAVITY_OAUTH_CLIENT_SECRET` is set, DurinDoor uses the public Antigravity desktop client. The pair is pinned from CLIProxyAPI `internal/auth/antigravity/constants.go` at revision `47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e`. That built-in profile asks for six scopes: `cloud-platform`, `userinfo.email`, `userinfo.profile`, `aicode`, `cclog` and `experimentsandconfigs`. It redirects to the desktop client's loopback, `http://localhost:51121/oauth-callback`.
+
+To use your own client instead, set both variables in the environment DurinDoor starts with, then restart. Your client keeps the redirect URI you registered for the dashboard, and the existing five-scope set without `aicode`.
 
 ```bash
 export ANTIGRAVITY_OAUTH_CLIENT_ID="CHANGE_ME"
 export ANTIGRAVITY_OAUTH_CLIENT_SECRET="CHANGE_ME"
 ```
 
-Keep those values available for token refresh and quota checks. DurinDoor reads them once at startup. See [Environment variables](../reference/environment.mdx).
+Setting only one of them, or setting either to an empty or blank value, is a configuration error. Sign-in stops in DurinDoor with a message naming the missing variable, and nothing falls back to the built-in client. Fix both values, or unset both, then restart.
 
-Sign-in and reconnect record which client issued the refresh token, as a SHA-256 digest of the client ID. The client ID itself and the secret are not stored. If you change or clear `ANTIGRAVITY_OAUTH_CLIENT_ID` later, DurinDoor will not refresh those connections. Refresh stops before any lease or Google request, reports `reauth_required`, and leaves the stored tokens and status unchanged. Restore the original client and restart to resume refresh, or reconnect the account under the new client. Connections made before this record existed have no digest and refresh as before.
+DurinDoor reads the client once at startup and uses it for sign-in, token refresh and quota checks. See [Environment variables](../reference/environment.mdx).
+
+Sign-in and reconnect record which client issued the refresh token, as a SHA-256 digest of the client ID. The client ID itself and the secret are not stored. If you switch between the built-in client and your own, or change or clear `ANTIGRAVITY_OAUTH_CLIENT_ID` later, DurinDoor will not refresh those connections. Refresh stops before any lease or Google request, reports `reauth_required`, and leaves the stored tokens and status unchanged. Restore the original client and restart to resume refresh, or reconnect the account under the new client. Connections made before this record existed have no digest and refresh as before, with whichever client is configured now. An invalid override configures no client, so it refuses those connections too, before any Google request.
+
+A token's scopes are fixed when Google issues it. A connection made under your own client does not gain `aicode` by switching to the built-in client; reconnect it. Every sign-in asks Google for fresh consent, so the new scope set is granted then.
 
 ## Connect
 
@@ -30,7 +36,9 @@ Open **Providers**, then **Antigravity**, then Connect.
 Sign in with Google and approve the scopes. The request asks for offline access, so Google returns a refresh token.
 </Step>
 <Step>
-Google redirects to `http://localhost:<dashboard port>/callback`. If you opened the dashboard on a loopback host, the popup finishes on its own. From any other host, the modal switches to a paste step: copy the full callback URL from the browser (`/callback?code=...`) and paste it back.
+With the built-in client, Google redirects to `http://localhost:51121/oauth-callback`. DurinDoor does not listen on that port, so the page usually fails to load. This happens on a local or a remote dashboard. Copy the full URL from the address bar (`http://localhost:51121/oauth-callback?state=...&code=...`) and paste it into the modal's callback field. The modal checks the `state`, and the token exchange reuses the stored loopback redirect.
+
+With your own client, Google redirects to `http://localhost:<dashboard port>/callback`, or to your public dashboard `/callback` on a remote host. On a loopback host the popup finishes on its own. From any other host, paste the full callback URL back.
 </Step>
 </Steps>
 

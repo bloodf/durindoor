@@ -16,6 +16,8 @@ import { validateLmarenaSession } from "open-sse/executors/lmarena.js";
 import { validateNotionWebSession } from "open-sse/executors/notion-web.js";
 import { validateTencentAIStudioSession } from "open-sse/executors/tencent-aistudio-web.js";
 import { validateTinyCmsSession } from "open-sse/executors/tinycms-web.js";
+import { validateInnerAiWebSession } from "open-sse/executors/inner-ai-web.js";
+import { validateVeniceWebSession } from "open-sse/executors/venice-web.js";
 import { deepSeekUserToken } from "open-sse/executors/deepseek-web.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isPromptQlSessionError, promptQlSessionRequest, readPromptQlCredentials, readPromptQlExchange } from "open-sse/executors/promptql.js";
@@ -57,6 +59,10 @@ const SPECIALTY_VALIDATORS = {
   "notion-web": ({ apiKey, fetcher, providerSpecificData }) => validateNotionWebSession({ apiKey, providerSpecificData, fetcher }),
   "tencent-aistudio-web": ({ apiKey, fetcher }) => validateTencentAIStudioSession({ apiKey, fetcher }),
   "tinycms-web": ({ apiKey, fetcher, providerSpecificData }) => validateTinyCmsSession({ apiKey, providerSpecificData, fetcher }),
+  // #2034 (1127): Inner.ai Web reads the profile and model catalog; Venice Web makes one Clerk
+  // client GET and mints no token. Neither reaches a chat endpoint.
+  "inner-ai-web": ({ apiKey, fetcher }) => validateInnerAiWebSession({ apiKey, fetcher: (url, init) => fetcher(url, init) }),
+  "venice-web": ({ apiKey, fetcher }) => validateVeniceWebSession({ apiKey, fetcher: (url, init) => fetcher(url, init) }),
   // Opt-in session providers (#2034). Each check is the provider's own cheap probe, never a chat
   // request, and runs on the connection's proxy-aware transport.
   // Cursor API: a Cursor key is only a bearer for the exchange, so the exchange is the check. A

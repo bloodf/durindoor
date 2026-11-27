@@ -1,7 +1,7 @@
 // Adobe Firefly Services text-to-video job: one bounded submit to the fixed
 // generate endpoint, the bounded status poll and accepted-job accounting.
-// STAGED: only handlers/videoProviders/adobe-firefly-api.js imports this, and
-// no router imports that adapter.
+// Used by handlers/videoProviders/adobe-firefly-api.js, which
+// /v1/video/generations runs through videoGenerationCore.js.
 //
 // Written from Adobe's published contract, AdobeDocs/ffs-firefly-api at
 // 1027f559cdb1509a61b34e2f2da9618ec431f2cb. No third-party code was ported.
@@ -25,7 +25,7 @@
 // submit answer's statusUrl and cancelUrl are never fetched, redirects are
 // refused, and the result URL is returned to the caller without being
 // fetched. Upstream text never reaches an error message.
-import { createErrorResult, parseRateLimitEvidence, readBoundedResponseText } from "../../utils/error.js";
+import { createErrorResult, readBoundedResponseText } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { mediaAccounting } from "../../handlers/mediaAccounting.js";
 import { jobOutcomeUnknown, readJobBody, sleep } from "../../handlers/imageProviders/_base.js";
@@ -36,8 +36,9 @@ import {
   ADOBE_FIREFLY_VIDEO_GENERATE_URL,
   adobeFireflyCancelUrl,
   adobeFireflyStatusUrl,
-} from "../../providers/private/adobe-firefly-api.js";
+} from "../../providers/registry/adobe-firefly-api.js";
 import { defaultAdobeTokenCache, refreshAdobeFireflyToken, resolveAdobeFireflyAuth } from "./auth.js";
+import { describeAdobeFireflySubmitRefusal } from "./refusal.js";
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const PROVIDER = ADOBE_FIREFLY_API_ID;
@@ -62,8 +63,6 @@ const FAILURE_STATUS = new Map([
   ["validation_error", 422], ["bad_request", 422], ["invalid_content_type", 422], ["empty_input_body", 422],
   ["timeout_error", 504], ["rate_limited", 429], ["access_error", 403], ["runtime_error", 502],
 ]);
-// The documented `x-access-error` values of a generateVideoV3 403.
-const ACCESS_ERRORS = new Set(["quota_exhausted", "user_non_entitled", "user_profile_denied", "invalid_ims_scope"]);
 const PASSED_POLL_STATUSES = new Set([401, 403, 429]);
 // Transport failures that happen before a connection exists: nothing was sent.
 const PRE_CONNECT_ERROR_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
@@ -320,27 +319,15 @@ export async function awaitAdobeFireflyVideo(submitted, {
 }
 
 // The submit's refusal as a gateway error. No upstream text is repeated: only
-// the status, a documented `x-access-error` value, and a Retry-After reset.
+// the status, a documented `x-access-error` or `x-access-rate-limit-level`
+// value, and a bounded Retry-After reset (./refusal.js). A `quota_exhausted`
+// 403 is flagged as resetless quota exhaustion for the selected connection.
 function refusedSubmit(response) {
-  const { status } = response;
   discard(response);
-  if (status === 401) return createErrorResult(401, "Adobe Firefly Services refused the access token for video generation");
-  if (status === 403) {
-    const access = response.headers.get("x-access-error");
-    const reason = ACCESS_ERRORS.has(access) ? ` (${access})` : "";
-    return createErrorResult(403, `Adobe Firefly Services refused video generation for this credential${reason}`);
-  }
-  if (status === 429) {
-    // Account cooldown is wall-clock time, never the injected poll clock.
-    const evidence = parseRateLimitEvidence({ status, headers: response.headers, now: Date.now() });
-    const reset = evidence?.source === "retry_after" && Number.isFinite(evidence.resetAtMs) ? evidence : null;
-    return createErrorResult(429, "Adobe Firefly Services rate limited the video submit", reset?.resetAtMs, undefined, reset);
-  }
-  if (status === 400 || status === 415 || status === 422) {
-    return createErrorResult(status === 415 ? 415 : 400, `Adobe Firefly Services rejected the video request (${status})`);
-  }
-  if (status === 408) return createErrorResult(504, "Adobe Firefly Services timed out reading the video request");
-  return createErrorResult(502, `Adobe Firefly Services video submit returned ${status}`);
+  const refusal = describeAdobeFireflySubmitRefusal(response, "video");
+  const evidence = refusal.rateLimitEvidence;
+  const failed = createErrorResult(refusal.status, refusal.message, evidence?.resetAtMs, undefined, evidence);
+  return refusal.quotaExhausted ? { ...failed, quotaExhausted: true } : failed;
 }
 
 /**

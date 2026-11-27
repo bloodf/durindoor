@@ -11,6 +11,8 @@ import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
 import { normalizeVeniceModel } from "open-sse/services/liveModelLimits.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
+import { discoverRenderHourModels } from "open-sse/services/renderhour/media.js";
+import { readAdobeFireflyCredential } from "open-sse/services/adobeFireflyApi/auth.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { buildCopilotEndpointContract, readCopilotEndpointContract } from "open-sse/services/copilotEndpointContract.js";
@@ -250,6 +252,26 @@ export const resolveQwenModelsUrl = (connection) => {
   return `https://${value.replace(/\/$/, "")}/v1/models`;
 };
 
+/**
+ * Media job providers registered for #2034 (1127). Neither publishes a model
+ * list endpoint the gateway can read, so both answer their pinned lists after
+ * checking only the selected connection's credential shape. Nothing is sent.
+ */
+function renderHourDiscovery(connection) {
+  const result = discoverRenderHourModels(connection);
+  if (!result.success) return { error: result.error, status: result.status };
+  return { models: result.data.map(({ id, name, kind }) => ({ id, name, kind })), source: "local_catalog" };
+}
+
+function adobeFireflyApiDiscovery(connection) {
+  try {
+    readAdobeFireflyCredential(connection);
+  } catch (error) {
+    return { error: error.message, status: Number.isInteger(error?.status) ? error.status : 401 };
+  }
+  return { models: getModelsByProviderId("adobe-firefly-api").map(({ id, name, kind }) => ({ id, name: name || id, kind })), source: "local_catalog" };
+}
+
 export const getStaticProviderModels = (providerId) =>
 getModelsByProviderId(providerId).map((model) => ({
   ...model,
@@ -462,6 +484,8 @@ export const PROVIDER_MODELS_CONFIG = {
   "inner-ai-web": { customResolver: webSessionDiscovery(discoverInnerAiWebModels, "Inner.ai Web") },
   "venice-web": { customResolver: webSessionDiscovery(discoverVeniceWebModels, "Venice Web") },
   "poe-web": { customResolver: () => ({ models: discoverPoeWebModels(), source: "local_catalog" }) },
+  renderhour: { customResolver: renderHourDiscovery },
+  "adobe-firefly-api": { customResolver: adobeFireflyApiDiscovery },
   "v0-vercel-web": { customResolver: () => ({ models: discoverV0Models(), source: "local_catalog" }) },
   "cloudflare-ai": {
     customResolver: (connection, proxyOptions = null) => discoverCloudflareModels(connection, {

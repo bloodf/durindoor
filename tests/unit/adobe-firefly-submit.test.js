@@ -65,7 +65,7 @@ vi.mock("../../src/sse/services/mediaRoutes.js", () => ({
 }));
 vi.mock("../../open-sse/services/comboRoutingPolicy.js", () => ({ getComboRoutingPolicy: vi.fn(async () => null) }));
 
-import { ADOBE_FIREFLY_GENERATE_URL, ADOBE_IMS_TOKEN_URL } from "../../open-sse/providers/private/adobe-firefly-api.js";
+import { ADOBE_FIREFLY_GENERATE_URL, ADOBE_IMS_TOKEN_URL } from "../../open-sse/providers/registry/adobe-firefly-api.js";
 import defaultAdapter, { createAdobeFireflyApiImageAdapter } from "../../open-sse/handlers/imageProviders/adobe-firefly-api.js";
 import { createAdobeTokenCache } from "../../open-sse/services/adobeFireflyApi/auth.js";
 import { ADOBE_FIREFLY_REQUEST_TIMEOUT_MS } from "../../open-sse/services/adobeFireflyApi/job.js";

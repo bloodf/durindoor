@@ -14,7 +14,8 @@ export function mergeProviderSpecificData(existing = {}, incoming = {}) {
   if (!isPlainObject(incoming)) return result;
   for (const [key, value] of Object.entries(incoming)) {
     if (BLOCKED_KEYS.has(key) || value === undefined) continue;
-    result[key] = isPlainObject(value) ?
+    // Browser mappings are complete operator snapshots; removed models/locators must stay removed.
+    result[key] = key !== "fireflyWebUi" && isPlainObject(value) ?
     mergeProviderSpecificData(result[key], value) :
     value;
   }

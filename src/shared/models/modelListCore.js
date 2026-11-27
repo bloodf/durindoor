@@ -22,7 +22,7 @@ import { resolveChatgptPlanAccess } from "@/sse/services/chatgptPlanAccess.js";
 import { listChatgptPlanModels } from "open-sse/providers/chatgpt-plan/index.js";
 import { isFunction, isObject, isString } from "../utils/typeChecks.js";
 import { isModelExposureAllowed } from "../utils/modelExposureList.js";
-import { isRecord, KIMI_LIVE_MODEL_PROVIDERS, LIVE_MODEL_UNION_PROVIDERS, LIVE_MODEL_RESOLVERS, normalizeKimiPlatformModel, OPENAI_MODELS_FETCHER_TYPES, fetchLocalPassthroughModels } from "./modelCatalogSources.js";
+import { isRecord, KIMI_LIVE_MODEL_PROVIDERS, LIVE_MODEL_UNION_PROVIDERS, LIVE_MODEL_RESOLVERS, normalizeKimiPlatformModel, OPENAI_MODELS_FETCHER_TYPES, fetchLocalPassthroughModels, resolveProviderMediaCatalog, PROVIDER_MEDIA_CATALOGS } from "./modelCatalogSources.js";
 import { LLM_KIND, modelKind, inferKindFromUnknownModelId, customModelKind, getCompatiblePublicIds, providerMatchesKinds } from "./modelListKinds.js";
 import { comboMatchesKinds, comboToEntry, visibleComboMembers, buildComboOnlyModels } from "./modelListCombos.js";
 import { withCatalogDeadline } from "./catalogDeadline.js";
@@ -283,6 +283,26 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
 
   const addNoAuthProviderModels = async (providerId, alias) => {
     if (!providerMatchesKinds(providerId, kindFilter)) return;
+    // A native media catalog (AI Horde images) is listed on its own; chat
+    // discovery runs only when the request lists chat models.
+    if (PROVIDER_MEDIA_CATALOGS[providerId]) {
+      const allowlist = storedAllowlist(providerId, alias);
+      const hasAllowlist = Array.isArray(allowlist) && allowlist.length > 0;
+      for (const row of await resolveProviderMediaCatalog(providerId, kindFilter)) {
+        if (isModelDisabled(row.id, alias, providerId, getProviderAlias(providerId))) continue;
+        if (hasAllowlist && !allowlist.includes(row.id)) continue;
+        if (hidePaidModels && isPaidModel(`${alias}/${row.id}`)) continue;
+        models.push({
+          id: `${alias}/${row.id}`,
+          object: "model",
+          owned_by: alias,
+          kind: row.kind,
+          capabilities: getCapabilitiesForModel(providerId, row.id, row.kind),
+          ...projectModelPresentation({ model: row, modelId: row.id, providerId, outputAlias: alias }),
+        });
+      }
+      if (!kindFilter.includes(LLM_KIND)) return;
+    }
     const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
     const transport = PROVIDERS[providerId];
     const isOpenCodeFree = providerId === "opencode" && registryFetcher?.type === "opencode-free";
@@ -335,8 +355,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         if (hasAllowlist && !allowlist.includes(modelId)) continue;
         if (hidePaidModels && isPaidModel(`${alias}/${modelId}`)) continue;
         const kind = liveModel.kind || liveModel.type || inferKindFromUnknownModelId(modelId);
-        // A model name can suggest a kind the provider cannot serve.
+        // A model name can suggest a kind the provider cannot serve. A kind
+        // owned by a native media catalog is never taken from a chat facade name.
         if (!kindFilter.includes(kind) || !providerMatchesKinds(providerId, [kind])) continue;
+        if (PROVIDER_MEDIA_CATALOGS[providerId]?.kinds.includes(kind)) continue;
         const caps = isRecord(liveModel.capabilities) ? liveModel.capabilities : getCapabilitiesForModel(providerId, modelId, kind);
         models.push({
           id: `${alias}/${modelId}`,
@@ -523,16 +545,50 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         trim();
         const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
         let enabledModels = resolveEnabledModels(providerId, conn);
+        // An explicit provider-level allowlist restricts what this provider may
+        // publish, even when the intersection ends up empty. Only Azure needs the
+        // flag today; other providers keep the plain "list is non-empty" rule.
+        let hasProviderAllowlist = false;
         if (providerId === "azure") {
-          // port(upstream): decolua/9router#5901 — publish deployments from every active Azure pool.
-          const pooledModels = connections
-            .filter((connection) => connection.provider === providerId && (!scopedConnectionIds || scopedConnectionIds.has(connection.id)))
-            .flatMap((connection) => getAzureDeploymentPool(connection.providerSpecificData));
+          // port(upstream): decolua/9router#5901 — Azure deployment pools publish one
+          // model per deployment, and only the connections inside the caller's
+          // scope may contribute: a key scoped to one pool must never see another
+          // pool's deployments. A provider-level allowlist restricts those
+          // deployments; it never adds to them.
+          const scopedAzureConnections = connections.filter(
+            (connection) => connection.provider === providerId &&
+              (!scopedConnectionIds || scopedConnectionIds.has(connection.id))
+          );
+          const pooledModels = [];
+          const servedModels = [];
+          for (const connection of scopedAzureConnections) {
+            const pool = getAzureDeploymentPool(connection.providerSpecificData);
+            if (pool.length > 0) {
+              pooledModels.push(...pool);
+              continue;
+            }
+            // Legacy single-deployment connections name the models they serve.
+            const own = connection.providerSpecificData?.enabledModels;
+            if (Array.isArray(own)) {
+              servedModels.push(...own.filter((id) => isString(id) && id.trim() !== ""));
+            }
+          }
+          const providerAllowlist = storedAllowlist(providerId, staticAlias) || [];
+          hasProviderAllowlist = providerAllowlist.length > 0;
           if (pooledModels.length > 0) {
-            enabledModels = Array.from(new Set([...enabledModels, ...pooledModels]));
+            const candidates = Array.from(new Set([...pooledModels, ...servedModels]));
+            enabledModels = hasProviderAllowlist
+              ? candidates.filter((modelId) => providerAllowlist.includes(modelId))
+              : candidates;
+          } else {
+            // No pool in scope: legacy connections keep their own allowlist, read
+            // only from a connection inside the caller's scope.
+            enabledModels = scopedAzureConnections.length > 0
+              ? resolveEnabledModels(providerId, scopedAzureConnections[0])
+              : [];
           }
         }
-        const hasExplicitEnabledModels = enabledModels.length > 0;
+        const hasExplicitEnabledModels = enabledModels.length > 0 || hasProviderAllowlist;
         const isCompatibleProvider =
         isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
         const liveModelKindById = new Map();
@@ -714,6 +770,22 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             console.log(`Live model classification failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+        // Native media catalog rows join the chat discovery. An id the chat
+        // catalog already lists keeps its chat row; the allowlist still applies.
+        // Only ids in the current catalog may be published with a catalog-owned
+        // kind, including rows a synced catalog stored earlier.
+        const mediaCatalogRows = PROVIDER_MEDIA_CATALOGS[providerId] ? await resolveProviderMediaCatalog(providerId, kindFilter) : [];
+        const mediaCatalogIds = new Set(mediaCatalogRows.map((row) => row.id));
+        if (!syncedModels) {
+          for (const row of mediaCatalogRows) {
+            if (liveModelIds.has(row.id) || staticModelById.has(row.id)) continue;
+            if (hasExplicitEnabledModels && !enabledModels.includes(row.id)) continue;
+            if (!rawModelIds.includes(row.id)) rawModelIds.push(row.id);
+            liveModelById.set(row.id, row);
+            liveModelIds.add(row.id);
+            liveModelKindById.set(row.id, row.kind);
+          }
+        }
         // Local passthrough live discovery (lm-studio, vllm, lemonade). Hits
         // transport.baseUrl + /models with optional Bearer apiKey.
         if (
@@ -784,6 +856,9 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             (providerId === "ollama-local" && isLegacyOllamaEmbeddingModel({ id: modelId }) ? "embedding" : inferKindFromUnknownModelId(modelId));
           // imageToText custom models stay in the LLM list (vision-capable chat models)
           const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
+          // Only the native media catalog may give such a provider a media row;
+          // a kind inferred or synced from a chat facade name is not one.
+          if (!customKind && !staticModelKindById.has(modelId) && PROVIDER_MEDIA_CATALOGS[providerId]?.kinds.includes(kind) && !mediaCatalogIds.has(modelId)) continue;
           if (!kindFilter.includes(kind) && !allowAsLlm) continue;
           if (isModelDisabled(modelId, outputAlias, staticAlias, providerId, getProviderAlias(providerId))) continue;
           // #6495 / F-4: drop paid provider models when the toggle is on.

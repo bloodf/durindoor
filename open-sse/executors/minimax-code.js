@@ -305,7 +305,7 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
         }
       }
     } catch (error) {
-      if (input.signal?.aborted && possiblySent && error && typeof error === "object") error.minimaxOutcomeUnknown = true;
+      if (input.signal?.aborted && possiblySent && error && isObject(error)) error.minimaxOutcomeUnknown = true;
       // Our own timeout is not a verdict on the model, so it answers 500 (not 504, which
       // would take the model out of every fallback combo).
       if (budget.signal.aborted && !input.signal?.aborted) {

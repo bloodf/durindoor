@@ -122,3 +122,20 @@ budget takes the same 40 ms value. The case now pins
 `MINIMAX_CODE_GATEWAY_TIMEOUT_MS` so the header deadline is the only trigger.
 The two-run limit left this change unrerun; the gate's suite must confirm it.
 `node --check` and `git diff --check` pass.
+
+### Gate 3 lint correction
+
+Carried the three MiniMax follow-up commits through 8b7059b916 onto the
+integration checkout. The abort catch now uses the existing isObject predicate
+instead of a runtime typeof check, matching executor conventions. The truthiness
+guard, unknown-outcome marker and original thrown abort remain intact. No retry,
+receipt, combo or test architecture changed. The corrected header-deadline test
+still sets a separate 5000 ms whole-call budget.
+
+This checkout has no root or test node_modules. Under the required private
+/var/tmp environment, the executor syntax check and git diff --check passed.
+The focused three-file Vitest invocation could not start because Vitest is
+absent; the anti-slop runner likewise reports missing oxlint. No dependencies
+were installed and no full suite was run. The focused suite and lint gate still
+require confirmation in the prepared gate checkout; earlier results above are
+historical, not results for this head.

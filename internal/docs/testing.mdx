@@ -65,7 +65,7 @@ A batch with failing assertions does not stop later batches, so one run reports 
 
 `verify-no-regression.mjs` compares failed assertions against `tests/__baseline__/known-fails.txt`. That file is empty in this tree, so every failing assertion is a regression. Do not add entries. Remove an entry only when a listed failure is fixed. `verify-baseline-diff.mjs` refuses any added line in that file versus `BASELINE_BASE_REF`.
 
-A checked-in `baseline-results.json` is an old report from another tree. It is not a live count for this checkout.
+Historical baseline reports are not a live count for this checkout.
 
 Offline translator tests need no credentials.
 

@@ -1,3 +1,4 @@
+import { normalizeCompressionEvent } from "../services/compression/telemetry.js";
 import { estimateCompressionTokens } from "../services/compression/stats.js";
 import { githubRateLimit } from "./chatCore/githubRateLimit.js";
 import { updateProviderConnection } from "@/lib/localDb.js";
@@ -65,7 +66,7 @@ import { salvageOrphanedToolResults, ensureToolCallIds, fixMissingToolResponses,
 import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectCustomPrompt } from "../rtk/customPrompt.js";
-import { compressMessages, resolveTokenSaverEnabled, normalizeTokenSaverEvent } from "../rtk/index.js";
+import { compressMessages, resolveTokenSaverEnabled } from "../rtk/index.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings, classifyHeadroomDiagnostic } from "../rtk/headroom.js";
 import { compressWithPxpipe, normalizePxpipeResult } from "../rtk/pxpipe.js";
 import { enforceCursorCapabilities, getCapabilitiesForModel, resolveModelLimits } from "../providers/capabilities.js";
@@ -79,7 +80,8 @@ import { estimateTokens, countInputTokens } from "./countTokensCore.js";
 import { runCompressionSeam } from "./chatCore/compressionHook.js";
 import { shouldProtectCachedPrefix } from "../config/promptCacheProviders.js";
 import { isOpenRouterAnthropicModel } from "../translator/concerns/openrouterAnthropicCache.js";
-import { gateStep } from "../services/compression/fidelityGate.js";
+import { runCompressionStage } from "../services/compression/stage.js";
+import { resolveCompressionConfig } from "../../src/shared/utils/compressionConfig.js";
 import { maskRequestContent, normalizeMaskingMode } from "../services/contentMasking.js";
 import { applyResponseMasking } from "../services/responseMasking.js";
 import { stripUnsupportedModalities, hasMediaBlocks } from "../translator/concerns/modality.js";
@@ -128,16 +130,8 @@ const COMPRESSION_HEADER = "X-DurinDoor-Compression";
  * and reports no stats.
  */
 function compressRtkGated(target, enabled, gate, log) {
-  if (!gate || !enabled) return compressMessages(target, enabled);
-  const before = structuredClone(target);
-  const stats = compressMessages(target, enabled);
-  if (!stats?.hits?.length) return stats;
-  const verdict = gateStep(before, target, gate);
-  if (verdict.passed) return stats;
-  log?.warn?.("COMPRESS", `engine rtk failed, step rolled back: fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
-  for (const key of Object.keys(target)) delete target[key];
-  Object.assign(target, before);
-  return null;
+  if (!enabled) return null;
+  return runCompressionStage(target, (working) => compressMessages(working, true), { id: "rtk", gate, log });
 }
 
 /**
@@ -766,13 +760,27 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   salvageOrphanedToolResults(body);
   fixMissingToolResponses(body);
 
+  // One runtime config view; stack aliases retain the historical flat OR map read.
+  ({ rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages,
+    headroomTimeoutMs, cavemanEnabled, cavemanLevel, pxpipeEnabled, pxpipeMinChars,
+    pxpipeTimeoutMs, pxpipeAllowedModels, compressionEnabled, compressionEngines,
+    compressionFidelityGate, compressionAdaptive } = resolveCompressionConfig({
+    rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages,
+    headroomTimeoutMs, cavemanEnabled, cavemanLevel, pxpipeEnabled, pxpipeMinChars,
+    pxpipeTimeoutMs, pxpipeAllowedModels, compressionEnabled, compressionEngines,
+    compressionFidelityGate, compressionAdaptive,
+  }));
+
   // Headroom: compress the SOURCE messages BEFORE translation so every output
   // format (commandcode, ollama, gemini, ...) is covered, not just openai/claude.
   // Uses sourceFormat so body.messages is present. Reporting happens after
   // translation from the captured stats. Optional external proxy; fail-open.
   const headroomDiagnostics = {};
   const headroomStartedAt = Date.now();
-  const headroomStats = await compressWithHeadroom(body, { enabled: tokenSaverEnabled && headroomEnabled, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, timeoutMs: headroomTimeoutMs, diagnostics: headroomDiagnostics });
+  const runHeadroom = tokenSaverEnabled && headroomEnabled;
+  const headroomStats = runHeadroom ? await runCompressionStage(body,
+    (working) => compressWithHeadroom(working, { enabled: true, url: headroomUrl, model: cleanUpstreamModel, format: sourceFormat, compressUserMessages: headroomCompressUserMessages, timeoutMs: headroomTimeoutMs, diagnostics: headroomDiagnostics }),
+    { id: "headroom", gate: { textInvariants: compressionFidelityGate === true }, log }) : null;
   const headroomDurationMs = Date.now() - headroomStartedAt;
 
   // RTK for cursor: its translator (openai-to-cursor.js) rewrites role:tool
@@ -785,9 +793,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   // request at the dedicated position, so the stack step below is a no-op
   // (rtkApplied) and accounting matches the standalone toggle.
   const rtkInStack = compressionEnabled === true && compressionEngines?.rtk?.enabled === true;
-  const runRtk = tokenSaverEnabled && (rtkEnabled || rtkInStack);
+  const runRtk = tokenSaverEnabled && rtkEnabled;
   // A stack rtk step is fidelity-gated like every stack step; the plain RTK
-  // toggle alone keeps its ungated behavior.
+  // toggle alone keeps its existing ungated policy; both paths restore on errors.
   const rtkGate = rtkInStack ? { textInvariants: compressionFidelityGate === true } : null;
   const preTranslateRtk = isCursorProvider(provider) ?
   compressRtkGated(body, runRtk, rtkGate, log) :
@@ -1016,7 +1024,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   // RTK: compress tool_result content. Skipped when already compressed
   // pre-translate above (cursor) so a retry never double-compresses a body.
-  const rtkStats = preTranslateRtk || compressRtkGated(translatedBody, runRtk, rtkGate, log);
+  const rtkStats = isCursorProvider(provider) ? preTranslateRtk : compressRtkGated(translatedBody, runRtk, rtkGate, log);
   if (rtkStats?.hits?.length) {
     const saved = rtkStats.bytesBefore - rtkStats.bytesAfter;
     const pct = rtkStats.bytesBefore > 0 ? (saved / rtkStats.bytesBefore * 100).toFixed(0) : "0";
@@ -1077,7 +1085,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
         engines: compressionEngines ?? {},
         // The resolved outgoing format disambiguates minimal Claude and OpenAI bodies.
         applyOpts: {
-          ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: Boolean(headroomStats), format: finalFormat,
+          ...adaptiveBudget, rtkApplied: runRtk, headroomApplied: runHeadroom, format: finalFormat, sourceFormat,
           cachedPrefix: shouldProtectCachedPrefix({
             provider, format: finalFormat, estimatedTokens,
             contextWindow: effectiveModelCapabilities.contextWindow
@@ -1130,39 +1138,44 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
 
   // Caveman: inject terse-style system prompt
   if (tokenSaverEnabled && cavemanEnabled && cavemanLevel && !carriesMedia) {
-    injectCaveman(translatedBody, finalFormat, cavemanLevel);
-    xf.push(`CAVEMAN:${cavemanLevel}`);
+    const applied = runCompressionStage(translatedBody, (working) => {
+      injectCaveman(working, finalFormat, cavemanLevel);
+      return true;
+    }, { id: "caveman-prompt", gate: { additive: true }, log });
+    if (applied) xf.push(`CAVEMAN-PROMPT:${cavemanLevel}`);
   }
 
   // Ponytail: inject lazy-senior-dev system prompt
   if (tokenSaverEnabled && ponytailEnabled && ponytailLevel && !carriesMedia) {
-    injectPonytail(translatedBody, finalFormat, ponytailLevel);
-    xf.push(`PONYTAIL:${ponytailLevel}`);
+    const applied = runCompressionStage(translatedBody, (working) => {
+      injectPonytail(working, finalFormat, ponytailLevel);
+      return true;
+    }, { id: "ponytail-prompt", gate: { additive: true }, log });
+    if (applied) xf.push(`PONYTAIL:${ponytailLevel}`);
   }
 
   // Kiro stores instructions as a prefix in user content. Inject the global
   // and combo instructions together there to retain outer-to-inner order.
   const globalPrompt = tokenSaverEnabled && customPromptEnabled && isString(customPrompt) && customPrompt.trim() ? customPrompt : "";
   const kiroCombined = (finalFormat === FORMATS.KIRO || isString(translatedBody.conversationState?.currentMessage?.userInputMessage?.content)) && globalPrompt && comboPrompts.length;
-  if (globalPrompt && !kiroCombined && injectCustomPrompt(translatedBody, finalFormat, globalPrompt)) {
+  if (globalPrompt && !kiroCombined && runCompressionStage(translatedBody, (working) => injectCustomPrompt(working, finalFormat, globalPrompt), { id: "custom-prompt", gate: { additive: true }, log })) {
     xf.push(`CUSTOMPROMPT:${globalPrompt.trim().length}c`);
   }
   // Configured combo instructions are routing policy, independent of savers.
   if (comboPrompts.length) {
-    injectCustomPrompt(translatedBody, finalFormat, [...(kiroCombined ? [globalPrompt] : []), ...comboPrompts].join("\n\n"));
+    runCompressionStage(translatedBody, (working) => injectCustomPrompt(working, finalFormat, [...(kiroCombined ? [globalPrompt] : []), ...comboPrompts].join("\n\n")), { id: "combo-prompt", gate: { additive: true }, log });
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch
   let pxpipeSummary = null;
   if (tokenSaverEnabled && pxpipeEnabled) {
     const pxpipeDiagnostics = {};
-    const pxpipeResult = normalizePxpipeResult(await compressWithPxpipe(translatedBody, {
+    const pxpipeResult = normalizePxpipeResult(await runCompressionStage(translatedBody, (working) => compressWithPxpipe(working, {
       enabled: true, format: finalFormat, model: cleanUpstreamModel,
       minChars: pxpipeMinChars, timeoutMs: pxpipeTimeoutMs, transform: pxpipeTransform,
       diagnostics: pxpipeDiagnostics, allowedModels: pxpipeAllowedModels
-    }), pxpipeDiagnostics);
+    }), { id: "pxpipe", gate: { textInvariants: compressionFidelityGate === true }, log, resultBody: (result, working) => result.body ?? working }), pxpipeDiagnostics);
     pxpipeSummary = pxpipeResult.summary;
-    if (pxpipeResult.body) translatedBody = pxpipeResult.body;
     if (pxpipeSummary?.applied) xf.push(`PXPIPE:${pxpipeSummary.imageCount}img`);
     try {onPxpipeEvent?.({ provider, model: cleanModel, ...pxpipeSummary });} catch {/* stats must not break requests */}
   }
@@ -1199,7 +1212,14 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       const hrAfter = headroomDiagnostics?.after?.bodyBytes || 0;
       const hrState = headroomStats ? "compressed" : headroomEnabled ? "skipped" : "disabled";
       const hrDiagnostic = hrState === "skipped" ? classifyHeadroomDiagnostic(headroomDiagnostics, headroomStats, headroomEnabled) : null;
-      onTokenSaverEvent(normalizeTokenSaverEvent({
+      onTokenSaverEvent(normalizeCompressionEvent({
+        stages: [
+          ...(headroomStats ? ["headroom"] : []),
+          ...(rtkStats?.hits?.length ? ["rtk"] : []),
+          ...(compressionHeaderValue?.split("|")[0].split(",") ?? []),
+          ...(xf.some((value) => value.startsWith("CAVEMAN-PROMPT:")) ? ["caveman-prompt"] : []),
+          ...(pxpipeSummary?.applied ? ["pxpipe"] : []),
+        ],
         rtk: rtkStats ? {
           requestsWithHits: rtkStats.hits?.length ? 1 : 0,
           hits: rtkStats.hits?.length || 0,

@@ -1,3 +1,4 @@
+import { resolveCompressionConfig } from "@/shared/utils/compressionConfig.js";
 import { projectProviderCredentials, markAccountUnavailable, clearAccountError } from "../../../services/auth.js";
 import { antigravityHealth, healthEnabled, trackHealthResponse } from "open-sse/services/antigravityHealth.js";
 import { runWithConnectionRecovery } from "@/lib/routing/connectionRecovery.js";
@@ -7,7 +8,6 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendHeadroomEvent } from "@/lib/headroom/events.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
-import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { CURSOR_MODEL_UNAVAILABLE_MESSAGE, EMPTY_CONTENT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -47,6 +47,7 @@ export function emptyStreamBench(provider, model, streamError) {
 
 function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThinking, pxpipeTransform, quotaReservation, cookieRefreshContext }) {
   const { provider, model, request, requestSignal, comboRouting } = ctx;
+  const compression = resolveCompressionConfig(chatSettings);
   const { credentials, dispatchedCredential } = attempt;
   // The conversation moved here from an account that already received it in this request.
   const accountSwitched = Boolean(state.sentConnectionId) && state.sentConnectionId !== credentials.connectionId;
@@ -79,23 +80,23 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
       return attempt.latestAttemptStartedAt;
     },
     ccFilterNaming: !!chatSettings.ccFilterNaming,
-    rtkEnabled: !!chatSettings.rtkEnabled,
-    headroomEnabled: !!chatSettings.headroomEnabled,
-    headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
-    headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
-    headroomTimeoutMs: chatSettings.headroomTimeoutMs,
-    pxpipeEnabled: !!chatSettings.pxpipeEnabled,
-    cavemanEnabled: !!chatSettings.cavemanEnabled,
-    cavemanLevel: chatSettings.cavemanLevel || "full",
+    rtkEnabled: !!compression.rtkEnabled,
+    headroomEnabled: !!compression.headroomEnabled,
+    headroomUrl: compression.headroomUrl,
+    headroomCompressUserMessages: !!compression.headroomCompressUserMessages,
+    headroomTimeoutMs: compression.headroomTimeoutMs,
+    pxpipeEnabled: !!compression.pxpipeEnabled,
+    cavemanEnabled: !!compression.cavemanEnabled,
+    cavemanLevel: compression.cavemanLevel,
     ponytailEnabled: !!chatSettings.ponytailEnabled,
     ponytailLevel: chatSettings.ponytailLevel || "full",
     customPromptEnabled: !!chatSettings.customPromptEnabled,
     customPrompt: chatSettings.customPrompt || "",
     comboPrompts: ctx.comboPrompts,
-    pxpipeMinChars: chatSettings.pxpipeMinChars,
-    pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
+    pxpipeMinChars: compression.pxpipeMinChars,
+    pxpipeTimeoutMs: compression.pxpipeTimeoutMs,
     pxpipeTransform,
-    pxpipeAllowedModels: chatSettings.pxpipeAllowedModels,
+    pxpipeAllowedModels: compression.pxpipeAllowedModels,
     onPxpipeEvent: appendPxpipeEvent,
     onHeadroomEvent: appendHeadroomEvent,
     onTokenSaverEvent: (event) => {
@@ -112,11 +113,11 @@ function buildChatCoreOptions(ctx, state, attempt, { chatSettings, providerThink
     claudeClassifierCompat: ["off", "auto", "always"].includes(chatSettings.claudeClassifierCompat) ?
     chatSettings.claudeClassifierCompat :
     "off",
-    compressionEnabled: !!chatSettings.compressionEnabled,
-    compressionEngines: chatSettings.compressionEngines || {},
+    compressionEnabled: !!compression.compressionEnabled,
+    compressionEngines: compression.compressionEngines || {},
     contentMasking: chatSettings.contentMasking ?? null,
-    compressionFidelityGate: chatSettings.compressionFidelityGate === true,
-    compressionAdaptive: chatSettings.compressionAdaptive ?? null,
+    compressionFidelityGate: compression.compressionFidelityGate === true,
+    compressionAdaptive: compression.compressionAdaptive ?? null,
     // Detect source format by endpoint + body
     sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, ctx.body) : null,
     // A durable credential (OrcaRouter) has nothing to refresh: injecting the
@@ -219,7 +220,7 @@ export async function dispatchAttempt(ctx, state, attempt) {
   attempt.chatSettings = chatSettings;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
   const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-  const pxpipeTransform = chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null;
+  const pxpipeTransform = resolveCompressionConfig(chatSettings).pxpipeEnabled ? await getPxpipeTransform() : null;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
   const quotaReservation = createQuotaReservationLifecycle({
     quotaProfile: credentials._quotaPreflight?.quotaProfile || null,

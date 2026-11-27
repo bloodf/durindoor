@@ -1,3 +1,5 @@
+import { mirrorCompressionPatch } from "../../shared/utils/compressionConfig.js";
+
 // Settings changes that weaken the instance, redirect or record traffic, or
 // change who can sign in need the current dashboard password (plus the second
 // factor when MFA is on) as well as the session (decolua/9router#4286, #2579).
@@ -34,6 +36,7 @@ const comparable = (value) => {
  * @returns {string[]}
  */
 export function reauthRequiredKeys(updates, current) {
+  updates = mirrorCompressionPatch(current, updates);
   const has = (key) => Object.hasOwn(updates, key);
   const keys = [];
   for (const key of ["requireLogin", "requireApiKey"]) {

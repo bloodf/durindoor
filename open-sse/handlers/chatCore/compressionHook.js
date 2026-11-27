@@ -39,7 +39,7 @@ import {
 import { deriveDefaultPlan as realDeriveDefaultPlan } from "../../services/compression/deriveDefaultPlan.js";
 import { resolveAdaptivePlan as realResolveAdaptivePlan } from "../../services/compression/adaptiveCompression/resolveAdaptivePlan.js";
 import { estimateCompressionTokens } from "../../services/compression/stats.js";
-import { gateStep } from "../../services/compression/fidelityGate.js";
+import { runCompressionStage } from "../../services/compression/stage.js";
 import { isObject } from "../../../src/shared/utils/typeChecks.js";
 import { serializeCachedPrefix } from "../../translator/concerns/openrouterAnthropicCache.js";
 
@@ -82,8 +82,9 @@ function bodyFormat(body) {
  * @param {object} [deps] optional DI override { isEngineAvailable, getEngine,
  *        deriveDefaultPlan, resolveAdaptivePlan, planToEngineIds } (tests only)
  * @param {object} cfg  { enabled, engines, applyOpts, adaptive, fidelityGate, log }
- *        applyOpts.headroomApplied: true when the legacy headroom stage already
- *        compressed this request, so the stack must skip its headroom step.
+ *        applyOpts.headroomApplied / rtkApplied: true when the dedicated stage
+ *        already handled this request (including skip/rollback), so the stack
+ *        must not retry it.
  *        fidelityGate: { textInvariants?: boolean } — protected blocks (tool
  *        schemas, media, signatures, error results, instructions, fenced code)
  *        are always gated per step; textInvariants adds the opt-in number /
@@ -160,6 +161,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
     const stepInput = working;
     try {
       if (id === "headroom" && cfg.applyOpts?.headroomApplied === true) continue;
+      if (id === "rtk" && cfg.applyOpts?.rtkApplied === true) continue;
       if (!isEngineAvailable(id)) continue; // unavailable -> skip, keep stepInput
       // Always forward stepConfig per contract {config, stepConfig}. Stacked steps
       // carry the real planner step (with intensity); single-mode plans have an
@@ -173,19 +175,21 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
         stepConfig: step
       };
       const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;
-      const res = await engine.apply(working, opts);
-      if (!res || !isObject(res) || !res.body || !isObject(res.body)) {
-        throw new Error(`engine ${id} returned malformed result`);
-      }
-      if (prefixBefore !== null && prefixBefore !== serializeCachedPrefix(res.body)) {
-        throw new Error("cached prompt prefix would change");
-      }
-      const verdict = gateStep(stepInput, res.body, cfg.fidelityGate);
-      if (!verdict.passed) {
-        throw new Error(`fidelity gate rejected step (${verdict.failedInvariant}: ${verdict.detail})`);
-      }
-      const stepOutSerialized = JSON.stringify(res.body);
-      working = res.body;
+      // Isolate every engine even if an implementation violates its no-mutation contract.
+      const stepOutput = structuredClone(stepInput);
+      const res = await runCompressionStage(stepOutput, async (isolated) => {
+        const result = await engine.apply(isolated, opts);
+        if (!result || !isObject(result) || !result.body || !isObject(result.body)) {
+          throw new Error(`engine ${id} returned malformed result`);
+        }
+        if (prefixBefore !== null && prefixBefore !== serializeCachedPrefix(result.body)) {
+          throw new Error("cached prompt prefix would change");
+        }
+        return result;
+      }, { id, gate: cfg.fidelityGate, log: cfg.log, resultBody: (result) => result.body });
+      if (!res) continue;
+      const stepOutSerialized = JSON.stringify(stepOutput);
+      working = stepOutput;
       // Credit the engine only when it BOTH reports compression AND actually
       // changed this step's body. A compressed:true no-op clone must not be
       // advertised, and the engine must not appear in the header list.

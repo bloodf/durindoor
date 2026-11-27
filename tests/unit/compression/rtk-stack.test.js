@@ -151,7 +151,7 @@ describe("rtk stack engine", () => {
   });
 
   it("does nothing when the stack is off and the toggle is off", async () => {
-    const { dispatched, rtk } = await run({ compressionEnabled: false, compressionEngines: { rtk: { enabled: true } } });
+    const { dispatched, rtk } = await run({ rtkEnabled: false, compressionEnabled: false, compressionEngines: { rtk: { enabled: true } } });
     expect(dispatched.messages.find((m) => m.role === "tool").content).toBe(longDiff());
     expect(rtk?.hits ?? 0).toBe(0);
   });

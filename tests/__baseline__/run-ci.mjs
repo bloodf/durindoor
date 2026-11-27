@@ -73,9 +73,9 @@ function ensureDiagnosticArtifacts(error) {
 
 // ps works on Linux and Darwin. Zombies cannot execute and may remain until
 // their parent (or the host reaper) collects them; they are not live workers.
-export function processGroupMembers(pid, timeoutMs = 100) {
+export function processGroupMembers(pid, timeoutMs = 2000) {
   const result = spawnSync("ps", ["-axo", "pid=,pgid=,stat="], {
-    encoding: "utf8", timeout: Math.max(1, Math.min(100, timeoutMs)), maxBuffer: 8 * 1024 * 1024,
+    encoding: "utf8", timeout: Math.max(1, Math.min(2000, timeoutMs)), maxBuffer: 8 * 1024 * 1024,
   });
   if (result.error || result.status !== 0) throw new Error(`cannot inspect command process group: ${result.error?.message || result.stderr}`);
   return result.stdout.trim().split("\n").filter(Boolean).map((line) => {
@@ -86,35 +86,33 @@ export function processGroupMembers(pid, timeoutMs = 100) {
 }
 
 export async function killGroup(pid, { kill = process.kill, members = processGroupMembers,
-  deadline = Date.now() + 1000 } = {}) {
+  deadline = Date.now() + 5000 } = {}) {
   if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) throw new Error("invalid command process group");
   const failures = [];
   try { kill(-pid, "SIGKILL"); }
-  catch (error) {
-    // ESRCH only describes the signal attempt. Verify the inventory even then.
-    if (error.code !== "ESRCH") {
-      failures.push(error);
-      try { kill(pid, "SIGKILL"); }
-      catch (fallbackError) { if (fallbackError.code !== "ESRCH") failures.push(fallbackError); }
-    }
-  }
-  do {
-    let live;
-    try { live = members(pid, Math.max(1, deadline - Date.now())); }
-    catch (error) { throw new AggregateError([...failures, error], "command cleanup could not be verified"); }
-    if (live.length === 0) return;
-    // A denied group operation need not imply denied individual operations.
-    // Only target members of this detached command group, never the host group.
-    for (const member of live) {
-      if (!Number.isInteger(member) || member <= 1 || member === process.pid) {
-        throw new Error("unsafe command group member");
-      }
+  catch (error) { if (error.code !== "ESRCH") failures.push(error); }
+  // A failed ps is unknown, not an empty group. Reserve time for one last
+  // inventory after the final signal, and retry transient listing failures.
+  const finalReserve = Math.min(500, Math.max(0, Math.floor((deadline - Date.now()) / 2)));
+  let lastError = null;
+  const inspect = (reserve = 0) => {
+    try { const live = members(pid, Math.max(1, deadline - reserve - Date.now())); lastError = null; return live; }
+    catch (error) { lastError = error; return null; }
+  };
+  while (Date.now() < deadline - finalReserve) {
+    const live = inspect(finalReserve);
+    if (live && live.length === 0) return;
+    if (live) for (const member of live) {
+      if (!Number.isInteger(member) || member <= 1 || member === process.pid) throw new Error("unsafe command group member");
       try { kill(member, "SIGKILL"); }
       catch (error) { if (error.code !== "ESRCH") failures.push(error); }
     }
-    if (Date.now() >= deadline) break;
-    await new Promise((resolve) => setTimeout(resolve, Math.min(10, deadline - Date.now())));
-  } while (true);
+    const delay = Math.min(10, Math.max(0, deadline - finalReserve - Date.now()));
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  const final = inspect();
+  if (final && final.length === 0) return;
+  if (!final) throw new AggregateError([...failures, lastError].filter(Boolean), "command cleanup could not be verified");
   const codes = [...new Set(failures.map((error) => error.code || error.message))].join(", ");
   throw new AggregateError(failures, `command cleanup deadline exceeded; live workers may remain${codes ? ` (${codes})` : ""}`);
 }
@@ -126,7 +124,7 @@ export function runSupervised(command, args, { cwd, env = process.env, timeoutMs
   return new Promise((resolve) => {
     const startedAt = Date.now();
     const deadline = startedAt + timeoutMs;
-    const grace = Math.min(1000, timeoutMs / 4);
+    const grace = Math.min(5000, timeoutMs / 4);
     let child;
     try {
       child = (operations.spawn || spawn)(command, args, { cwd, env, stdio: "inherit", detached: true });

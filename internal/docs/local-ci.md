@@ -158,12 +158,16 @@ CI, and the full inventory checkpoint remains required for merges.
 
 ### Batched runner cleanup
 
-`tests/__baseline__/run-ci.mjs` reserves up to one second inside each command's
-five-minute ceiling for termination and verification. It signals the detached
-process group with SIGKILL. If group signaling fails (including EPERM), it also
-signals the known command PID, then enumerates that group with POSIX `ps` and
-signals its remaining members individually. It repeatedly verifies that no live
-members remain; ESRCH and the runner's close event alone are not exit evidence.
+`tests/__baseline__/run-ci.mjs` reserves up to five seconds (a quarter of the
+ceiling when that is shorter) inside each command's five-minute ceiling for
+termination and verification. It signals the detached process group with
+SIGKILL, then enumerates that group with POSIX `ps` and signals each live member
+individually, including when group signaling fails (EPERM or any other error).
+It never signals a PID that the inventory has not just reported as a member of
+the command group. It repeatedly verifies that no live members remain; ESRCH and
+the runner's close event alone are not exit evidence. A failed `ps` listing is
+unknown, not empty: transient listing failures are retried, and part of the
+cleanup budget is reserved for one final inventory after the last signal.
 Zombie entries are already terminated and do not count as live workers.
 
 An unreadable inventory or workers still live at the cleanup deadline produces

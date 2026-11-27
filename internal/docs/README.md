@@ -40,6 +40,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 
 ### Provider parity and sign-in investigations
 
+- [Antigravity current model inventory (1127)](./antigravity-current-models-1127.md)
 - [adapta-t3-web-cookie-parity-2034.md](./adapta-t3-web-cookie-parity-2034.md)
 - [aistudio-relay-parity-2034.md](./aistudio-relay-parity-2034.md)
 - [amazon-q-signin-parity-2034.md](./amazon-q-signin-parity-2034.md)
@@ -83,6 +84,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [oauth-native-esm.md](./oauth-native-esm.md)
 - [openference-oauth.md](./openference-oauth.md)
 - [orcarouter-signin-parity-2034.md](./orcarouter-signin-parity-2034.md)
+- [Provider parity reports (1127): Antigravity](./parity-agy-1127.md), [catalog](./parity-catalog-1127.md), [CLI](./parity-cli-1127.md), and [web](./parity-web-1127.md)
 - [perplexity-web-2034.md](./perplexity-web-2034.md)
 - [provider-parity-cliproxyapi.md](./provider-parity-cliproxyapi.md)
 - [provider-parity-closed-omniroute.md](./provider-parity-closed-omniroute.md)

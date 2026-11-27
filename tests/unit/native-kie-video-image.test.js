@@ -92,8 +92,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Staging-only negatives. Registration replaces this block with positive
-// registry identity checks; every other block works staged or registered.
+// Isolated registration block: the positive registry identity checks. Every
+// other block works staged or registered.
 describe("canonical registration (isolated)", () => {
   it("registers native media and preserves the existing kie chat entry", () => {
     expect(getImageAdapter("kie")).toBe(staged.kieImageAdapter);

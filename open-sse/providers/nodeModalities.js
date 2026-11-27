@@ -16,7 +16,7 @@
 //     contract, and guard mode so sibling connections never share probe state.
 //   - Derived /api/v0/models and /api/show URLs are validated to keep the
 //     exact origin of baseUrl before sending credentials.
-//   - Sources, first that answers wins (all cached with bounded size + TTL):
+//   - Sources, first that describes the requested model wins (all cached with bounded size + TTL):
 //       1. GET {baseUrl}/models — input_modalities, architecture.input_modalities,
 //          modalities.input, capabilities: ["vision", ...]
 //       2. GET {origin}/api/v0/models — LM Studio native list (type "vlm")
@@ -34,7 +34,7 @@ const MAX_SHOWN_CACHE_ENTRIES = 1024;
 const NODE_PREFIXES = ["openai-compatible-", "anthropic-compatible-"];
 const LEGACY_MEDIA_RE = /"(?:images|experimental_attachments|attachments)"\s*:|data:(?:image|audio)\/|data:application\/pdf/i;
 
-const cache = new Map(); // scopeKey -> { at, models: Map<modelId, caps> }
+const cache = new Map(); // scopeKey (or `lms\0${scopeKey}`) -> { at, models: Map<modelId, caps> }
 const shown = new Map(); // `${scopeKey}\0${model}` -> { at, caps|null }
 const inflight = new Map();
 
@@ -211,18 +211,12 @@ function collect(list, into) {
   }
 }
 
-async function loadLists(scopeKey, provider, endpoints, token, transport, guard, signal) {
-  const headers = headersFor(provider, token);
+async function loadList(listKey, url, provider, token, transport, guard, signal) {
+  const res = await fetchJson(transport, url, { method: "GET", headers: headersFor(provider, token) }, guard, signal);
+  if (res.aborted) return;
   const models = new Map();
-  const std = await fetchJson(transport, endpoints.modelsUrl, { method: "GET", headers }, guard, signal);
-  if (std.aborted) return;
-  collect(std.data?.data || std.data?.models, models);
-  if (!models.size && endpoints.lmStudioUrl) {
-    const lms = await fetchJson(transport, endpoints.lmStudioUrl, { method: "GET", headers }, guard, signal);
-    if (lms.aborted) return;
-    collect(lms.data?.data || lms.data?.models, models);
-  }
-  setBounded(cache, scopeKey, { at: Date.now(), models }, MAX_NODE_CACHE_ENTRIES);
+  collect(res.data?.data || res.data?.models, models);
+  setBounded(cache, listKey, { at: Date.now(), models }, MAX_NODE_CACHE_ENTRIES);
 }
 
 async function loadShow(showKey, provider, endpoints, token, model, transport, guard, signal) {
@@ -272,11 +266,16 @@ export async function getNodeReportedModalities(provider, model, credentials, op
   const id = String(model);
   const scopeKey = scopeKeyFor(provider, endpoints.normalizedBase, credentials, opts.proxyOptions, guard);
 
-  if (!fresh(cache.get(scopeKey))) {
-    await once(scopeKey, () => loadLists(scopeKey, provider, endpoints, token, transport, guard, opts.signal));
+  // Decided per requested model: metadata for a sibling model must not stop
+  // the LM Studio lookup for this one.
+  const lists = [[scopeKey, endpoints.modelsUrl], [`lms\0${scopeKey}`, endpoints.lmStudioUrl]];
+  for (const [listKey, url] of lists) {
+    if (!fresh(cache.get(listKey))) {
+      await once(listKey, () => loadList(listKey, url, provider, token, transport, guard, opts.signal));
+    }
+    const listed = cache.get(listKey)?.models.get(id);
+    if (listed) return listed;
   }
-  const listed = cache.get(scopeKey)?.models.get(id);
-  if (listed) return listed;
 
   const showKey = `${scopeKey}\0${id}`;
   if (!fresh(shown.get(showKey))) {

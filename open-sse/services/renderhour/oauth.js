@@ -144,14 +144,11 @@ function readErrorCode(text) {
  */
 async function oauthFetch(url, init, { fetchImpl = globalThis.fetch, proxyOptions = null, signal = null, timeoutMs = RENDERHOUR_OAUTH_REQUEST_TIMEOUT_MS } = {}) {
   const timeout = AbortSignal.timeout(timeoutMs);
+  const requestInit = { ...init, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout };
+  if (proxyOptions) requestInit.proxyOptions = proxyOptions;
   let response;
   try {
-    response = await fetchImpl(url, {
-      ...init,
-      redirect: "error",
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-      ...(proxyOptions ? { proxyOptions } : {}),
-    });
+    response = await fetchImpl(url, requestInit);
   } catch {
     signal?.throwIfAborted();
     if (timeout.aborted) throw new RenderHourOAuthError("RenderHour sign-in request timed out", { code: "timeout", status: 504 });
@@ -264,17 +261,15 @@ export function mapRenderHourTokens(tokens, extra) {
   const userInfo = isObject(extra?.userInfo) ? extra.userInfo : {};
   const email = readString(userInfo.email);
   const accountId = readString(userInfo.sub);
+  const providerSpecificData = { tokenType: tokens?.token_type || "Bearer", authMode: "oauth" };
+  if (accountId) providerSpecificData.accountId = accountId;
   return {
     accessToken: tokens?.access_token,
     refreshToken: tokens?.refresh_token ?? undefined,
     expiresIn: tokens?.expires_in ?? undefined,
     email,
     name: readString(userInfo.name) || email,
-    providerSpecificData: {
-      tokenType: tokens?.token_type || "Bearer",
-      authMode: "oauth",
-      ...(accountId ? { accountId } : {}),
-    },
+    providerSpecificData,
   };
 }
 
@@ -337,11 +332,10 @@ export async function refreshRenderHourToken(refreshToken, log = null, { clientI
         hasNewRefreshToken: !!tokens.refresh_token,
         expiresIn: tokens.expires_in,
       });
-      return {
-        accessToken: tokens.access_token,
-        ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-        ...(tokens.expires_in ? { expiresIn: tokens.expires_in } : {}),
-      };
+      const result = { accessToken: tokens.access_token };
+      if (tokens.refresh_token) result.refreshToken = tokens.refresh_token;
+      if (tokens.expires_in) result.expiresIn = tokens.expires_in;
+      return result;
     },
     log,
     options.proxyOptions ?? null
@@ -369,12 +363,11 @@ export function needsRenderHourRefresh(credentials, now = Date.now()) {
 export function createRenderHourRefreshHooks({ clientId, fetchImpl, now = Date.now } = {}) {
   return {
     needsRefresh: (credentials) => needsRenderHourRefresh(credentials, now()),
-    refreshCredentials: (credentials, log, proxyOptions = null) =>
-      refreshRenderHourToken(credentials?.refreshToken, log, {
-        clientId: clientId ?? resolveRenderHourClientId(),
-        ...(fetchImpl ? { fetchImpl } : {}),
-        proxyOptions,
-      }),
+    refreshCredentials: (credentials, log, proxyOptions = null) => {
+      const options = { clientId: clientId ?? resolveRenderHourClientId(), proxyOptions };
+      if (fetchImpl) options.fetchImpl = fetchImpl;
+      return refreshRenderHourToken(credentials?.refreshToken, log, options);
+    },
   };
 }
 

@@ -19,6 +19,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { generatePKCE } from "../utils/pkce.js";
+import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 import {
   RENDERHOUR_CODE_CHALLENGE_METHOD,
   RENDERHOUR_OAUTH_ENDPOINTS,
@@ -78,8 +79,8 @@ export const renderhourOAuthProvider = Object.freeze({
  */
 export function renderHourAccountKey(mapped) {
   const accountId = mapped?.providerSpecificData?.accountId;
-  if (typeof accountId === "string" && accountId) return `sub:${accountId}`;
-  if (typeof mapped?.email === "string" && mapped.email) return `email:${mapped.email.toLowerCase()}`;
+  if (isString(accountId) && accountId) return `sub:${accountId}`;
+  if (isString(mapped?.email) && mapped.email) return `email:${mapped.email.toLowerCase()}`;
   return null;
 }
 
@@ -92,9 +93,9 @@ export function selectRenderHourConnection(connections, mapped) {
   if (!renderHourAccountKey(mapped) || !Array.isArray(connections)) return null;
   const idOf = (c) => {
     const id = c?.providerSpecificData?.accountId;
-    return typeof id === "string" && id ? id : null;
+    return isString(id) && id ? id : null;
   };
-  const emailOf = (c) => (typeof c?.email === "string" && c.email ? c.email.toLowerCase() : null);
+  const emailOf = (c) => (isString(c?.email) && c.email ? c.email.toLowerCase() : null);
   const mappedId = idOf(mapped);
   const mappedEmail = emailOf(mapped);
   const candidates = connections.filter((c) => c?.provider === "renderhour" && c?.authType === "oauth");
@@ -148,7 +149,7 @@ function sameRedirectTarget(callbackUrl, redirectUri) {
  * fields to store (mapRenderHourTokens shape).
  */
 export async function completeRenderHourSignIn(session, callbackUrl, { now = Date.now, ...options } = {}) {
-  if (!session || typeof session !== "object") {
+  if (!isObject(session)) {
     throw new RenderHourOAuthError("RenderHour sign-in session is missing", { code: "invalid_state", status: 400 });
   }
   if (session.used) throw new RenderHourOAuthError("RenderHour sign-in was already completed", { code: "session_used", status: 400 });

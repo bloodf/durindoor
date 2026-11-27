@@ -1,0 +1,68 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/deepinfraHandler.ts"
+    ]
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/deepinfra.js: apikey, Bearer, chat transport https://api.deepinfra.com/v1/openai/chat/completions, no serviceKinds/hiddenKinds, models [] with an OpenAI /models fetcher",
+    "videoGenerationAdapter": "none (getVideoGenerationAdapter('deepinfra') is null; supportsVideoGeneration('deepinfra') is false)",
+    "asyncVideoConfig": "none (getVideoConfig('deepinfra') is null)",
+    "otherInferenceUse": "none; the source proves the same /v1/inference host for rerank, which this fork does not carry for deepinfra"
+  },
+  "module": "open-sse/services/providerParity/native-deepinfra-video/index.js",
+  "exports": {
+    "deepinfraVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createDeepinfraVideoAdapter": "factory; options { timeoutMs, now } for tests",
+    "buildDeepinfraVideoRequest": "(model, body) -> { prompt, negative_prompt?, image?, seed? }; throws status 400",
+    "deepinfraAcceptedJob": "(jobState) accepted-work accounting with unknown cost",
+    "deepinfraPublicUrl": "public https URL check used for results",
+    "DEEPINFRA_VIDEO_MODELS": "video catalog metadata (id, name, kind, acceptsImage)",
+    "DEEPINFRA_INFERENCE_URL": "https://api.deepinfra.com/v1/inference",
+    "DEEPINFRA_VIDEO_TIMEOUT_MS": "600000, one deadline for send, render and body read"
+  },
+  "provider": {
+    "canonicalId": "deepinfra",
+    "aliases": [],
+    "existingRegistryEntry": "open-sse/providers/registry/deepinfra.js",
+    "existingServiceKinds": null,
+    "addServiceKinds": ["llm", "video"],
+    "serviceKindsNote": "the entry declares no serviceKinds today, which chatCapability.js reads as [\"llm\"]; registration sets [\"llm\", \"video\"] so chat stays listed",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "video": [
+      { "id": "Wan-AI/Wan2.2-T2V-A14B", "name": "Wan 2.2 T2V A14B", "acceptsImage": false },
+      { "id": "Wan-AI/Wan2.2-TI2V-5B", "name": "Wan 2.2 TI2V 5B", "acceptsImage": true },
+      { "id": "Wan-AI/Wan2.7-T2V", "name": "Wan 2.7 T2V", "acceptsImage": false },
+      { "id": "Lightricks/LTX-2.3-Distilled", "name": "LTX 2.3 Distilled", "acceptsImage": false }
+    ],
+    "dynamicDiscovery": "none in the source; static list only. The provider's existing /v1/openai/models fetcher lists chat models and must not feed video"
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://api.deepinfra.com/v1/inference/{model}", "synchronous": true }
+  },
+  "responseFormats": { "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { deepinfraVideoAdapter } and add `deepinfra: deepinfraVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/deepinfra.js",
+      "change": "set serviceKinds [\"llm\", \"video\"] and the four video model rows (kind: video) from DEEPINFRA_VIDEO_MODELS; keep alias deepinfra, authType apikey, Bearer transport and the chat modelsFetcher; no videoConfig (no async /v1/videos ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the DeepInfra video kind after registration"
+    }
+  ]
+}

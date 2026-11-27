@@ -1,0 +1,44 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": ["open-sse/config/videoRegistry.ts", "open-sse/handlers/videoGeneration.ts", "open-sse/executors/veoaifree-web.ts"],
+    "registryEntry": { "id": "veoaifree-web", "alias": "veo-free", "baseUrl": "https://veoaifree.com/wp-admin/admin-ajax.php", "authType": "none", "authHeader": "none", "format": "veoaifree-web" }
+  },
+  "exports": {
+    "index.js": ["default adapter", "createVeoAiFreeVideoAdapter", "config", "buildRequest", "sessionCookie", "USER_AGENT"]
+  },
+  "provider": {
+    "canonicalId": "veoaifree-web",
+    "aliases": ["veo-free"],
+    "serviceKinds": ["video"],
+    "models": ["veo", "seedance"],
+    "existingDefinition": "open-sse/providers/registry/veoaifree-web.js: endpoint, alias, noAuth, video service kind and both models already present; no definition addition needed",
+    "connectionModes": "Preserve existing connections. Anonymous is supported. Selected providerSpecificData.cookie / wordpress_logged_in* then apiKey can supply a WordPress session; OAuth tokens are never converted to cookies or bearer headers. No global session cache. Selected credential proxy options are retained."
+  },
+  "endpoints": {
+    "nonce": "GET https://veoaifree.com; User-Agent and Referer; no Cookie (source behavior); merge Set-Cookie into this call's selected session",
+    "submit": "POST https://veoaifree.com/wp-admin/admin-ajax.php; application/x-www-form-urlencoded; action=veo_video_generator, nonce, prompt, totalVariations=1, aspectRatio, actionType=full-video-generate",
+    "poll": "POST same AJAX endpoint; action=veo_video_generator, nonce, sceneData, actionType=final-video-results",
+    "auth": "Registry none/none; optional selected WordPress Cookie only on AJAX requests; Origin https://veoaifree.com and Referer https://veoaifree.com/; no Authorization",
+    "redirects": "manual; every redirect refused",
+    "discovery": "Static source registry models veo and seedance; no dynamic model discovery endpoint exists in the pinned source. Nonce acquisition is dynamic session setup, not model discovery.",
+    "artifacts": "Return the first public HTTPS URL without downloading. No cookies or authorization sent to artifacts. No MP4 or content-type claim. Literal private/reserved hosts rejected using local isBlockedHost. No DNS lookup needed because no artifact fetch occurs."
+  },
+  "integration": {
+    "handler": "open-sse/handlers/videoGenerationCore.js: generateWithAdapter consumes generate({model,body,credentials,signal,log}); success response/accounting and error acceptedJob",
+    "futureRegistration": "Serial registration can import the default adapter into open-sse/handlers/videoProviders/index.js under veoaifree-web and veo-free; inspect/remove the legacy executor fallback separately. No production import added here.",
+    "publicRoute": "/v1/video/generations",
+    "asyncJobRoute": "Not registered in /v1/videos",
+    "tests": "Only the isolated staging registration boundary describe block depends on absence from the shared adapter registry."
+  },
+  "subset": {
+    "inputs": "text prompt, models veo or seedance, n=1, stream=false, response_format=url; aspect_ratio or size must be VIDEO_ASPECT_RATIO_LANDSCAPE or VIDEO_ASPECT_RATIO_PORTRAIT; conflicting values rejected",
+    "outputs": "URL only, no download/base64/MP4 verification; source native base64 artifact behavior deliberately not advertised",
+    "limits": "10,000 character prompt, 64 KiB upstream text, 30 s per network-and-body call, 660 s total including polling, 30 polls 20 s apart; test options can reduce bounds",
+    "accounting": "Unknown cost and duration; one returned video only on success. Any error after invoking submit retains acceptedJob conservatively, even explicit provider refusal. No automatic replay or credential rotation; connection identity stays with the caller.",
+    "unsupported": ["base64 artifacts", "image-to-video", "reference images", "streaming", "duration", "seed", "audio options", "multiple variations", "other models", "arbitrary request fields"]
+  }
+}

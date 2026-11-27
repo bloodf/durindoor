@@ -87,4 +87,16 @@ Canonical aliases use the target model's provider-scoped capabilities and limits
 
 Context values are exact integers. `1050000`, `1048576`, and `1000000` describe different windows. Account entitlement can impose a smaller usable window, such as a plan-specific Kimi Coding limit. Catalog availability alone does not prove inference access.
 
+## Provider thinking setting
+
+Each provider's page has a thinking setting. It changes a request before translation:
+
+- `auto` leaves the request unchanged.
+- `none` removes every thinking and effort control, so no reasoning field reaches the provider and the provider applies its own default. That covers Claude `thinking` and `output_config.effort`, `reasoning_effort`, `reasoningEffort`, the Responses `reasoning` object, Ollama `think`, Qwen `enable_thinking` and `thinking_budget`, `thinkingLevel`/`thinking_level`, and Gemini `thinkingConfig`/`thinking_config`, including inside `generationConfig` and a Gemini CLI `request` envelope. Other fields, such as `output_config.format` or `generationConfig.temperature`, are kept. Use `none` for providers that reject any reasoning field. To ask for thinking to be turned off explicitly, use `off`.
+- `off` sends `thinking: { type: "disabled" }` when the request has no `thinking` field, and also removes `output_config.effort`, which would otherwise turn adaptive thinking back on. Other `output_config` fields are kept. A request that sets `thinking` itself is sent unchanged.
+- `on` sends a 10000-token thinking budget when the request has no `thinking` field.
+- An effort level sets `reasoning_effort` when the request has none, and replaces a request that asks for thinking without a level.
+
+Under `none` and `off`, an effort taken from a model ID suffix is never applied. A `model(level)` suffix is a request override and keeps its own precedence. See [Request a Claude effort as a model ID suffix](../features/model-auto-sync.mdx#request-a-claude-effort-as-a-model-id-suffix).
+
 See [API](./api.mdx) for request fields and [Troubleshooting](../troubleshooting.mdx#input-exceeds-context-window) for recovery.

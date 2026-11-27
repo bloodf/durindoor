@@ -8,7 +8,7 @@ import { dothooshFamilyFormats } from "../providers/dothooshCatalog.js";
 import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
 import { extractThinking } from "../translator/concerns/thinkingUnified.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 export { PROVIDER_MODELS };
 
@@ -209,23 +209,71 @@ export function resolveRequestedModelTier(thinkingIntent, body = null, provider 
 /**
  * Provider-level thinking override from dashboard settings, applied only when
  * the client did not set the matching field. Returns a new body.
- * on/off -> body.thinking; none strips thinking fields; levels -> reasoning_effort.
+ * on/off -> body.thinking; none strips every thinking/effort field; levels -> reasoning_effort.
  * A level also replaces a client intent that names none (bare adaptive, `auto`),
  * except on native passthrough, which forwards the client's thinking fields as-is.
  */
 export function applyProviderThinkingOverride(body, providerThinking, { passthrough = false } = {}) {
   const mode = providerThinking?.mode;
   if (!mode || mode === "auto") return body;
-  if (mode === "none") {
-    // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
-    // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
-    const { thinking: _thinking, reasoning_effort: _effort, reasoning: _reasoning, ...rest } = body;
-    return rest;
-  }
+  // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
+  // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
+  if (mode === "none") return stripThinkingControls(body);
   if (mode === "on") return body.thinking ? body : { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
-  if (mode === "off") return body.thinking ? body : { ...body, thinking: { type: "disabled" } };
+  // output_config.effort outranks `thinking` in extractThinking, so the injected
+  // disable must drop it or adaptive thinking comes back (#2676).
+  if (mode === "off") return body.thinking ? body : { ...withNested(body, "output_config", omitKeys(body.output_config, ["effort"])), thinking: { type: "disabled" } };
   if (!passthrough && isUnlevelledThinking(body)) return replaceUnlevelledThinking(body, mode);
   return body.reasoning_effort ? body : { ...body, reasoning_effort: mode };
+}
+
+// Every top-level spelling extractThinking reads as thinking intent.
+const TOP_LEVEL_THINKING_KEYS = [
+  "thinking", "reasoning_effort", "reasoningEffort", "reasoning", "think",
+  "enable_thinking", "thinking_budget", "thinkingLevel", "thinking_level",
+  "thinkingConfig", "thinking_config"
+];
+const GEMINI_THINKING_KEYS = ["thinkingConfig", "thinking_config"];
+
+/** Copy of `obj` without `keys`, or undefined when nothing else is left. */
+function omitKeys(obj, keys) {
+  if (!isRecord(obj)) return obj;
+  if (!keys.some((key) => key in obj)) return obj;
+  const rest = Object.fromEntries(Object.entries(obj).filter(([key]) => !keys.includes(key)));
+  return Object.keys(rest).length ? rest : undefined;
+}
+
+function withNested(obj, key, value) {
+  if (value === obj[key]) return obj;
+  const { [key]: _drop, ...rest } = obj;
+  return value === undefined ? rest : { ...rest, [key]: value };
+}
+
+/** Gemini generationConfig/generation_config without its thinking config. */
+function stripGeminiConfigs(obj) {
+  let out = obj;
+  for (const key of ["generationConfig", "generation_config"]) {
+    if (out[key]) out = withNested(out, key, omitKeys(out[key], GEMINI_THINKING_KEYS));
+  }
+  return out;
+}
+
+/**
+ * Provider `none`: remove every thinking/effort control extractThinking
+ * accepts (Claude `thinking` and `output_config.effort`, OpenAI/Responses
+ * effort, Ollama `think`, Qwen, Gemini thinking configs, including the
+ * Gemini CLI `request` envelope). Unrelated keys, such as the rest of
+ * `output_config` or `generationConfig`, are kept; an object left empty is dropped.
+ */
+function stripThinkingControls(body) {
+  let out = omitKeys(body, TOP_LEVEL_THINKING_KEYS) || {};
+  if (out.output_config) out = withNested(out, "output_config", omitKeys(out.output_config, ["effort"]));
+  out = stripGeminiConfigs(out);
+  if (isRecord(out.request)) {
+    const request = omitKeys(out.request, GEMINI_THINKING_KEYS);
+    out = withNested(out, "request", request && stripGeminiConfigs(request));
+  }
+  return out;
 }
 
 /** "Think, level unspecified". `between_tools` is excluded: it names a thinking mode. */

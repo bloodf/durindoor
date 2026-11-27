@@ -353,7 +353,8 @@ export function createUcVideoAdapter(options = {}) {
         accounting.nativeUnits.videoSeconds = seconds;
         accounting.meta.videoSecondsSource = "response-duration";
       }
-      const item = { url: result.url, format: "mp4", ...(result.jobId ? { request_id: result.jobId } : {}) };
+      const item = { url: result.url, format: "mp4" };
+      if (result.jobId) item.request_id = result.jobId;
       const payload = { created: Math.floor(Date.now() / 1000), data: [item] };
       return {
         success: true,

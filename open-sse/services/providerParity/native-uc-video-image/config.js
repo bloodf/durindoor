@@ -26,6 +26,8 @@
 // consumer-app path the fork retired in #1241 (closed not planned); its
 // endpoints are recorded here as evidence and never called.
 
+import { isString } from "../../../../src/shared/utils/typeChecks.js";
+
 export const UC_PROVIDER_ID = "uc-direct";
 export const UC_ALIAS = "ucd";
 /** OmniRoute's media registry key; the fork has no `uc` provider (#1241). */
@@ -122,7 +124,7 @@ export const UC_MAX_RETRY_DELAY_MS = 30_000;
 
 /** Strip one source routing prefix; returns the REST model id. */
 export function ucModelId(model) {
-  const text = typeof model === "string" ? model.trim() : "";
+  const text = isString(model) ? model.trim() : "";
   const prefix = UC_MODEL_PREFIXES.find((p) => text.startsWith(p));
   return prefix ? text.slice(prefix.length) : text;
 }

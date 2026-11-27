@@ -42,7 +42,9 @@ export const ucReadHeaders = (token) => ({ [UC_AUTH_HEADER]: token });
 /** Accounting for work UC may have taken (and may bill) whose outcome is not known. */
 export function ucAcceptedJob(modality, jobState = "accepted", jobId = null) {
   const base = mediaAccounting(null, UC_PROVIDER_ID, modality);
-  return { ...base, costSource: "accepted-job", meta: { jobState, ...(jobId ? { jobId } : {}) } };
+  const meta = { jobState };
+  if (jobId) meta.jobId = jobId;
+  return { ...base, costSource: "accepted-job", meta };
 }
 
 export const withAcceptedJob = (result, modality, jobState, jobId) => ({ ...result, acceptedJob: ucAcceptedJob(modality, jobState, jobId) });

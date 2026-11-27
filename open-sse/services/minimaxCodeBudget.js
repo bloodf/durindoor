@@ -5,6 +5,7 @@
 // open-sse/executors/minimaxCodeGateway.ts and minimax-code.ts (MIT), with the same defaults
 // and the same `MINIMAX_CODE_*` environment names. The values are read on every call so an
 // operator can change them without a restart.
+import { MAX_TIMER_DELAY_MS } from "../config/runtimeConfig.js";
 import { isRecord } from "../../src/shared/utils/typeChecks.js";
 
 /** Context window the gateway answers in; also the ceiling for the input estimate. */
@@ -53,9 +54,22 @@ export function resolveMinimaxCodeMaxTokens(body, env = process.env) {
     ?? positiveInteger(env.MINIMAX_CODE_MAX_TOKENS) ?? MINIMAX_CODE_DEFAULT_MAX_TOKENS;
 }
 
-/** `MINIMAX_CODE_GATEWAY_TIMEOUT_MS`; zero, negative or non-numeric values fall back to the default. */
+const capDelay = (ms) => Math.min(ms, MAX_TIMER_DELAY_MS);
+
+/** `MINIMAX_CODE_GATEWAY_TIMEOUT_MS`, else `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS`, else 100000 ms. */
 export function resolveMinimaxCodeTimeoutMs(env = process.env) {
-  return positiveInteger(env.MINIMAX_CODE_GATEWAY_TIMEOUT_MS) ?? MINIMAX_CODE_DEFAULT_TIMEOUT_MS;
+  return capDelay(
+    positiveInteger(env.MINIMAX_CODE_GATEWAY_TIMEOUT_MS)
+      ?? positiveInteger(env.MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS)
+      ?? MINIMAX_CODE_DEFAULT_TIMEOUT_MS
+  );
+}
+
+/** `MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS`, falling back to the MiniMax Code call timeout (upstream #5889). */
+export function resolveMinimaxCodeResponseHeadersTimeoutMs(env = process.env) {
+  return capDelay(
+    positiveInteger(env.MINIMAX_CODE_RESPONSE_HEADERS_TIMEOUT_MS) ?? resolveMinimaxCodeTimeoutMs(env)
+  );
 }
 
 /** `MINIMAX_CODE_GATEWAY_RETRIES`: 0 turns the retry off, default 1, capped at 3. */

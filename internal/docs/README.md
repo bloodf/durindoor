@@ -23,11 +23,13 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [OmniRoute security-audit applicability (#1150)](./omniroute-security-audit-1150.md)
 - [OmniRoute open-PR working notes (#1073)](./omniroute-open-prs-1073.md)
 - [Claude Code sign-in comparison (#2034)](./claude-signin-parity-2034.md)
+- [OmniRoute current sign-in/provider delta (release/v3.8.55, #2034)](./parity-omni-d3f06-refresh.md)
 - [OpenCode Go DeepSeek effort tiers (#2034)](./opencode-go-effort-parity-2034.md)
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)
 - [NoTrack developer API provider (#2034)](./notrack-2034.md)
+- [Firefly consumer browser contract (#2034)](./firefly-consumer-browser-contract.md)
 - [Session capture storage and retention (#1131)](./session-capture-1131.md)
 
 Keep implementation details, source ownership, compatibility constraints, porting decisions, evidence limits, and validation procedures here. Keep public pages concise, with complete setup steps, supported behavior, limits, and recovery instructions. When behavior changes, update both audiences where relevant.
@@ -40,6 +42,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 
 ### Provider parity and sign-in investigations
 
+- [Antigravity current model inventory (1127)](./antigravity-current-models-1127.md)
 - [adapta-t3-web-cookie-parity-2034.md](./adapta-t3-web-cookie-parity-2034.md)
 - [aistudio-relay-parity-2034.md](./aistudio-relay-parity-2034.md)
 - [amazon-q-signin-parity-2034.md](./amazon-q-signin-parity-2034.md)
@@ -83,6 +86,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [oauth-native-esm.md](./oauth-native-esm.md)
 - [openference-oauth.md](./openference-oauth.md)
 - [orcarouter-signin-parity-2034.md](./orcarouter-signin-parity-2034.md)
+- [Provider parity reports (1127): Antigravity](./parity-agy-1127.md), [catalog](./parity-catalog-1127.md), [CLI](./parity-cli-1127.md), and [web](./parity-web-1127.md)
 - [perplexity-web-2034.md](./perplexity-web-2034.md)
 - [provider-parity-cliproxyapi.md](./provider-parity-cliproxyapi.md)
 - [provider-parity-closed-omniroute.md](./provider-parity-closed-omniroute.md)
@@ -197,6 +201,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [deploy-gates.md](./deploy-gates.md)
 - [deployment-mode.md](./deployment-mode.md)
 - [image-cache-20828-investigation.md](./image-cache-20828-investigation.md)
+- [image-refresh-dispatch-health.md](./image-refresh-dispatch-health.md)
 - [integration-cdfb0c5-follow-up.md](./integration-cdfb0c5-follow-up.md)
 - [documentation-plan.md](./documentation-plan.md)
 - [local-ci.md](./local-ci.md)

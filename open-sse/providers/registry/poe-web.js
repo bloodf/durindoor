@@ -1,0 +1,36 @@
+// Poe Web: a signed-in poe.com session, registered with the `poe-web` executor.
+// See docs/providers/poe-web.md.
+//
+// Ported from OmniRoute 9671192011beb2d7f83979f40be488c5da8772b9,
+// open-sse/executors/poe-web.ts and src/shared/constants/providers/web-cookie.ts (MIT).
+// This identity is separate from the `poe` API-key provider.
+export const POE_WEB_ORIGIN = 'https://www.poe.com';
+
+export const POE_WEB_MODELS = Object.freeze([
+  ['poe-default', 'Assistant'], ['gpt-4o', 'GPT-4o'], ['gpt-4-turbo', 'GPT-4-Turbo'],
+  ['claude-3.5-sonnet', 'Claude-3.5-Sonnet'], ['claude-3-opus', 'Claude-3-Opus'],
+  ['gemini-2.0-flash', 'Gemini-2.0-Flash'], ['llama-3-70b', 'Llama-3-70B'], ['mixtral-8x22b', 'Mixtral-8x22B'],
+].map(([id, bot]) => Object.freeze({ id, name: bot, bot })));
+
+// Dashboard import (Cookie header, cURL or HAR) and extension capture of the one
+// `p-b` cookie of the origin the executor sends it to. The pinned source defines
+// no sign-in contract, so there is no `webLogin` profile.
+export const poeWebCookieProfile = Object.freeze({
+  origin: POE_WEB_ORIGIN,
+  cookieNames: Object.freeze(['p-b']),
+});
+
+// Discovery is the pinned static mapping, not a claim about account access.
+export function discoverPoeWebModels() {
+  return POE_WEB_MODELS.map(({ id, name }) => ({ id, name, toolCalling: false }));
+}
+
+export default {
+  id: 'poe-web', alias: 'poew', priority: 264,
+  display: { name: 'Poe Web', icon: 'auto_awesome', color: '#6C3AED', textIcon: 'PW', website: 'https://poe.com' },
+  category: 'webCookie', authType: 'cookie', authHint: 'Paste the p-b cookie value from poe.com.',
+  cookieImport: poeWebCookieProfile,
+  serviceKinds: ['llm'],
+  transport: { baseUrl: 'https://www.poe.com/api/gql_POST', format: 'openai', executor: 'poe-web', authType: 'cookie' },
+  models: discoverPoeWebModels(),
+};

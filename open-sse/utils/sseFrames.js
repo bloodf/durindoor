@@ -1,3 +1,4 @@
+import { isRecord } from "../../src/shared/utils/typeChecks.js";
 import { MAX_PENDING_SSE_LINE_BYTES } from "./pendingSseLine.js";
 
 const sharedEncoder = new TextEncoder();
@@ -45,6 +46,18 @@ export function parseSseFrame(frame) {
     if (value.startsWith(" ")) value = value.slice(1);
     if (field === "data") dataLines.push(value);
     else if (field === "event") eventName = value || null;
+  }
+  // CLIProxyAPI 47f18e4d82bd TestAntigravityStreamSurfacesTrailingBackendError:
+  // a backend may append plain JSON after SSE output. Only complete error
+  // records qualify; arbitrary JSON, malformed noise and SSE metadata do not.
+  // The incremental reader applies its byte cap before this parse.
+  if (!dataLines.length && frame.trimStart().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(frame);
+      if (isRecord(parsed) && isRecord(parsed.error)) {
+        dataLines.push(JSON.stringify({ error: parsed.error }));
+      }
+    } catch { /* non-SSE noise is not an error envelope */ }
   }
   return {
     eventName,
@@ -129,7 +142,7 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
         const firstLength = buffer.slice(delimiterStart, delimiterStart + 2) === "\r\n" ? 2 : 1;
         const secondLength = buffer.slice(delimiterStart + firstLength, delimiterStart + firstLength + 2) === "\r\n" ? 2 : 1;
         const end = delimiterStart + firstLength + secondLength;
-        Object.defineProperty(frame, "wire", { value: buffer.slice(offset, end) });
+        Object.defineProperty(frame, "wire", { value: !/^\s*\{/.test(raw) || !frame.hasData ? buffer.slice(offset, end) : `data: ${frame.data}\n\n` });
         offset = end;
         return frame;
       });
@@ -139,7 +152,12 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
       const frames = this.push("", true);
       const tail = pendingChunks.join("");
       reset();
-      return tail ? [...frames, parseSseFrame(tail)] : frames;
+      if (!tail) return frames;
+      const frame = parseSseFrame(tail);
+      if (frame.hasData && tail.trimStart().startsWith("{")) {
+        Object.defineProperty(frame, "wire", { value: `data: ${frame.data}\n\n` });
+      }
+      return [...frames, frame];
     },
   };
 }

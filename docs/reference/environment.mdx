@@ -30,6 +30,7 @@ Native default `DATA_DIR` remains `~/.9router` on macOS/Linux and `%APPDATA%\9ro
 | `PORT` | `20128` | Listen port for the gateway and dashboard. |
 | `HOSTNAME` | `127.0.0.1` from `custom-server.js` when unset | Bind address. CLI default bind is `0.0.0.0`. Docker Compose sets `0.0.0.0` inside the container. |
 | `HOST` | `127.0.0.1` | Host used when deriving the provider-plugin manifest URL. |
+| `CODEX_OAUTH_CALLBACK_BIND_ALL` | unset (`127.0.0.1`) | Set to `true` to bind the temporary Codex OAuth callback listener on port `1455` to `0.0.0.0` inside a Docker bridge container (pair with `-p 127.0.0.1:1455:1455` on the host). Non-loopback `Origin` headers are still rejected. |
 | `DASHBOARD_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. |
 | `API_PORT` | falls back to `PORT` then `20128` | Alternate port for the manifest URL. |
 | `NODE_ENV` | unset (treated as not `production` / not `development` unless set) | `production` for production starts. Gates shutdown, intercept-path overrides, and similar. |
@@ -176,8 +177,8 @@ Most OAuth providers use built-in client metadata. Set these only when you run y
 | `GEMINI_OAUTH_CLIENT_SECRET` | empty | Gemini CLI OAuth client secret. |
 | `GEMINI_CLIENT_ID` | unset | Alternate Gemini client id used by model-list helpers. |
 | `GEMINI_CLIENT_SECRET` | unset | Alternate Gemini client secret for those helpers. |
-| `ANTIGRAVITY_OAUTH_CLIENT_ID` | empty | Antigravity OAuth client id. |
-| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | empty | Antigravity OAuth client secret. |
+| `ANTIGRAVITY_OAUTH_CLIENT_ID` | unset (built-in desktop client) | Your own Antigravity OAuth client id. Set together with the secret; one alone, or a blank value, fails sign-in. |
+| `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | unset (built-in desktop client) | Your own Antigravity OAuth client secret. Set together with the id. |
 | `CLAUDE_CODE_CLIENT_VERSION` | `2.1.312` | Claude Code version sent in the Claude `User-Agent` and billing header. Ignored unless it is a short header-safe token (`[A-Za-z0-9][A-Za-z0-9._-]{0,31}`). Read at startup. |
 | `KIMI_CODING_OAUTH_CLIENT_ID` | registry `clientId` | Kimi Coding device-code client id. |
 | `GHE_COPILOT_OAUTH_CLIENT_ID` | registry `clientId` | GitHub Enterprise Copilot device-code client id, for a GHES instance with its own OAuth app. |

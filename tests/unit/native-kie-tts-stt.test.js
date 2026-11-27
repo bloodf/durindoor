@@ -104,9 +104,9 @@ afterEach(() => {
 // Staging-only negatives. Registration replaces this block with positive
 // registry identity checks; every other block works staged or registered.
 describe("staging state (isolated)", () => {
-  it("stays unregistered and leaves the existing kie chat entry unchanged", () => {
+  it("keeps speech unregistered and preserves registered KIE chat and media", () => {
     expect(getTtsAdapter("kie")).toBeNull();
-    expect(kieRegistry.serviceKinds).toEqual(["llm"]);
+    expect(kieRegistry.serviceKinds).toEqual(["llm", "image", "video"]);
     expect(kieRegistry.ttsConfig).toBeUndefined();
     expect(kieRegistry.sttConfig).toBeUndefined();
     expect(kieRegistry.authType).toBe("apikey");

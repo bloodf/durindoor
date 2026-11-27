@@ -1,3 +1,5 @@
+import { KIE_IMAGE_MODELS, KIE_VIDEO_MODELS, KIE_VIDEO_UNSUPPORTED_MODELS } from "../../services/providerParity/native-kie-video-image/config.js";
+
 export default {
   id: "kie",
   priority: 70,
@@ -17,6 +19,8 @@ export default {
     authHeader: "bearer",
   },
   models: [
+    ...KIE_IMAGE_MODELS.map(({ id, name }) => ({ id, name, kind: "image" })),
+    ...KIE_VIDEO_MODELS.filter(({ id }) => !KIE_VIDEO_UNSUPPORTED_MODELS.includes(id)).map(({ id, name }) => ({ id, name, kind: "video" })),
     { id: "claude-opus-4-8", name: "Claude 4.8 Opus" },
     { id: "claude-opus-4-7", name: "Claude 4.7 Opus" },
     { id: "claude-sonnet-4-6", name: "Claude 4.6 Sonnet" },
@@ -29,6 +33,6 @@ export default {
     { id: "gemini-3-flash", name: "Gemini 3 Flash" },
     { id: "gemini-3-5-flash", name: "Gemini 3.5 Flash" },
   ],
-  serviceKinds: ["llm"],
+  serviceKinds: ["llm", "image", "video"],
   defaultContextLength: 128000,
 };

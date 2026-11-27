@@ -1,3 +1,5 @@
+import falVideo from "../../services/providerParity/native-fal-ai-video/adapter.js";
+import { kieVideoAdapter } from "../../services/providerParity/native-kie-video-image/index.js";
 import { createMediaRegistry, lookupMediaAdapter } from "../mediaRegistry.js";
 // Synchronous video generation adapters for /v1/video/generations: each one
 // submits a job, polls it within fixed bounds and returns the result once.
@@ -11,6 +13,9 @@ import { agnesVideoAdapter as agnes } from "../../services/providerParity/native
 import vertex from "../../services/providerParity/native-vertex-video/adapter.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
+  "fal-ai": falVideo,
+  fal: falVideo,
+  kie: kieVideoAdapter,
   alibaba,
   ali: alibaba,
   renderhour,

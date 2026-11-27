@@ -1,3 +1,4 @@
+import falMusicAdapter from "../services/providerParity/native-fal-ai-music/adapter.js";
 import { createErrorResult } from "../utils/error.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
@@ -176,6 +177,11 @@ export async function handleMusicGenerationCore({ provider, model, body, credent
   if (isVertexMusicProvider(provider)) {
     if (requestId) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Vertex music generation is synchronous and has no request id to poll");
     return handleVertexMusicGeneration({ model, body, credentials, signal });
+  }
+  // Native fal jobs return a final artifact; cookie job polling does not apply.
+  if (provider === "fal-ai" || provider === "fal") {
+    if (requestId) return createErrorResult(HTTP_STATUS.BAD_REQUEST, "fal music has no public request id to poll");
+    return falMusicAdapter.generate({ model, body, credentials, signal });
   }
   const config = lookupMediaAdapter(MUSIC_ADAPTERS, provider);
   if (!config) return createErrorResult(HTTP_STATUS.BAD_REQUEST, `Provider '${provider}' does not support music generation`);

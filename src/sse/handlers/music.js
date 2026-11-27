@@ -11,7 +11,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { enforceApiKeyModelPolicy, recordAcceptedJobUsage, recordApiKeyUsage, recordApiKeyUsageForResponse } from "../services/apiKeyPolicy.js";
 import { retractAcceptedUsage } from "@/lib/db/repos/usageRepo.js";
 import * as log from "../utils/logger.js";
-import { handleComboChat } from "open-sse/services/combo.js";
+import { ACCEPTED_JOB_HEADER, handleComboChat } from "open-sse/services/combo.js";
 import { wantsDefaultRoute, resolveMediaRoute, defaultRouteComboOptions } from "../services/mediaRoutes.js";
 import { isString } from "../../shared/utils/typeChecks.js";
 
@@ -133,20 +133,24 @@ async function handleSingleModelMusic(body, modelStr, request, apiKey, apiKeyId,
       return result.response;
     }
 
-    // A synchronous call the provider may have billed (Vertex Lyria) is recorded
+    // A synchronous call the provider may have billed (fal or Vertex Lyria) is recorded
     // once on this account with unknown cost and never resubmitted elsewhere.
     if (result.acceptedJob) {
       await recordAcceptedJobUsage(apiKey, { ...usage(result.acceptedJob), apiKeyId });
       if (!request.signal?.aborted) {
-        await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
+        await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch, ...(result.quotaExhausted === true ? { quotaExhausted: true } : null) });
       }
-      return abortedResponse(request.signal) || result.response || errorResponse(result.status, result.error);
+      // Carry the accepted outcome across combo fallback as well as account selection.
+      const response = abortedResponse(request.signal) || result.response || errorResponse(result.status, result.error);
+      const headers = new Headers(response.headers);
+      headers.set(ACCEPTED_JOB_HEADER, "1");
+      return new Response(response.body, { status: response.status, headers });
     }
 
     const abortedAttempt = abortedResponse(request.signal);
     if (abortedAttempt) return abortedAttempt;
 
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch });
+    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, null, { usedCredential: credentials.accessToken || credentials.apiKey || null, ...dispatch, ...(result.quotaExhausted === true ? { quotaExhausted: true } : null) });
     if (shouldFallback) {
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;

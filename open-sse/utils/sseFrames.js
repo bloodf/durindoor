@@ -166,3 +166,29 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
 export function formatClaudeSseError(error) {
   return `event: error\ndata: ${JSON.stringify({ type: "error", error })}\n\n`;
 }
+
+/**
+ * Decode a byte stream once and fan complete frames out to synchronous observers.
+ * Own one dispatcher per byte-stream stage: translated bytes need a new one.
+ * The caller retains and forwards the original bytes without re-encoding them.
+ */
+export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder() } = {}) {
+  const reader = createSseFrameReader();
+  const dispatch = (frames) => {
+    for (const frame of frames) {
+      let payload;
+      if (frame.hasData && frame.data.trim() !== "[DONE]") {
+        try { payload = JSON.parse(frame.data); } catch { /* non-JSON SSE data */ }
+      }
+      const observation = { ...frame, wire: frame.wire ?? frame.raw, payload };
+      for (const observe of observers) observe(observation);
+    }
+  };
+  return {
+    push(bytes) { dispatch(reader.push(decoder.decode(bytes, { stream: true }))); },
+    flush() {
+      dispatch(reader.push(decoder.decode()));
+      dispatch(reader.flush());
+    },
+  };
+}

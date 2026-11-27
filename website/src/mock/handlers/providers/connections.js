@@ -221,6 +221,17 @@ export default function registerConnections(router, { store }) {
     return { message: "Connection deleted successfully" };
   });
 
+  // Firefly host setup launches a headed browser on the DurinDoor host. The public demo has no
+  // host browser, so every action reports that control is unavailable; no opened or signed-in state.
+  const fireflySetup = ({ params }) => {
+    const connection = store.find(CONNECTIONS, params.id);
+    if (!connection || connection.provider !== "adobe-firefly-web") return notFound("Firefly browser connection not found");
+    return reply({ error: "Host browser control is unavailable in the public demo. Setup runs only on a self-hosted DurinDoor host with a display.", outcome: "unavailable", open: false }, { status: 501 });
+  };
+  router.get("/api/providers/:id/firefly-setup", fireflySetup);
+  router.post("/api/providers/:id/firefly-setup", fireflySetup);
+  router.delete("/api/providers/:id/firefly-setup", fireflySetup);
+
   router.post("/api/providers/:id/test", ({ params }) => {
     const connection = store.find(CONNECTIONS, params.id);
     if (!connection) return notFound("Connection not found");

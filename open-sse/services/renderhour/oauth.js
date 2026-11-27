@@ -1,6 +1,7 @@
-// RenderHour subscription sign-in: the token protocol. STAGED: nothing in the
-// OAuth provider map, the refresh handler table or any executor imports this
-// module yet. See docs/providers/renderhour.md.
+// RenderHour subscription sign-in: the token protocol. The OAuth provider map
+// (src/lib/oauth/providers.js), the refresh handler table
+// (open-sse/services/tokenRefresh.js) and the media credential choice
+// (./media.js) use it. See docs/providers/renderhour.md.
 //
 // Protocol adapted from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper
@@ -9,6 +10,9 @@
 //   - src/lib/oauth/constants/oauth.ts (RENDERHOUR_CONFIG endpoints, S256)
 //   - open-sse/services/tokenRefresh/providers/renderhour.ts (rotating refresh, failure codes)
 //   - open-sse/config/constants.ts (OAUTH_ENDPOINTS.renderhour)
+//   - open-sse/utils/publicCreds.ts (renderhour_id, the public client id)
+// The same files are unchanged at release/v3.8.55,
+// d3f06ea668109f8ac1feadfcae25f6ff9b873b5f.
 //
 // What the source states: an authorization code grant with PKCE (S256) for a
 // public client (no secret, no scope), a form-encoded token endpoint, a userinfo
@@ -18,9 +22,10 @@
 // depends on them except the offline tests.
 //
 // Fork deviations:
-//   - No embedded client id. The pinned source ships an OmniRoute-named client
-//     id; DurinDoor does not present itself as that client. The operator sets
-//     RENDERHOUR_OAUTH_CLIENT_ID; without it sign-in is unavailable.
+//   - RENDERHOUR_OAUTH_CLIENT_ID overrides the public client (the source has no
+//     override). A set but blank or invalid value is a configuration error: no
+//     authorize URL, exchange or refresh request is made, and the public client
+//     is not substituted.
 //   - Fixed endpoints on https://renderhour.com. Redirects are refused, so no
 //     code, verifier, refresh token or access token follows a 3xx elsewhere.
 //   - Token response bodies are validated; error text from RenderHour is never
@@ -39,6 +44,8 @@ export const RENDERHOUR_OAUTH_ENDPOINTS = Object.freeze({
 });
 export const RENDERHOUR_CODE_CHALLENGE_METHOD = "S256";
 export const RENDERHOUR_CLIENT_ID_ENV = "RENDERHOUR_OAUTH_CLIENT_ID";
+// The published PKCE client (no secret) the source ships. Public by design.
+export const RENDERHOUR_PUBLIC_CLIENT_ID = "rhc_omniroute";
 export const RENDERHOUR_OAUTH_PROVIDER = "renderhour";
 
 // Refresh this long before the stored expiry (same lead as the shared default).
@@ -77,20 +84,25 @@ export class RenderHourOAuthError extends Error {
 }
 
 /**
- * The operator-provided public client id, or null. A value that does not look
- * like a RenderHour client id (rhc_…) is ignored rather than sent.
+ * The client id for authorize, exchange and refresh. The public client applies
+ * only when the override variable is absent. A set override is used when it
+ * looks like a RenderHour client id (rhc_…); otherwise the result is null, so
+ * the OAuth step fails locally instead of switching to another client.
  */
 export function resolveRenderHourClientId(env = process.env) {
   const raw = env?.[RENDERHOUR_CLIENT_ID_ENV];
-  if (!isString(raw)) return null;
-  const value = raw.trim();
+  if (raw === undefined) return RENDERHOUR_PUBLIC_CLIENT_ID;
+  const value = isString(raw) ? raw.trim() : "";
   return CLIENT_ID_RE.test(value) ? value : null;
 }
+
+// Static text: the rejected value is never repeated.
+const CLIENT_ID_CONFIG_ERROR = `${RENDERHOUR_CLIENT_ID_ENV} is blank or not a RenderHour client id`;
 
 function requireClientId(clientId) {
   if (isString(clientId) && CLIENT_ID_RE.test(clientId)) return clientId;
   throw new RenderHourOAuthError(
-    `RenderHour sign-in is not configured. Set ${RENDERHOUR_CLIENT_ID_ENV} to a RenderHour client id.`,
+    `RenderHour sign-in is misconfigured: ${CLIENT_ID_CONFIG_ERROR}. Remove it to use the default client, or set a valid rhc_ client id.`,
     { code: "not_configured", status: 400 }
   );
 }
@@ -288,7 +300,7 @@ export function mapRenderHourTokens(tokens, extra) {
 export async function refreshRenderHourToken(refreshToken, log = null, { clientId = resolveRenderHourClientId(), ...options } = {}) {
   if (!validToken(refreshToken)) return null;
   if (!isString(clientId) || !CLIENT_ID_RE.test(clientId)) {
-    log?.warn?.("TOKEN_REFRESH", "RenderHour refresh skipped: no client id configured");
+    log?.warn?.("TOKEN_REFRESH", `RenderHour refresh skipped: ${CLIENT_ID_CONFIG_ERROR}`);
     return null;
   }
   return dedupRefresh(

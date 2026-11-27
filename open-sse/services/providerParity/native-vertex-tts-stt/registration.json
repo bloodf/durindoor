@@ -1,0 +1,111 @@
+{
+  "name": "native-vertex-tts-stt",
+  "status": "staged-unregistered",
+  "refs": "#2034",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "license": "MIT",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/executors/vertexMedia.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts"
+    ]
+  },
+  "provider": {
+    "canonicalId": "vertex",
+    "aliases": ["vx"],
+    "existingRegistryFile": "open-sse/providers/registry/vertex.js",
+    "existingServiceKinds": ["llm", "imageToText"],
+    "addServiceKinds": ["tts", "stt"],
+    "notTouched": ["vertex-partner"],
+    "connectionModes": [
+      "Service Account JSON in apiKey (bearer minted by services/tokenRefresh.js refreshVertexToken; project from project_id)",
+      "ADC authorized_user JSON in apiKey (bearer from refreshGoogleToken; project from quota_project_id or providerSpecificData.projectId)",
+      "pre-set accessToken (project from providerSpecificData.projectId)",
+      "Express API key in apiKey (project-less global publisher endpoint, ?key=)"
+    ],
+    "scope": {
+      "location": "providerSpecificData.location, default us-central1; global, us, eu or <area>-<region><n>",
+      "project": "never inferred from a raw API key; no project-discovery probe is sent"
+    }
+  },
+  "services": {
+    "tts": {
+      "format": "vertex-gemini-tts",
+      "config": "VERTEX_TTS_CONFIG",
+      "adapter": "default export of speech.js (createVertexTtsAdapter())",
+      "models": [
+        "gemini-3.1-flash-tts-preview",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-pro-preview-tts",
+        "gemini-3.8-flash-tts",
+        "gemini-3.8-flash-lite-tts"
+      ],
+      "defaultVoice": "Kore",
+      "voiceDiscovery": "listVertexTtsVoices() (Gemini prebuilt voices, handlers/ttsProviders/gemini.js fetchGeminiVoices)",
+      "responseFormats": ["wav", "pcm", "json"],
+      "endpoint": {
+        "bearer": "POST https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent (global: aiplatform.googleapis.com; us/eu: aiplatform.{us|eu}.rep.googleapis.com)",
+        "express": "POST https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent?key={key}",
+        "headers": ["Content-Type: application/json", "Authorization: Bearer {token} (bearer modes only)"]
+      }
+    },
+    "stt": {
+      "format": "vertex-gemini",
+      "config": "VERTEX_STT_CONFIG",
+      "transcriber": "transcribeVertex (createVertexSttTranscriber())",
+      "models": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+      "responseFormats": ["json", "text"],
+      "formFields": ["file", "model", "language", "prompt", "response_format"],
+      "translations": false,
+      "endpoint": "same generateContent endpoint and headers as tts"
+    }
+  },
+  "exports": {
+    "index.js": "re-exports everything below",
+    "config.js": [
+      "VERTEX_AUDIO_PROVIDER_ID", "VERTEX_AUDIO_PROVIDER_ALIASES", "VERTEX_AUDIO_SOURCE_BASE_URL", "VERTEX_AUDIO_DEFAULT_LOCATION",
+      "VERTEX_TTS_FORMAT", "VERTEX_STT_FORMAT", "VERTEX_TTS_MODELS", "VERTEX_STT_MODELS", "VERTEX_TTS_MODEL_IDS", "VERTEX_STT_MODEL_IDS",
+      "VERTEX_TTS_DEFAULT_VOICE", "VERTEX_TTS_RESPONSE_FORMATS", "VERTEX_STT_RESPONSE_FORMATS", "VERTEX_STT_AUDIO_MIME_TYPES",
+      "VERTEX_TTS_CONFIG", "VERTEX_STT_CONFIG", "listVertexAudioModels", "bounds: VERTEX_TTS_MAX_*, VERTEX_STT_MAX_*, VERTEX_AUDIO_*_TIMEOUT_MS"
+    ],
+    "auth.js": ["resolveVertexAudioAuth", "vertexGenerateContentRequest", "vertexLocationOrigin", "VERTEX_GLOBAL_ORIGIN", "boundedWait"],
+    "request.js": ["sendVertexGenerateContent", "vertexAudioAcceptedJob", "vertexAbortedResult", "vertexUnusableResult"],
+    "speech.js": [
+      "default (TTS adapter)", "createVertexTtsAdapter", "buildVertexSpeechRequest", "listVertexTtsVoices", "normalizeVertexAudio",
+      "vertexUsageAccounting", "extractSpeechInstruction", "buildGeminiSpeechStyle", "pcmToWav", "parsePcmSampleRate", "stripC2paMetadata"
+    ],
+    "transcription.js": [
+      "transcribeVertex", "createVertexSttTranscriber", "buildVertexTranscriptionRequest", "extractVertexTranscript",
+      "resolveVertexAudioMime", "vertexTranscriptionInstruction"
+    ]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/vertex.js",
+      "change": "add ttsConfig: VERTEX_TTS_CONFIG, sttConfig: VERTEX_STT_CONFIG, serviceKinds += tts, stt (models carry kind tts/stt)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "TTS_ADAPTERS.vertex = default export of speech.js (adapter route; synthesizeViaConfig has no vertex-gemini-tts handler)"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "case \"vertex-gemini\": return transcribeVertex({ model, formData, credentials, kind, signal, log, proxyOptions }) before the default branch"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "pass requestedResponseFormat for vertex (as for REFRESHED_BEFORE_DISPATCH providers) so an explicit mp3 is refused instead of read as the default; acceptedJob already recorded by onAccountFailure"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "add onAccountFailure/abort handling that records result.acceptedJob (recordAcceptedJobUsage) and stops account fallback; today the STT route ignores acceptedJob and would retry another account"
+    }
+  ],
+  "accounting": {
+    "success": "provider usageMetadata tokens only; cost null, costStatus unknown (no Vertex audio tariff is applied)",
+    "acceptedJob": "costSource accepted-job, jobState submit-unknown | completed-unread | completed-unusable; never replayed"
+  }
+}

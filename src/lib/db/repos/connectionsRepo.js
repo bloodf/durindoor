@@ -7,6 +7,7 @@ import { extractCookieValue } from "../../../shared/utils/cookieValue.js";
 import { hasConflictingCodexAccountIds, resolveCodexAccountId } from "open-sse/shared/codexAccountId.js";
 import { providerCredentialBytesMatch, providerRefreshContextMatches } from "@/shared/utils/providerCredentialContext";
 import { QUOTA_WRITE_LOCK_SQL } from "./quotaSql.js";
+import { selectRenderHourConnection } from "../../oauth/services/renderhour.js";
 import { activeModelUpstreamError, modelUpstreamUpdate } from "@/shared/utils/modelLockUpstream.js";
 import { ACCOUNT_ERROR_MESSAGE_MAX_CHARS } from "open-sse/config/runtimeConfig.js";
 import {
@@ -427,7 +428,12 @@ export async function createProviderConnection(data, { shouldCommit, requireNewN
       existing = all.find((c) => c.authType === "oauth" &&
       c.providerSpecificData?.chathubPath === data.providerSpecificData.chathubPath) || null;
     }
-    if (!existing && data.authType === "oauth" && data.email && data.provider !== "copilot-m365-web") {
+    // RenderHour plan sign-ins match on the account id (userinfo `sub`); email
+    // decides only when an id is missing, and two different ids never match.
+    if (data.authType === "oauth" && data.provider === "renderhour") {
+      existing = selectRenderHourConnection(all, data);
+    }
+    if (!existing && data.authType === "oauth" && data.email && data.provider !== "copilot-m365-web" && data.provider !== "renderhour") {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find((c) => {

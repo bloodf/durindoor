@@ -7,6 +7,7 @@ import elevenlabs, { fetchElevenLabsVoices, fetchElevenLabsModels } from "./elev
 import openai from "./openai.js";
 import openrouter from "./openrouter.js";
 import gemini, { fetchGeminiVoices } from "./gemini.js";
+import renderhour from "./renderhour.js";
 import { FORMAT_HANDLERS } from "./genericFormats.js";
 import { parseModelVoice } from "./_base.js";
 
@@ -19,6 +20,8 @@ export const TTS_ADAPTERS = createMediaRegistry({
   openai,
   openrouter,
   gemini,
+  // Submit-and-poll speech job; RenderHour picks the voice and container.
+  renderhour,
 });
 
 export function getTtsAdapter(provider) {

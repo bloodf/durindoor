@@ -1,3 +1,4 @@
+import { FIREFLY_WEB, deleteFireflyConnection, saveFireflyConnection } from "@/lib/fireflyWebUiConnection.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { globalCircuitManager } from "@/lib/routing/connectionCircuitState.js";
 import { resolveOpenCodeServer } from "open-sse/services/opencodeServer.js";
@@ -22,6 +23,7 @@ import { omitMaskedProviderSecrets, pickSafeProviderSpecificData, stripConnectio
 import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js";
 import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
+import { adobeFireflyCredentialFields } from "open-sse/services/adobeFireflyApi/auth.js";
 import {
   compatibleNodeConflictMessage,
   resolveCompatibleNodeIdentity
@@ -253,6 +255,45 @@ export async function GET(request, { params }) {
   }
 }
 
+const filled = (value) => value != null && value !== "";
+
+/**
+ * Adobe Firefly Services credential replacement. A new client secret or a new
+ * supplied access token replaces the stored credential and clears the other
+ * mode's fields, so a stale secret can never shadow a supplied token (or the
+ * reverse). A client ID or expiry change alone re-checks the stored credential
+ * in its current mode. Only what the caller supplied is stored; nothing is
+ * minted and Adobe is never called.
+ *
+ * @returns {{ fields?: object, error?: string }} fields to merge into the update
+ */
+function adobeFireflyCredentialUpdate(existing, body, updateData) {
+  const incomingClientId = isObject(body.providerSpecificData) && Object.hasOwn(body.providerSpecificData, "clientId") ?
+  body.providerSpecificData.clientId :
+  undefined;
+  const storedMode = filled(existing.apiKey) ? "client_secret" : "access_token";
+  const replaces = filled(body.apiKey) || filled(body.accessToken);
+  const touches = replaces || body.credentialMode !== undefined || Object.hasOwn(body, "expiresAt") ||
+  incomingClientId !== undefined && incomingClientId !== existing.providerSpecificData?.clientId;
+  if (!touches) return { fields: {} };
+  if (looksLikeEncryptedEnvelope(body.accessToken)) return { error: encryptedEnvelopeCredentialMessage() };
+  if (!replaces && body.credentialMode !== undefined && body.credentialMode !== storedMode) {
+    return { error: "Supply the credential for the new Adobe Firefly Services mode" };
+  }
+  const clientId = (updateData.providerSpecificData || existing.providerSpecificData || {}).clientId;
+  const supplied = replaces ?
+  { credentialMode: body.credentialMode, apiKey: body.apiKey, accessToken: body.accessToken, expiresAt: body.expiresAt } :
+  storedMode === "client_secret" ?
+  { credentialMode: storedMode, apiKey: existing.apiKey, expiresAt: body.expiresAt } :
+  { credentialMode: storedMode, accessToken: existing.accessToken, expiresAt: Object.hasOwn(body, "expiresAt") ? body.expiresAt : existing.expiresAt };
+  try {
+    const { apiKey, accessToken, expiresAt } = adobeFireflyCredentialFields({ ...supplied, clientId });
+    return { fields: { apiKey: apiKey || "", accessToken, expiresAt } };
+  } catch (error) {
+    return { error: error.message };
+  }
+}
+
 // PUT /api/providers/[id] - Update connection
 export async function PUT(request, { params }) {
   try {
@@ -310,6 +351,8 @@ export async function PUT(request, { params }) {
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
+
+    if (existing.provider === FIREFLY_WEB) return saveFireflyConnection(request, body, existing);
 
     if (existing.provider === "devin-cli-agentic" && apiKey) {
       return NextResponse.json({ error: "Sign in to Devin CLI outside DurinDoor" }, { status: 400 });
@@ -537,6 +580,12 @@ export async function PUT(request, { params }) {
       if (updateData.providerSpecificData) updateData.providerSpecificData.baseUrl = endpoint.baseUrl;
     }
 
+    if (existing.provider === "adobe-firefly-api") {
+      const adobe = adobeFireflyCredentialUpdate(existing, body, updateData);
+      if (adobe.error) return NextResponse.json({ error: adobe.error }, { status: 400 });
+      Object.assign(updateData, adobe.fields);
+    }
+
     const updated = await updateProviderConnection(id, updateData);
     // Activation clears persisted model locks; invalidate any in-flight probe
     // only after that update succeeds. Quota and reauthentication remain separate.
@@ -570,9 +619,16 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const existing = await getProviderConnectionById(id);
 
-    const deleted = await deleteProviderConnection(id);
-    if (!deleted) {
-      return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    if (existing?.provider === FIREFLY_WEB) {
+      // Close and await this connection's own setup browser before the row
+      // (its ownership record) disappears; refuse the delete otherwise.
+      const refused = await deleteFireflyConnection(request, id, () => deleteProviderConnection(id));
+      if (refused) return refused;
+    } else {
+      const deleted = await deleteProviderConnection(id);
+      if (!deleted) {
+        return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+      }
     }
 
     if (existing) notifyQuotaAutoPingSettingChanged(existing.provider, id, false);

@@ -1,0 +1,81 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/job.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-agnes-video-image/index.js",
+  "exports": {
+    "agnesImageAdapter": "default image adapter instance (guarded generate adapter)",
+    "agnesVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract)",
+    "createAgnesImageAdapter": "factory; options { timeoutMs, now } for tests",
+    "createAgnesVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "buildAgnesImageRequest": "(model, body) -> Agnes image body; throws status 400",
+    "buildAgnesVideoRequest": "(model, body) -> { request, preset }; throws status 400",
+    "runAgnesVideoJob": "submit + bounded poll; { success, url, accounting } or error result with acceptedJob",
+    "agnesAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "agnesPublicUrl": "public https URL check used for results and inputs",
+    "AGNES_IMAGE_MODELS": "image catalog metadata",
+    "AGNES_VIDEO_MODELS": "video catalog metadata with jobPreset",
+    "AGNES_IMAGE_SIZES": "supported image sizes",
+    "AGNES_VIDEO_JOB_PRESETS": "the two source job presets"
+  },
+  "provider": {
+    "canonicalId": "agnes",
+    "aliases": ["agnes"],
+    "existingRegistryEntry": "open-sse/providers/registry/agnes.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["image", "video"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "notAdded": { "agnes-cn": "no image or video entry in the pinned source" }
+  },
+  "models": {
+    "image": [
+      { "id": "agnes-image-2.0-flash", "name": "Agnes Image 2.0 Flash", "inputModalities": ["text", "image"] },
+      { "id": "agnes-image-2.1-flash", "name": "Agnes Image 2.1 Flash", "inputModalities": ["text", "image"] },
+      { "id": "agnes-image-2.5-flash", "name": "Agnes Image 2.5 Flash", "inputModalities": ["text", "image"] }
+    ],
+    "video": [
+      { "id": "agnes-video-v2.0", "name": "Agnes Video V2.0", "jobPreset": "agnes-video-job" },
+      { "id": "agnes-video-2.5-flash", "name": "Agnes Video 2.5 Flash", "jobPreset": "agnes-video-2.5-job" },
+      { "id": "agnes-video-2.5", "name": "Agnes Video 2.5", "jobPreset": "agnes-video-2.5-job" }
+    ],
+    "dynamicDiscovery": "none for media in the source; static lists only. The chat /v1/models fetcher stays on the llm kind."
+  },
+  "endpoints": {
+    "image": { "method": "POST", "url": "https://apihub.agnes-ai.com/v1/images/generations" },
+    "videoSubmit": { "method": "POST", "url": "https://apihub.agnes-ai.com/v1/videos" },
+    "videoStatusV20": { "method": "GET", "url": "https://apihub.agnes-ai.com/agnesapi?video_id={id}&model_name={model}" },
+    "videoStatusV25": { "method": "GET", "url": "https://apihub.agnes-ai.com/v1/videos/{id}" }
+  },
+  "responseFormats": { "image": ["url", "b64_json"], "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { agnesImageAdapter } and add `agnes: agnesImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { agnesVideoAdapter } and add `agnes: agnesVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "open-sse/providers/registry/agnes.js",
+      "change": "serviceKinds [\"llm\", \"image\", \"video\"]; add image and video model rows (kind) from AGNES_IMAGE_MODELS / AGNES_VIDEO_MODELS; imageConfig { baseUrl: AGNES_IMAGE_URL }; no videoConfig (the /v1/videos proxy has no accepted-job ledger)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list Agnes image and video kinds after registration"
+    }
+  ]
+}

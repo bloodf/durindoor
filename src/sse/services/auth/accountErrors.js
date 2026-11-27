@@ -59,6 +59,17 @@ function isRequestLargerThanRateLimit(status, errorText) {
   return Boolean(match) && Number(match[2]) > Number(match[1]);
 }
 
+/**
+ * chatCore renders a plain-text failure as "[403]: <message>". The anchored quota
+ * detector reads a leading "[" as JSON, so a 403 free-quota sentence ("The free
+ * quota has been exhausted...", OmniRoute PR #21440) never matched without a parsed
+ * body. Drop only that rendered 403 prefix; other statuses keep their text unchanged.
+ */
+function quotaDetectionText(status, errorText) {
+  if (Number(status) !== 403 || !isString(errorText)) return errorText;
+  return errorText.trim().replace(/^\[403\]:\s*/, "");
+}
+
 function githubMonthlyResetMs(status, errorText, provider) {
   if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
   if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
@@ -367,7 +378,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // the selected connection, with no reset unless one was proven.
   const quota = context?.quotaExhausted === true ?
   { exhausted: true, resetAtMs: null } :
-  detectQuotaExhaustion(context?.errorBody ?? errorText);
+  detectQuotaExhaustion(context?.errorBody ?? quotaDetectionText(status, errorText));
   if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
     let hinted = Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null;
     if (hinted && context?.rateLimitEvidence?.relativeCountdown) {
@@ -416,7 +427,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // resetsAtMs applies, so an explicit quota-exhausted 429 keeps its real reset
   // window instead of collapsing to the short transient bench.
   const parsedEvidenceReset = Number(fallbackResult.rateLimitEvidence?.resetAtMs);
-  const rawProviderReset = callerEvidence ?
+  // An Anthropic credit/usage-limit 400 is a billing pause (OmniRoute PR #21440).
+  // Only the "regain access on <date>" reset it states may set the deadline: a
+  // short Retry-After or caller hint must not end that pause early.
+  const rawProviderReset = fallbackResult.creditsExhausted ?
+  fallbackResult.quotaResetAtMs ?? null :
+  callerEvidence ?
   callerEvidence.resetAtMs :
   Number.isFinite(parsedEvidenceReset) && parsedEvidenceReset > now ?
   parsedEvidenceReset :
@@ -429,7 +445,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   let normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
   ag429 ? now + ag429.delay : null);
-  if (normalizedReset !== null && effectiveEvidence?.relativeCountdown && !githubResetAtMs) {
+  if (normalizedReset !== null && effectiveEvidence?.relativeCountdown && !githubResetAtMs && !fallbackResult.creditsExhausted) {
     normalizedReset = Math.min(normalizedReset, await quotaProseDeadlineMs(now));
   }
   // A private endpoint ignores long reset hints and the backoff ladder.

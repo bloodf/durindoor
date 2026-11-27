@@ -26,6 +26,7 @@ Start with [`AGENTS.md`](../../AGENTS.md) for the contributor contract. [`PRODUC
 - [OmniRoute current sign-in/provider delta (release/v3.8.55, #2034)](./parity-omni-d3f06-refresh.md)
 - [OmniRoute auth and provider delta (through c71f006, #2034)](./parity-omni-c71f006-refresh.md)
 - [OpenCode Go DeepSeek effort tiers (#2034)](./opencode-go-effort-parity-2034.md)
+- [Anthropic credit and usage-limit cooldown (OmniRoute PR #21440, #2034)](./anthropic-usage-limit-2034.md)
 - [Vertex AI service-account and ADC comparison (#2034)](./vertex-signin-parity-2034.md)
 - [Copilot Web and Microsoft 365 Copilot Web cookie lifecycle (#2034)](./copilot-cookie-lifecycle-2034.md)
 - [Provider cookie capture extension (#2034)](./provider-cookie-capture-extension-2034.md)

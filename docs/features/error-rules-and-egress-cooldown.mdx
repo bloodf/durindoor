@@ -42,6 +42,16 @@ Declaring a rule for a provider is the opt-in. There is no separate allowlist to
 - **Cline daily free limit.** A 429 that says `Try again in 19h 39m` (also `19h39m`, `39m`, `45s`) benches the refused model for that stated wait, capped at seven days, instead of retrying after a few seconds. Other Cline models on the connection keep routing. A missing or malformed wait uses the normal 429 backoff, and other providers ignore the phrase.
 - **Kilo paid model.** A 401, 402 or 403 whose error code is exactly `PAID_MODEL_AUTH_REQUIRED` (on `kilo-gateway` or `kilocode`) locks only the refused model for two minutes, so free models on the same connection keep routing. If the refused model id is not in the provider's catalog, no lock is written and the request moves on to the next candidate. A message about an invalid or expired key keeps the normal authentication handling.
 
+### Built-in rules for Anthropic credit and spend limits
+
+These apply to `anthropic`, `claude` and `anthropic-compatible-*` connections, and are checked before operator error rules.
+
+- **Credit balance or spend limit.** An HTTP 400 whose Anthropic error message (type `invalid_request_error` or `billing_error`) begins with `Your credit balance is too low` or `You have reached your specified API usage limits` locks the whole connection, every model, and moves to the next account or combo member. The same message with no JSON envelope, with or without a leading `[400]: `, counts too. A message that only quotes either phrase later in the text is treated as a rejected request, so the key stays in rotation.
+- **Stated reset.** When the spend-limit message says `You will regain access on 2026-12-01 at 00:00 UTC`, the lock lasts until that time, capped at seven days. `Z`, `UTC`, `+02:00` or `+0200` zones and a `T` separator are accepted, and a time without a zone is read as UTC. An impossible date or time, an out-of-range offset, or a time already past is ignored. Then, as for the credit message, the normal terminal billing cooldown applies, which is two minutes unless **retry delay** is set for the provider. `Retry-After` or a short `retry in 60s` hint never ends the lock early.
+- Other providers, OpenRouter-style aggregators that relay Anthropic's envelope, and other status codes keep their existing handling.
+
+A 403 whose message begins with `The free quota has been exhausted` puts the connection in a quota lockout (`quotaLockout.status: "quota_exhausted"`), also when the body was not JSON and reached DurinDoor as `[403]: The free quota has been exhausted...`. Without a stated reset, the lockout is not lifted automatically: reactivate the connection or replace its credential once the quota is restored. Permission and product-access 403s keep the normal 403 cooldown.
+
 ## Quota countdown ceiling
 
 A 429 body can state its reset only as a countdown, such as `Resets in 76h25m43s` or `reset after 1h2m3s`. DurinDoor locks the account for that wait, but never longer than `settings.quotaProseMaxCooldownMs`. The default is `21600000` (6 hours). `PATCH /api/settings` accepts 60000 (1 minute) to 86400000 (24 hours).

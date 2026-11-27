@@ -106,13 +106,13 @@ export class AntigravityService {
   }
 
   /**
-   * Fetch Project ID and Tier from loadCodeAssist API
+   * Fetch Project ID and Tier with the native client mode (upstream #141).
    */
   async loadCodeAssist(accessToken) {
     const response = await fetch(this.config.loadCodeAssistEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
-      body: JSON.stringify({ metadata: this.getMetadata() })
+      body: JSON.stringify({ metadata: this.getMetadata(), mode: 1 })
     });
 
     if (!response.ok) {
@@ -148,7 +148,7 @@ export class AntigravityService {
     const response = await fetch(this.config.onboardUserEndpoint, {
       method: "POST",
       headers: this.getApiHeaders(accessToken),
-      body: JSON.stringify({ tierId, metadata: this.getMetadata() })
+      body: JSON.stringify({ tierId, metadata: this.getMetadata(), mode: 1 })
     });
 
     if (!response.ok) {

@@ -16,6 +16,7 @@ import {
 } from "../../antigravity/leaseSql.js";
 import { assertNoActiveQuotaReservationsForTargetSync } from "./quotaReservationsRepo.js";
 import { resolveFallbackModelScope } from "open-sse/services/fallbackScope.js";
+import { isQuotaLockoutActive } from "open-sse/services/accountFallback.js";
 import { ORCAROUTER_ID, credentialHint } from "open-sse/providers/orcarouterCatalog.js";
 import { QUOTA_MAX_CLOCK_SKEW_MS } from "@/shared/constants/quota";
 import {
@@ -934,6 +935,10 @@ export async function clearProviderConnectionFallbackState(id, {
         if (!key.startsWith(MODEL_LOCK_PREFIX) || key.startsWith(`${MODEL_LOCK_PREFIX}webfetch:`) || key.startsWith(`${MODEL_LOCK_PREFIX}websearch:`) || acceptedScopes.some((candidate) => key === `${MODEL_LOCK_PREFIX}${candidate}`)) continue;
         if (Date.parse(value || "") <= eventMs) merged[key] = null;
       }
+      // Request success clears an expired quota lockout, never an active or indefinite one.
+      if (existing.quotaLockout?.status && !isQuotaLockoutActive(existing, eventMs)) {
+        merged.quotaLockout = null;
+      }
     }
     const activeLocks = Object.entries(merged).some(
       ([key, value]) => key.startsWith(MODEL_LOCK_PREFIX) &&
@@ -941,12 +946,13 @@ export async function clearProviderConnectionFallbackState(id, {
       !key.startsWith(`${MODEL_LOCK_PREFIX}websearch:`) &&
       activeTimestamp(value, eventMs)
     );
+    const activeQuotaLockout = isQuotaLockoutActive(merged, eventMs);
     // A durable reauth_required state means the OAuth refresh token is dead and
     // only a fresh OAuth reconnect can revive the account. Ordinary request
     // success must NOT silently clear it back to "active" — otherwise the row
     // looks healthy while every request 401s. Only a successful OAuth
     // replacement (updateProviderConnection with testStatus:"active") clears it.
-    if (!webFetch && !webSearch && !isDurableReauthPinned(existing) && !activeLocks && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
+    if (!webFetch && !webSearch && !isDurableReauthPinned(existing) && !activeLocks && !activeQuotaLockout && (Date.parse(existing.lastErrorAt || "") || 0) <= eventMs) {
       Object.assign(merged, {
         testStatus: "active",
         lastError: null,

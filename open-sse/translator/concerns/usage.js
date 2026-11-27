@@ -122,15 +122,28 @@ export function toOpenAIUsage(raw, kind) {
  * Prompt side of a non-streaming Claude usage object. OpenAI `prompt_tokens`
  * includes the cache counts nested in `prompt_tokens_details`; Claude
  * `input_tokens` excludes them and reports them in their own fields.
+ * Keeps an explicitly reported zero cache-read counter distinct from omission
+ * across Chat and Responses-shaped cache-read fields (OmniRoute #20949).
  */
 export function toClaudePromptUsage(usage) {
   const count = (value) => Number.isFinite(value) && value > 0 ? value : 0;
-  if (!usage?.prompt_tokens) return { input_tokens: n(usage?.input_tokens) };
-  const cacheRead = count(usage.prompt_tokens_details?.cached_tokens);
+  const reportedCacheRead = [
+    usage?.prompt_tokens_details?.cached_tokens,
+    usage?.cached_tokens,
+    usage?.input_tokens_details?.cached_tokens,
+    usage?.cache_read_input_tokens
+  ].find((value) => isNumber(value) && Number.isFinite(value) && value >= 0);
+  if (!usage?.prompt_tokens) {
+    return {
+      input_tokens: n(usage?.input_tokens),
+      ...(reportedCacheRead === 0 ? { cache_read_input_tokens: 0 } : null)
+    };
+  }
+  const cacheRead = reportedCacheRead !== undefined ? Math.min(usage.prompt_tokens, reportedCacheRead) : 0;
   const cacheCreation = count(usage.prompt_tokens_details?.cache_creation_tokens);
   return {
     input_tokens: Math.max(0, usage.prompt_tokens - cacheRead - cacheCreation),
-    ...(cacheRead ? { cache_read_input_tokens: cacheRead } : null),
+    ...(reportedCacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : null),
     ...(cacheCreation ? { cache_creation_input_tokens: cacheCreation } : null)
   };
 }

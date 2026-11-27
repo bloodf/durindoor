@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { requestSettings } from "@/store/settingsStore";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -32,9 +34,7 @@ function IncumbentModelAutoSyncPanel({ providerId, hasConnection, onModelsChange
   const load = useCallback(async (generation = operation.current) => {
     const request = ++loadRequest.current;
     try {
-      const res = await fetch(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Catalog refresh failed");
-      const data = await res.json();
+      const data = await api.get(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store", defaultHeaders: false });
       if (generation !== operation.current || request !== loadRequest.current) return;
       const next = data?.providers?.[providerId] || null;
       setStatus(next ? { ...next, intervalHours: data.intervalHours } : null);
@@ -87,15 +87,15 @@ function IncumbentModelAutoSyncPanel({ providerId, hasConnection, onModelsChange
     setBusy(true);
     setMessage("Syncing models…");
     try {
-      const res = await fetch("/api/models/auto-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId })
+      let httpError = null;
+      const data = await api.post("/api/models/auto-sync", { provider: providerId }).catch((error) => {
+        if (!error.status) throw error;
+        httpError = error;
+        return error.body;
       });
-      const data = await res.json().catch(() => null);
       if (generation !== operation.current) return;
       const result = data?.results?.[0];
-      if (!res.ok) setMessage(data?.error || "Sync failed.");
+      if (httpError) setMessage(data?.error || "Sync failed.");
       else if (result?.status === "synced") setMessage(`Synced ${result.modelCount} models.`);
       else setMessage(result?.error ? `Sync failed: ${result.error}. The previous model list is kept.` : "Nothing to sync.");
       await load(generation);
@@ -176,10 +176,8 @@ function V5ModelAutoSyncPanel({ providerId, hasConnection, onModelsChange }) {
 
   const load = useCallback(async (generation, signal, { keepMessage = false, preserveError = false } = {}) => {
     try {
-      const res = await fetch(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store", signal });
+      const data = await api.get(`/api/models/auto-sync?provider=${encodeURIComponent(providerId)}`, { cache: "no-store", signal, defaultHeaders: false }).catch((error) => { if (error.status) throw new Error("Model sync status is unavailable."); throw error; });
       if (signal?.aborted || generation !== operation.current) return;
-      if (!res.ok) throw new Error("Model sync status is unavailable.");
-      const data = await res.json();
       const next = data?.providers?.[providerId];
       if (!isRecord(next) || !isBoolean(next.eligible) || !isBoolean(next.enabled)) {
         throw new Error("Model sync status is unavailable.");
@@ -240,16 +238,16 @@ function V5ModelAutoSyncPanel({ providerId, hasConnection, onModelsChange }) {
     setPhase("syncing");
     setMessage("Syncing models…");
     try {
-      const res = await fetch("/api/models/auto-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: providerId })
+      let httpError = null;
+      const data = await api.post("/api/models/auto-sync", { provider: providerId }).catch((error) => {
+        if (!error.status) throw error;
+        httpError = error;
+        return error.body;
       });
-      const data = await res.json().catch(() => null);
       if (generation !== operation.current) return;
       const result = data?.results?.[0];
-      const failed = !res.ok || result?.status === "failed" || Boolean(result?.error);
-      if (!res.ok) setMessage(data?.error || "Sync failed.");
+      const failed = Boolean(httpError) || result?.status === "failed" || Boolean(result?.error);
+      if (httpError) setMessage(data?.error || "Sync failed.");
       else if (result?.status === "synced") setMessage(`Synced ${result.modelCount} models.`);
       else setMessage(result?.error ? `Sync failed: ${result.error}. The previous model list is kept.` : "Nothing to sync.");
       if (failed) setPhase("error");

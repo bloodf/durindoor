@@ -5,11 +5,11 @@ Status: implementation in this worktree branch (`orq/tp5znk/abort-refresh-waits-
 ## Source and local base
 
 - **Exact upstream source**: OmniRoute [#21427](https://github.com/diegosouzapw/OmniRoute/pull/21427), pinned commit `af7b59d871fc3ac6ed2f69c410fe5db644eded0f` (`fix(sse): propagate client abort to token refresh retries and quota-share pre-hook`), inspected via read-only `gh api`. Subsequent upstream head `ac29c6493b2f2cb8c01f4a0d5cb8c27aee371aa6` (`fix(sse): persist proactive refresh on abort and preserve deadline abort reasons`) was also inspected read-only: its detached persistence fix is already satisfied locally (in untouched `providerCredentials.js` and our detached `chatCore.js` fallback), its hedge/passive-Codex changes are upstream-only, and deadline-reason (`BodyTimeoutError`) preservation in `sendRequest.js` remains out of this unit's planpaths.
-- **Exact local base**: `29d143ee80e22e70508da63d8253e750b71753dc` (`orq/tp5znk/integration`), scoped under Order 3 (`parity-abort-refresh-scope`) of [provider-next-gap-scope-nov27.md](provider-next-gap-scope-nov27.md).
+- **Exact local base**: `29d143ee80e22e70508da63d8253e750b71753dc` (`orq/tp5znk/integration`), scoped under Order 3 (`parity-abort-refresh-scope`) of [the historical scope report on its unmerged source branch](https://github.com/bloodf/durindoor/blob/24810ec5b3eab0cb7c00e7d4fbddf0a80e66e3e4/internal/docs/port-reports/provider-next-gap-scope-nov27.md).
 
 ## Scope and architectural contract
 
-Authoritative reuse pattern: `src/shared/services/providerCredentials.js` (`callerWait` and detached shared-refresh persistence) was left untouched and followed as the persistence-decoupling contract. Existing abort primitives (`requestAbortError` in `open-sse/executors/sendRequest.js` and `waitForRetryDelay` in `open-sse/executors/base.js`) were reused rather than adding an upstream-style `open-sse/utils/clientAbort.js` framework.
+The implementation follows the caller-wait and detached persistence contract while leaving `src/shared/services/providerCredentials.js` untouched. Refresh-specific wait helpers were added; this report does not claim they reuse a shared helper. No general `open-sse/utils/clientAbort.js` framework was added.
 
 Changed owned source files:
 

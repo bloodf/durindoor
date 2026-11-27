@@ -5,6 +5,12 @@ const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 export const CODEX_LOOPBACK_REDIRECT_URI = "http://localhost:1455/auth/callback";
 export const CLAUDE_MANUAL_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
 export const XAI_LOOPBACK_REDIRECT_URI = "http://127.0.0.1:56121/callback";
+// Built-in Antigravity desktop client callback (CLIProxyAPI
+// internal/auth/antigravity/auth.go @47f18e4d, CallbackPort 51121). The server
+// applies it at authorize time whenever no custom client is configured, for
+// local and remote dashboards alike, because the desktop client has no other
+// registered redirect. Kept equal to open-sse/providers/shared.js.
+export const ANTIGRAVITY_DESKTOP_REDIRECT_URI = "http://localhost:51121/oauth-callback";
 
 export function isLoopbackHostname(hostname) {
   return LOOPBACK_HOSTNAMES.has(String(hostname || "").trim().toLowerCase());

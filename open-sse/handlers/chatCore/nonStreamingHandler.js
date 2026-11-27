@@ -646,6 +646,10 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       }
       const sseError = createSSEErrorResult(errorPayload, credentials, sourceFormat);
       if (sseError) {
+        if (parsed?.upstreamPartialOutput) {
+          sseError.upstreamPartialOutput = true;
+          sseError.response.upstreamPartialOutput = true;
+        }
         appendLog({ status: `FAILED ${sseError.status}` });
         return sseError;
       }

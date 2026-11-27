@@ -386,7 +386,7 @@ export default function OAuthModal({
         xaiServerSide: flow.provider === "xai" && serverSide
       });
       const isLocalhost = browserIsLoopback;
-      const manualCallback = ["claude", "cline", "devin-desktop", "zed-hosted"].includes(flow.provider);
+      const manualCallback = new URL(data.authUrl).searchParams.get("redirect_uri") === "http://localhost:51121/oauth-callback" || ["claude", "cline", "devin-desktop", "zed-hosted"].includes(flow.provider);
       const canUsePopup = !manualCallback && (fixedProxyActive ||
       !FIXED_PORT_PROVIDERS.has(flow.provider) && isLocalhost);
       if (canUsePopup) {

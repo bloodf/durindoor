@@ -290,6 +290,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `inception` | openai | apikey | `https://api.inceptionlabs.ai/v1/chat/completions` |
 | `inference-net` |  | apikey | `https://api.inference.net/v1/chat/completions` |
 | `inner-ai` | openai | apikey | `https://chatapi.innerai.com/chat` |
+| `inner-ai-web` | openai | webCookie | `https://chatapi.innerai.com/chat` |
 | `internlm` | openai | apikey | `https://chat.intern-ai.org.cn/api/v1/chat/completions` |
 | `inworld` |  | apikey | `` |
 | `jembatanai` |  | apikey | `https://freeai.jembatanai.com/v1/chat/completions` |
@@ -399,6 +400,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `plamo` | openai | apikey | `https://api.platform.preferredai.jp/v1/chat/completions` |
 | `playht` |  | apikey | `` |
 | `poe` | openai | apikey | `https://api.poe.com/v1/chat/completions` |
+| `poe-web` | openai | webCookie | `https://www.poe.com/api/gql_POST` |
 | `poixe-ai` |  | apikey | `https://api.poixe.com/v1/chat/completions` |
 | `pollinations` | openai | free | `https://gen.pollinations.ai/v1/chat/completions` |
 | `poolside` |  | freeTier | `https://inference.poolside.ai/v1/chat/completions` |
@@ -475,7 +477,9 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `unorouter` |  | apikey | `https://api.unorouter.com/v1/chat/completions` |
 | `upstage` |  | apikey | `https://api.upstage.ai/v1/chat/completions` |
 | `v0-vercel` |  | apikey | `https://api.v0.dev/v1/chat/completions` |
+| `v0-vercel-web` | openai | webCookie | `https://v0.dev/api/chat` |
 | `venice` |  | apikey | `https://api.venice.ai/api/v1/chat/completions` |
+| `venice-web` | openai | webCookie | `https://outerface.venice.ai/api/inference/chat` |
 | `veoaifree-web` | openai | free | `https://veoaifree.com/wp-admin/admin-ajax.php` |
 | `vercel-ai-gateway` |  | apikey | `https://ai-gateway.vercel.sh/v1/chat/completions` |
 | `vertex` | vertex | freeTier | `https://aiplatform.googleapis.com` |

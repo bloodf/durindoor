@@ -2,7 +2,7 @@
 
 A small Manifest V3 extension that hands one signed-in provider session from your browser to your own DurinDoor dashboard. It implements the client side of the [provider cookie import contract](../../src/lib/providers/cookieImport/README.md). It is opt-in and one shot: nothing runs until you open its popup on a supported provider tab, paste a pairing and confirm.
 
-Supported: ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, TinyCMS Web and DeepSeek Web. The list and the approved cookie names (and, for TinyCMS and DeepSeek, the one localStorage item) are compiled into `providers.js` and checked against the dashboard contract by a unit test.
+Supported: ChatGPT Web, ChatGPT Web Codex, Claude Web, Gemini Web, Doubao Web, Z.ai Web, MaxAI, Arena, ChatPlayground, Perplexity Web, Grok Web, Muse Spark Web, Tencent Yuanbao Web, PromptQL, Notion AI Web, NoTrack Web, Tencent AI Studio Web, Blackbox Web, Conol Web, Poe Web, v0 Vercel Web, TinyCMS Web and DeepSeek Web. The list and the approved cookie names (and, for TinyCMS and DeepSeek, the one localStorage item) are compiled into `providers.js` and checked against the dashboard contract by a unit test.
 
 ## What it will and will not do
 

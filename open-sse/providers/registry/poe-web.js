@@ -12,13 +12,12 @@ export const POE_WEB_MODELS = Object.freeze([
   ['gemini-2.0-flash', 'Gemini-2.0-Flash'], ['llama-3-70b', 'Llama-3-70B'], ['mixtral-8x22b', 'Mixtral-8x22B'],
 ].map(([id, bot]) => Object.freeze({ id, name: bot, bot })));
 
-// Dashboard cookie import only (Cookie header, cURL or HAR): the `p-b` cookie of
-// the origin the executor sends it to. The pinned source defines no extension
-// capture or sign-in contract, so neither is configured.
+// Dashboard import (Cookie header, cURL or HAR) and extension capture of the one
+// `p-b` cookie of the origin the executor sends it to. The pinned source defines
+// no sign-in contract, so there is no `webLogin` profile.
 export const poeWebCookieProfile = Object.freeze({
   origin: POE_WEB_ORIGIN,
   cookieNames: Object.freeze(['p-b']),
-  extensionCapture: false,
 });
 
 // Discovery is the pinned static mapping, not a claim about account access.

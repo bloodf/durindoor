@@ -16,11 +16,11 @@ const execute = (apiKey, stream = false) => new V0VercelWebExecutor().execute({ 
 beforeEach(() => { wire.send.mockReset(); wire.billed.mockReset(); });
 
 describe("registered v0 web session", () => {
-  it("exposes scoped static discovery and a __vercel_session dashboard import profile, without extension or web login", () => {
+  it("exposes scoped static discovery and a __vercel_session import and extension profile, without web login", () => {
     expect(provider.id).toBe("v0-vercel-web");
     expect(hasSpecializedExecutor("v0-vercel-web")).toBe(true); expect(getExecutor("v0-vercel-web")).toBeInstanceOf(V0VercelWebExecutor);
     expect(discoverV0Models()).toEqual(provider.models);
-    expect(resolveCookieImportContract(cookieImportConfig(provider))).toEqual({ origin: "https://v0.dev", host: "v0.dev", extensionCapture: false, cookieNames: ["__vercel_session"], cookiePrefixes: [] });
+    expect(resolveCookieImportContract(cookieImportConfig(provider))).toEqual({ origin: "https://v0.dev", host: "v0.dev", extensionCapture: true, cookieNames: ["__vercel_session"], cookiePrefixes: [] });
     expect(provider.webLogin).toBeUndefined();
   });
   it("rejects missing, malformed, ambiguous and injected credentials before sending", async () => {

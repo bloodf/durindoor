@@ -10,10 +10,10 @@ const response = (text = 'answer', state = 'complete') => Response.json({ data: 
 const run = (args, fn = async () => response()) => executor.runSession(args, { sendBillable: fn });
 
 describe('registered Poe web session', () => {
-  it('offers only its static mapping, a p-b dashboard import profile and no API-key identity', () => {
+  it('offers only its static mapping, a p-b import and extension profile and no API-key identity', () => {
     expect(provider.id).toBe('poe-web');
     expect(hasSpecializedExecutor('poe-web')).toBe(true); expect(getExecutor('poe-web')).toBeInstanceOf(PoeWebExecutor); expect(getExecutor('poew')).toBe(getExecutor('poe-web'));
-    expect(resolveCookieImportContract(cookieImportConfig(provider))).toEqual({ origin: 'https://www.poe.com', host: 'www.poe.com', extensionCapture: false, cookieNames: ['p-b'], cookiePrefixes: [] });
+    expect(resolveCookieImportContract(cookieImportConfig(provider))).toEqual({ origin: 'https://www.poe.com', host: 'www.poe.com', extensionCapture: true, cookieNames: ['p-b'], cookiePrefixes: [] });
     expect(provider.webLogin).toBeUndefined();
     expect(discoverPoeWebModels()).toContainEqual({ id: 'gpt-4o', name: 'GPT-4o', toolCalling: false });
     expect(discoverPoeWebModels()).not.toBe(discoverPoeWebModels());

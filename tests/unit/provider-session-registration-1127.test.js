@@ -46,6 +46,8 @@ import { V0VercelWebExecutor, V0_CHAT_URL } from "../../open-sse/executors/v0-ve
 import { INNER_AI_WEB_CHAT_URL, INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_PROFILE_URL } from "../../open-sse/providers/registry/inner-ai-web.js";
 import { VENICE_WEB_CHAT_URL, VENICE_WEB_CLIENT_URL } from "../../open-sse/providers/registry/venice-web.js";
 import { WEB_COOKIE_PROVIDERS } from "../../src/shared/constants/providers.js";
+import { PROVIDERS as EXTENSION_PROVIDERS } from "../../extensions/provider-cookie-capture/providers.js";
+import { parsePairing } from "../../extensions/provider-cookie-capture/capture.js";
 import { buildImportCandidates, filterCandidateCookies, parseCookieHeaderValue, parseCurlCommand, parseHarDocument } from "../../src/shared/utils/cookieImportParser.js";
 import { POST as pair } from "../../src/app/api/providers/cookie-import/pairing/route.js";
 import { POST as importCookies } from "../../src/app/api/providers/cookie-import/route.js";
@@ -77,22 +79,22 @@ const accountOf = (table, value) => Object.entries(table).find(([, secret]) => s
 
 const CASES = {
   "inner-ai-web": {
-    executor: InnerAiWebExecutor, alias: "inaw", apiKeyTwin: "inner-ai", model: "gpt-4o",
+    executor: InnerAiWebExecutor, alias: "inaw", apiKeyTwin: "inner-ai", model: "gpt-4o", extension: false,
     origin: "https://app.innerai.com", cookie: (account) => ({ name: "token", value: INNER[account], domain: ".innerai.com" }),
     stored: (account) => `token=${INNER[account]}`, chatUrl: INNER_AI_WEB_CHAT_URL,
   },
   "poe-web": {
-    executor: PoeWebExecutor, alias: "poew", apiKeyTwin: "poe", model: "gpt-4o",
+    executor: PoeWebExecutor, alias: "poew", apiKeyTwin: "poe", model: "gpt-4o", extension: true,
     origin: "https://www.poe.com", cookie: (account) => ({ name: "p-b", value: POE[account], domain: ".poe.com" }),
     stored: (account) => `p-b=${POE[account]}`, chatUrl: POE_WEB_URL,
   },
   "venice-web": {
-    executor: VeniceWebExecutor, alias: "venw", apiKeyTwin: "venice", model: "venice-uncensored",
+    executor: VeniceWebExecutor, alias: "venw", apiKeyTwin: "venice", model: "venice-uncensored", extension: false,
     origin: "https://clerk.venice.ai", cookie: (account) => ({ name: "__client", value: VENICE[account], domain: ".clerk.venice.ai" }),
     stored: (account) => `__client=${VENICE[account]}`, chatUrl: VENICE_WEB_CHAT_URL,
   },
   "v0-vercel-web": {
-    executor: V0VercelWebExecutor, alias: null, apiKeyTwin: "v0-vercel", model: "v0-default",
+    executor: V0VercelWebExecutor, alias: null, apiKeyTwin: "v0-vercel", model: "v0-default", extension: true,
     origin: "https://v0.dev", cookie: (account) => ({ name: "__vercel_session", value: V0[account], domain: ".v0.dev" }),
     stored: (account) => `__vercel_session=${V0[account]}`, chatUrl: V0_CHAT_URL,
   },
@@ -251,8 +253,12 @@ describe("1127 web-session registration", () => {
     expect(twin.category).toBe("apikey");
     expect(getExecutor(apiKeyTwin)).not.toBe(getExecutor(id));
     expect(getExecutor(apiKeyTwin)).not.toBeInstanceOf(executor);
-    // Dashboard catalog: import profile on the provider's exact origin, extension capture off, no web login.
-    expect(WEB_COOKIE_PROVIDERS[id].cookieImport).toMatchObject({ origin: CASES[id].origin, extensionCapture: false, cookieNames: [CASES[id].cookie("a").name] });
+    // Dashboard catalog: import profile on the provider's exact origin and no web login. Extension
+    // capture only where the compiled extension table names the same origin and cookie.
+    const { extension } = CASES[id];
+    expect(WEB_COOKIE_PROVIDERS[id].cookieImport).toMatchObject({ origin: CASES[id].origin, extensionCapture: extension, cookieNames: [CASES[id].cookie("a").name] });
+    if (extension) expect(EXTENSION_PROVIDERS[id]).toMatchObject({ origin: CASES[id].origin, cookieNames: [CASES[id].cookie("a").name], cookiePrefixes: [] });
+    else expect(EXTENSION_PROVIDERS[id]).toBeUndefined();
     expect(WEB_COOKIE_PROVIDERS[id].webLogin).toBeUndefined();
     expect(typeof PROVIDER_MODELS_CONFIG[id]?.customResolver).toBe("function");
   });
@@ -291,6 +297,31 @@ describe("1127 web-session registration", () => {
     expect((await importConnection(id, "a", [{ ...CASES[id].cookie("a"), domain: "foreign.example" }])).response.status).toBe(400);
     const connection = await connectionFor(id, "a");
     expect(connection).toMatchObject({ provider: id, authType: "cookie", apiKey: CASES[id].stored("a") });
+    expect(wire.calls).toEqual([]);
+  });
+
+  it.each(IDS)("%s pairing is accepted by the browser extension only when capture is enabled", async (id) => {
+    const { pairing } = await importConnection(id, "a");
+    const parsed = parsePairing(JSON.stringify({ pairing: { ...pairing, token: `ddpair_${"A".repeat(43)}` } }));
+    if (!CASES[id].extension) {
+      expect(parsed.ok).toBe(false);
+      return;
+    }
+    expect(parsed).toMatchObject({ ok: true, plan: { provider: id, providerOrigin: CASES[id].origin, cookieNames: [CASES[id].cookie("a").name] } });
+  });
+
+  it.each(IDS.filter((id) => CASES[id].extension))("%s imports a capture sent from the extension origin", async (id) => {
+    const pairingResponse = await pair(new NextRequest(`${DASHBOARD}/api/providers/cookie-import/pairing`, {
+      method: "POST", headers: { "content-type": "application/json", origin: DASHBOARD }, body: JSON.stringify({ provider: id, action: "create", name: `${id} extension` }),
+    }));
+    const { pairing } = await pairingResponse.json();
+    const response = await importCookies(new NextRequest(pairing.importUrl, {
+      method: "POST", headers: { "content-type": "application/json", origin: "chrome-extension://synthetic-extension-id", [PAIRING_HEADER]: pairing.token },
+      body: JSON.stringify({ provider: id, origin: CASES[id].origin, cookies: [{ ...CASES[id].cookie("b"), secure: true }] }),
+    }));
+    expect(response.status).toBe(201);
+    const stored = await getProviderConnectionById((await response.json()).connection.id);
+    expect(stored).toMatchObject({ provider: id, authType: "cookie", apiKey: CASES[id].stored("b") });
     expect(wire.calls).toEqual([]);
   });
 

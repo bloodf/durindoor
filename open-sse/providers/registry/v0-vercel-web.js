@@ -4,12 +4,11 @@
 // This identity is separate from the `v0-vercel` API-key provider.
 export const V0_VERCEL_WEB_ORIGIN = "https://v0.dev";
 
-// Dashboard cookie import only (Cookie header, cURL or HAR): the one session
-// cookie the executor accepts. No extension capture or sign-in contract exists.
+// Dashboard import (Cookie header, cURL or HAR) and extension capture of the one
+// session cookie the executor accepts. No sign-in contract exists.
 export const v0VercelWebCookieProfile = Object.freeze({
   origin: V0_VERCEL_WEB_ORIGIN,
   cookieNames: Object.freeze(["__vercel_session"]),
-  extensionCapture: false,
 });
 
 export default {

@@ -1,6 +1,6 @@
 # Poe Web
 
-> **Available, mocked coverage only.** Poe Web (`poe-web`, alias `poew`) is registered: you can add a connection from the dashboard, list its models and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
+> **Available, mocked coverage only.** Poe Web (`poe-web`, alias `poew`) is registered: you can add a connection from the dashboard (paste, cookie import or extension capture), list its models and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
 
 This web-session provider is separate from the existing `poe` API-key provider; do not enter a Poe API key here. The two share no connection or credential.
 
@@ -8,7 +8,7 @@ This web-session provider is separate from the existing `poe` API-key provider; 
 
 Enter the `p-b` cookie value from a signed-in poe.com session, either as a bare value or as a Cookie header containing exactly one `p-b`. Other cookies in a pasted header are ignored.
 
-Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `p-b`, from the origin `https://www.poe.com`, with a cookie domain of `www.poe.com` or `.poe.com`, and stores `p-b=<value>`. Browser extension capture and web login are not configured: the pinned source defines no capture or sign-in contract, and the extension's compiled allowlist has no Poe entry.
+Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `p-b`, from the origin `https://www.poe.com`, with a cookie domain of `www.poe.com` or `.poe.com`, and stores `p-b=<value>`. The [cookie capture extension](./cookie-capture-extension.mdx) can also send `p-b` from a signed-in `https://www.poe.com` tab after a dashboard pairing; its compiled table allows only that origin and cookie. There is no web login: the pinned source defines no sign-in contract.
 
 Only `p-b` is sent, and only to `https://www.poe.com/api/gql_POST`. Redirects are never followed. A `401`, `403` or redirect is reported as `401 session_expired`; obtain and enter a new cookie. There is no refresh.
 
@@ -24,7 +24,7 @@ The last text user message is sent in a `ChatViewQuery` GraphQL request. Earlier
 
 ## Mocked evidence
 
-`tests/unit/poe-web-provider.test.js` covers credentials, the request envelope, model mapping, account isolation, JSON, SSE, errors and redirects. `tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard import into the connection store, Cookie header, cURL and HAR parsing, discovery, OpenAI and Anthropic JSON and SSE, account separation, expiry, redirects, server errors and recorded usage. They do not establish current endpoint compatibility, subscription access or live reliability.
+`tests/unit/poe-web-provider.test.js` covers credentials, the request envelope, model mapping, account isolation, JSON, SSE, errors and redirects. `tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard and extension import into the connection store, the extension's pairing check, Cookie header, cURL and HAR parsing, discovery, OpenAI and Anthropic JSON and SSE, account separation, expiry, redirects, server errors and recorded usage. They do not establish current endpoint compatibility, subscription access or live reliability.
 
 ## Attribution
 

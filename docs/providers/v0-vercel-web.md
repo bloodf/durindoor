@@ -1,6 +1,6 @@
 # v0 Vercel Web
 
-> **Available, mocked coverage only.** v0 Vercel Web (`v0-vercel-web`) is registered: you can add a connection from the dashboard, list its model and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
+> **Available, mocked coverage only.** v0 Vercel Web (`v0-vercel-web`) is registered: you can add a connection from the dashboard (paste, cookie import or extension capture), list its model and send requests through the OpenAI and Anthropic routes. Every test runs against closed mocks; nothing here has been accepted against a live account.
 
 It is separate from the existing `v0-vercel` API-key provider. The pinned OmniRoute executor uses a v0.dev session for `https://v0.dev/api/chat`; its credential catalog names `__vercel_session`.
 
@@ -8,7 +8,7 @@ It is separate from the existing `v0-vercel` API-key provider. The pinned OmniRo
 
 Enter the `__vercel_session` value or a Cookie header containing exactly one `__vercel_session=value`. Other cookies are discarded. Keep the value secret.
 
-Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `__vercel_session`, from the origin `https://v0.dev`, with a cookie domain of `v0.dev` or `.v0.dev`, and stores `__vercel_session=<value>`. Browser extension capture and web login are not configured: the pinned source defines no capture or sign-in contract, and the extension's compiled allowlist has no v0 entry. An import from any other origin is refused.
+Dashboard import (Cookie header, cURL command or HAR file) allows one cookie, `__vercel_session`, from the origin `https://v0.dev`, with a cookie domain of `v0.dev` or `.v0.dev`, and stores `__vercel_session=<value>`. The [cookie capture extension](./cookie-capture-extension.mdx) can also send `__vercel_session` from a signed-in `https://v0.dev` tab after a dashboard pairing; its compiled table allows only that origin and cookie. There is no web login: the pinned source defines no sign-in contract. An import from any other origin is refused.
 
 The cookie is sent only to the fixed v0.dev chat endpoint, with redirects refused. A `401`, `403` or redirect requires a fresh session; no refresh or expiry timestamp is established by the source.
 
@@ -24,7 +24,7 @@ JSON answers are mapped to an OpenAI completion and keep any `usage` v0 reports;
 
 ## Mocked evidence
 
-`tests/unit/v0-vercel-web-provider.test.js` covers credentials, selected accounts, the request envelope, JSON, SSE, usage, errors and redirects. `tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard import into the connection store, Cookie header, cURL and HAR parsing, discovery, OpenAI and Anthropic JSON and SSE, account separation, expiry, redirects, server errors and recorded usage. They do not establish live acceptance, endpoint stability or reliability.
+`tests/unit/v0-vercel-web-provider.test.js` covers credentials, selected accounts, the request envelope, JSON, SSE, usage, errors and redirects. `tests/unit/provider-session-registration-1127.test.js` runs the registered path with the real executor map: dashboard and extension import into the connection store, the extension's pairing check, Cookie header, cURL and HAR parsing, discovery, OpenAI and Anthropic JSON and SSE, account separation, expiry, redirects, server errors and recorded usage. They do not establish live acceptance, endpoint stability or reliability.
 
 ## Attribution
 

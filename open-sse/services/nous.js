@@ -36,6 +36,7 @@ import { FORMATS } from "../translator/formats.js";
 import { translateRequest } from "../translator/index.js";
 import { readBoundedResponseText } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
+import { isBoolean, isNumber, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 
 /**
  * Canonical provider ID. DurinDoor already registers Nous Research as
@@ -92,7 +93,6 @@ const asPositiveInteger = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /**
  * Upstream model ID for a routed or suffixed model name: drops a `model(level)`
@@ -101,7 +101,7 @@ const isPlainObject = (value) => value !== null && typeof value === "object" && 
  * @returns {string}
  */
 export function toNousUpstreamModelId(model) {
-  const { cleanModel } = parseSuffix(typeof model === "string" ? model.trim() : "");
+  const { cleanModel } = parseSuffix(isString(model) ? model.trim() : "");
   return cleanModel.startsWith(NOUS_MODEL_PREFIX) ? cleanModel.slice(NOUS_MODEL_PREFIX.length) : cleanModel;
 }
 
@@ -130,7 +130,7 @@ const isTextCapable = (model) => {
 
 const getRawModels = (payload) => {
   const models = Array.isArray(payload) ? payload : payload?.data || payload?.models || payload?.results || [];
-  return Array.isArray(models) ? models.filter(isPlainObject) : [];
+  return Array.isArray(models) ? models.filter(isRecord) : [];
 };
 
 /**
@@ -139,8 +139,8 @@ const getRawModels = (payload) => {
  * malformed values fail closed, so they are never offered as free.
  */
 const isZeroPrice = (value) => {
-  if (typeof value === "number") return value === 0;
-  if (typeof value === "string") return /^0+(?:\.0+)?$/.test(value.trim());
+  if (isNumber(value)) return value === 0;
+  if (isString(value)) return /^0+(?:\.0+)?$/.test(value.trim());
   return false;
 };
 
@@ -156,19 +156,17 @@ export function normalizeNousModels(payload) {
   return getRawModels(payload)
     .filter(isTextCapable)
     .map((model) => {
-      const id = typeof model.id === "string" ? model.id.trim() : "";
+      const id = isString(model.id) ? model.id.trim() : "";
       if (!id || seen.has(id)) return null;
       seen.add(id);
       const contextLength = asPositiveInteger(model.context_length ?? model.top_provider?.context_length);
       const maxOutputTokens = asPositiveInteger(model.top_provider?.max_completion_tokens);
-      const name = typeof model.name === "string" && model.name.trim() ? model.name : id;
-      return {
-        id,
-        name,
-        ...(contextLength ? { contextLength } : {}),
-        ...(maxOutputTokens ? { maxOutputTokens } : {}),
-        ...(typeof model.description === "string" && model.description ? { description: model.description } : {}),
-      };
+      const name = isString(model.name) && model.name.trim() ? model.name : id;
+      const entry = { id, name };
+      if (contextLength) entry.contextLength = contextLength;
+      if (maxOutputTokens) entry.maxOutputTokens = maxOutputTokens;
+      if (isString(model.description) && model.description) entry.description = model.description;
+      return entry;
     })
     .filter(Boolean)
     .sort((a, b) => Number(!a.id.startsWith("nousresearch/")) - Number(!b.id.startsWith("nousresearch/")));
@@ -235,7 +233,7 @@ export async function fetchNousModels({ proxyOptions = null, signal, routed = tr
   } catch {
     throw new NousCatalogError("Nous model catalogue returned malformed JSON", { code: "catalog_malformed" });
   }
-  if (!Array.isArray(payload) && !isPlainObject(payload)) {
+  if (!Array.isArray(payload) && !isRecord(payload)) {
     throw new NousCatalogError("Nous model catalogue returned an unexpected payload", { code: "catalog_malformed" });
   }
   return routed ? normalizeRoutedNousModels(payload) : normalizeNousModels(payload);
@@ -259,8 +257,8 @@ export const NOUS_KEY_VERIFICATION = Object.freeze({
  * @param {unknown} apiKey
  * @returns {{ ok: true, apiKey: string } | { ok: false, error: string }}
  */
-export function checkNousApiKeyShape(apiKey) {
-  if (typeof apiKey !== "string") return { ok: false, error: "API key required" };
+export function parseNousApiKey(apiKey) {
+  if (!isString(apiKey)) return { ok: false, error: "API key required" };
   const key = apiKey.trim();
   if (!key) return { ok: false, error: "API key required" };
   if (key.length > NOUS_API_KEY_MAX_LENGTH) return { ok: false, error: "API key is too long" };
@@ -275,8 +273,8 @@ export function checkNousApiKeyShape(apiKey) {
  * @param {unknown} apiKey
  */
 export function verifyNousApiKey(apiKey) {
-  const shape = checkNousApiKeyShape(apiKey);
-  if (!shape.ok) return { valid: false, verified: false, status: "rejected", error: shape.error };
+  const parsed = parseNousApiKey(apiKey);
+  if (!parsed.ok) return { valid: false, verified: false, status: "rejected", error: parsed.error };
   return {
     valid: true,
     skipped: true,
@@ -311,11 +309,11 @@ export async function saveNousConnection(input, { persist }) {
   const record = {
     provider: NOUS_PROVIDER_ID,
     authType: "apikey",
-    apiKey: checkNousApiKeyShape(input.apiKey).apiKey,
-    ...(typeof input.name === "string" && input.name.trim() ? { name: input.name.trim() } : {}),
-    testStatus: "unknown",
-    lastError: null,
+    apiKey: parseNousApiKey(input.apiKey).apiKey,
   };
+  if (isString(input.name) && input.name.trim()) record.name = input.name.trim();
+  record.testStatus = "unknown";
+  record.lastError = null;
   const connection = await persist(record);
   return { saved: true, verification, connection };
 }
@@ -338,9 +336,9 @@ function nousEffort(intent, caps) {
 /** Nous-native `reasoning: { enabled }` without an effort is an intent too. */
 function nativeReasoningIntent(body) {
   const reasoning = body?.reasoning;
-  if (!isPlainObject(reasoning) || typeof reasoning.enabled !== "boolean") return null;
+  if (!isRecord(reasoning) || !isBoolean(reasoning.enabled)) return null;
   if (!reasoning.enabled) return { mode: "none" };
-  return typeof reasoning.effort === "string" && reasoning.effort ? { mode: "level", level: reasoning.effort } : { mode: "auto" };
+  return isString(reasoning.effort) && reasoning.effort ? { mode: "level", level: reasoning.effort } : { mode: "auto" };
 }
 
 /**
@@ -348,7 +346,7 @@ function nativeReasoningIntent(body) {
  * wins, then an explicit intent, then the body's own fields.
  */
 export function resolveNousThinkingIntent(model, body, intent = undefined) {
-  const { override } = parseSuffix(typeof model === "string" ? model : "");
+  const { override } = parseSuffix(isString(model) ? model : "");
   if (override) return override;
   if (intent !== undefined) return intent;
   const upstream = toNousUpstreamModelId(model);
@@ -367,9 +365,10 @@ export function buildNousChatBody(model, body, { intent = undefined, stream } = 
   const upstream = toNousUpstreamModelId(model);
   const caps = getNousModelCapabilities(upstream);
   const resolved = resolveNousThinkingIntent(model, body, intent);
-  const out = { ...(isPlainObject(body) ? body : {}), model: upstream };
+  const out = isRecord(body) ? { ...body } : {};
+  out.model = upstream;
   for (const field of THINKING_FIELDS) delete out[field];
-  if (typeof stream === "boolean") out.stream = stream;
+  if (isBoolean(stream)) out.stream = stream;
   if (caps.reasoning) {
     const effort = nousEffort(resolved, caps);
     if (effort) out.reasoning = { enabled: true, effort };
@@ -427,13 +426,13 @@ export class NousExecutor extends DefaultExecutor {
   }
 
   buildHeaders(credentials, ...rest) {
-    if (!checkNousApiKeyShape(credentials?.apiKey).ok) throw new Error("Nous connection has no usable API key");
+    if (!parseNousApiKey(credentials?.apiKey).ok) throw new Error("Nous connection has no usable API key");
     return super.buildHeaders(withoutRuntimeTransport(credentials), ...rest);
   }
 
   transformRequest(model, body, stream, credentials, requestContext = null) {
-    const shaped = buildNousChatBody(model, body, { intent: requestContext?.thinkingIntent, stream });
-    return super.transformRequest(shaped.model, shaped, stream, withoutRuntimeTransport(credentials), requestContext, NOUS_CHAT_COMPLETIONS_URL);
+    const wireBody = buildNousChatBody(model, body, { intent: requestContext?.thinkingIntent, stream });
+    return super.transformRequest(wireBody.model, wireBody, stream, withoutRuntimeTransport(credentials), requestContext, NOUS_CHAT_COMPLETIONS_URL);
   }
 }
 

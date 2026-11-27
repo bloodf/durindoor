@@ -59,7 +59,7 @@
       "normalizeNousFreeModels",
       "fetchNousModels",
       "NousCatalogError",
-      "checkNousApiKeyShape",
+      "parseNousApiKey",
       "verifyNousApiKey",
       "testNousConnection",
       "saveNousConnection",

@@ -7,11 +7,18 @@ import alibaba from "./alibaba.js";
 import renderhour from "./renderhour.js";
 import adobeFireflyWeb from "./adobe-firefly-web.js";
 import adobeFireflyApi from "./adobe-firefly-api.js";
+import { agnesVideoAdapter as agnes } from "../../services/providerParity/native-agnes-video-image/index.js";
+import vertex from "../../services/providerParity/native-vertex-video/adapter.js";
 
 export const VIDEO_GENERATION_ADAPTERS = createMediaRegistry({
   alibaba,
   ali: alibaba,
   renderhour,
+  // Agnes submit-and-poll jobs on the fixed apihub origin; result URLs only.
+  agnes,
+  // Vertex AI Veo long-running operations; the MP4 returns as b64_json only.
+  vertex,
+  vx: vertex,
   // Adobe's native video model through the Firefly Services API only.
   "adobe-firefly-api": adobeFireflyApi,
   "adobe-firefly-web": adobeFireflyWeb,

@@ -11,6 +11,9 @@ const CASES = [
     alias: "agnes",
     base: "https://apihub.agnes-ai.com/v1",
     models: ["agnes-2.0-flash","agnes-2.5-flash","agnes-3.0-flash","agnes-3.0-pro"],
+    // Native image and video rows on the same connection (OmniRoute c71f006 registries).
+    mediaModels: ["agnes-image-2.0-flash","agnes-image-2.1-flash","agnes-image-2.5-flash","agnes-video-v2.0","agnes-video-2.5-flash","agnes-video-2.5"],
+    serviceKinds: ["llm", "image", "video"],
     fetcher: true,
     extraFormats: [],
     notice: true,
@@ -44,7 +47,7 @@ const CASES = [
   },
 ];
 
-describe.each(CASES)("$id provider", ({ id, alias, base, models, fetcher, extraFormats, notice }) => {
+describe.each(CASES)("$id provider", ({ id, alias, base, models, mediaModels = [], serviceKinds = ["llm"], fetcher, extraFormats, notice }) => {
   const entry = REGISTRY.find((e) => e.id === id);
 
   it("registers an OpenAI-compatible transport", () => {
@@ -61,8 +64,8 @@ describe.each(CASES)("$id provider", ({ id, alias, base, models, fetcher, extraF
   });
 
   it("seeds only sourced models", () => {
-    expect((PROVIDER_MODELS[alias] ?? []).map((m) => m.id)).toEqual(models);
-    expect(PROVIDER_MEDIA[id].serviceKinds).toEqual(["llm"]);
+    expect((PROVIDER_MODELS[alias] ?? []).map((m) => m.id)).toEqual([...models, ...mediaModels]);
+    expect(PROVIDER_MEDIA[id].serviceKinds).toEqual(serviceKinds);
     expect(PROVIDER_MEDIA[id].modelsFetcher ?? null).toEqual(
       fetcher ? { url: `${base}/models`, type: "openai" } : null,
     );

@@ -1,0 +1,104 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/xaiGrokImagineHandler.ts"
+    ],
+    "comparedWith": {
+      "repository": "CLIProxyAPI",
+      "commit": "47f18e4d82bd72f7d2b5ecf5ede93e4837a4625e",
+      "files": [
+        "sdk/api/handlers/openai/openai_videos_handlers.go",
+        "internal/runtime/executor/xai_executor_media.go",
+        "internal/runtime/executor/xai_executor.go",
+        "internal/runtime/executor/helps/usage_helpers.go",
+        "internal/api/server_routes.go"
+      ]
+    }
+  },
+  "localEquivalentBeforeStaging": {
+    "providerRegistry": "open-sse/providers/registry/xai.js: authModes [oauth, apikey], serviceKinds include video, models grok-imagine-video, grok-imagine-video-1.5 (aliases -1.5-preview, -1.5-2026-05-30), grok-imagine-video-1.5-lite, videoConfig { baseUrl: https://api.x.ai/v1/videos }",
+    "asyncVideoProxy": "EQUIVALENT: open-sse/handlers/videoCore.js handleVideoProxyCore + src/sse/handlers/video.js + src/app/api/v1/videos/[[...path]]/route.js forward POST /v1/videos/{generations|edits|extensions} byte-for-byte to https://api.x.ai/v1/videos/{action} and GET /v1/videos/{request_id} to https://api.x.ai/v1/videos/{request_id} with Bearer accessToken||apiKey, one OAuth refresh+retry on 401/403, Idempotency-Key forwarding, a media-job ledger binding each job to its connection and no create replay. Same wire endpoint, auth and envelope as CPA XAIVideosGenerations/Edits/Extensions/Retrieve; not duplicated here",
+    "videoGenerationAdapter": "MISSING: getVideoGenerationAdapter('xai') is null; VIDEO_GENERATION_ADAPTERS has alibaba, ali, renderhour, adobe-firefly-api, adobe-firefly-web. /v1/video/generations answers 'use /v1/videos' for xai",
+    "openAIVideosEnvelope": "MISSING: no OpenAI-shaped POST /v1/videos (seconds/size/input_reference) translation, OpenAI video object on retrieve, or GET /v1/videos/{id}/content"
+  },
+  "module": "open-sse/services/providerParity/native-xai-video/index.js",
+  "exports": {
+    "xaiVideoAdapter": "default adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [url])",
+    "createXaiVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "buildXaiVideoRequest": "(model, body) -> { request, meta }; native and OpenAI-style fields; throws status 400",
+    "resolveXaiTiming": "(body) -> { timeoutMs, pollIntervalMs, maxPolls } from timeout_ms / poll_interval_ms / max_polls; throws status 400",
+    "xaiImageReference": "public https or base64 data:image check for start/reference images",
+    "runXaiVideoJob": "create + bounded poll; { success, url, requestId, answer, accounting, identity } or error result with acceptedJob",
+    "submitXaiVideoJob": "one create POST to a fixed action URL; { requestId } or error result (acceptedJob when uncertain)",
+    "fetchXaiVideoStatus": "one bounded GET /v1/videos/{id}",
+    "settleXaiStatus": "classify a status answer (pending / done / failed / unknown)",
+    "xaiVideoSeconds": "response-measured video seconds or null",
+    "XAI_REQUEST_ID_RE": "accepted request_id shape",
+    "xaiAcceptedJob": "(jobState, meta) accepted-job accounting with unknown cost",
+    "xaiCredential": "(credentials) -> { token, mode: apikey|oauth } by connection authType",
+    "xaiPublicUrl": "public https result URL check",
+    "openAIVideoStatus": "CPA status mapping to queued / in_progress / completed / failed",
+    "openAIVideoFromXaiCreate": "OpenAI video object for an accepted create",
+    "openAIVideoFromXaiStatus": "OpenAI video object for a status answer (no upstream error text)",
+    "resolveXaiVideoContent": "GET /v1/videos/{id}/content -> public https URL via one status read; never downloads",
+    "XAI_VIDEO_MODELS": "video catalog metadata (id, name, kind, aliases, generateAudio)",
+    "XAI_VIDEOS_URL": "https://api.x.ai/v1/videos",
+    "XAI_VIDEO_ACTION_URLS": "generations / edits / extensions create URLs",
+    "XAI_VIDEO_FORMAT": "xai-video"
+  },
+  "provider": {
+    "canonicalId": "xai",
+    "aliases": ["xai"],
+    "existingRegistryEntry": "open-sse/providers/registry/xai.js",
+    "existingServiceKinds": ["llm", "imageToText", "webSearch", "image", "video", "tts", "stt", "realtime"],
+    "addServiceKinds": [],
+    "authModes": ["apikey", "oauth"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": { "apikey": "apiKey", "oauth": "accessToken", "unspecified": "apiKey || accessToken" }
+    },
+    "connectionBaseUrlHonored": false,
+    "notCovered": "grok-cli (OmniRoute's Grok Build OAuth proxy video entry) is a separate provider and is not staged here"
+  },
+  "models": {
+    "video": [
+      { "id": "grok-imagine-video", "name": "Grok Imagine Video" },
+      { "id": "grok-imagine-video-1.5", "name": "Grok Imagine Video 1.5", "aliases": ["grok-imagine-video-1.5-preview", "grok-imagine-video-1.5-2026-05-30"] },
+      { "id": "grok-imagine-video-1.5-lite", "name": "Grok Imagine Video 1.5 Lite" }
+    ],
+    "registryChange": "none; all three rows and aliases already exist in xai.js",
+    "dynamicDiscovery": "none in either source; static list only. xai.js validateUrl /v1/models lists chat models and must not feed video"
+  },
+  "endpoints": {
+    "create": { "method": "POST", "url": "https://api.x.ai/v1/videos/generations" },
+    "edit": { "method": "POST", "url": "https://api.x.ai/v1/videos/edits", "servedBy": "existing videoCore proxy" },
+    "extend": { "method": "POST", "url": "https://api.x.ai/v1/videos/extensions", "servedBy": "existing videoCore proxy" },
+    "status": { "method": "GET", "url": "https://api.x.ai/v1/videos/{request_id}" }
+  },
+  "responseFormats": { "video": ["url"] },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { xaiVideoAdapter } and add `xai: xaiVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate and keeps acceptedJob on errors"
+    },
+    {
+      "file": "src/sse/handlers/video.js",
+      "change": "handleSingleModelVideo: run checkAndRefreshToken for xai OAuth connections before dispatch (today only renderhour), because the adapter never refreshes; keep the existing /v1/videos proxy untouched"
+    },
+    {
+      "file": "src/app/api/v1/videos/[[...path]]/route.js",
+      "change": "optional later step: OpenAI-shaped POST /v1/videos, GET /v1/videos/{id} and GET /v1/videos/{id}/content using buildXaiVideoRequest, openAIVideoFromXaiCreate, openAIVideoFromXaiStatus and resolveXaiVideoContent on the ledger-bound connection"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "note synchronous /v1/video/generations for xAI after registration"
+    }
+  ]
+}

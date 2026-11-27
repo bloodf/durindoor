@@ -1,7 +1,7 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
 import { updateProviderConnection } from "../../lib/localDb.js";
-import { isString } from "../../shared/utils/typeChecks.js";
+import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
   removeConnection } from
@@ -91,11 +91,62 @@ export function releaseConnection(connectionId) {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
+// Same limits refreshAndUpdateCredentials applies to the request-path refresh.
+const MAX_REFRESH_LIFETIME_MS = 366 * 24 * 60 * 60 * 1000;
+const MAX_REFRESH_CLOCK_SKEW_MS = 5 * 60 * 1000;
+// ponytail: Copilot expiries are Unix seconds and are stored as seconds; a
+// ten-year ceiling rejects millisecond or garbage values without rejecting
+// long-lived fixtures. Tighten to MAX_REFRESH_LIFETIME_MS if storage moves to ISO.
+const MAX_COPILOT_EXPIRY_AHEAD_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 /** A refresh secret that is safe to store and to send back in a header. */
 function isStorableSecret(value) {
   return isString(value) && value.trim() !== "" &&
   value.length <= MAX_REFRESH_SECRET_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+const isAbsent = (value) => value === null || value === undefined || value === "";
+const isOptionalSecret = (value) => isAbsent(value) || isStorableSecret(value);
+const isRecord = (value) => value !== null && isObject(value) && !Array.isArray(value);
+
+function isTimeWithin(value, nowMs, maxAheadMs) {
+  const iso = toIsoTime(value);
+  return iso !== null && Date.parse(iso) <= nowMs + maxAheadMs;
+}
+
+function isRefreshLifetime(value) {
+  const seconds = isString(value) && /^[1-9]\d{0,9}$/.test(value) ? Number(value) : value;
+  return Number.isSafeInteger(seconds) && seconds > 0 && seconds * 1000 <= MAX_REFRESH_LIFETIME_MS;
+}
+
+function isCopilotExpiry(value, nowMs) {
+  return Number.isSafeInteger(value) && value > 0 && value * 1000 <= nowMs + MAX_COPILOT_EXPIRY_AHEAD_MS;
+}
+
+function isValidCopilotFields(token, expiresAt, nowMs) {
+  return isOptionalSecret(token) && (isAbsent(expiresAt) || isCopilotExpiry(expiresAt, nowMs));
+}
+
+/**
+ * Whole-result check applied before a refresh result is reshaped, persisted or
+ * returned. One malformed field rejects the result, as in refreshAndUpdateCredentials.
+ */
+function isValidRefreshResult(result, nowMs = Date.now()) {
+  if (!isRecord(result) || !isStorableSecret(result.accessToken)) return false;
+  if (!["refreshToken", "idToken", "apiKey"].every((field) => isOptionalSecret(result[field]))) return false;
+  if (!isAbsent(result.lastRefreshAt) && !isTimeWithin(result.lastRefreshAt, nowMs, MAX_REFRESH_CLOCK_SKEW_MS)) return false;
+  if (!isAbsent(result.expiresIn) && !isRefreshLifetime(result.expiresIn)) return false;
+  if (!isAbsent(result.expiresAt) && !isTimeWithin(result.expiresAt, nowMs, MAX_REFRESH_LIFETIME_MS)) return false;
+  if (!isValidCopilotFields(result.copilotToken, result.copilotTokenExpiresAt, nowMs)) return false;
+  const specific = result.providerSpecificData;
+  if (specific === null || specific === undefined) return true;
+  return isRecord(specific) && isValidCopilotFields(specific.copilotToken, specific.copilotTokenExpiresAt, nowMs);
+}
+
+/** A Copilot token exchange result that is safe to store and return. */
+function isValidCopilotTokenResult(result) {
+  return isRecord(result) && isStorableSecret(result.token) &&
+  (isAbsent(result.expiresAt) || isCopilotExpiry(result.expiresAt, Date.now()));
 }
 
 /**
@@ -150,9 +201,12 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  * @param {object} [options.expectedRefreshContext] Sending credentials for guarded rotation
  * @param {string} [options.presentedRefreshToken] Refresh token sent to the provider.
  *   The write is refused when the stored token is neither this one nor its replacement.
+ * @param {string} [options.presentedAccessToken] Access token held when the refresh began.
+ *   When the refresh token did not rotate, the write is also refused if the stored
+ *   access token is no longer this one, so a stale refresh never overwrites a newer one.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -202,10 +256,13 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
     if (expectedRefreshContext) {
       guard = { expectedRefreshContext };
     } else if (presentedRefreshToken) {
-      // Compare only the token: request credentials do not mirror the stored row.
+      // Compare only the tokens: request credentials do not mirror the stored row.
+      const rotated = Boolean(updates.refreshToken) && updates.refreshToken !== presentedRefreshToken;
       guard = {
-        shouldCommitConnection: (stored) => stored.refreshToken === presentedRefreshToken ||
-        Boolean(updates.refreshToken) && stored.refreshToken === updates.refreshToken
+        shouldCommitConnection: (stored) => rotated ?
+        stored.refreshToken === presentedRefreshToken || stored.refreshToken === updates.refreshToken :
+        stored.refreshToken === presentedRefreshToken &&
+        (!presentedAccessToken || !stored.accessToken || stored.accessToken === presentedAccessToken)
       };
     }
     // The repo compares rotated identity claims with the stored row under its write lock.
@@ -269,6 +326,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
     });
 
     const presentedRefreshToken = creds.refreshToken;
+    const presentedAccessToken = creds.accessToken;
     const newCreds = await _refreshProviderCredentials(provider, creds, log, effectiveProxyOptions);
 
     // Background force-refresh used to drop unrecoverable results silently,
@@ -300,7 +358,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       throw err;
     }
 
-    if (newCreds?.accessToken || newCreds?.apiKey || newCreds?.copilotToken) {
+    if (newCreds && !isValidRefreshResult(newCreds)) {
+      log.warn("TOKEN_REFRESH", "Rejected malformed refresh result", { provider, connectionId: creds.connectionId });
+    } else if (newCreds) {
       const mergedCreds = {
         ...newCreds,
         // Persist saved configuration, not proxy values resolved for this request.
@@ -310,7 +370,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
-        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken });
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken });
       // Never dispatch a Codex token whose identity the store did not accept.
       if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
 
@@ -348,7 +408,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       });
 
       const copilotTokenResult = await refreshCopilotToken(creds.accessToken, effectiveProxyOptions);
-      if (copilotTokenResult) {
+      if (copilotTokenResult && !isValidCopilotTokenResult(copilotTokenResult)) {
+        log.warn("TOKEN_REFRESH", "Rejected malformed Copilot token result", { provider, connectionId: creds.connectionId });
+      } else if (copilotTokenResult) {
         const updatedSpecific = {
           ...creds.providerSpecificData,
           copilotToken: copilotTokenResult.token,
@@ -387,7 +449,7 @@ export async function refreshGitHubAndCopilotTokens(credentials, proxyOptions = 
   if (!newGitHubCreds?.accessToken) return newGitHubCreds;
 
   const copilotToken = await refreshCopilotToken(newGitHubCreds.accessToken, effectiveProxyOptions);
-  if (!copilotToken) return newGitHubCreds;
+  if (!isValidCopilotTokenResult(copilotToken)) return newGitHubCreds;
 
   return {
     ...newGitHubCreds,

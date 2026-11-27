@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS, killGroup, processGroupMembers, runSupervised } from "../__baseline__/run-ci.mjs";
 
 const alive = (pid, group) => processGroupMembers(group).includes(pid);
@@ -59,6 +59,20 @@ describe("test:ci batched supervision", () => {
     });
     expect(attempts).toBeGreaterThanOrEqual(2);
     expect(calls).toEqual([-123]);
+  });
+
+  it("reserves time for the final inventory after an in-loop listing", async () => {
+    let now = 1000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const budgets = [];
+    try {
+      await killGroup(123, {
+        kill: (pid) => { if (pid === 124) now = 1450; },
+        members: (_pid, budget) => { budgets.push(budget); return budgets.length === 1 ? [124] : []; },
+        deadline: 1800,
+      });
+      expect(budgets).toEqual([400, 350]);
+    } finally { clock.mockRestore(); }
   });
 
   it("performs a final inventory after the last kill", async () => {

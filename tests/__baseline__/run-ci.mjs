@@ -95,12 +95,12 @@ export async function killGroup(pid, { kill = process.kill, members = processGro
   // inventory after the final signal, and retry transient listing failures.
   const finalReserve = Math.min(500, Math.max(0, Math.floor((deadline - Date.now()) / 2)));
   let lastError = null;
-  const inspect = () => {
-    try { const live = members(pid, Math.max(1, deadline - Date.now())); lastError = null; return live; }
+  const inspect = (reserve = 0) => {
+    try { const live = members(pid, Math.max(1, deadline - reserve - Date.now())); lastError = null; return live; }
     catch (error) { lastError = error; return null; }
   };
   while (Date.now() < deadline - finalReserve) {
-    const live = inspect();
+    const live = inspect(finalReserve);
     if (live && live.length === 0) return;
     if (live) for (const member of live) {
       if (!Number.isInteger(member) || member <= 1 || member === process.pid) throw new Error("unsafe command group member");

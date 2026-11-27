@@ -839,6 +839,11 @@ export function createSSEStream(options = {}) {
   let pendingClaudeFinish = null;
   let releasingClaudeFinish = false;
   let translatedStreamFinalized = false;
+  const isMatchingClaudeUsageTrailer = (finish, receipt) =>
+    Boolean(receipt && !receipt.done &&
+      (!finish.id || !receipt.id || receipt.id === finish.id) &&
+      (!receipt.choices || receipt.choices.length === 0) &&
+      hasValidUsage(receipt.usage));
   const clearCompletionFlushTimer = () => {
     clearTimeout(completionFlushTimer);
     completionFlushTimer = null;
@@ -950,13 +955,16 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
-        const receipt = pendingClaudeFinish && trimmed ? parseSSELine(trimmed, targetFormat) : null;
+        const hasPendingData = pendingClaudeFinish && parseSseFrame(line).data.trim().length > 0;
+        const receipt = hasPendingData ? parseSSELine(trimmed, targetFormat) : null;
+        // Comments, metadata, and empty/whitespace data heartbeats cannot release
+        // the finish before its usage trailer.
         // A usage trailer split over data lines is awaited until it is joined.
-        if (pendingClaudeFinish && trimmed && (receipt || !startsSplitData(trimmed))) {
+        if (hasPendingData && (receipt || !startsSplitData(trimmed))) {
           const finish = pendingClaudeFinish;
           pendingClaudeFinish = null;
           clearCompletionFlushTimer();
-          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) {
+          if (isMatchingClaudeUsageTrailer(finish, receipt)) {
             finish.usage = receipt.usage;
           }
           releasingClaudeFinish = true;
@@ -1343,10 +1351,12 @@ export function createSSEStream(options = {}) {
           continue;
         }
 
-        // Only wait when the actual upstream request asks for a usage trailer.
+        // Defer Claude terminal events on direct OpenAI Chat streams when finish_reason
+        // arrives without valid usage so a trailing usage-only frame can populate exact
+        // input and cache token counts (upstream #5890).
         if (!releasingClaudeFinish && targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE &&
-            providerBody?.stream_options?.include_usage === true && parsed.id &&
-            parsed.choices?.some?.((choice) => choice.finish_reason) && !hasValidUsage(parsed.usage)) {
+            parsed.choices?.some?.((choice) => choice.finish_reason && choice.finish_reason !== OPENAI_FINISH.ERROR) &&
+            !hasValidUsage(parsed.usage)) {
           pendingClaudeFinish = parsed;
           completionFlushTimer = setTimeout(() => {
             completionFlushTimer = null;
@@ -1354,7 +1364,10 @@ export function createSSEStream(options = {}) {
             pendingClaudeFinish = null;
             if (!finish) return;
             releasingClaudeFinish = true;
-            try { processLines([`data: ${JSON.stringify(finish)}`], controller); }
+            try {
+              processLines([`data: ${JSON.stringify(finish)}`], controller);
+              finalizeTranslatedStream();
+            }
             catch (error) { controller.error(error); }
             finally { releasingClaudeFinish = false; }
           }, PENDING_COMPLETION_FLUSH_MS);
@@ -1588,9 +1601,14 @@ export function createSSEStream(options = {}) {
 
             // Inject estimated usage if finish chunk has no valid usage
             const isFinishChunk = item.type === "message_delta" || item.choices?.[0]?.finish_reason;
+            const directChatToClaude = targetFormat === FORMATS.OPENAI && sourceFormat === FORMATS.CLAUDE;
             if (provider !== "replicate" && state.finishReason && isFinishChunk && !hasValidUsage(item.usage) && totalContentLength > 0) {
-              const estimated = mergeUsage(state.usage ?? item.usage, addBufferToUsage(estimateStreamUsage(totalContentLength, sourceFormat)));
+              const baseUsage = hasValidUsage(state.usage) || state.usage?.kiro_credits !== undefined ? state.usage : null;
+              const estimated = mergeUsage(baseUsage, addBufferToUsage(estimateStreamUsage(totalContentLength, sourceFormat)));
               item.usage = filterUsageForFormat(withTps(enrichUsageCost(estimated, provider, model)), sourceFormat); // Filter + already has buffer
+            } else if (state.finishReason && isFinishChunk && directChatToClaude && state.claudeMeasuredUsage) {
+              // Emit exact measured input and cache counts on direct Chat→Claude streams without buffer padding (upstream #5890).
+              item.usage = filterUsageForFormat(withTps(enrichUsageCost(item.usage, provider, model)), sourceFormat);
             } else if (state.finishReason && isFinishChunk && state.usage) {
               // Add buffer and filter usage for client (but keep original in state.usage for logging)
               // Preserve the translated Claude cache details for OpenAI clients.
@@ -1703,7 +1721,7 @@ export function createSSEStream(options = {}) {
           const finish = pendingClaudeFinish;
           pendingClaudeFinish = null;
           const receipt = buffer.trim() && parseSSELine(buffer.trim(), targetFormat);
-          if (receipt?.id === finish.id && Array.isArray(receipt.choices) && receipt.choices.length === 0 && hasValidUsage(receipt.usage)) finish.usage = receipt.usage;
+          if (isMatchingClaudeUsageTrailer(finish, receipt)) finish.usage = receipt.usage;
           releasingClaudeFinish = true;
           try { processLines([`data: ${JSON.stringify(finish)}`], controller); } finally { releasingClaudeFinish = false; }
         }

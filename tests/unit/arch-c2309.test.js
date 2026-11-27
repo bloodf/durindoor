@@ -271,7 +271,7 @@ describe("#2309 item 2: single provider source", () => {
   });
 
   it("keeps STAGED_PROVIDERS and staged.json aligned without duplicating private definitions", () => {
-    const manifestIds = executorManifest.modules.map(({ module }) => path.basename(module, ".js")).sort();
+    const manifestIds = [...new Set(executorManifest.modules.map(({ provider }) => provider))].sort();
     expect(Object.keys(STAGED_PROVIDERS).sort()).toEqual(manifestIds);
     for (const id of manifestIds) {
       expect(STAGED_PROVIDERS[id]?.staged, id).toBe(true);

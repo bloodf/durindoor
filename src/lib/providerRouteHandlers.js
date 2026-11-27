@@ -1,5 +1,5 @@
 import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
-import { readAdobeFireflyCredential } from "open-sse/services/adobeFireflyApi/auth.js";
+import { adobeFireflyCredentialFields } from "open-sse/services/adobeFireflyApi/auth.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { LOCAL_CATALOG_WEB_PROVIDERS } from "@/lib/providers/localCatalogProviders.js";
 import { NextResponse } from "next/server";
@@ -101,11 +101,10 @@ function awsSessionToken(sessionToken, providerSpecificData) {
   return isString(value) && value.trim() ? value.trim() : undefined;
 }
 
-/** Local shape check for the media job providers registered for #2034 (1127). */
+/** Local shape check for RenderHour (#2034, 1127); Adobe Firefly Services uses adobeFireflyCredentialFields. */
 function mediaJobCredentialError(provider, credentials) {
   try {
     if (provider === "renderhour") renderHourAuthorization(credentials);
-    else if (provider === "adobe-firefly-api") readAdobeFireflyCredential(credentials);
     return null;
   } catch (error) {
     return error?.message || "Invalid credential";
@@ -371,7 +370,9 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     const apiKeySubstitute = AI_PROVIDERS[provider]?.apiKeyOptionalWith;
     const substituteValue = apiKeySubstitute ? body.providerSpecificData?.[apiKeySubstitute] : null;
     const hasApiKeySubstitute = isString(substituteValue) && substituteValue.trim() !== "";
-    if (!apiKey && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
+    // Adobe Firefly Services takes a client secret or a supplied S2S access token.
+    const isAdobeFirefly = provider === "adobe-firefly-api";
+    if (!apiKey && !(isAdobeFirefly && body.accessToken) && provider !== "ollama-local" && !isNoAuthProvider && !isSystemoneCompatibleProvider(provider) && !isOpenAICompatibleProvider(provider) && !isAnthropicCompatibleProvider(provider) && !isCustomEmbeddingProvider(provider) && !registryAllowsKeylessCredential(provider) && !hasApiKeySubstitute) {
       const label = isWebCookieProvider ? "Cookie value" : resolvedAuthType === "auth_token" ? "Auth Token" : "API Key";
       return NextResponse.json({ error: `${label} is required` }, { status: 400 });
     }
@@ -409,6 +410,26 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
     }
     // Refused before storage: a credential that can never authenticate, Adobe's own
     // web-app client IDs, or a RenderHour key that is not an rh_ key.
+    // Adobe Firefly Services stores exactly one mode, only as supplied: a client
+    // secret, or an access token with its optional, validated expiry. A minted
+    // token is never stored, and creating a connection never calls Adobe.
+    let adobeCredential = null;
+    if (isAdobeFirefly) {
+      if (looksLikeEncryptedEnvelope(body.accessToken)) {
+        return NextResponse.json({ error: encryptedEnvelopeCredentialMessage() }, { status: 400 });
+      }
+      try {
+        adobeCredential = adobeFireflyCredentialFields({
+          credentialMode: body.credentialMode,
+          apiKey,
+          accessToken: body.accessToken,
+          expiresAt: body.expiresAt,
+          clientId: providerSpecificData?.clientId,
+        });
+      } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
     const mediaCredentialError = mediaJobCredentialError(provider, { apiKey, providerSpecificData });
     if (mediaCredentialError) return NextResponse.json({ error: mediaCredentialError }, { status: 400 });
 
@@ -499,7 +520,9 @@ export async function createProvider(request, { shouldCommit, requireNewCookieNa
         provider,
         authType: resolvedAuthType,
         name: connectionName,
-        apiKey: apiKey || "",
+        apiKey: adobeCredential ? adobeCredential.apiKey || "" : apiKey || "",
+        ...(adobeCredential?.accessToken ? { accessToken: adobeCredential.accessToken } : null),
+        ...(adobeCredential?.expiresAt ? { expiresAt: adobeCredential.expiresAt } : null),
         managementApiKey: provider === "xai" && isString(body.managementApiKey) ? body.managementApiKey.trim() : undefined,
         sessionToken: usesAwsCredentials ? awsSessionToken(sessionToken, body.providerSpecificData) : undefined,
         priority: priority || 1,

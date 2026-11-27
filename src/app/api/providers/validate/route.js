@@ -33,7 +33,7 @@ import { readBoundedResponseText } from "open-sse/utils/error.js";
 import { ANTHROPIC_VALIDATION_MODEL } from "@/shared/constants/anthropicValidation";
 import { isByteplusKeyAccepted } from "@/lib/providers/byteplusKeyProbe.js";
 import { renderHourAuthorization } from "open-sse/services/renderhour/media.js";
-import { createAdobeTokenCache, resolveAdobeFireflyAuth } from "open-sse/services/adobeFireflyApi/auth.js";
+import { adobeFireflyCredentialFields, createAdobeTokenCache, resolveAdobeFireflyAuth } from "open-sse/services/adobeFireflyApi/auth.js";
 
 const CLIENT_VALIDATION_ERROR = "URL validation failed";
 
@@ -242,6 +242,36 @@ async function validateProviderKey(request) {
     const provider = normalizeProviderId(body.provider);
     const { apiKey, sessionToken, providerSpecificData } = body;
 
+    // Adobe Firefly Services, in either credential mode. Client-secret mode mints
+    // one IMS token with the documented token request; the token is not kept and
+    // nothing is generated. A supplied access token is checked locally only
+    // (client ID, token shape, consumer-app refusal, expiry): IMS is never called
+    // for it and no read-only Firefly check is documented, so it is reported as
+    // skipped rather than verified.
+    if (provider === "adobe-firefly-api") {
+      let fields;
+      try {
+        fields = adobeFireflyCredentialFields({
+          credentialMode: body.credentialMode,
+          apiKey,
+          accessToken: body.accessToken,
+          expiresAt: body.expiresAt,
+          clientId: providerSpecificData?.clientId,
+        });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error?.message || "Invalid Adobe Firefly Services credential" });
+      }
+      if (fields.mode === "access_token") {
+        return NextResponse.json({ valid: true, skipped: true, error: null, note: "Access token checked locally; Adobe is not contacted until the first job" });
+      }
+      try {
+        await resolveAdobeFireflyAuth({ apiKey: fields.apiKey, providerSpecificData }, { cache: createAdobeTokenCache(), signal: request.signal });
+        return NextResponse.json({ valid: true, error: null });
+      } catch (error) {
+        return NextResponse.json({ valid: false, error: error?.message || "Adobe IMS refused the credential" });
+      }
+    }
+
     const providerInfo = AI_PROVIDERS[provider] || {};
     const isNoAuth = providerInfo.noAuth === true;
     if (provider === "devin-cli-agentic") {
@@ -312,17 +342,6 @@ async function validateProviderKey(request) {
         return NextResponse.json({ valid: false, error: error.message });
       }
       return NextResponse.json({ valid: true, skipped: true, error: null, note: "Key format checked; RenderHour has no read-only key check" });
-    }
-
-    // Adobe Firefly Services: mint one IMS token with the client credentials, the
-    // documented token request. Nothing is generated and the token is not kept.
-    if (provider === "adobe-firefly-api") {
-      try {
-        await resolveAdobeFireflyAuth({ apiKey, providerSpecificData }, { cache: createAdobeTokenCache(), signal: request.signal });
-        return NextResponse.json({ valid: true, error: null });
-      } catch (error) {
-        return NextResponse.json({ valid: false, error: error?.message || "Adobe IMS refused the credential" });
-      }
     }
 
     // Local-only, no request: a JWT access token past its exp is reported as expired. Other

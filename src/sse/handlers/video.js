@@ -137,6 +137,19 @@ async function handleSingleModelVideo(body, modelStr, request, apiKey, apiKeyId,
   const dispatched = modelInfo.provider === "renderhour" ? await checkAndRefreshToken(modelInfo.provider, credentials) : credentials;
   const result = await handleVideoGenerationCore({ provider: modelInfo.provider, model: modelInfo.model, body, credentials: dispatched, signal: request.signal, log });
   if (!result.success) {
+    // Account health for the selected connection only, as /v1/videos does it.
+    // A caller disconnect says nothing about the account. Only structured
+    // evidence from the result is carried: a bounded Retry-After reset and an
+    // adapter's resetless quota flag (adobe-firefly-api `quota_exhausted`).
+    if (credentials.connectionId && !request.signal?.aborted && Number(result.status) !== 499 && shouldMarkAccountUnavailable(result.status)) {
+      const evidence = result.rateLimitEvidence ?? null;
+      await markAccountUnavailable(credentials.connectionId, result.status, result.error, modelInfo.provider, modelInfo.model, evidence?.resetAtMs ?? null, {
+        usedCredential: dispatched.accessToken || dispatched.apiKey || null,
+        ...credentialDispatchSnapshot(dispatched),
+        ...(evidence ? { rateLimitEvidence: evidence } : null),
+        ...(result.quotaExhausted === true ? { quotaExhausted: true } : null),
+      });
+    }
     // The provider took a job whose outcome is unknown: record it once on this
     // account with unknown cost. This route never resubmits it elsewhere.
     if (result.acceptedJob) {

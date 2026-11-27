@@ -94,14 +94,14 @@ export default {
     textIcon: "FS",
     website: "https://developer.adobe.com/firefly-services/docs/firefly-api/",
     notice: {
-      text: "Text-to-image and Adobe's native five-second text-to-video. Needs a Firefly Services API entitlement and an OAuth Server-to-Server credential (client ID and client secret) from Adobe Developer Console. A Firefly or Creative Cloud subscription alone does not grant API access. Results are pre-signed URLs (response_format url).",
+      text: "Text-to-image and Adobe's native five-second text-to-video. Needs a Firefly Services API entitlement and an OAuth Server-to-Server credential from Adobe Developer Console: its client ID plus either its client secret or an access token issued to it. A Firefly or Creative Cloud subscription alone does not grant API access. Results are pre-signed URLs (response_format url).",
       apiKeyUrl: "https://developer.adobe.com/console",
     },
   },
   category: "apikey",
   authType: "apikey",
   transport: null,
-  authHint: "Client secret of an Adobe Developer Console OAuth Server-to-Server credential; its client ID goes in the Client ID field.",
+  authHint: "Client secret of an Adobe Developer Console OAuth Server-to-Server credential, or an access token issued to it; its client ID goes in the Client ID field.",
   models: [
     ...MODELS.map(([id, name]) => ({ id, name, params: ["size", "n"], kind: "image" })),
     ...ADOBE_FIREFLY_VIDEO.models.map((model) => ({ ...model, params: [...model.params] })),

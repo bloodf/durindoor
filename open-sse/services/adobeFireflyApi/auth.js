@@ -6,8 +6,10 @@
 //   client secret in apiKey. Tokens are minted at the fixed IMS endpoint with
 //   the client_credentials grant, cached in memory per credential and minted
 //   again before expiry. A minted token is never written to the connection.
-// - Pasted access token: client ID in providerSpecificData.clientId and an S2S
-//   access token in accessToken. It cannot be refreshed.
+// - Supplied access token: client ID in providerSpecificData.clientId, an S2S
+//   access token in accessToken and an optional expiresAt. It is used as given
+//   and never refreshed, and IMS is never called for it. A malformed or past
+//   expiry is refused before anything is sent.
 //
 // Adobe web-app client IDs, cookies and browser sessions are refused.
 //
@@ -32,6 +34,7 @@ const CLIENT_ID_RE = /^[A-Za-z0-9._-]{8,256}$/;
 const SECRET_RE = /^[\x21-\x7e]{8,512}$/;
 const TOKEN_RE = /^[\x21-\x7e]{16,8192}$/;
 const MAX_IMS_BYTES = 32 * 1024;
+const MAX_DATE_MS = 8.64e15;
 // IMS error codes that may be repeated to the caller. Nothing else from IMS is.
 const IMS_ERROR_CODES = new Set(["invalid_client", "unauthorized_client", "invalid_scope", "invalid_request", "invalid_grant"]);
 const WEB_APP_IDS = new Set(ADOBE_WEB_APP_CLIENT_IDS.map((id) => id.toLowerCase()));
@@ -49,13 +52,40 @@ function jwtClientId(token) {
   }
 }
 
+// No expiry given: undefined. A usable one: epoch milliseconds. Anything else,
+// including a non-positive or non-finite number or an unparseable date: null.
 function expiryMs(value) {
-  if (isNumber(value) && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
-  if (isString(value) && value.trim()) {
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
+  if (value == null || value === "") return undefined;
+  if (isNumber(value)) {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const ms = value < 1e12 ? value * 1000 : value;
+    // Past the largest JavaScript date it is not a date, not "never".
+    return ms <= MAX_DATE_MS ? ms : null;
+  }
+  if (isString(value) && value.trim() && value.length <= 64) {
+    const text = value.trim();
+    if (/^\d{1,15}$/.test(text)) return expiryMs(Number(text));
+    // Date.parse reads a bare signed number as a year.
+    if (Number.isFinite(Number(text))) return null;
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
   return null;
+}
+
+/**
+ * The optional expiry of a supplied access token, as an ISO string for
+ * storage, or null when none was given. Throws a 400 for a malformed expiry or
+ * one that has already passed, so nothing is stored or sent.
+ */
+export function normalizeAdobeFireflyTokenExpiry(value, now = Date.now) {
+  const expiresAt = expiryMs(value);
+  if (expiresAt === undefined) return null;
+  if (expiresAt === null) {
+    throw fail("Adobe Firefly Services access token expiry is not a valid date", 400);
+  }
+  if (expiresAt <= now()) throw fail("Adobe Firefly Services access token has expired; paste a new one", 400);
+  return new Date(expiresAt).toISOString();
 }
 
 /**
@@ -87,10 +117,56 @@ export function readAdobeFireflyCredential(credentials, now = Date.now) {
     throw fail("Adobe Firefly Services access token was not issued to this client ID", 401);
   }
   const expiresAt = expiryMs(credentials?.expiresAt);
-  if (expiresAt !== null && expiresAt <= now()) {
+  if (expiresAt === null) throw fail("Adobe Firefly Services access token expiry is not a valid date", 401);
+  if (expiresAt !== undefined && expiresAt <= now()) {
     throw fail("Adobe Firefly Services access token has expired; paste a new one", 401);
   }
   return { mode: "access_token", clientId, accessToken: token };
+}
+
+export const ADOBE_FIREFLY_CREDENTIAL_MODES = Object.freeze(["client_secret", "access_token"]);
+
+const filled = (value) => value != null && value !== "";
+
+/**
+ * The connection fields to store for an Adobe Firefly Services credential
+ * supplied at create, update or validate. Exactly one mode is stored:
+ * - `client_secret`: the secret in apiKey; accessToken and expiresAt cleared.
+ * - `access_token`: a supplied S2S access token and its optional expiry;
+ *   apiKey cleared. The expiry is stored as an ISO string.
+ * The mode is `credentialMode` when given, otherwise the one field supplied.
+ * Supplying both, neither, or a field of the other mode is refused, as is a
+ * credential readAdobeFireflyCredential would refuse at dispatch. Nothing is
+ * minted or sent: only what the caller supplied is returned for storage.
+ *
+ * @returns {{ mode: string, apiKey: string|null, accessToken: string|null, expiresAt: string|null }}
+ * @throws {Error} with status 400 and a message that never quotes the input
+ */
+export function adobeFireflyCredentialFields({ credentialMode, apiKey, accessToken, expiresAt, clientId } = {}, now = Date.now) {
+  if (credentialMode != null && !ADOBE_FIREFLY_CREDENTIAL_MODES.includes(credentialMode)) {
+    throw fail("Adobe Firefly Services credential mode must be client_secret or access_token", 400);
+  }
+  const hasSecret = filled(apiKey);
+  const hasToken = filled(accessToken);
+  if (hasSecret && hasToken) {
+    throw fail("Supply either an Adobe client secret or an access token, not both", 400);
+  }
+  const mode = credentialMode ?? (hasToken ? "access_token" : "client_secret");
+  if (mode === "client_secret" && (!hasSecret || filled(expiresAt))) {
+    throw fail(hasSecret ? "An expiry applies only to a supplied access token" : "Adobe Firefly Services needs the client secret in client-secret mode", 400);
+  }
+  if (mode === "access_token" && !hasToken) {
+    throw fail("Adobe Firefly Services needs the access token in access-token mode", 400);
+  }
+  const fields = mode === "client_secret" ?
+  { mode, apiKey, accessToken: null, expiresAt: null } :
+  { mode, apiKey: null, accessToken, expiresAt: normalizeAdobeFireflyTokenExpiry(expiresAt, now) };
+  try {
+    readAdobeFireflyCredential({ ...fields, providerSpecificData: { clientId } }, now);
+  } catch (error) {
+    throw fail(error.message, 400);
+  }
+  return fields;
 }
 
 // Rejects with the caller's abort reason without cancelling the shared work.
@@ -169,8 +245,11 @@ async function requestToken({ clientId, clientSecret }, { proxyOptions, now, req
 
 /**
  * An in-memory IMS token cache. Entries are keyed by a hash of client ID and
- * secret, so two connections never share a token, and a rotated secret mints
- * a new one. Concurrent requests for one credential share a single mint.
+ * secret, so distinct credentials never share a token, and a rotated secret
+ * mints a new one. Isolation is per credential, not per connection: two
+ * connections that store the identical client ID and secret are the same
+ * Adobe technical account and share one entry. Concurrent requests for one
+ * credential share a single mint.
  */
 export function createAdobeTokenCache({
   now = Date.now,

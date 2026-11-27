@@ -9,6 +9,9 @@ vi.mock("@/lib/usageDb.js", () => ({
 }));
 
 import "../translator/registerAll.js";
+import { ROLE } from "../../open-sse/translator/schema/roles.js";
+import { OPENAI_BLOCK } from "../../open-sse/translator/schema/blocks.js";
+import { OPENAI_FINISH } from "../../open-sse/translator/schema/finishReasons.js";
 const { handleStreamingResponse, buildOnStreamComplete } = await import("../../open-sse/handlers/chatCore/streamingHandler.js");
 const { createStreamController } = await import("../../open-sse/utils/streamHandler.js");
 const { FORMATS } = await import("../../open-sse/translator/formats.js");
@@ -82,6 +85,31 @@ describe("9router #3860: a cut stream never reaches a Claude client as a finishe
     expect(events.at(-1)).toBe("error");
     expect(row.status).toBe("error");
     expect(onRequestSuccess).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("complete tool JSON requires a success terminal (finish_reason: %s)", async (finished) => {
+    const frames = [chat({ role: ROLE.ASSISTANT, tool_calls: [{ index: 0, id: "call_complete", type: OPENAI_BLOCK.FUNCTION,
+      function: { name: "run", arguments: JSON.stringify({ command: "echo fixture" }) } }] })];
+    if (finished) frames.push(chat({}, OPENAI_FINISH.TOOL_CALLS));
+    frames.push("data: [DONE]\n\n");
+    const { text, events, row, onRequestSuccess } = await fromOpenAI(frames);
+    if (finished) {
+      expect(text).toContain("input_json_delta");
+      expect(text).toContain('"stop_reason":"tool_use"');
+      expect(events.at(-1)).toBe("message_stop");
+      expect(events).not.toContain("error");
+      expect(row.status).toBe("success");
+      expect(onRequestSuccess).toHaveBeenCalledOnce();
+    } else {
+      expect(text).not.toContain("input_json_delta");
+      expect(text).not.toContain('"stop_reason":"tool_use"');
+      expect(events).not.toContain("message_stop");
+      expect(events.filter((event) => event === "error")).toHaveLength(1);
+      expect(events.at(-1)).toBe("error");
+      expect(text).toContain("overloaded_error");
+      expect(row.status).toBe("error");
+      expect(onRequestSuccess).not.toHaveBeenCalled();
+    }
   });
 
   it("rejects a sentinel after tool arguments arrive before the ID and name", async () => {

@@ -19,7 +19,7 @@ export async function listTtsVoices(provider, langFilter, apiKey) {
 
   // ElevenLabs requires API key
   const raw = provider === "elevenlabs" ? await fetcher(apiKey) : await fetcher();
-  const useElevenLayout = provider === "elevenlabs" || provider === "gemini";
+  const useElevenLayout = provider === "elevenlabs" || provider === "gemini" || provider === "vertex";
   let voices;
 
   if (provider === "local-device") {

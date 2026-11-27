@@ -2102,6 +2102,8 @@ export function createSSEStream(options = {}) {
         // same treatment when neither a finish reason nor [DONE] arrived (upstream
         // #3860). A sentinel alone is compatible with text-only streams, but
         // cannot complete buffered tool calls when upstream terminal tracking failed.
+        // Even valid, complete argument JSON is not a success terminal: require
+        // finish_reason before [DONE] so a cut turn never authorizes a tool call.
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
         const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&

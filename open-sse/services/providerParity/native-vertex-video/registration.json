@@ -27,11 +27,15 @@
   },
   "models": [
     { "id": "veo-3.1-generate-001", "name": "Veo 3.1 (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
-    { "id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
-    { "id": "veo-3.0-generate-001", "name": "Veo 3.0 (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
-    { "id": "veo-3.0-fast-generate-001", "name": "Veo 3.0 Fast (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] },
-    { "id": "veo-2.0-generate-001", "name": "Veo 2.0 (Vertex)", "durationSeconds": [5, 6, 7, 8], "aspectRatios": ["16:9", "9:16"] }
+    { "id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast (Vertex)", "durationSeconds": [4, 6, 8], "aspectRatios": ["16:9", "9:16"] }
   ],
+  "retiredModels": {
+    "ids": ["veo-3.0-generate-001", "veo-3.0-fast-generate-001", "veo-2.0-generate-001"],
+    "retiredOn": "2026-06-30",
+    "source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+    "checked": "2026-11-27",
+    "handling": "refused locally with 400 before any token mint or request; never aliased or replaced with a current model"
+  },
   "endpoints": {
     "bearer": {
       "auth": "Authorization: Bearer <access token>",
@@ -44,7 +48,7 @@
       "poll": "POST https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:fetchPredictOperation?key={apiKey}"
     },
     "redirects": "refused",
-    "dynamicDiscovery": "none in source; static model list"
+    "dynamicDiscovery": "none in source; static model list, minus the retired ids"
   },
   "exports": {
     "module": "open-sse/services/providerParity/native-vertex-video/index.js",
@@ -64,7 +68,7 @@
     },
     {
       "file": "open-sse/providers/registry/vertex.js",
-      "change": "add \"video\" to serviceKinds and the five Veo models as video models"
+      "change": "add \"video\" to serviceKinds and the two active Veo 3.1 models as video models"
     },
     {
       "file": "docs/providers/catalog.mdx",
@@ -74,7 +78,7 @@
   "publicContract": {
     "route": "POST /v1/video/generations",
     "accepted": ["prompt", "aspect_ratio | aspectRatio | size (16:9 or 9:16)", "duration | durationSeconds", "negative_prompt", "n = 1", "response_format = b64_json"],
-    "refusedBeforeSubmit": ["image and other media inputs", "n > 1", "stream", "response_format url", "other aspect ratios or sizes", "durations outside the model's list", "non-regional location", "missing project for Bearer credentials"],
+    "refusedBeforeSubmit": ["image and other media inputs", "n > 1", "stream", "response_format url", "other aspect ratios or sizes", "retired or unknown model ids", "durations outside the model's list", "non-regional location", "missing project for Bearer credentials"],
     "response": "{ created, data: [{ b64_json, format: \"mp4\" }] }",
     "accounting": "nativeUnits.videos = 1, cost unknown; acceptedJob (costSource accepted-job) on every failure that may bill"
   }

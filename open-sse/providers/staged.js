@@ -18,26 +18,6 @@ export const STAGED_PROVIDERS = {
     staged: true,
     reason: "CliproxyapiExecutor is reachable only through an unused proxy module.",
   },
-  "inner-ai-web": {
-    staged: true,
-    reason: "Executor, helpers and private definition are not registered; separate from the inner-ai API-key entry.",
-    docs: "docs/providers/inner-ai-web.md",
-  },
-  "poe-web": {
-    staged: true,
-    reason: "Executor and private definition are not registered; separate from the poe API-key entry.",
-    docs: "docs/providers/poe-web.md",
-  },
-  "v0-vercel-web": {
-    staged: true,
-    reason: "Executor and private definition are not registered; separate from the v0-vercel API-key entry.",
-    docs: "docs/providers/v0-vercel-web.md",
-  },
-  "venice-web": {
-    staged: true,
-    reason: "Executor, helpers and private definition are not registered; separate from the venice API-key entry.",
-    docs: "docs/providers/venice-web.md",
-  },
   "adobe-firefly-api": {
     staged: true,
     reason: "Image-only private definition; neither the registry nor the image adapter map imports it.",

@@ -33,7 +33,8 @@ export function startLocalServer(onCallback, fixedPort = null) {
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, `http://localhost`);
 
-      if (url.pathname === "/callback" || url.pathname === "/auth/callback") {
+      // Antigravity desktop uses /oauth-callback (CLIProxyAPI 47f18e4 auth.go).
+      if (url.pathname === "/oauth-callback" || url.pathname === "/callback" || url.pathname === "/auth/callback") {
         if (!isLoopbackOrigin(req.headers.origin)) {
           res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
           res.end("Cross-origin callback rejected");

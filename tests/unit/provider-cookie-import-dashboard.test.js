@@ -393,6 +393,71 @@ describe("dashboard cookie import", () => {
     expect(text()).toContain("https://dashboard.example/api/providers/cookie-import");
   });
 
+  // #2034: Inner.ai Web takes an optional account email that the server binds to the pairing.
+  describe("optional account email", () => {
+    const INNER_TOKEN = "synthetic-inner-token";
+    const innerContract = resolveCookieImportContract({ origin: "https://app.innerai.com", cookieNames: ["token"], accountEmail: "optional" });
+    const renderInner = (props = {}) => render({ provider: "inner-ai-web", providerName: "Inner.ai Web", webLogin: undefined, importContract: innerContract, ...props });
+    const pasteInner = async () => {
+      await typeInto("Cookie header or cURL command", `theme=dark; token=${INNER_TOKEN}`, "textarea");
+      await clickButton("Read input");
+      await typeInto("Connection name", "Inner");
+    };
+
+    it("is offered only for a contract that takes one, with the profile-lookup fallback explained", async () => {
+      await render();
+      expect(fieldFor("Account email")).toBeUndefined();
+      await renderInner();
+      expect(fieldFor("Account email (optional)").querySelector("input")).not.toBeNull();
+      expect(text()).toContain("uses this one only when that lookup returns none");
+      expect(text()).toContain("Leave it blank to store the token alone");
+      expect(text()).toContain("The browser extension never reads an email");
+    });
+
+    it("sends a trimmed email with the pairing request only, never with the cookies", async () => {
+      await renderInner();
+      await pasteInner();
+      await typeInto("Account email (optional)", "  user@example.com ");
+      await clickButton("Import cookies");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ provider: "inner-ai-web", action: "create", name: "Inner", accountEmail: "user@example.com" });
+      const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(body).toEqual({ provider: "inner-ai-web", origin: "https://app.innerai.com", cookies: [{ name: "token", value: INNER_TOKEN }], name: "Inner" });
+      expect(fieldFor("Account email (optional)").querySelector("input").value).toBe("");
+    });
+
+    it("omits a blank email so the token is stored alone", async () => {
+      await renderInner();
+      await pasteInner();
+      await typeInto("Account email (optional)", "   ");
+      await clickButton("Import cookies");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ provider: "inner-ai-web", action: "create", name: "Inner" });
+    });
+
+    it("blocks import and pairing on a malformed email and sends nothing", async () => {
+      await renderInner();
+      await pasteInner();
+      await typeInto("Account email (optional)", "user@example.com\nX: 1");
+      expect(text()).toContain("Enter a single email address, or leave the field blank.");
+      expect(buttonFor("Import cookies").disabled).toBe(true);
+      await clickButton("Browser extension");
+      expect(buttonFor("Create pairing").disabled).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("binds the email when creating an extension pairing and never displays it in the pairing", async () => {
+      await renderInner();
+      await clickButton("Browser extension");
+      await typeInto("Connection name", "Inner");
+      await typeInto("Account email (optional)", "user@example.com");
+      await clickButton("Create pairing");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ provider: "inner-ai-web", accountEmail: "user@example.com" });
+      expect(text()).toContain("ddpair_synthetic");
+      // Editing the email after pairing drops the shown pairing, so a stale binding is never handed over.
+      await typeInto("Account email (optional)", "other@example.com");
+      expect(text()).not.toContain("ddpair_synthetic");
+    });
+  });
+
   it("does not offer the import for a provider without an importable contract", async () => {
     await render({ webLogin: { origin: "https://huggingface.co", cookieNames: "*" } });
     expect(container.querySelector("[data-testid=modal]")).toBe(null);

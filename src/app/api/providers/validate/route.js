@@ -10,6 +10,8 @@ import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from
 import { normalizeAccountIdPlaceholder } from "open-sse/executors/default.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { buildYuanbaoCookie } from "open-sse/executors/yuanbao-web.js";
+import { parsePoeCookie } from "open-sse/executors/poe-web.js";
+import { v0SessionCookie } from "open-sse/executors/v0-vercel-web.js";
 import { extractZenmuxCtoken } from "open-sse/executors/zenmux-free.js";
 import { checkCopilotWebCredential } from "open-sse/executors/copilot-web.js";
 import { isConversationProbeProvider, skippedWebSessionError } from "@/lib/providers/conversationProbe.js";
@@ -284,6 +286,14 @@ async function validateProviderKey(request) {
 
     if (provider === "yuanbao-web" && !buildYuanbaoCookie(apiKey).hasToken) {
       return NextResponse.json({ valid: false, error: "Paste a Yuanbao cookie containing hy_user and hy_token" });
+    }
+
+    // Poe Web and v0 Web have no read-only check: refuse a value that can never authenticate, then skip.
+    if (provider === "poe-web" && !parsePoeCookie(apiKey)) {
+      return NextResponse.json({ valid: false, error: "Paste the p-b cookie value or a Cookie header with exactly one p-b from poe.com" });
+    }
+    if (provider === "v0-vercel-web" && !v0SessionCookie({ apiKey })) {
+      return NextResponse.json({ valid: false, error: "Paste the __vercel_session cookie value or a Cookie header with exactly one __vercel_session from v0.dev" });
     }
 
     // Skipping chat must not accept a cookie that could never authenticate.

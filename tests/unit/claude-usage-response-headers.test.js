@@ -4,7 +4,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", async (original) => ({
 }));
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
-import { getClaudeUsage, observeClaudeUsageHeaders, __clearOAuthQuotaCacheForTesting } from "../../open-sse/services/usage/claude.js";
+import { getClaudeUsage, observeClaudeUsageHeaders, consumeClaudeResetGrant, __clearOAuthQuotaCacheForTesting } from "../../open-sse/services/usage/claude.js";
 
 const minute = 60_000;
 const headers = (values) => new Headers(Object.fromEntries(Object.entries(values).map(
@@ -54,7 +54,7 @@ describe("Claude response quota observations", () => {
     expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves endpoint model precedence and supplements omitted rows after successful polls", async () => {
+  it("uses matching-window freshness and supplements omitted rows after successful polls", async () => {
     observe({ "7d_oi": 0.8, "7d": 0.9 });
     endpoint({ seven_day: { utilization: 12 } });
     expect((await read()).quotas).toMatchObject({ "weekly (7d)": { used: 12 }, "weekly fable (7d)": { used: 80 } });
@@ -64,10 +64,75 @@ describe("Claude response quota observations", () => {
     expect((await read("a", true)).quotas["weekly fable (7d)"].used).toBe(33);
     await vi.advanceTimersByTimeAsync(minute);
     observe({ "7d_oi": 1, "7d": 0.6 });
-    expect((await read()).quotas).toMatchObject({ "weekly (7d)": { used: 60 }, "weekly fable (7d)": { used: 33 } });
+    expect((await read()).quotas).toMatchObject({ "weekly (7d)": { used: 60 }, "weekly fable (7d)": { used: 100 } });
     endpoint({ seven_day_overage_included: { utilization: 21 } });
     expect((await read("a", true)).quotas["weekly fable (7d)"].used).toBe(21);
   });
+
+  it.each([
+    ["5h", "session (5h)", { five_hour: { utilization: 20 } }],
+    ["7d", "weekly (7d)", { seven_day: { utilization: 20 } }],
+    ["7d_oi", "weekly fable (7d)", { seven_day_overage_included: { utilization: 20 } }]
+  ])("compares %s observation time with its matching endpoint row", async (native, name, body) => {
+    observe({ [native]: 0.8 });
+    await vi.advanceTimersByTimeAsync(minute);
+    endpoint(body);
+    expect((await read()).quotas[name].used).toBe(20); // Endpoint is newer.
+    observe({ [native]: 0.7 });
+    expect((await read()).quotas[name].used).toBe(20); // Endpoint wins a tie.
+    await vi.advanceTimersByTimeAsync(minute);
+    observe({ [native]: 0.6 });
+    expect((await read()).quotas[name].used).toBe(60);
+    endpoint(body);
+    expect((await read("a", true)).quotas[name].used).toBe(20); // A poll wins the new tie.
+  });
+
+  it("keeps independent window timestamps, expiry, and distinct endpoint model rows", async () => {
+    observe({ "7d_oi": 0.8 });
+    await vi.advanceTimersByTimeAsync(minute);
+    endpoint({ seven_day_overage_included: { utilization: 20 }, limits: [
+      { kind: "weekly_scoped", percent: 45, scope: { model: { display_name: "Sonnet" } } }
+    ] });
+    await read();
+    await vi.advanceTimersByTimeAsync(minute);
+    observe({ "7d": 0.6 });
+    expect((await read()).quotas).toMatchObject({
+      "weekly fable (7d)": { used: 20 }, "weekly (7d)": { used: 60 }, "weekly sonnet (7d)": { used: 45 }
+    });
+    observe({ "7d_oi": 0.9 });
+    await vi.advanceTimersByTimeAsync(14 * minute);
+    observe({ "5h": 0.3 });
+    await vi.advanceTimersByTimeAsync(minute);
+    expect((await read()).quotas).toEqual({
+      "weekly fable (7d)": expect.objectContaining({ used: 20 }),
+      "weekly sonnet (7d)": expect.objectContaining({ used: 45 }),
+      "session (5h)": expect.objectContaining({ used: 30 })
+    });
+  });
+
+  it.each([[200, "reset"], [200, "not_reset"], [500, "reset"]])(
+    "invalidates only a successful reset credential (status=%s, result=%s)", async (status, result) => {
+      endpoint({ five_hour: { utilization: 10 } });
+      await read();
+      await vi.advanceTimersByTimeAsync(minute);
+      observe({ "5h": 0.4, "7d": 0.6, "7d_oi": 0.8 });
+      observe({ "7d_oi": 0.7 }, "b");
+      endpoint({ organization: { uuid: "test-org" } });
+      endpoint({ result }, status);
+      const success = status === 200 && result === "reset";
+      expect(await consumeClaudeResetGrant("a", "test-grant")).toMatchObject({ ok: success });
+      if (success) endpoint();
+      const usage = await read();
+      expect(usage.quotas).toEqual(success ? {} : {
+        "session (5h)": expect.objectContaining({ used: 40 }),
+        "weekly (7d)": expect.objectContaining({ used: 60 }),
+        "weekly fable (7d)": expect.objectContaining({ used: 80 })
+      });
+      expect(proxyAwareFetch).toHaveBeenCalledTimes(success ? 4 : 3);
+      endpoint();
+      expect((await read("b")).quotas["weekly fable (7d)"].used).toBe(70);
+    }
+  );
 
   it("overlays retained cooldown rows without bypassing forced cooldowns", async () => {
     endpoint({ five_hour: { utilization: 10 } }); await read();

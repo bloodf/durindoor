@@ -159,9 +159,9 @@ function overlayObservedQuotas(key, usage) {
       delete windows[name];
       continue;
     }
-    // Endpoint model rows take precedence; newer general observations can
-    // update cached totals. Omitted rows never imply unused capacity.
-    if (quotas[name] && (name === "weekly fable (7d)" || window.observedAt <= endpointAt)) continue;
+    // A matching native window uses its own timestamp; the endpoint wins ties.
+    // Distinct endpoint model rows survive, and omitted rows remain partial.
+    if (quotas[name] && window.observedAt <= endpointAt) continue;
     quotas[name] = window.quota;
     changed = true;
   }
@@ -492,8 +492,13 @@ export async function consumeClaudeResetGrant(accessToken, grantId, proxyOptions
   }, proxyOptions);
   const data = await res.json().catch(() => null);
 
-  // Force the next read past the cache: it must show the refilled limits.
-  oauthQuotaCache.delete(getOAuthCacheKey(accessToken));
+  // Only a confirmed reset invalidates pre-reset quota data for this credential.
+  // Keep polling, in-flight requests, and rate-limit strikes unchanged.
+  if (res.ok && data?.result === "reset") {
+    const key = getOAuthCacheKey(accessToken);
+    oauthQuotaCache.delete(key);
+    observedQuotas.delete(key);
+  }
 
   return {
     ok: res.ok && data?.result === "reset",

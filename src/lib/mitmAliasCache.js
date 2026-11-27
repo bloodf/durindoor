@@ -3,12 +3,11 @@
 // and after every UI write.
 import fs from "fs";
 import path from "path";
-import os from "os";
+import dataDir from "./updater/dataDir.cjs";
 
-const DATA_DIR = process.env.DATA_DIR
-  || (process.platform === "win32"
-    ? path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "9router")
-    : path.join(os.homedir(), ".9router"));
+// Raw DATA_DIR or the shared platform default. This writer deliberately does
+// no mkdir/permission/fallback work at import time (see dataDir.cjs contract).
+const DATA_DIR = process.env.DATA_DIR || dataDir.defaultDataDir();
 
 const CACHE_FILE = path.join(DATA_DIR, "mitm", "aliases.json");
 

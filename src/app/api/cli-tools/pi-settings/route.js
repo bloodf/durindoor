@@ -21,22 +21,16 @@
  * With no `durindoor` entry yet, the legacy `9router` entry is the one merged.
  */
 
-import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { redactSecrets } from "@/shared/utils/secretRedaction";
-import { isObject, isString } from "@/shared/utils/typeChecks";
-import { readExistingConfig, writeConfigAtomic } from "@/lib/cliTools/readExistingConfig";
+import { isString } from "@/shared/utils/typeChecks";
+import { createSettingsRoute, isPlainObject, withV1 } from "@/lib/cliTools/settingsRoute";
 import { getCombos } from "@/lib/localDb";
 import { getModelInfo, loadCustomCapabilities, parseModel } from "@/sse/services/model";
 import { getCapabilitiesForModel, aggregateComboCapabilities } from "open-sse/providers/capabilities.js";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { piCapsFromModelCaps, sanitizePiModelCaps } from "@/shared/utils/piModels";
-
-const execAsync = promisify(exec);
 
 const PROVIDER_ID = "durindoor";
 const LEGACY_PROVIDER_ID = "9router";
@@ -58,24 +52,7 @@ const resolveModelsJsonPath = async () => {
   return getAgentModelsPath();
 };
 
-const checkPiInstalled = async () => {
-  try {
-    await execAsync(os.platform() === "win32" ? "where pi" : "which pi", { windowsHide: true });
-    return true;
-  } catch {
-    return (await exists(getAgentModelsPath())) || exists(getRootModelsPath());
-  }
-};
-
-const isPlainObject = (value) => value !== null && isObject(value) && !Array.isArray(value);
-
-const parseObject = (raw) => {
-  const parsed = JSON.parse(raw);
-  if (!isPlainObject(parsed)) throw new Error("expected an object");
-  return parsed;
-};
-
-const hasDurinDoorConfig = (config) => {
+const hasDurinDoorConfig = (_raw, config) => {
   const providers = config?.providers;
   if (!isPlainObject(providers)) return false;
   if (providers[PROVIDER_ID]?.baseUrl || providers[LEGACY_PROVIDER_ID]?.baseUrl) return true;
@@ -151,105 +128,67 @@ const mergeModelEntry = async (entry, previousModels, comboLookupRef) => {
   return { ...next, ...sanitizePiModelCaps(seeded) };
 };
 
-/** GET — report install state, redacted models.json, and whether DurinDoor is configured. */
+/** Merge the DurinDoor provider into models.json, carrying over a legacy 9router entry. */
+const applyProvider = async (existing, { baseUrl, apiKey, model, models }) => {
+  const providers = isPlainObject(existing.providers) ? { ...existing.providers } : {};
+  // A 9router install has only the legacy entry; it is replaced, so its
+  // hand-tuned models and provider options carry over.
+  const previousProvider = providers[PROVIDER_ID] || providers[LEGACY_PROVIDER_ID] || {};
+  delete providers[LEGACY_PROVIDER_ID];
+
+  const previousModels = new Map(
+    (Array.isArray(previousProvider.models) ? previousProvider.models : []).map((m) => [m.id, m])
+  );
+  const selected = Array.isArray(models) && models.length > 0 ? models : [model || "provider/model-id"];
+  const comboLookupRef = { current: null };
+  const modelList = [];
+  for (const entry of selected) {
+    modelList.push(await mergeModelEntry(entry, previousModels, comboLookupRef));
+  }
+
+  providers[PROVIDER_ID] = {
+    ...previousProvider,
+    baseUrl: withV1(baseUrl),
+    apiKey: isPlaceholderKey(apiKey)
+      ? (isPlaceholderKey(previousProvider.apiKey) ? "sk_durindoor" : previousProvider.apiKey)
+      : apiKey,
+    api: previousProvider.api || "openai-completions",
+    models: modelList,
+  };
+  return { ...existing, providers };
+};
+
+/** Remove the DurinDoor (and legacy 9router) provider, keep everything else. */
+const resetProvider = (existing) => {
+  if (!isPlainObject(existing.providers)) return null;
+  const providers = { ...existing.providers };
+  delete providers[PROVIDER_ID];
+  delete providers[LEGACY_PROVIDER_ID];
+  const next = { ...existing, providers };
+  if (Object.keys(providers).length === 0) delete next.providers;
+  return next;
+};
+
+const route = createSettingsRoute({
+  id: "pi",
+  displayName: "Pi",
+  format: "json",
+  secretFields: ["apiKey"],
+  messages: { applied: "Pi settings applied! Use /model in Pi to select a DurinDoor model." },
+  resolvePath: resolveModelsJsonPath,
+  isConfigured: hasDurinDoorConfig,
+  apply: applyProvider,
+  reset: resetProvider,
+});
+
 export async function GET() {
-  try {
-    if (!(await checkPiInstalled())) {
-      return NextResponse.json({ installed: false, config: null, message: "Pi CLI is not installed" });
-    }
-    const configPath = await resolveModelsJsonPath();
-    let config = null;
-    try {
-      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
-    } catch {
-      /* absent or unreadable config reads as unconfigured */
-    }
-    return NextResponse.json({
-      installed: true,
-      config: redactSecrets(config),
-      has9Router: hasDurinDoorConfig(config),
-      configPath,
-    });
-  } catch (error) {
-    console.log("Error checking pi settings:", error);
-    return NextResponse.json({ error: "Failed to check pi settings" }, { status: 500 });
-  }
+  return route.GET();
 }
 
-/** POST — merge the DurinDoor provider into models.json; refuses to overwrite an unparseable file. */
 export async function POST(request) {
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  try {
-    const { baseUrl, apiKey, model, models } = body || {};
-    if (!baseUrl) return NextResponse.json({ error: "baseUrl is required" }, { status: 400 });
-
-    const configPath = await resolveModelsJsonPath();
-    const existing = (await readExistingConfig(configPath, parseObject)) ?? {};
-    const providers = isPlainObject(existing.providers) ? { ...existing.providers } : {};
-    // A 9router install has only the legacy entry; it is replaced, so its
-    // hand-tuned models and provider options carry over.
-    const previousProvider = providers[PROVIDER_ID] || providers[LEGACY_PROVIDER_ID] || {};
-    delete providers[LEGACY_PROVIDER_ID];
-
-    const previousModels = new Map(
-      (Array.isArray(previousProvider.models) ? previousProvider.models : []).map((m) => [m.id, m])
-    );
-    const selected = Array.isArray(models) && models.length > 0 ? models : [model || "provider/model-id"];
-    const comboLookupRef = { current: null };
-    const modelList = [];
-    for (const entry of selected) {
-      modelList.push(await mergeModelEntry(entry, previousModels, comboLookupRef));
-    }
-
-    providers[PROVIDER_ID] = {
-      ...previousProvider,
-      baseUrl: baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`,
-      apiKey: isPlaceholderKey(apiKey)
-        ? (isPlaceholderKey(previousProvider.apiKey) ? "sk_durindoor" : previousProvider.apiKey)
-        : apiKey,
-      api: previousProvider.api || "openai-completions",
-      models: modelList,
-    };
-
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await writeConfigAtomic(configPath, JSON.stringify({ ...existing, providers }, null, 2), "utf-8");
-
-    return NextResponse.json({
-      success: true,
-      message: "Pi settings applied! Use /model in Pi to select a DurinDoor model.",
-      configPath,
-    });
-  } catch (error) {
-    console.log("Error updating pi settings:", error.message);
-    return NextResponse.json({ error: error.message || "Failed to update pi settings" }, { status: 500 });
-  }
+  return route.POST(request);
 }
 
-/** DELETE — remove the DurinDoor (and legacy 9router) provider, keep everything else. */
 export async function DELETE() {
-  try {
-    const configPath = await resolveModelsJsonPath();
-    const existing = await readExistingConfig(configPath, parseObject);
-    if (!existing) return NextResponse.json({ success: true, message: "No config file to reset" });
-
-    if (isPlainObject(existing.providers)) {
-      const providers = { ...existing.providers };
-      delete providers[PROVIDER_ID];
-      delete providers[LEGACY_PROVIDER_ID];
-      const next = { ...existing, providers };
-      if (Object.keys(providers).length === 0) delete next.providers;
-      await writeConfigAtomic(configPath, JSON.stringify(next, null, 2), "utf-8");
-    }
-
-    return NextResponse.json({ success: true, message: "DurinDoor removed from Pi" });
-  } catch (error) {
-    console.log("Error resetting pi settings:", error.message);
-    return NextResponse.json({ error: error.message || "Failed to reset pi settings" }, { status: 500 });
-  }
+  return route.DELETE();
 }

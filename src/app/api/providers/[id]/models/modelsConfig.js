@@ -35,6 +35,7 @@ import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/ou
 import { isOpenRouterFreeModel } from "open-sse/services/openrouterCatalog.js";
 import { ANTHROPIC_API_VERSION, ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT, CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { sanitizeErrorMessage } from "open-sse/utils/error.js";
+import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
 import {
   discoverOrcaRouterModels,
   resolveApiBase,
@@ -251,7 +252,7 @@ getModelsByProviderId(providerId).map((model) => ({
   name: model.name || model.id
 }));
 
-export const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) =>
+export const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel, refreshBlockedError = null }) =>
 async (connection, proxyOptions = null) => {
   const { accessToken, refreshToken } = connection;
   if (!accessToken) {
@@ -261,6 +262,9 @@ async (connection, proxyOptions = null) => {
   try {
     let response = await fetchFn(accessToken, connection, proxyOptions);
     if (!response.ok && (response.status === 401 || response.status === 403) && refreshToken) {
+      // Preflight: report the refusal without refreshing or writing anything.
+      const blocked = refreshBlockedError?.(connection);
+      if (blocked) return { error: blocked.message, status: blocked.status, category: blocked.category };
       const refreshed = await refreshFn(connection, proxyOptions);
       if (refreshed?.accessToken) {
         await updateProviderCredentials(connection.id, {
@@ -927,7 +931,10 @@ export const PROVIDER_MODELS_CONFIG = {
         }, proxyOptions);
       },
       parseFn: parseGeminiCliModels,
-      errorLabel: "Failed to fetch Antigravity CLI models"
+      errorLabel: "Failed to fetch Antigravity CLI models",
+      refreshBlockedError: (conn) => antigravityClientBindingBlocks(conn.provider || "agy", conn.providerSpecificData, ANTIGRAVITY_OAUTH_CLIENT.clientId)
+        ? antigravityClientBindingError()
+        : null
     })
   },
   mlx: {

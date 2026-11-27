@@ -147,13 +147,17 @@ function withRuntimeContext(row, contextLength) {
   return { ...row, capabilities };
 }
 
-// Honor declared vision input_modalities from compatible upstream /models rows (#5900).
+/**
+ * Honor declared vision input_modalities from compatible upstream /models rows (#5900).
+ * Empty modality arrays are treated as unknown rather than "no vision" so static
+ * and explicit local catalog flags remain intact when upstream lists are empty.
+ */
 function withCompatibleVision(row) {
   const inputs = [
     row?.architecture?.input_modalities,
     row?.input_modalities,
     row?.modalities?.input,
-  ].find(Array.isArray);
+  ].find((list) => Array.isArray(list) && list.length > 0);
   if (!inputs) return row;
   const capabilities = isRecord(row.capabilities) ? { ...row.capabilities } : {};
   capabilities.vision = inputs.some((value) => isString(value) && value.trim().toLowerCase() === "image");

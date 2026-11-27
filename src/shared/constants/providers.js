@@ -1,5 +1,5 @@
 // Provider definitions
-import { cookieImportConfig, resolveCookieImportContract } from "../utils/cookieImportContract.js";
+import { cookieImportAuthType, cookieImportConfig, resolveCookieImportContract } from "../utils/cookieImportContract.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { SYSTEMONE_COMPATIBLE_PREFIX } from "open-sse/config/systemone.js";
 import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
@@ -21,7 +21,9 @@ function buildProviderEntry(r) {
   }
   const display = { ...(r.display || {}) };
   if (display.deprecationNotice === "RISK_NOTICE") display.deprecationNotice = RISK_NOTICE;
-  const cookieImport = resolveCookieImportContract(cookieImportConfig(r));
+  const resolvedImport = resolveCookieImportContract(cookieImportConfig(r));
+  let cookieImport = null;
+  if (resolvedImport) cookieImport = { ...resolvedImport, authType: cookieImportAuthType(r) };
   return {
     ...display,
     id: r.id,

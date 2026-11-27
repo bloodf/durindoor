@@ -2,9 +2,8 @@
 // `wordpress_logged_in_` . COOKIEHASH with COOKIEHASH = md5(siteurl option)
 // (wp-includes/default-constants.php, wp_cookie_constants()). The siteurl option is site
 // configuration the public origin does not reveal, so the contract approves the family by its
-// fixed grammar (prefix + 32 lowercase hex) instead of one guessed digest. The MV3 extension never
-// lists a cookie store, so it reads the md5 of each siteurl that can serve the origin by exact
-// name; any other digest goes through the dashboard Cookie/cURL/HAR import. Closed mocks only:
+// fixed grammar (prefix + 32 lowercase hex) instead of one guessed digest. The MV3 extension uses
+// one bounded provider URL/store enumeration, matching names before values. Closed mocks only:
 // no network, no browser, synthetic values.
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -16,6 +15,8 @@ import {
 } from "../../src/shared/utils/cookieImportContract.js";
 import { PROVIDERS as EXTENSION_PROVIDERS } from "../../extensions/provider-cookie-capture/providers.js";
 import { parsePairing, preflightPermissions, runCapture, confirmationFor, describePlan } from "../../extensions/provider-cookie-capture/capture.js";
+import { PACKAGE_FILES, EXTENSION_DIR } from "../../scripts/package-cookie-extension.mjs";
+import path from "node:path";
 import veoRegistry from "../../open-sse/providers/registry/veoaifree-web.js";
 
 const ORIGIN = "https://veoaifree.com";
@@ -128,7 +129,7 @@ describe("dashboard parsers: Cookie header, cURL and HAR agree", () => {
   });
 });
 
-describe("MV3 capture: exact-name reads of bounded candidates, never a store listing", () => {
+describe("MV3 capture: one bounded hashed-family enumeration", () => {
   const SITEURLS = ["https://veoaifree.com", "http://veoaifree.com", "https://www.veoaifree.com", "http://www.veoaifree.com"];
   const CANDIDATES = SITEURLS.map((url) => `${PREFIX}${crypto.createHash("md5").update(url).digest("hex")}`);
   const pairing = (overrides = {}) => ({
@@ -152,7 +153,7 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
       cookies: {
         getAllCookieStores: async () => [{ id: "store-9", tabIds: [7] }],
         get: async (details) => { calls.push(["cookies.get", details]); return jar[details.name] ?? null; },
-        getAll: async (details) => { calls.push(["cookies.getAll", details]); return []; },
+        getAll: async (details) => { calls.push(["cookies.getAll", details]); return Object.values(jar).map((cookie) => Object.assign(Object.create(Object.getPrototypeOf(cookie), Object.getOwnPropertyDescriptors(cookie)), { storeId: cookie.storeId ?? "store-9" })); },
       },
     };
     return { chrome, calls };
@@ -169,18 +170,21 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
   }
   const member = (name, extra = {}) => ({ [name]: { name, value: VALUE, domain: "veoaifree.com", secure: true, ...extra } });
 
-  it("ships the family plus the md5 of each siteurl that can serve the origin, host access optional and exact", () => {
+  it("ships the family without guesses, host access optional and exact", () => {
     const def = EXTENSION_PROVIDERS["veoaifree-web"];
-    expect(def).toEqual({ label: "Veo AI Free Web", origin: ORIGIN, cookieNames: [], cookiePrefixes: [], hashedCookiePrefixes: [PREFIX], hashedCookieCandidates: CANDIDATES });
+    expect(def).toEqual({ label: "Veo AI Free Web", origin: ORIGIN, cookieNames: [], cookiePrefixes: [], hashedCookiePrefixes: [PREFIX] });
     expect(def.hashedCookiePrefixes).toEqual([...contract().hashedCookiePrefixes]);
-    for (const name of def.hashedCookieCandidates) expect(isApprovedCookieName(contract(), name), name).toBe(true);
+    expect(isApprovedCookieName(contract(), OTHER)).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(new URL("../../extensions/provider-cookie-capture/manifest.json", import.meta.url), "utf8"));
     expect(manifest.host_permissions).toBeUndefined();
+    for (const file of PACKAGE_FILES.filter((file) => file !== "capture.js")) {
+      expect(fs.readFileSync(path.join(EXTENSION_DIR, file), "utf8")).not.toMatch(/cookies\.getAll\(/);
+    }
     expect(manifest.optional_host_permissions.filter((p) => p.includes("veoaifree"))).toEqual([`${ORIGIN}/*`]);
-    expect(fs.readFileSync(new URL("../../extensions/provider-cookie-capture/capture.js", import.meta.url), "utf8")).not.toMatch(/cookies\.getAll\(/);
+    expect(fs.readFileSync(new URL("../../extensions/provider-cookie-capture/capture.js", import.meta.url), "utf8").match(/cookies\.getAll\(/g)).toHaveLength(1);
   });
 
-  it("posts the one secure member found under any candidate, read by exact name only", async () => {
+  it("posts the one secure member from the bounded provider URL/store enumeration", async () => {
     const jar = {
       ...member(CANDIDATES[1], { domain: ".veoaifree.com", expirationDate: 1_900_000_000 }),
       wordpress_test_cookie: { name: "wordpress_test_cookie", value: NOISE, domain: "veoaifree.com", secure: true },
@@ -189,7 +193,7 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
     const { result, calls, fetchImpl, plan } = await capture(jar);
     expect(result).toMatchObject({ ok: true, cookieCount: 1 });
     expect(describePlan(plan).cookieNames).toEqual([`${PREFIX}<md5>`]);
-    expect(calls.filter(([name]) => name.startsWith("cookies."))).toEqual(CANDIDATES.map((name) => ["cookies.get", { url: `${ORIGIN}/`, name, storeId: "store-9" }]));
+    expect(calls.filter(([name]) => name.startsWith("cookies."))).toEqual([["cookies.getAll", { url: `${ORIGIN}/`, storeId: "store-9" }]]);
     expect(calls.find(([name]) => name === "permissions.request")[1]).toEqual({ permissions: ["cookies"], origins: [`${ORIGIN}/*`, `${DASHBOARD}/*`] });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];
@@ -202,7 +206,7 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
   it("sends nothing for an absent, insecure, foreign or ambiguous member", async () => {
     const cases = [
       [{}, "no_cookies"],
-      [member(OTHER), "no_cookies"], // not a candidate: never read, use the dashboard import
+      [member(OTHER, { storeId: "foreign" }), "no_cookies"], // arbitrary md5 still requires the confirmed store
       [member(CANDIDATES[0], { secure: false }), "no_cookies"],
       [member(CANDIDATES[0], { domain: "evil.example" }), "no_cookies"],
       [member(CANDIDATES[0], { value: "" }), "no_cookies"],
@@ -212,7 +216,7 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
       const { result, fetchImpl, calls } = await capture(jar);
       expect(result.code, JSON.stringify(Object.keys(jar))).toBe(code);
       expect(fetchImpl).not.toHaveBeenCalled();
-      expect(calls.some(([name]) => name === "cookies.getAll")).toBe(false);
+      expect(calls.filter(([name]) => name === "cookies.getAll")).toHaveLength(1);
       expect(JSON.stringify(result)).not.toContain(VALUE);
       expect(JSON.stringify(result)).not.toContain(VALUE_2);
     }
@@ -225,7 +229,7 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
     expect(widened.ok).toBe(true);
     expect(widened.plan.cookieNames).toEqual([]);
     expect(widened.plan.hashedCookiePrefixes).toEqual([PREFIX]);
-    expect(widened.plan.hashedCookieCandidates).toEqual(CANDIDATES);
+    expect(widened.plan).not.toHaveProperty("hashedCookieCandidates");
     expect(parsePairing(JSON.stringify({ pairing: pairing({ contract: { ...described, origin: "https://www.veoaifree.com" } }) }), NOW)).toMatchObject({ ok: false, code: "origin_mismatch" });
   });
 
@@ -233,6 +237,6 @@ describe("MV3 capture: exact-name reads of bounded candidates, never a store lis
     const grok = parsePairing(JSON.stringify({ pairing: pairing({ provider: "grok-web", contract: describeCookieImportContract(getCookieImportContract("grok-web")) }) }), NOW);
     expect(grok.ok, grok.code).toBe(true);
     expect(grok.plan.hashedCookiePrefixes).toEqual([]);
-    expect(grok.plan.hashedCookieCandidates).toEqual([]);
+    expect(grok.plan).not.toHaveProperty("hashedCookieCandidates");
   });
 });

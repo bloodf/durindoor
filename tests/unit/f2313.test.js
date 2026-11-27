@@ -20,4 +20,8 @@ it("refuses an older refresh when the refresh token did not rotate", async () =>
 it.each([{ refreshToken: {} }, { copilotToken: "bad\n" }, { providerSpecificData: { copilotTokenExpiresAt: -1 } }])("drops malformed fields while keeping valid fields %j", async (fields) => {
   await updateProviderCredentials("id", { accessToken: "at-valid", ...fields });
   expect(state.row.accessToken).toBe("at-valid");
+  expect(state.row.refreshToken).toBe("rt");
+  expect(state.row.copilotToken).toBeUndefined();
+  expect(state.row.providerSpecificData?.copilotToken).toBeUndefined();
+  expect(state.row.providerSpecificData?.copilotTokenExpiresAt).toBeUndefined();
 });

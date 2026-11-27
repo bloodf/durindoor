@@ -16,6 +16,22 @@ describe("CLI heap flags (upstream #3368)", () => {
     expect(resolveHeapFlags({})).toEqual(["--max-old-space-size=6144"]);
   });
 
+  it("sizes the default against the lower known memory and bounds the floor", () => {
+    const mb = 1024 * 1024;
+    expect(resolveHeapFlags({}, 8192 * mb, 1024 * mb)).toEqual(["--max-old-space-size=768"]);
+    expect(resolveHeapFlags({}, 1024 * mb, 8192 * mb)).toEqual(["--max-old-space-size=768"]);
+    expect(resolveHeapFlags({}, 8192 * mb, 256 * mb)).toEqual(["--max-old-space-size=256"]);
+    expect(resolveHeapFlags({}, undefined, 1024 * mb)).toEqual(["--max-old-space-size=768"]);
+    expect(resolveHeapFlags({}, 8192 * mb, 0)).toEqual(["--max-old-space-size=6144"]);
+    expect(resolveHeapFlags({}, NaN, Infinity)).toEqual(["--max-old-space-size=6144"]);
+    expect(buildNodeArgs("server.js", {}, 8192 * mb, 1024 * mb))
+      .toEqual(["--dns-result-order=ipv4first", "--max-old-space-size=768", "server.js"]);
+    expect(resolveHeapFlags({ NINEROUTER_MAX_OLD_SPACE_SIZE: "2048" }, 8192 * mb, 256 * mb))
+      .toEqual(["--max-old-space-size=2048"]);
+    expect(resolveHeapFlags({ NODE_OPTIONS: "--max-old-space-size=2048" }, 8192 * mb, 256 * mb))
+      .toEqual([]);
+  });
+
   it("routes both server spawns through buildNodeArgs", () => {
     expect(CLI_SOURCE.match(
       /spawn\(RUNTIME, buildNodeArgs\(serverPath, process\.env\), \{/g,

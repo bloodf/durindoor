@@ -1657,7 +1657,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, claudeRequestScoped: error?.claudeRequestScoped === true, attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, localProgrammingError: error?.localProgrammingError === true && !transportFailure, claudeRequestScoped: error?.claudeRequestScoped === true, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {

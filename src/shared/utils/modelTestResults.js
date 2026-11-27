@@ -15,6 +15,19 @@ export function modelTestResultKey(fullModel, connectionId) {
   return `${connection}|${fullModel}`;
 }
 
+// A completion may only replace the error for its own model and connection.
+export function updateModelProbeErrors(errors, model, connectionId, error) {
+  const key = modelTestResultKey(model, connectionId);
+  const next = { ...errors };
+  if (error) next[key] = { model, connectionId: connectionId || "auto", error };
+  else delete next[key];
+  return next;
+}
+
+export function formatModelProbeErrors(errors) {
+  return Object.values(errors).map(({ model, connectionId, error }) => `${model} (${connectionId}): ${error}`).join("; ");
+}
+
 function isValidKey(key) {
   if (!isString(key) || key.length > MAX_KEY_LENGTH) return false;
   const sep = key.indexOf("|");

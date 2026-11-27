@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import {
@@ -51,7 +53,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 2,
   reporter: "list",
-  outputDir: `/tmp/omc-docs/playwright-docs-results-${plan.port}`,
+  outputDir: join(tmpdir(), "omc-docs", `playwright-docs-results-${plan.port}`),
   globalSetup: "./tests/global-setup.mjs",
   use: useOptions,
   webServer: {

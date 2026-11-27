@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import useSettingsStore from "@/store/settingsStore";
 import { get } from "@/shared/utils/api";
 import { requestJSON } from "../providers/workflowRequests.js";
@@ -21,13 +21,12 @@ import {
   TUNNEL_PING_MAX_MS,
   STATUS_POLL_FAST_MS,
   STATUS_POLL_SLOW_MS,
-  REACHABLE_MISS_THRESHOLD,
   CLIENT_PING_FAST_MS,
   CLIENT_PING_SLOW_MS,
   getCompositeEndpointEnabled,
   getLocalEndpointUrl,
 } from "./endpointConstants";
-import { clientPingUrl, clientPingAny } from "./endpointPing";
+import { clientPingUrl, clientPingAny, recordProbeResult } from "./endpointPing";
 import EndpointRow, { EndpointValue } from "./components/EndpointRow";
 import Tooltip from "./components/Tooltip";
 import SecurityWarning from "./components/SecurityWarning";
@@ -139,12 +138,21 @@ export default function EndpointPageClient({ localPort = 20128 }) {
 
   const tunnelMissRef = useRef(0);
   const tsMissRef = useRef(0);
-  const tunnelClientReachableRef = useRef(false);
-  const tsClientReachableRef = useRef(false);
   const tunnelEverReachableRef = useRef(false);
   const tsEverReachableRef = useRef(false);
   const [tunnelEverReachable, setTunnelEverReachable] = useState(false);
   const [tsEverReachable, setTsEverReachable] = useState(false);
+  // Probe generations (#2627). A browser probe can still be in flight when its
+  // endpoint is disabled, re-enabled, or moved to another URL. Each probe
+  // records the generation it started under and is dropped on completion if
+  // the generation moved, so a stale result cannot undo a reset or count
+  // toward another target's streak. Effect reruns that keep the same target
+  // (for example the other provider's reachability flipping) do not bump the
+  // generation, so in-flight probes for an unchanged target still count.
+  const tunnelProbeGenRef = useRef(0);
+  const tsProbeGenRef = useRef(0);
+  const tunnelProbeTargetRef = useRef("");
+  const tsProbeTargetRef = useRef("");
 
   const [isRemoteHost, setIsRemoteHost] = useState(false);
   const { copied, copy } = useCopyToClipboard();
@@ -184,41 +192,32 @@ export default function EndpointPageClient({ localPort = 20128 }) {
   }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
 
   useEffect(() => {
+    // A new probe target (enabled state or URLs) retires probes for the old one.
+    const tunnelTarget = tunnelEnabled ? `${tunnelPublicUrl}\n${tunnelUrl}` : "";
+    if (tunnelTarget !== tunnelProbeTargetRef.current) {
+      tunnelProbeTargetRef.current = tunnelTarget;
+      tunnelProbeGenRef.current += 1;
+    }
+    const tsTarget = tsEnabled ? tsUrl : "";
+    if (tsTarget !== tsProbeTargetRef.current) {
+      tsProbeTargetRef.current = tsTarget;
+      tsProbeGenRef.current += 1;
+    }
     const probeBoth = async () => {
       if (document.hidden) return;
+      const tsGen = tsProbeGenRef.current;
       if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
+        const gen = tunnelProbeGenRef.current;
         const ok = await clientPingAny(tunnelPublicUrl, tunnelUrl);
-        tunnelClientReachableRef.current = ok;
-        if (ok) {
-          tunnelMissRef.current = 0;
-          setTunnelReachable(true);
-          if (!tunnelEverReachableRef.current) {
-            tunnelEverReachableRef.current = true;
-            setTunnelEverReachable(true);
-          }
-        } else {
-          tunnelMissRef.current += 1;
-          if (tunnelMissRef.current >= REACHABLE_MISS_THRESHOLD) setTunnelReachable(false);
+        if (gen === tunnelProbeGenRef.current) {
+          recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
         }
-      } else {
-        tunnelClientReachableRef.current = false;
       }
-      if (tsEnabled && tsUrl) {
+      if (tsEnabled && tsUrl && tsGen === tsProbeGenRef.current) {
         const ok = await clientPingUrl(tsUrl);
-        tsClientReachableRef.current = ok;
-        if (ok) {
-          tsMissRef.current = 0;
-          setTsReachable(true);
-          if (!tsEverReachableRef.current) {
-            tsEverReachableRef.current = true;
-            setTsEverReachable(true);
-          }
-        } else {
-          tsMissRef.current += 1;
-          if (tsMissRef.current >= REACHABLE_MISS_THRESHOLD) setTsReachable(false);
+        if (tsGen === tsProbeGenRef.current) {
+          recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
         }
-      } else {
-        tsClientReachableRef.current = false;
       }
     };
     const anyEnabled = (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) || (tsEnabled && tsUrl);
@@ -231,21 +230,6 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     return () => clearInterval(id);
   }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
 
-  const updateReachable = useCallback((_unused, clientRef, missRef, setter, everRef, everSetter) => {
-    const reachable = clientRef.current;
-    if (reachable) {
-      missRef.current = 0;
-      setter(true);
-      if (!everRef.current) {
-        everRef.current = true;
-        everSetter(true);
-      }
-    } else {
-      missRef.current += 1;
-      if (missRef.current >= REACHABLE_MISS_THRESHOLD) setter(false);
-    }
-  }, []);
-
   const syncTunnelStatus = async () => {
     try {
       // Background status reads fail open: unusable status leaves last confirmed state intact.
@@ -255,16 +239,20 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       setTunnelUrl(tUrl);
       setTunnelPublicUrl(data.tunnel?.publicUrl || "");
       setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
+      // A disabled endpoint has no probe; drop its last result so a re-enable
+      // starts unreachable until a completed probe passes (#2620). Bumping the
+      // generation retires a probe still in flight, so it cannot restore the
+      // dropped result when it completes (#2627). Every reset below does the same.
+      if (!tEnabled) { tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false); }
       setTunnelEnabled(tEnabled);
       setTunnelExternal(data.tunnel?.externalTunnel || null);
-      updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
       const tsEn = getCompositeEndpointEnabled(data.tailscale);
       const tsUrlVal = data.tailscale?.tunnelUrl || "";
       setTsUrl(tsUrlVal);
+      if (!tsEn) { tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false); }
       setTsEnabled(tsEn);
       setTsExternal(data.tailscale?.systemTailscale || null);
-      updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
     } catch { /* ignore poll errors */ }
   };
 
@@ -290,16 +278,16 @@ export default function EndpointPageClient({ localPort = 20128 }) {
         setTunnelUrl(tUrl);
         setTunnelPublicUrl(data.tunnel?.publicUrl || "");
         setTunnelAllUrls(Array.isArray(data.tunnel?.allUrls) ? data.tunnel?.allUrls : []);
+        if (!tEnabled) { tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false); }
         setTunnelEnabled(tEnabled);
         setTunnelExternal(data.tunnel?.externalTunnel || null);
-        updateReachable(null, tunnelClientReachableRef, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
 
         const tsEn = getCompositeEndpointEnabled(data.tailscale);
         const tsUrlVal = data.tailscale?.tunnelUrl || "";
         setTsUrl(tsUrlVal);
+        if (!tsEn) { tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false); }
         setTsEnabled(tsEn);
         setTsExternal(data.tailscale?.systemTailscale || null);
-        updateReachable(null, tsClientReachableRef, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
       }
       setSettingsKnown(true); setLoadError("");
     } catch (error) {
@@ -417,6 +405,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
+        tunnelProbeGenRef.current += 1; tunnelMissRef.current = 0; setTunnelReachable(false);
         setTunnelEnabled(false);
         setTunnelUrl("");
         setShowDisableTunnelModal(false);
@@ -626,6 +615,7 @@ export default function EndpointPageClient({ localPort = 20128 }) {
       const res = await fetch("/api/tunnel/tailscale-disable", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
+        tsProbeGenRef.current += 1; tsMissRef.current = 0; setTsReachable(false);
         setTsEnabled(false);
         setTsUrl("");
         setShowDisableTsModal(false);

@@ -370,7 +370,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   detectQuotaExhaustion(context?.errorBody ?? errorText);
   if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
     let hinted = Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null;
-    if (hinted && context?.rateLimitEvidence?.relativeCountdown) {
+    if (hinted && context?.rateLimitEvidence?.source === "quota_text" && context.rateLimitEvidence.relativeCountdown) {
       hinted = Math.min(hinted, await quotaProseDeadlineMs(Date.now()));
     }
     const reset = quota.resetAtMs || hinted;
@@ -429,7 +429,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   let normalizedReset = githubResetAtMs || (Number.isFinite(providerReset) && providerReset > now ?
   Math.min(providerReset, now + cooldownCapMs) :
   ag429 ? now + ag429.delay : null);
-  if (normalizedReset !== null && effectiveEvidence?.relativeCountdown && !githubResetAtMs) {
+  if (normalizedReset !== null && effectiveEvidence?.source === "quota_text" && effectiveEvidence.relativeCountdown && !githubResetAtMs) {
     normalizedReset = Math.min(normalizedReset, await quotaProseDeadlineMs(now));
   }
   // A private endpoint ignores long reset hints and the backoff ladder.

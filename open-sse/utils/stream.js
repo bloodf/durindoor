@@ -884,14 +884,31 @@ export function createSSEStream(options = {}) {
     }
   };
 
+  // A gateway-estimated usage (Cursor's executor estimate, #2615) is recorded
+  // raw. A Chat stream translated to Responses carries it into the terminal
+  // event without passing the finish-chunk projection, so add the client
+  // margin to a copy here, exactly once. Provider-reported usage is unchanged.
+  const RESPONSES_USAGE_TERMINALS = new Set(["response.completed", "response.incomplete", "response.failed"]);
+  const projectResponsesTerminalMargin = (item) => {
+    if (sourceFormat !== FORMATS.OPENAI_RESPONSES || targetFormat !== FORMATS.OPENAI) return item;
+    if (state?.usage?.estimated !== true || !RESPONSES_USAGE_TERMINALS.has(item?.event)) return item;
+    const usage = item.data?.response?.usage;
+    if (!usage || !isObject(usage)) return item;
+    return {
+      ...item,
+      data: { ...item.data, response: { ...item.data.response, usage: addBufferToUsage(usage, provider) } }
+    };
+  };
+
   // A wire [DONE] closes the opportunity for trailing usage, even when the
   // upstream keeps the transport open. Do not wait for EOF to complete Codex.
   const flushPendingResponsesCompletion = (controller) => {
     if (targetFormat !== FORMATS.OPENAI || sourceFormat !== FORMATS.OPENAI_RESPONSES ||
         !state?.awaitingTrailingUsage || state.completedSent) return;
     const completed = translateResponse(targetFormat, sourceFormat, null, state);
-    for (const item of completed || []) {
+    for (let item of completed || []) {
       if (item == null) continue;
+      item = projectResponsesTerminalMargin(item);
       const output = formatSSE(item, sourceFormat);
       reqLogger?.appendConvertedChunk?.(output);
       controller.enqueue(sharedEncoder.encode(output));
@@ -1666,9 +1683,10 @@ export function createSSEStream(options = {}) {
           sseEmittedCount++;
         }
         if (!nativeGemini && translated?.length > 0) {
-          for (const item of translated) {
+          for (let item of translated) {
             if (item === null || item === undefined) continue;
             if (dropUnrequestedUsageChunk && isUsageOnlyChunk(item)) continue;
+            item = projectResponsesTerminalMargin(item);
             // Filter empty chunks
             if (!hasValuableContent(item, sourceFormat)) {
               continue; // Skip this empty chunk
@@ -2063,8 +2081,9 @@ export function createSSEStream(options = {}) {
                 controller.enqueue(sharedEncoder.encode(formatSSE(antigravityGeminiResponse(parsed, toolNameMap, true), FORMATS.GEMINI)));
               }
               if (!nativeGemini && translated?.length > 0) {
-                for (const item of translated) {
+                for (let item of translated) {
                   if (item === null || item === undefined) continue;
+                  item = projectResponsesTerminalMargin(item);
                   if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
                   const output = formatSSE(item, sourceFormat);
                   reqLogger?.appendConvertedChunk?.(output);
@@ -2080,15 +2099,18 @@ export function createSSEStream(options = {}) {
         // release buffered tool calls, so end it with an error (upstream #4486).
         // A translated Responses stream with no terminal event is cut off the same way
         // (upstream #4490). A Claude client on a Chat Completions upstream gets the
-        // same treatment when neither a finish reason nor [DONE] arrived: the null
-        // flush would close it with end_turn + message_stop (upstream #3860).
+        // same treatment when neither a finish reason nor [DONE] arrived (upstream
+        // #3860). A sentinel alone is compatible with text-only streams, but
+        // cannot complete buffered tool calls when upstream terminal tracking failed.
         const keepsOpenAIResponsesFormat = targetFormat === FORMATS.OPENAI_RESPONSES && sourceFormat === FORMATS.OPENAI_RESPONSES;
         const cutGemini = !nativeGemini && GEMINI_FAMILY_FORMATS.has(targetFormat) && !state.finishReason;
         const cutResponses = targetFormat === FORMATS.OPENAI_RESPONSES && !keepsOpenAIResponsesFormat &&
           !state.finishReason && !openAIResponsesTerminalSeen && upstreamTerminal.outcome !== "success";
         const cutChatForClaude = sourceFormat === FORMATS.CLAUDE && targetFormat === FORMATS.OPENAI &&
-          state.messageStartSent && !state.claudeFinishHandled && !streamDoneSent &&
-          !parseSSELine(buffer.trim(), targetFormat)?.done;
+          state.messageStartSent && !state.claudeFinishHandled && (
+            (state.claudeSawToolCalls && upstreamTerminal.outcome !== "success") ||
+            (!streamDoneSent && !parseSSELine(buffer.trim(), targetFormat)?.done)
+          );
         if (cutGemini || cutResponses || cutChatForClaude) {
           // Claude clients retry overloaded_error; a dropped Chat stream is transient.
           const claudeErrorType = cutChatForClaude ? "overloaded_error" : "api_error";
@@ -2120,8 +2142,9 @@ export function createSSEStream(options = {}) {
         }
 
         if (!nativeGemini && flushed?.length > 0) {
-          for (const item of flushed) {
+          for (let item of flushed) {
             if (item === null || item === undefined) continue;
+            item = projectResponsesTerminalMargin(item);
             if (sourceFormat === FORMATS.OPENAI) restoreOpenAIToolNames(item, toolNameMap);
             const output = formatSSE(item, sourceFormat);
             reqLogger?.appendConvertedChunk?.(output);

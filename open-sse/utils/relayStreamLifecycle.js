@@ -16,11 +16,8 @@
  * "TimeoutError" lets the stream-lifecycle wrapper distinguish internal
  * timeouts from caller aborts without changing pre-header fetch behavior.
  */
-export function fetchConnectTimeoutError(timeoutMs) {
-  const message = Number.isFinite(timeoutMs) && timeoutMs > 0
-    ? `fetch connect timeout: upstream did not send response headers within ${timeoutMs} ms`
-    : "fetch connect timeout";
-  return new DOMException(message, "TimeoutError");
+export function fetchConnectTimeoutError() {
+  return new DOMException("fetch connect timeout", "TimeoutError");
 }
 
 export function isRelaySseResponse(response) {

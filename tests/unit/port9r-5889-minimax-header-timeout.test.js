@@ -92,7 +92,7 @@ describe("MiniMax Code response header timeout (upstream #5889)", () => {
       body: { model: "MiniMax-M3", messages: [{ role: "user", content: "hi" }] },
       stream: true,
       credentials,
-    })).rejects.toThrow("upstream did not send response headers within 120000 ms");
+    })).rejects.toThrow("Upstream did not send response headers within 120000 ms");
     await vi.advanceTimersByTimeAsync(120_000);
     await pending;
   });

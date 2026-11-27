@@ -213,6 +213,15 @@ export class MinimaxCodeExecutor extends DefaultExecutor {
       if (budget.signal.aborted && !input.signal?.aborted) {
         return failure(500, "gateway_timeout", `MiniMax Code gateway call timed out after ${timeoutMs} ms.`);
       }
+      if (error?.errorKind === "connect_timeout") {
+        const timeout = new DOMException(
+          `Upstream did not send response headers within ${headerTimeoutMs} ms`,
+          "TimeoutError"
+        );
+        timeout.errorKind = "connect_timeout";
+        timeout.providerAttemptStartedAt = error.providerAttemptStartedAt;
+        throw timeout;
+      }
       throw error;
     } finally {
       clearTimeout(timer);

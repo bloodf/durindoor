@@ -113,10 +113,14 @@ export function buildKieImageRequest(model, body) {
   const prompt = body.prompt;
 
   if (route.id === "fluxKontext") {
-    return { route, request: { prompt, aspectRatio: ratio, model: entry.kieFluxKontextModel, ...(input ? { inputImage: input } : {}) } };
+    const request = { prompt, aspectRatio: ratio, model: entry.kieFluxKontextModel };
+    if (input) request.inputImage = input;
+    return { route, request };
   }
   if (route.id === "market") {
-    return { route, request: { model: kieMarketUpstreamId(model), input: { prompt, aspect_ratio: ratio, ...(input ? { image_url: input } : {}) } } };
+    const marketInput = { prompt, aspect_ratio: ratio };
+    if (input) marketInput.image_url = input;
+    return { route, request: { model: kieMarketUpstreamId(model), input: marketInput } };
   }
   if (input) throw reject("KIE 4o Image does not take an input image here");
   return { route, request: { prompt, size: ratio, nVariants: n } };

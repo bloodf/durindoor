@@ -1,0 +1,111 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/musicRegistry.ts",
+      "open-sse/handlers/musicGeneration.ts",
+      "open-sse/handlers/mediaGeneration/elevenLabsMusic.ts",
+      "open-sse/handlers/mediaGeneration/elevenLabsSchemas.ts"
+    ],
+    "registryEntry": {
+      "id": "elevenlabs",
+      "baseUrl": "https://api.elevenlabs.io/v1/music",
+      "authType": "apikey",
+      "authHeader": "xi-api-key",
+      "format": "elevenlabs-music",
+      "models": [
+        { "id": "music_v1", "name": "Eleven Music V1" },
+        { "id": "music_v2", "name": "Eleven Music V2" },
+        { "id": "music_v2_5", "name": "Eleven Music V2.5" }
+      ]
+    }
+  },
+  "modules": {
+    "index": "open-sse/services/providerParity/native-elevenlabs-music/index.js",
+    "config": "open-sse/services/providerParity/native-elevenlabs-music/config.js",
+    "transport": "open-sse/services/providerParity/native-elevenlabs-music/transport.js"
+  },
+  "exports": [
+    "ELEVENLABS_MUSIC_PROVIDER_ID",
+    "ELEVENLABS_MUSIC_PROVIDER_ALIASES",
+    "ELEVENLABS_MUSIC_FORMAT",
+    "ELEVENLABS_MUSIC_ORIGIN",
+    "ELEVENLABS_MUSIC_BASE_URL",
+    "ELEVENLABS_MUSIC_DEFAULT_OUTPUT_FORMAT",
+    "ELEVENLABS_MUSIC_CONFIG",
+    "ELEVENLABS_MUSIC_LIMITS",
+    "ELEVENLABS_MUSIC_MIME_TO_FORMAT",
+    "buildElevenLabsMusicAuth",
+    "isElevenLabsMusicProvider",
+    "isElevenLabsMusicModel",
+    "listElevenLabsMusicModels",
+    "buildElevenLabsMusicRequest",
+    "buildElevenLabsMusicUrl",
+    "elevenLabsMusicFormat",
+    "audioMatchesFormat",
+    "wavDurationSeconds",
+    "handleElevenLabsMusicGeneration",
+    "default"
+  ],
+  "provider": "elevenlabs",
+  "aliases": ["el"],
+  "aliasNote": "The source music registry key is `elevenlabs` with no alias. `el` is the existing local `open-sse/providers/registry/elevenlabs.js` alias for the same connection; no other provider uses it.",
+  "serviceKinds": ["music"],
+  "models": [
+    { "id": "music_v1", "name": "Eleven Music V1", "kind": "music" },
+    { "id": "music_v2", "name": "Eleven Music V2", "kind": "music" },
+    { "id": "music_v2_5", "name": "Eleven Music V2.5", "kind": "music" }
+  ],
+  "connectionModes": {
+    "api_key": "credentials.apiKey (trimmed) sent as `xi-api-key`; the existing local elevenlabs connection mode",
+    "access_token": "source fallback: credentials.accessToken sent as `xi-api-key` only when no apiKey is present; no OAuth flow is added"
+  },
+  "endpoints": {
+    "generate": "POST https://api.elevenlabs.io/v1/music?output_format=<codec_rate[_bitrate]> (default mp3_44100_128)",
+    "discovery": "none: the source has no ElevenLabs music model discovery; listElevenLabsMusicModels() returns the pinned static list",
+    "origin": "fixed; no base URL override",
+    "redirects": "manual; any 3xx is refused"
+  },
+  "request": {
+    "accepted": [
+      "model", "prompt", "composition_plan", "music_length_ms", "duration", "force_instrumental", "instrumental",
+      "seed", "finetune_id", "respect_sections_durations", "store_for_inpainting", "sign_with_c2pa",
+      "output_format", "response_format=b64_json", "stream=false", "user"
+    ],
+    "wireBody": "{ model_id, music_length_ms (music_length_ms ?? duration*1000), force_instrumental (force_instrumental ?? instrumental), ...defined native fields }"
+  },
+  "response": {
+    "shape": "{ object: 'music.generation', created, provider: 'elevenlabs', model, status: 'completed', data: [{ b64_json, format, mime_type, duration_seconds? }] }",
+    "formats": ["mp3", "wav", "ogg", "opus", "flac", "pcm", "ulaw", "alaw"],
+    "resultContract": "musicGenerationCore: { success, outcome, connectionId, accounting, response } | createErrorResult(...) + { outcome, connectionId, acceptedJob? }"
+  },
+  "publicHandlerIntegration": [
+    {
+      "file": "open-sse/handlers/musicGenerationCore.js",
+      "point": "handleMusicGenerationCore",
+      "change": "dispatch isElevenLabsMusicProvider(provider) to handleElevenLabsMusicGeneration({ model, body, credentials, signal }) before the MUSIC_ADAPTERS cookie lookup; reject requestId (synchronous, nothing to poll)"
+    },
+    {
+      "file": "src/sse/handlers/music.js",
+      "point": "handleSingleModelMusic",
+      "change": "none beyond the existing acceptedJob branch: it already records recordAcceptedJobUsage and refuses fallback after an accepted job"
+    },
+    {
+      "file": "open-sse/providers/registry/elevenlabs.js",
+      "point": "serviceKinds + musicConfig",
+      "change": "add 'music' to serviceKinds and musicConfig { baseUrl: 'https://api.elevenlabs.io/v1/music', authType: 'apikey', authHeader: 'xi-api-key', format: 'elevenlabs-music', models: [music_v1, music_v2, music_v2_5] }"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "point": "ElevenLabs row",
+      "change": "list music (Eleven Music, b64_json, synchronous)"
+    }
+  ],
+  "notPorted": [
+    "native passthrough routes /v1/music, /v1/music/stream, /v1/music/plan, /v1/sound-generation (src/app/api/v1/music/*, separate source feature)",
+    "streaming (source rejects stream=true on the unified route too)"
+  ]
+}

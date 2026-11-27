@@ -186,8 +186,13 @@ function formatTranslatedStreamError(error, sourceFormat, secrets = [], targetFo
     return `event: response.failed\ndata: ${JSON.stringify(failed)}\n\ndata: [DONE]\n\n`;
   }
   if (sourceFormat === FORMATS.CLAUDE) {
+    // Classify from the original error type/code before normalizeStreamError
+    // fills default code:"stream_error", which would otherwise shadow error.type.
     const claudeError = targetFormat === FORMATS.OPENAI_RESPONSES
-      ? claudeResponsesError(normalized).error
+      ? claudeResponsesError(
+          isObject(error) ? { ...error, message: normalized.message } : normalized.message,
+          secrets,
+        ).error
       : normalized;
     return formatClaudeSseError(claudeError) + "data: [DONE]\n\n";
   }

@@ -1,0 +1,99 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts",
+      "open-sse/config/videoRegistry.ts",
+      "open-sse/handlers/imageGeneration.ts",
+      "open-sse/handlers/imageGeneration/openAiImageFetch.ts",
+      "open-sse/handlers/videoGeneration.ts",
+      "open-sse/handlers/videoGeneration/job.ts",
+      "src/shared/constants/providers/apikey/specialty-media.ts",
+      "tests/unit/deapi-provider.test.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-deapi-video-image/index.js",
+  "exports": {
+    "deapiImageAdapter": "default image adapter instance (guarded generate adapter, responseFormats [url, b64_json])",
+    "deapiVideoAdapter": "default video adapter instance (VIDEO_GENERATION_ADAPTERS contract, responseFormats [b64_json])",
+    "createDeapiImageAdapter": "factory; options { timeoutMs, now } for tests",
+    "createDeapiVideoAdapter": "factory; options { timeoutMs, submitTimeoutMs, requestTimeoutMs, contentTimeoutMs, pollIntervalMs, maxPolls, wait, now } for tests",
+    "buildDeapiImageRequest": "(model, body) -> { model, prompt, n?, size?, quality?, response_format?, style? }; throws status 400",
+    "buildDeapiVideoRequest": "(model, body) -> { model, prompt, seconds?: string, size? }; throws status 400",
+    "runDeapiVideoJob": "submit + bounded poll + bounded /content read; { success, bytes, job, jobId } or error result with acceptedJob",
+    "deapiAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "deapiPublicUrl": "public https URL check used for image results",
+    "DEAPI_PROVIDER_DEFINITION": "staged provider definition for open-sse/providers/registry/deapi.js",
+    "DEAPI_IMAGE_MODELS": "image catalog metadata; Z-Image models carry square supportedSizes",
+    "DEAPI_VIDEO_MODELS": "video catalog metadata",
+    "DEAPI_IMAGE_SIZES": "source provider supportedSizes"
+  },
+  "provider": {
+    "canonicalId": "deapi",
+    "aliases": [],
+    "sourceAlias": "deapi (same as the id, so no extra alias key)",
+    "existingRegistryEntry": null,
+    "addRegistryEntry": "open-sse/providers/registry/deapi.js",
+    "addServiceKinds": ["image", "video"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"], "keyShape": "sk-dp-<id>-<secret>" },
+    "connectionBaseUrlHonored": false,
+    "notEquivalent": {
+      "deepai": "different vendor: api.deepai.org text2img, multipart body, api-key header",
+      "generic OpenAI image adapter (imageProviders/openai.js)": "reads imageConfig.baseUrl of a registered provider; no deapi entry exists, it defaults n=1 and size=1024x1024 and forwards OpenAI output options deAPI does not take",
+      "custom OpenAI-compatible node": "user-supplied base URL; would send the key wherever configured and has no deAPI video job",
+      "/v1/videos proxy (videoCore.js)": "no deapi videoConfig, hands job ids to the client, no accepted-job ledger and no key-gated content download"
+    }
+  },
+  "models": {
+    "image": [
+      { "id": "ZImageTurbo_INT8", "name": "Z-Image Turbo (deAPI)", "supportedSizes": ["512x512", "768x768", "1024x1024"] },
+      { "id": "Flux_2_Klein_4B_BF16", "name": "FLUX.2 Klein 4B (deAPI)" },
+      { "id": "Flux1schnell", "name": "FLUX.1 schnell (deAPI)" },
+      { "id": "ZAnimeDistill_8Step_INT8", "name": "Z-Anime (deAPI)", "supportedSizes": ["512x512", "768x768", "1024x1024"] }
+    ],
+    "imageSizes": ["512x512", "768x768", "1024x1024", "1024x1536", "1536x1024"],
+    "video": [
+      { "id": "Ltx2_5_22B_Dist_INT8", "name": "LTX-2.5 22B (deAPI)" },
+      { "id": "MiniMaxH3_33B_Turbo_INT8", "name": "MiniMax H3 Turbo (deAPI)" },
+      { "id": "Ltx2_3_22B_Dist_INT8", "name": "LTX-2.3 22B (deAPI)" },
+      { "id": "Ltxv_13B_0_9_8_Distilled_FP8", "name": "LTX-Video 13B Distilled (deAPI)" }
+    ],
+    "rawIds": "none; only the catalog ids are sent",
+    "dynamicDiscovery": "none in the source; static registry lists"
+  },
+  "endpoints": {
+    "image": { "method": "POST", "url": "https://oai.deapi.ai/v1/images/generations", "headers": ["Content-Type", "Authorization"] },
+    "videoSubmit": { "method": "POST", "url": "https://oai.deapi.ai/v1/videos", "headers": ["Content-Type", "Authorization"], "jobField": "id" },
+    "videoStatus": { "method": "GET", "url": "https://oai.deapi.ai/v1/videos/{id}", "headers": ["Authorization"] },
+    "videoContent": { "method": "GET", "url": "https://oai.deapi.ai/v1/videos/{id}/content", "headers": ["Authorization"] }
+  },
+  "responseFormats": { "image": ["url", "b64_json"], "video": ["b64_json"] },
+  "serviceKinds": ["image", "video"],
+  "notStaged": {
+    "tts": "source audioRegistry deapi /v1/audio/speech; separate inventory row",
+    "stt": "source audioRegistry deapi /v1/audio/transcriptions; separate inventory row",
+    "embeddings": "source embeddingRegistry deapi /v1/embeddings; separate inventory row"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/deapi.js",
+      "change": "new entry from DEAPI_PROVIDER_DEFINITION (id deapi, alias deapi, apikey, models with kind image / video, serviceKinds [\"image\", \"video\"], imageConfig); no videoConfig, so /v1/videos stays unavailable for deapi"
+    },
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "import { deapiImageAdapter } and add `deapi: deapiImageAdapter` to IMAGE_ADAPTERS; handleImageGenerationCore dispatches it through the guarded `generate` branch after the responseFormats check"
+    },
+    {
+      "file": "open-sse/handlers/videoProviders/index.js",
+      "change": "import { deapiVideoAdapter } and add `deapi: deapiVideoAdapter` to VIDEO_GENERATION_ADAPTERS; handleVideoGenerationCore calls generate (default response_format b64_json) and keeps acceptedJob on errors"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list deAPI image and video kinds after registration"
+    }
+  ]
+}

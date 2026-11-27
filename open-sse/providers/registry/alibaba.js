@@ -1,3 +1,28 @@
+// Native video catalog ported from cheaper-inference/OmniRoute (MIT),
+// c71f0065a7efe9230ec23b96a12253b050c4d7ad: open-sse/config/videoRegistry.ts.
+// Request options follow open-sse/handlers/videoGeneration/dashscopeHandler.ts.
+// Existing keys and chat transport are shared; video uses /v1/video/generations.
+/**
+ * Framing inputs for models without a first frame. `aspect_ratio` is an alias
+ * of `ratio`; `size` (e.g. "1280*720") is normalized to `resolution` + `ratio`.
+ * I2V models take the ratio from the first frame and refuse all three.
+ */
+const FRAMING_PARAMS = ["ratio", "aspect_ratio", "size"];
+const videoModels = [
+  ["happyhorse-1.1-i2v", "HappyHorse 1.1 I2V"],
+  ["happyhorse-1.1-t2v", "HappyHorse 1.1 T2V"],
+  ["happyhorse-1.1-r2v", "HappyHorse 1.1 R2V"],
+  ["happyhorse-1.0-video-edit", "HappyHorse 1.0 Video Edit"],
+  ["wan2.7-i2v-2026-04-25", "Wan 2.7 I2V (2026-04-25)"],
+  ["wan2.6-i2v-flash", "Wan 2.6 I2V Flash"],
+  ["wan2.7-t2v-2026-06-12", "Wan 2.7 T2V (2026-06-12)"],
+  ["wan2.7-r2v-2026-06-12", "Wan 2.7 R2V (2026-06-12)"],
+  ["wan2.7-videoedit", "Wan 2.7 Video Edit"],
+].map(([id, name]) => ({
+  id, name, kind: "video",
+  params: ["resolution", ...(/i2v/.test(id) ? [] : FRAMING_PARAMS), "duration", "prompt_extend", "watermark", "seed", "shot_type"],
+}));
+
 export default {
   id: "alibaba",
   alias: "ali",
@@ -15,7 +40,9 @@ export default {
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
     modelsUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
   },
+  serviceKinds: ["llm", "video"],
   models: [
+    ...videoModels,
     { id: "qwen-max", name: "Qwen Max" },
     { id: "qwen3.8-max", name: "Qwen3.8 Max" },
     { id: "qwen-max-2025-01-25", name: "Qwen Max (2025-01-25)" },

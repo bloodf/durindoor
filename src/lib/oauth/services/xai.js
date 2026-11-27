@@ -19,6 +19,7 @@ import { spinner as createSpinner } from "../utils/ui.js";
  *  5. id_token email decode (no signature verify, mirrors Go)
  */
 import { isObject, isString } from "../../../shared/utils/typeChecks.js";
+import { oauthFailureMessage } from "../providerParity/xai-grok-cli/oauthError.js";
 
 const BASE64_BLOCK_SIZE = 4;
 
@@ -151,7 +152,7 @@ export class XaiService extends OAuthService {
     });
 
     if (!res.ok) {
-      throw new Error(`xAI token exchange failed (HTTP ${res.status})`);
+      throw new Error(await oauthFailureMessage("xAI token exchange failed", res));
     }
     const tokens = await res.json();
     if (!isString(tokens.access_token) || !tokens.access_token.trim()) {
@@ -179,7 +180,8 @@ export class XaiService extends OAuthService {
       proxyOptions
     });
     if (!res.ok) {
-      throw new Error(`xAI token refresh failed (HTTP ${res.status})`);
+      // Keep the OAuth error code so refreshXaiToken can classify invalid_grant.
+      throw new Error(await oauthFailureMessage("xAI token refresh failed", res));
     }
     const tokens = await res.json();
     if (!isString(tokens.access_token) || !tokens.access_token.trim()) {

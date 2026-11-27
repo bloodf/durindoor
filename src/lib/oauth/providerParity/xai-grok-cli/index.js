@@ -39,3 +39,15 @@ export function mapGrokImportedToken(input, selectedKey, now = Date.now()) {
   if (selectedKey) providerSpecificData.sourceAccount = selectedKey;
   return { accessToken: token, refreshToken: isString(value?.refresh_token) ? value.refresh_token : null, expiresIn: expiration, email: isString(claims.email) ? claims.email : null, providerSpecificData };
 }
+
+export { discoverXaiWebEndpoints, exchangeXaiWebCode, resetXaiWebDiscoveryCache } from "./discovery.js";
+export {
+  GROK_SIGNIN_MODES,
+  GROK_MIN_POLL_INTERVAL_MS,
+  GROK_SLOW_DOWN_STEP_MS,
+  GROK_MAX_POLL_DURATION_MS,
+  assertGrokSignInMode,
+  pollGrokDeviceAuthorization,
+  parseGrokAuthJsonPaste
+} from "./device.js";
+export { readOAuthErrorCode, oauthFailureMessage } from "./oauthError.js";

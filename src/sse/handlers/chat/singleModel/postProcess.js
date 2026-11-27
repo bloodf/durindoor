@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "open-sse/shared/codexQuotaWindow.js";
 import { markAccountUnavailable } from "../../../services/auth.js";
 import { withRouteResponseHeaders } from "open-sse/utils/routeResponseHeaders.js";
 import { validateProviderRequestId } from "../../../utils/requestCorrelation.js";
@@ -177,7 +178,7 @@ export async function processAttemptResult(ctx, state, attempt, result) {
     result.status,
     result.error,
     provider,
-    model,
+    provider === "codex" && codexBillingQuotaCode(resultErrorBody) ? null : model,
     fallbackResetAt,
     {
       attemptStartedAt: resultAttemptStartedAt,

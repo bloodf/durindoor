@@ -304,7 +304,11 @@ export function canonicalizeUsage(usage) {
   const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
     reasoningIsSubsetOfOutput(usage);
   const completion = foldReasoning ? reasoning : reportedCompletion;
-  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
+  // Match normalizeUsage: the top-level creation alias is a typed inclusive subset.
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
+    Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
+    inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
   usage.cache_creation_input_tokens !== undefined &&
   usage.cached_tokens === undefined &&
@@ -527,17 +531,20 @@ export function extractUsage(chunk) {
     const usage = responsesUsage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
-    const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
     return normalizeUsage({
       prompt_tokens: usage.input_tokens ?? usage.prompt_tokens ?? 0,
       completion_tokens: usage.output_tokens ?? usage.completion_tokens ?? 0,
       total_tokens: usage.total_tokens,
       cached_tokens: cachedTokens,
-      cache_creation_input_tokens: cacheCreationTokens,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens,
+      cache_write_tokens: usage.cache_write_tokens,
+      cache_creation_tokens: usage.cache_creation_tokens,
       reasoning_tokens: usage.output_tokens_details?.reasoning_tokens,
       cost_in_usd: usage.cost_in_usd,
       cost_in_usd_ticks: usage.cost_in_usd_ticks,
-      prompt_tokens_details: cacheCreationTokens == null ? inputDetails : { ...inputDetails, cache_creation_tokens: cacheCreationTokens }
+      // Responses creation counters remain inclusive even without cache reads.
+      prompt_tokens_details: usage.cache_creation_input_tokens == null ? inputDetails :
+        { ...inputDetails, cache_creation_tokens: usage.cache_creation_input_tokens }
     });
   }
 

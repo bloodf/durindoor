@@ -1,5 +1,5 @@
-// RenderHour image generation: async submit + bounded poll. STAGED: not in
-// IMAGE_ADAPTERS, so no route reaches it. See docs/providers/renderhour.md.
+// RenderHour image generation: async submit + bounded poll, registered in
+// IMAGE_ADAPTERS. See docs/providers/renderhour.md.
 //
 // Ported from cheaper-inference/OmniRoute at
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT, Copyright (c) 2026 Cheaper
@@ -7,19 +7,19 @@
 // open-sse/handlers/imageGeneration/providers/renderhour.ts. The job client is
 // ../../services/renderhour/job.js.
 //
-// Fork deviations: an `rh_` API key is the only credential (no subscription
-// OAuth token), only the listed image models are submitted, reference images
-// are refused instead of uploaded, and result URLs are returned without being
-// downloaded here.
+// Fork deviations: an `rh_` API key or a stored plan sign-in is the credential,
+// only the listed image models are submitted, reference images are refused
+// instead of uploaded, and result URLs are returned without being downloaded:
+// only response_format "url" is accepted, before anything is sent.
 import { randomUUID } from "node:crypto";
 import { nowSec } from "./_base.js";
-import { RENDERHOUR_GENERATIONS_URL, RENDERHOUR_IMAGE_MODEL_IDS } from "../../providers/private/renderhour.js";
+import { RENDERHOUR_GENERATIONS_URL, RENDERHOUR_IMAGE_MODEL_IDS } from "../../providers/registry/renderhour.js";
+import { renderHourAuthorization } from "../../services/renderhour/media.js";
 import { awaitRenderHourImages, RENDERHOUR_MAX_IMAGES, RENDERHOUR_REQUEST_TIMEOUT_MS } from "../../services/renderhour/job.js";
 import { isBoolean, isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS = new Set(RENDERHOUR_IMAGE_MODEL_IDS);
 const RATIOS = ["1:1", "3:4", "4:3", "4:5", "9:16", "16:9"];
-const API_KEY_RE = /^rh_[\x21-\x7e]{1,512}$/;
 const INPUT_FIELDS = ["image", "images", "image_url", "image_urls", "imageUrls", "reference_images", "mask"];
 
 const reject = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -69,14 +69,16 @@ export function createRenderHourImageAdapter({ submitTimeoutMs = RENDERHOUR_REQU
     submitTimeoutMs,
     submitOutcomeUnknown: true,
     retryAfterResets: true,
+    // Read by imageGenerationCore before dispatch: file URLs only, never
+    // downloaded into b64_json or binary output.
+    responseFormats: ["url"],
     buildUrl: () => RENDERHOUR_GENERATIONS_URL,
     buildHeaders: (credentials) => {
-      const key = credentials?.apiKey;
-      if (!isString(key) || !API_KEY_RE.test(key)) throw reject("RenderHour needs an rh_ API key", 401);
+      const authorization = renderHourAuthorization(credentials);
       return {
         "Content-Type": "application/json",
         Accept: "application/json",
-        Authorization: `Bearer ${key}`,
+        Authorization: authorization,
         // One key per submit: this adapter never replays a submit.
         "Idempotency-Key": randomUUID(),
       };

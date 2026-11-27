@@ -19,16 +19,18 @@ import provider, {
   RENDERHOUR_IMAGE_MODEL_IDS,
   RENDERHOUR_MODELS_BY_TASK,
   RENDERHOUR_SPEECH_MODEL_IDS,
-  RENDERHOUR_STAGED_MEDIA,
+  RENDERHOUR_MEDIA,
   RENDERHOUR_VIDEO_MODEL_IDS,
   renderHourTaskOf,
-} from "../../open-sse/providers/private/renderhour.js";
+} from "../../open-sse/providers/registry/renderhour.js";
 import * as job from "../../open-sse/services/renderhour/job.js";
 import { discoverRenderHourModels } from "../../open-sse/services/renderhour/media.js";
 import renderHourVideo, { buildRenderHourVideoRequest, createRenderHourVideoAdapter } from "../../open-sse/handlers/videoProviders/renderhour.js";
 import renderHourTts, { createRenderHourTtsAdapter } from "../../open-sse/handlers/ttsProviders/renderhour.js";
 import { handleTtsCore } from "../../open-sse/handlers/ttsCore.js";
 import { getVideoConfig } from "../../open-sse/handlers/videoCore.js";
+import { getVideoGenerationAdapter } from "../../open-sse/handlers/videoProviders/index.js";
+import { supportsVideoGeneration } from "../../open-sse/handlers/videoGenerationCore.js";
 import { resolveCredentialProxyOptions } from "../../open-sse/services/oauthCredentialManager.js";
 import { PROVIDER_MEDIA } from "../../open-sse/providers/index.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
@@ -117,17 +119,18 @@ afterEach(() => {
   staged.tts = null;
 });
 
-describe("renderhour media staging", () => {
-  it("keeps the staged default export image-only and stages video and speech beside it", () => {
-    expect(provider).toMatchObject({ id: "renderhour", authType: "apikey", transport: null, serviceKinds: ["image"] });
+describe("renderhour media registration", () => {
+  it("declares image, video and speech models on the registered entry, with no job proxy configs", () => {
+    expect(provider).toMatchObject({ id: "renderhour", authType: "apikey", transport: null, serviceKinds: ["image", "video", "tts"] });
+    expect(provider.models.map(({ id, kind }) => [id, kind])).toEqual(RENDERHOUR_MEDIA.models.map(({ id, kind }) => [id, kind]));
     expect(provider).not.toHaveProperty("videoConfig");
     expect(provider).not.toHaveProperty("ttsConfig");
     expect(RENDERHOUR_VIDEO_MODEL_IDS).toHaveLength(16);
     expect(RENDERHOUR_SPEECH_MODEL_IDS).toEqual(["eleven-v4", "eleven-v4-turbo", "minimax-speech-2.8-hd"]);
-    expect(RENDERHOUR_STAGED_MEDIA.serviceKinds).toEqual(["image", "video", "tts"]);
-    expect(RENDERHOUR_STAGED_MEDIA.models).toHaveLength(11 + 16 + 3);
-    expect(RENDERHOUR_STAGED_MEDIA).not.toHaveProperty("videoConfig");
-    expect(RENDERHOUR_STAGED_MEDIA).not.toHaveProperty("ttsConfig");
+    expect(RENDERHOUR_MEDIA.serviceKinds).toEqual(["image", "video", "tts"]);
+    expect(RENDERHOUR_MEDIA.models).toHaveLength(11 + 16 + 3);
+    expect(RENDERHOUR_MEDIA).not.toHaveProperty("videoConfig");
+    expect(RENDERHOUR_MEDIA).not.toHaveProperty("ttsConfig");
   });
 
   it("gives every model id exactly one task", () => {
@@ -139,12 +142,15 @@ describe("renderhour media staging", () => {
     expect(renderHourTaskOf("gpt-4o")).toBeNull();
   });
 
-  it("is not reachable through the registry, the media maps, the video proxy or a chat executor", async () => {
+  it("is reachable through the registry, the speech map and the sync video map, never the video proxy or a chat executor", async () => {
     const actual = await vi.importActual("../../open-sse/handlers/ttsProviders/index.js");
-    expect(actual.getTtsAdapter("renderhour")).toBeNull();
+    expect(actual.getTtsAdapter("renderhour")).toBe(renderHourTts);
+    expect(getVideoGenerationAdapter("renderhour")).toBe(renderHourVideo);
+    expect(supportsVideoGeneration("renderhour")).toBe(true);
     expect(getVideoConfig("renderhour")).toBeNull();
-    expect(PROVIDER_MEDIA.renderhour).toBeUndefined();
-    expect(REGISTRY.some((entry) => entry.id === "renderhour")).toBe(false);
+    expect(PROVIDER_MEDIA.renderhour).not.toHaveProperty("videoConfig");
+    expect(PROVIDER_MEDIA.renderhour).not.toHaveProperty("ttsConfig");
+    expect(REGISTRY.filter((entry) => entry.id === "renderhour")).toEqual([provider]);
     expect(hasSpecializedExecutor("renderhour")).toBe(false);
   });
 

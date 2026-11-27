@@ -1,16 +1,18 @@
 // Classify literal git-grep matches without exempting any production directory.
 const PREFIX = "open-sse/services/providerParity/native-syntx-media/";
 const NEEDLE = "native-image-upscale";
-// Every JavaScript line terminator: any of these ends a line comment.
-const JS_LINE_BREAK = /\r\n|[\n\r\u2028\u2029]/;
+// JavaScript also ends a line at these. The private files do not use them.
+const UNUSUAL_LINE_BREAK = /\r(?!\n)|[\u2028\u2029]/;
 const BLANK_OR_LINE_COMMENT = /^\s*(?:\/\/.*)?$/;
 
 // A line starting with "//" may sit inside a template, string or block comment.
 // Without a lexer, comment context is certain only in the leading header, where
 // every line from the start of the file is blank or a line comment. Nothing
-// there can open another context. Later matches are ambiguous: no exemption.
+// there can open another context. Later matches are ambiguous, as is any file
+// with an unusual line break: no exemption.
 function hasReferenceAfterCommentHeader(content) {
-  const lines = content.split(JS_LINE_BREAK);
+  if (UNUSUAL_LINE_BREAK.test(content)) return true;
+  const lines = content.split(/\r?\n/);
   const headerEnd = lines.findIndex((line) => !BLANK_OR_LINE_COMMENT.test(line));
   return headerEnd !== -1 && lines.slice(headerEnd).some((line) => line.includes(NEEDLE));
 }

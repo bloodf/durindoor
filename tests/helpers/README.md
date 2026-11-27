@@ -9,8 +9,9 @@ A line that starts with `//` is not necessarily a comment. The guard once exempt
 any such line, including one inside a template literal whose value was later
 sliced into an import path. It now exempts a match in the two private JavaScript
 files only within the leading comment header: every line from the start of the
-file through the match must be blank or a `//` comment. Lines are split on every
-JavaScript line terminator, including U+2028 and U+2029.
+file through the match must be blank or a `//` comment. A file containing a lone
+carriage return, U+2028 or U+2029 gets no exemption, because each of those also
+ends a JavaScript line comment and can hide code after it.
 
 Limitation: the guard does not lex JavaScript. A genuine comment placed after any
 other line, including a block comment, is ambiguous and therefore forbidden. Keep

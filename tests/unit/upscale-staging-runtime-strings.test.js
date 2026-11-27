@@ -19,13 +19,14 @@ const runtimeFixtures = [
   ["template after a quoted block comment closer", lines('const s = "*/"; const t = `', "// native-image-upscale", "`;")],
   ["template after a regex holding a quote", lines('const r = /"/; const t = `', "// native-image-upscale", "`;")],
   ["code after a block comment closes on a lookalike line", lines("/*", '// */ import("../native-image-upscale/index.js");')],
-  ...[["CR", "\r"], ["U+2028", " "], ["U+2029", " "]].flatMap(([name, terminator]) => [
+  ...[["CR", "\r"], ["U+2028", "\u2028"], ["U+2029", "\u2029"]].flatMap(([name, terminator]) => [
     [`code after a comment ended by ${name}`, `// note${terminator}import("../native-image-upscale/index.js");`],
     [`template opened after a comment ended by ${name}`, lines(`// note${terminator}const t = \``, "// native-image-upscale", "`;")],
   ]),
 ];
 
 const ambiguousFixtures = [
+  ["a header note ended by a lone CR", "// native-image-upscale ownership note\r"],
   ["a line comment after code", lines('import x from "./x.js";', "// native-image-upscale ownership note")],
   ["a line comment after a closed template", lines("const t = `a`;", "// native-image-upscale ownership note")],
   ["a lookalike inside a block comment", lines("/*", "// native-image-upscale ownership note", "*/")],

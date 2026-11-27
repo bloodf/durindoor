@@ -3,12 +3,26 @@ import { generatePKCE } from "../utils/pkce.js";
 import { ANTIGRAVITY_CONFIG, getOAuthClientMetadata } from "../constants/oauth.js";
 import { startLocalServer, waitForCallbackParams } from "../utils/server.js";
 import { spinner as createSpinner } from "../utils/ui.js";
+import {
+  antigravityAgeRestrictionError,
+  antigravityOnboardOperationError,
+  extractAntigravityOnboardTier,
+  extractAntigravityProject
+} from "../../../../open-sse/services/antigravityProvisioning.js";
+
+import { isString } from "../../../shared/utils/typeChecks.js";
 
 /**
  * Antigravity OAuth Service
  * Uses standard OAuth2 Authorization Code flow (similar to Gemini)
+ *
+ * Sign-in order and validation follow CLIProxyAPI (MIT)
+ * sdk/auth/antigravity.go and internal/auth/antigravity/auth.go at
+ * dbe641f286a489ecb39e3c041c554371e6add864: an empty access token or email
+ * fails the sign-in, onboarding runs only when loadCodeAssist returns no
+ * project, and a settled onboarding operation error or a missing project fails
+ * closed.
  */
-import { isObject, isString } from "../../../shared/utils/typeChecks.js";
 export class AntigravityService {
   constructor() {
     this.config = ANTIGRAVITY_CONFIG;
@@ -73,7 +87,11 @@ export class AntigravityService {
       throw new Error(`Token exchange failed: ${response.status}`);
     }
 
-    return await response.json();
+    const tokens = await response.json();
+    if (!isString(tokens?.access_token) || !tokens.access_token.trim()) {
+      throw new Error("Antigravity token exchange did not return an access token");
+    }
+    return { ...tokens, access_token: tokens.access_token.trim() };
   }
 
   /**
@@ -91,7 +109,11 @@ export class AntigravityService {
       throw new Error(`Failed to get user info: ${response.status}`);
     }
 
-    return await response.json();
+    const userInfo = await response.json();
+    if (!isString(userInfo?.email) || !userInfo.email.trim()) {
+      throw new Error("Antigravity user info did not return an email");
+    }
+    return { ...userInfo, email: userInfo.email.trim() };
   }
 
   /**
@@ -130,24 +152,14 @@ export class AntigravityService {
     }
 
     const data = await response.json();
-
-    // Extract project ID
-    let projectId = data.cloudaicompanionProject;
-    if (isObject(projectId) && projectId !== null && projectId.id) {
-      projectId = projectId.id;
+    // Same project keys and tier fallback (default tier, then current tier,
+    // then free-tier) as the dashboard sign-in.
+    const projectId = extractAntigravityProject(data);
+    const tierId = extractAntigravityOnboardTier(data);
+    if (!projectId) {
+      const ageError = antigravityAgeRestrictionError(data);
+      if (ageError) throw ageError;
     }
-
-    // Extract tier ID (default to legacy-tier)
-    let tierId = "legacy-tier";
-    if (Array.isArray(data.allowedTiers)) {
-      for (const tier of data.allowedTiers) {
-        if (tier.isDefault && tier.id) {
-          tierId = tier.id.trim();
-          break;
-        }
-      }
-    }
-
     return { projectId, tierId };
   }
 
@@ -175,22 +187,16 @@ export class AntigravityService {
     for (let i = 0; i < maxRetries; i++) {
       const result = await this.onboardUser(accessToken, projectId, tierId);
 
-      if (result.done === true) {
-        // Extract final project ID from response
-        let finalProjectId = projectId;
-        if (result.response?.cloudaicompanionProject) {
-          const respProject = result.response.cloudaicompanionProject;
-          if (isString(respProject)) {
-            finalProjectId = respProject.trim();
-          } else if (respProject.id) {
-            finalProjectId = respProject.id.trim();
-          }
-        }
+      if (result?.done === true) {
+        const operationError = antigravityOnboardOperationError(result.error);
+        if (operationError) throw operationError;
+        const finalProjectId = extractAntigravityProject(result.response) || projectId;
+        if (!finalProjectId) throw new Error("Antigravity onboarding did not return a project ID");
         return { success: true, projectId: finalProjectId };
       }
 
-      // Wait 5 seconds before retry
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Wait 5 seconds before the next poll; never after the last one.
+      if (i < maxRetries - 1) await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     throw new Error("Onboarding timeout - please try again");
@@ -272,8 +278,12 @@ export class AntigravityService {
       console.log("\nOpening browser for Antigravity authentication...");
       console.log(`If browser doesn't open, visit:\n${authUrl}\n`);
 
-      // Open browser
-      await open(authUrl);
+      // A failed launch keeps the printed URL usable.
+      try {
+        await open(authUrl);
+      } catch {
+        console.log("Could not open a browser; visit the URL above.");
+      }
 
       // Wait for callback
       spinner.start("Waiting for Antigravity authorization...");
@@ -286,7 +296,10 @@ export class AntigravityService {
         throw new Error(callbackParams.error_description || callbackParams.error);
       }
 
-      if (!callbackParams.code || callbackParams.state !== state) {
+      if (callbackParams.state !== state) {
+        throw new Error("Antigravity callback state does not match this sign-in");
+      }
+      if (!callbackParams.code) {
         throw new Error("No authorization code received");
       }
 
@@ -305,15 +318,13 @@ export class AntigravityService {
       // Load Code Assist to get project ID and tier
       const { projectId, tierId } = await this.loadCodeAssist(tokens.access_token);
 
-      if (!projectId) {
-        throw new Error("No Google Cloud Project found. Please ensure you have a GCP project with Gemini Code Assist enabled.");
+      // An account without a project is onboarded; an existing project is used as is.
+      let finalProjectId = projectId;
+      if (!finalProjectId) {
+        spinner.text = "Onboarding to Gemini Code Assist...";
+        const onboardResult = await this.completeOnboarding(tokens.access_token, projectId, tierId);
+        finalProjectId = onboardResult.projectId;
       }
-
-      spinner.text = "Onboarding to Gemini Code Assist...";
-
-      // Complete onboarding to enable Gemini Code Assist
-      const onboardResult = await this.completeOnboarding(tokens.access_token, projectId, tierId);
-      const finalProjectId = onboardResult.projectId || projectId;
 
       spinner.text = "Saving tokens to server...";
 

@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "../shared/codexQuotaWindow.js";
 import { normalizeResponsesImageReplay } from "../translator/concerns/responsesImageReplay.js";
 import { BaseExecutor } from "./base.js";
 import { CODEX_DEFAULT_INSTRUCTIONS } from "../config/codexInstructions.js";
@@ -89,7 +90,9 @@ const CODEX_SSE_FAILURE_EVENTS = new Set(["error", "failed", "response.failed"])
 const CODEX_SSE_ACCOUNT_FALLBACK_PATTERNS = ["selected model is at capacity", "model_at_capacity"];
 const CODEX_SSE_USER_OUTPUT_EVENTS = new Set([
 "response.output_text.delta",
-"response.function_call_arguments.delta"]
+"response.function_call_arguments.delta",
+"response.reasoning_text.delta",
+"response.reasoning_summary_text.delta"]
 );
 const CODEX_SSE_PEEK_BYTES = 256 * 1024;
 const CODEX_MODEL_CAPACITY_MESSAGE = "Selected model is at capacity. Please try a different model.";
@@ -254,6 +257,18 @@ function firstPattern(values, patterns) {
   return patterns.find((pattern) => lowered.some((value) => value.includes(pattern))) || null;
 }
 
+/** Empty model-authored announcements carry no generated text or tool arguments. */
+function codexEmptyBootstrapAnnouncement(name, payload) {
+  const emptyPart = (part) => part && ["output_text", "summary_text", "text", "reasoning_text"].includes(part.type) &&
+    (part.text == null || part.text === "");
+  if (["response.content_part.added", "response.reasoning_summary_part.added"].includes(name)) return emptyPart(payload?.part);
+  if (name !== "response.output_item.added") return false;
+  const item = payload?.item;
+  if (!item || !["message", "reasoning", "function_call", "custom_tool_call"].includes(item.type)) return false;
+  if ([item.arguments, item.input, item.encrypted_content].some(value => value != null && value !== "")) return false;
+  return [item.content, item.summary].every(parts => parts == null || (Array.isArray(parts) && parts.every(emptyPart)));
+}
+
 /**
  * Parse and classify one complete SSE frame, including terminal Codex context
  * overflow failures from decolua/9router#3386. Incomplete data never reaches
@@ -304,7 +319,14 @@ function classifyCodexSseFrame(frame) {
   isExplicitErrorEvent(payloadType) ||
   isExplicitErrorEvent(payloadEvent) ||
   errorObjects.length > 0;
-  if (!explicitError) return { userOutput: false, kind: null, matched: null, message: null };
+  if (!explicitError) {
+    // Quota bootstrap uses a closed preamble list: unknown events may already
+    // represent hosted tool side effects and must commit the selected account.
+    const name = payloadType || eventName;
+    const preamble = ["response.created", "response.in_progress", "codex.rate_limits", "codex.response.metadata", "response.metadata", "keepalive"].includes(name);
+    const heartbeat = !data.trim();
+    return { userOutput: false, kind: null, matched: null, message: null, bootstrapCommitted: !preamble && !heartbeat && !codexEmptyBootstrapAnnouncement(name, payload) };
+  }
 
   const values = [];
   for (const error of errorObjects) {
@@ -319,6 +341,8 @@ function classifyCodexSseFrame(frame) {
   const message = errorObjects.find((error) => isString(error.message))?.message || (
   isString(payload?.message) ? payload.message : null) || (
   eventName === "error" && data ? data : null);
+  const quotaCode = codexBillingQuotaCode(payload);
+  if (quotaCode) return { userOutput: false, kind: "quota", matched: quotaCode, message };
   const contextMatch = (failureEvent || errorObjects.length > 0) &&
   firstPattern(values, CODEX_SSE_CONTEXT_OVERFLOW_PATTERNS);
   if (contextMatch) return { userOutput: false, kind: "context", matched: contextMatch, message };
@@ -892,6 +916,11 @@ export class CodexExecutor extends BaseExecutor {
         }
         return result;
       }
+      if (peek.billingQuota) {
+        await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
+        result.response = new Response(JSON.stringify({ error: { code: peek.matched, type: "insufficient_quota", message: peek.message } }), { status: 429, headers: { "Content-Type": "application/json" } });
+        return result;
+      }
       if (peek.contextOverflow) {
         args.log?.warn?.("CODEX", `SSE context overflow "${peek.message}"`);
         await settleProviderAttemptDispatch(result.response, { success: false, reason: "upstream_error" });
@@ -943,6 +972,8 @@ export class CodexExecutor extends BaseExecutor {
     let inspectedBytes = 0;
     let classification = null;
     let terminalError = null;
+    let outputStarted = false;
+    let quotaAfterOutput = false;
     // Codex sometimes disguises an overload as a successful output_text stream (#3232).
     let outputDeltaAccumulator = "";
 
@@ -975,9 +1006,16 @@ export class CodexExecutor extends BaseExecutor {
       let sawOutputInBatch = false;
       for (const frame of batch.frames) {
         const frameResult = classifyCodexSseFrame(frame);
+        if (frameResult.bootstrapCommitted) outputStarted = true;
         if (frameResult.userOutput) {
+          outputStarted = true;
           if (isString(frameResult.delta)) outputDeltaAccumulator += frameResult.delta;else
           sawOutputInBatch = true;
+        }
+        if (frameResult.kind === "quota") {
+          quotaAfterOutput = outputStarted;
+          classification = outputStarted ? null : frameResult;
+          break;
         }
         if (frameResult.kind === "context") classification = frameResult;else
         if (frameResult.kind === "account" && classification?.kind !== "context") classification = frameResult;else
@@ -986,7 +1024,7 @@ export class CodexExecutor extends BaseExecutor {
       }
 
       if (classification) break;
-      if (sawOutputInBatch) break;
+      if (sawOutputInBatch || (outputStarted && !outputDeltaAccumulator)) break;
       if (outputDeltaAccumulator) {
         const normalizedOutput = outputDeltaAccumulator.toLowerCase();
         const normalizedOverload = CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase();
@@ -999,7 +1037,7 @@ export class CodexExecutor extends BaseExecutor {
     }
 
     // #3232: full-match overload detection after the loop terminates.
-    if (classification?.kind !== "context" &&
+    if (!quotaAfterOutput && classification?.kind !== "context" &&
     outputDeltaAccumulator &&
     outputDeltaAccumulator.toLowerCase() === CODEX_OVERLOADED_OUTPUT_MESSAGE.toLowerCase()) {
       await cancelAndReleaseReader(reader, "codex-sse-retry");
@@ -1020,6 +1058,7 @@ export class CodexExecutor extends BaseExecutor {
         accountFallback: classification.kind === "account",
         contextOverflow: classification.kind === "context",
         modelRejected: classification.kind === "model",
+        billingQuota: classification.kind === "quota",
         replacementBody: null
       };
     }
@@ -1035,6 +1074,11 @@ export class CodexExecutor extends BaseExecutor {
 
   // Parse Codex usage_limit_reached to extract precise resetsAtMs; fallback to default otherwise
   parseError(response, bodyText) {
+    try {
+      const payload = JSON.parse(bodyText);
+      const code = codexBillingQuotaCode(payload);
+      if (code) return { status: 429, message: "Codex credential quota exhausted", errorBody: { error: { code, type: "insufficient_quota", message: "Codex credential quota exhausted" } } };
+    } catch { /* malformed data is not billing evidence */ }
     if (response.status === 429 && bodyText) {
       try {
         const json = JSON.parse(bodyText);

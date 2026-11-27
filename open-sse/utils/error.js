@@ -1,3 +1,4 @@
+import { codexBillingQuotaCode } from "../shared/codexQuotaWindow.js";
 import { FORMATS, detectFormatByEndpoint } from "../translator/formats.js";
 import { claudeFastCreditsRequired, claudeUnifiedQuotaRejected, claudeUnifiedResetAt } from "./claudeProtocol.js";
 import {
@@ -690,7 +691,8 @@ export async function parseUpstreamError(response, executor = null, options = {}
       // of band for fallback state.
       message: effectiveStatus === 429 ? DEFAULT_ERROR_MESSAGES[429] : sanitizeErrorMessage(parsedMessage),
       resetsAtMs: normalizedResetAtMs,
-      errorBody: claudeErrorBody ?? (effectiveStatus === 429 ? undefined : executorParsed.errorBody),
+      // Only retain the executor-built, secret-free Codex billing envelope.
+      errorBody: claudeErrorBody ?? (executor.provider === "codex" && codexBillingQuotaCode(executorParsed.errorBody) ? executorParsed.errorBody : effectiveStatus === 429 ? undefined : executorParsed.errorBody),
       rateLimitEvidence,
       antigravityQuotaSignal,
       noQuotaMetadata: executorParsed.noQuotaMetadata === true && !rateLimitEvidence?.resetAtMs && rateLimitEvidence?.state !== "exhausted" && !executorParsed.resetsAtMs && !antigravityQuotaSignal

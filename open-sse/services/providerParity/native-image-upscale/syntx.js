@@ -110,11 +110,11 @@ export function parseSyntxUpscaleRequest(model, body) {
     if (!source.toLowerCase().startsWith("data:")) throw reject("SYNTX upscale takes a data: URI or an https image URL");
     image = { inline: decodeInlineImage(source, SYNTX_MEDIA_MAX_BYTES) };
   }
-  const vendorSettings = { model_type: entry.modelType, image_url: [] };
-  if (factor !== null) vendorSettings.scale_factor = factor;
-  if (creativity !== null) vendorSettings.creativity = creativity;
-  if (entry.aiName === "ideogram") vendorSettings.mode = "upscale";
-  return { model, entry, image, prompt, factor, creativity, settings: vendorSettings, responseFormat };
+  const providerOptions = { model_type: entry.modelType, image_url: [] };
+  if (factor !== null) providerOptions.scale_factor = factor;
+  if (creativity !== null) providerOptions.creativity = creativity;
+  if (entry.aiName === "ideogram") providerOptions.mode = "upscale";
+  return { model, entry, image, prompt, factor, creativity, settings: providerOptions, responseFormat };
 }
 
 /** Source encodeUploadMultipart, byte for byte. */

@@ -48,14 +48,17 @@ export class AzureExecutor extends DefaultExecutor {
   }
 
   /**
-   * The deployment this request is addressed to. The connection's explicit
-   * deployment wins; the requested model id is only the fallback (Azure
-   * exposes deployments as models). Upstream resolves the model first, which
-   * would ignore the operator's configured deployment and break the
-   * per-deployment token-limit cache below.
+   * The deployment this request is addressed to. Pool-mode connections
+   * (`deploymentMode === "pool"`, decolua/9router#5901) dispatch to the
+   * requested model id so one endpoint can serve multiple named deployments.
+   * Legacy single-deployment connections keep `providerSpecificData.deployment`
+   * ahead of the requested model id so the per-deployment token-limit cache
+   * below stays intact.
    */
   resolveDeployment(model, credentials = null) {
-    return credentials?.providerSpecificData?.deployment
+    const data = credentials?.providerSpecificData;
+    return (data?.deploymentMode === "pool" && model)
+      || data?.deployment
       || model
       || process.env.AZURE_DEPLOYMENT
       || "gpt-4";

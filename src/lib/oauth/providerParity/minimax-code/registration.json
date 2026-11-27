@@ -1,0 +1,14 @@
+{
+  "provider": "minimax-code",
+  "status": "staged",
+  "exports": {
+    "./web.js": ["assertMinimaxCodeWebAction"]
+  },
+  "integration": [
+    {
+      "file": "src/app/api/oauth/[provider]/[action]/route.js",
+      "slot": "GET and POST after resolving provider and action, before beginAuthorization or completeAuthorization; invoke only for minimax-code"
+    }
+  ],
+  "notes": "Device sign-in already uses the registered OAuth provider and flow store. The import-token route already rejects this device-only provider. The helper adds an early rejection for unsupported browser authorization and exchange."
+}

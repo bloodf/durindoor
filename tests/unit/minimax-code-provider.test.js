@@ -408,7 +408,8 @@ describe("MiniMax Code credential and quota error mapping", () => {
     expect(throttled.response.headers.get("retry-after")).toBe("17");
     const body = await throttled.response.json();
     expect(body.error).toMatchObject({ type: "rate_limit_error", code: "quota_exceeded" });
-    expect(body.error.message).toContain("plan quota reached");
+    // Upstream text is never echoed: the refusal carries a fixed public message.
+    expect(body.error.message).not.toContain("plan quota reached");
 
     await connect("mmc-a", TOKEN_A, REFRESH_A);
     expect((await openai()).status).toBe(429);

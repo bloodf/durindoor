@@ -21,6 +21,7 @@ const gateway = async (url, init = {}) => {
   calls.push({ body: JSON.parse(init.body), at: Date.now() });
   const step = script[Math.min(calls.length - 1, script.length - 1)];
   if (step === "network") throw new TypeError("fetch failed");
+  if (step === "refused") throw Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect refused"), { code: "ECONNREFUSED" }) });
   if (step === "hang") {
     return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal.reason), { once: true }));
   }
@@ -162,8 +163,9 @@ describe("MiniMax Code retry with backoff", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("retries a dropped connection once", async () => {
-    script = ["network", 200];
+  // A dropped connection may have been accepted and is never replayed (provider-signin-minimax-code-parity.test.js).
+  it("retries a connection refused before sending once", async () => {
+    script = ["refused", 200];
     expect((await run()).response.status).toBe(200);
     expect(calls).toHaveLength(2);
   });
@@ -173,7 +175,8 @@ describe("MiniMax Code retry with backoff", () => {
     const result = await run();
     expect(calls).toHaveLength(2);
     expect(result.response.status).toBe(expected);
-    expect((await refusal(result)).message).toContain(`synthetic ${status}`);
+    // Upstream text is never echoed: the refusal carries a fixed public message.
+    expect((await refusal(result)).message).not.toContain(`synthetic ${status}`);
   });
 
   it.each([400, 403, 404, 422])("never retries a %i", async (status) => {

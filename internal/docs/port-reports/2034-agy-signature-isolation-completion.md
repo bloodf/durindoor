@@ -1,6 +1,8 @@
 # Antigravity signature isolation and generated tool-call IDs (#2034)
 
-Follow-up to `2034-agy-signature-scope-21439-3366.md` (commit `a269ea1066`). That
+Follow-up to `2034-agy-signature-scope-21439-3366.md` (commit `a269ea1066`).
+Its item 1 is too broad, as the reconciliation below explains; that report is left
+as written and this one supersedes its "fallback-ID change does not apply" note. That
 unit's account- and model-scoped capture for the nonstream body and forced
 SSE-to-JSON is kept as it was, and its 20-case suite is unchanged. The two Gemini
 replay suites (`cpa-gemini-replay-parity`, `cpa-gemini-replay-retained`) are
@@ -106,15 +108,54 @@ cannot distinguish an already attached legacy alias from a client signature.
 Two additional mocked gateway cases preserve the legacy scenario on OpenAI and
 Claude endpoints with warm and cold caches, while retaining direct Gemini reads.
 
-No dependency graph exists in this checkout. Per the retry dependency boundary,
-local Vitest execution is not run; the isolated gate must validate these changes.
-No installs, borrowed dependency mutations, live requests, or baseline edits were
-performed. All three protected suites and every prior candidate scenario remain
-unchanged.
+## Gate 3 retry: cold-persistence race and the family fixture
+
+Gate 3 at `22c352f6acdf2b21435a4eba8ebe76973d0b1ef6` first failed the same cold
+replay (line 184), then passed 83 on retry. Its full check also failed
+`antigravity-thought-signature-family.test.js:102` on both runs.
+
+**Race, diagnosed.** The first capture in a worker runs before that process has
+opened the SQLite adapter, so `writeSignature` persisted it through the async
+`signatureKv.set`. The evidence runs five suites in parallel workers on one fresh
+`DATA_DIR`. While another worker migrated the file, this worker's adapter open
+threw `SqliteError: database is locked` from `migrate.js` (stack captured locally).
+The `.catch(() => {})` dropped the row. `getAdapter()` clears its failed init, so
+the next open succeeded, and the cold read found nothing. Whichever streaming case
+ran first lost its row (OpenAI or Claude), so the failure moved between runs.
+With a fresh private `DATA_DIR` per run, it reproduced in 6 of 8 local runs. It
+never reproduced when the suite ran alone.
+
+**Fix (`thoughtSignatureStore.js`).** Async writes are now write-behind entries,
+tracked per key until SQLite confirms them. A sync write that throws keeps its
+rows in the same way. Every persisted (cold) read goes through `readPersisted`.
+It awaits the key's in-flight write and retries a failed write once, at the moment
+of the read. If SQLite still cannot take the row, the read returns the written
+row, which goes through the same provenance, family and expiry checks as a
+persisted row. Nothing sleeps. The buffer is capped like the RAM cache, and
+`clearThoughtSignatures()` clears it too. A new case per endpoint holds the
+adapter "not open, open fails with database is locked" during the capture. It
+checks that the other account still gets nothing cold, that the capturing account
+replays cold, and that SQLite then holds the account-bound row. Both cases fail
+without the store change, at the gate's assertion.
+
+**Family fixture, migrated.** The old positive case wrote an ownerless global row
+(`session = null`, no account) and expected `openaiToAntigravityRequest` to
+replay it with no credentials. #2034 forbids exactly that: an Antigravity replay
+must not borrow a row of unknown provenance. The positive same-family scenario
+now stores the row under an explicit account and client session. It replays with
+matching credentials and still expects `GEMINI_SIG`. A new case covers the
+negatives: the ownerless row, with or without credentials, and another account's
+row in the same session all get the default signature. The direct Gemini session
+API still reads the ownerless row. Cross-family cases are byte-identical.
+
+Local runs used private `/var/tmp` installs, `env -i` with
+`HOME`/`DATA_DIR`/`TMPDIR`/caches/pnpm store all private, and no borrowed
+dependency graph. The 20-case and two Gemini replay suites are unchanged.
 
 ## Contracts
 
-`tests/unit/antigravity-signature-isolation-completion.test.js` has 17 cases. It uses the
+`tests/unit/antigravity-signature-isolation-completion.test.js` has 19 cases.
+There are 17 from the earlier attempts plus the two locked-open cold-persistence cases. It uses the
 real `handleChatCore`, translators and `AntigravityExecutor`, with only the
 outbound transport mocked. The scenarios use two synthetic accounts, client
 sessions, the same tool ID, the same model family, warm and cold caches, and a

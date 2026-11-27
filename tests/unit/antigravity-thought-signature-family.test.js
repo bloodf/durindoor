@@ -95,10 +95,29 @@ describe("antigravity thought signatures are scoped to the model family", () => 
     expect(functionCallSignatures(req)).not.toContain("GEMINI_SIG");
   });
 
+  // #2034: Antigravity replays only a signature of proven provenance, so the
+  // positive case names the capturing account and client session it replays for.
   it("same model family still reuses the cached signature", () => {
     const call = uid("call");
-    storeGeminiThoughtSignature(call, "GEMINI_SIG", null, "gemini-3.8-flash-tiered");
-    const req = openaiToAntigravityRequest("gemini-3.8-flash-tiered", toolHistory(call), true);
+    storeGeminiThoughtSignature(call, "GEMINI_SIG", "fam-sess", "gemini-3.8-flash-tiered", "acct-fam");
+    const credentials = { connectionId: "acct-fam", _clientSessionId: "fam-sess" };
+    const req = openaiToAntigravityRequest("gemini-3.8-flash-tiered", toolHistory(call), true, credentials);
     expect(functionCallSignatures(req)).toEqual(["GEMINI_SIG"]);
+  });
+
+  it("an ownerless global row or another account's row is not borrowed by the same family", () => {
+    const ownerless = uid("call");
+    storeGeminiThoughtSignature(ownerless, "GEMINI_SIG", null, "gemini-3.8-flash-tiered");
+    expect(functionCallSignatures(openaiToAntigravityRequest("gemini-3.8-flash-tiered", toolHistory(ownerless), true)))
+      .toEqual([DEFAULT_THINKING_GEMINI_CLI_SIGNATURE]);
+    expect(functionCallSignatures(openaiToAntigravityRequest("gemini-3.8-flash-tiered", toolHistory(ownerless), true, { connectionId: "acct-fam", _clientSessionId: "fam-sess" })))
+      .toEqual([DEFAULT_THINKING_GEMINI_CLI_SIGNATURE]);
+
+    const foreign = uid("call");
+    storeGeminiThoughtSignature(foreign, "GEMINI_SIG", "fam-sess", "gemini-3.8-flash-tiered", "acct-other");
+    expect(functionCallSignatures(openaiToAntigravityRequest("gemini-3.8-flash-tiered", toolHistory(foreign), true, { connectionId: "acct-fam", _clientSessionId: "fam-sess" })))
+      .toEqual([DEFAULT_THINKING_GEMINI_CLI_SIGNATURE]);
+    // The direct Gemini session API keeps reading the ownerless row.
+    expect(getGeminiThoughtSignatureSync(ownerless, null, "gemini-3.8-flash-tiered")).toBe("GEMINI_SIG");
   });
 });

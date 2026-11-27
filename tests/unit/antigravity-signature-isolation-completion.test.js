@@ -4,7 +4,24 @@ import "../translator/registerAll.js";
 // #2034 follow-up to OmniRoute PR 21439 (MIT, head 35e01594ad13a7ffc0cd44d6598f6d862dfcff9f).
 // Real handleChatCore, translators and AntigravityExecutor; only the outbound
 // transport is mocked. Two synthetic accounts and client sessions, no network.
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), agy: null, queue: [] }));
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), agy: null, queue: [], dbLocked: false }));
+
+// While `dbLocked` holds, the adapter is not open yet and opening it fails the way
+// a concurrent migration in another process makes it fail; the real driver otherwise.
+vi.mock("../../src/lib/db/driver.js", async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    getAdapterSync: () => {
+      if (mocks.dbLocked) throw new Error("[DB] adapter not initialized — await getAdapter() first");
+      return real.getAdapterSync();
+    },
+    getAdapter: async () => {
+      if (mocks.dbLocked) throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+      return real.getAdapter();
+    },
+  };
+});
 
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   ...(await importOriginal()),
@@ -141,6 +158,7 @@ async function streamCapture({ format = "openai", account = "acct-A", session = 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.dbLocked = false;
   store.clearThoughtSignatureMemory();
   mocks.agy = new AntigravityExecutor();
   mocks.queue.length = 0;
@@ -202,6 +220,27 @@ describe("#2034: a streamed Antigravity signature stays with its account", () =>
     upstream(json(envelope([{ text: "ok" }])));
     await run({ body: turn2.openai(transportId) });
     expect(sentCalls()[0]).toMatchObject({ functionCall: { id: a }, thoughtSignature: SIG_A });
+  });
+
+  it.each(["openai", "claude"])("(%s) a capture made while the adapter open fails is still replayed cold, to its account only", async (format) => {
+    // The first capture of a process persists asynchronously; when that open fails
+    // (another process migrating the same file) the row must not be lost.
+    await store.getGeminiThoughtSignature("warm-up", null, GEMINI);
+    const a = uid("locked-open");
+    mocks.dbLocked = true;
+    await streamCapture({ format, parts: [{ thoughtSignature: SIG_A }, call("read", a)] });
+    mocks.dbLocked = false;
+
+    store.clearThoughtSignatureMemory();
+    expect(await replayedSignature(a, { format, account: "acct-B", session: "sess-1" })).not.toBe(SIG_A);
+    expect(JSON.stringify(lastSent())).not.toContain(SIG_A);
+    store.clearThoughtSignatureMemory();
+    expect(await replayedSignature(a, { format, account: "acct-A", session: "sess-1" })).toBe(SIG_A);
+    // The cold read retried the write: SQLite itself now holds the account-bound alias.
+    const db = await (await import("../../src/lib/db/driver.js")).getAdapter();
+    const row = db.get("SELECT value FROM kv WHERE scope = ? AND key = ?", ["gemini_thought_signatures", a]);
+    expect(JSON.parse(row.value)).toMatchObject({ signature: SIG_A, account: "acct-A" });
+    expect(await store.getGeminiThoughtSignature(a, "sess-1", GEMINI)).toBeNull();
   });
 
   it("an account captured in a shared session does not leak to the next account of that session", async () => {

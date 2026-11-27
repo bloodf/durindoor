@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { translate } from "@/i18n/runtime";
 
 import { isBrowser, isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
@@ -9,7 +11,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
   const handleSetAlias = async (modelId, alias, providerAliasOverride = providerAlias) => {
     const fullModel = `${providerAliasOverride}/${modelId}`;
     try {
-      const res = await fetch("/api/models/alias", {
+      const res = await dashboardRequest("/api/models/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: fullModel, alias })
@@ -27,7 +29,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
 
   const handleDeleteAlias = async (alias) => {
     try {
-      const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(alias)}`, {
+      const res = await dashboardRequest(`/api/models/alias?alias=${encodeURIComponent(alias)}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -42,7 +44,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
     const modelId = isString(payload) ? payload : payload.id;
     const capabilities = isObject(payload) && payload !== null && !Array.isArray(payload) ? payload.capabilities : undefined;
     try {
-      const res = await fetch("/api/models/custom", {
+      const res = await dashboardRequest("/api/models/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerAlias: providerAliasOverride, id: modelId, type, capabilities })
@@ -62,7 +64,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
 
   const handleUpdateCustomModel = async ({ id, capabilities }) => {
     try {
-      const res = await fetch("/api/models/custom", {
+      const res = await dashboardRequest("/api/models/custom", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerAlias: providerStorageAlias, id, type: "llm", capabilities })
@@ -83,7 +85,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
   const handleDeleteCustomModel = async (modelId, type = "llm", providerAliasOverride = providerStorageAlias) => {
     try {
       const params = new URLSearchParams({ providerAlias: providerAliasOverride, id: modelId, type });
-      const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
+      const res = await dashboardRequest(`/api/models/custom?${params}`, { method: "DELETE" });
       if (res.ok) {
         await fetchCustomModels();
         if (isBrowser()) window.dispatchEvent(new CustomEvent("customModelChanged"));
@@ -104,7 +106,7 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
 
     setImportingQoderModels(true);
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
+      const res = await dashboardRequest(`/api/providers/${activeConnection.id}/models`);
       const data = await res.json();
       if (!res.ok) {
         alert(data.error || translate("Failed to fetch models"));
@@ -123,9 +125,9 @@ export default function useCustomModels({ connections, fetchAliases, fetchCustom
         const payload = { providerAlias: providerStorageAlias, id, type: "llm", name };
         const headers = { "Content-Type": "application/json" };
         const body = JSON.stringify(payload);
-        let saved = await fetch("/api/models/custom", { method: "POST", headers, body });
+        let saved = await dashboardRequest("/api/models/custom", { method: "POST", headers, body });
         if (saved.status === 409) {
-          saved = await fetch("/api/models/custom", { method: "PATCH", headers, body });
+          saved = await dashboardRequest("/api/models/custom", { method: "PATCH", headers, body });
         }
         if (!saved.ok) {
           const error = await saved.json().catch(() => ({}));

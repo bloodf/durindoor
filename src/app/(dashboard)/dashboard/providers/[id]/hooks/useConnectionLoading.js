@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { requestSettings } from "@/store/settingsStore";
 
 import { useCallback } from "react";
@@ -28,9 +30,9 @@ export default function useConnectionLoading({ autoPingQueue, currentProviderIdR
     fetchConnectionsGenerationRef.current === requestGeneration &&
     currentProviderIdRef.current === requestProviderId;
     return Promise.all([
-      fetch("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
-      fetch("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
-      fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      dashboardRequest("/api/providers", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      dashboardRequest("/api/provider-nodes", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
+      dashboardRequest("/api/proxy-pools?isActive=true", { cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) }),
       requestSettings({ cache: "no-store", signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS) })]
       ).then(async ([connectionsRes, nodesRes, proxyPoolsRes, settingsRes]) => {
       const connectionsData = await connectionsRes.json();
@@ -58,7 +60,7 @@ export default function useConnectionLoading({ autoPingQueue, currentProviderIdR
         if (providerId === "codex" && filtered.length > 0) {
           const entries = await Promise.all(filtered.map(async (connection) => {
             try {
-              const usageRes = await fetch(`/api/usage/${connection.id}`, {
+              const usageRes = await dashboardRequest(`/api/usage/${connection.id}`, {
                 signal: AbortSignal.timeout(CODEX_USAGE_FETCH_TIMEOUT_MS)
               });
               if (!usageRes.ok) return null;
@@ -118,7 +120,7 @@ export default function useConnectionLoading({ autoPingQueue, currentProviderIdR
           for (let attempt = 0; attempt < 3; attempt += 1) {
             await new Promise((resolve) => setTimeout(resolve, 150));
             if (!isCurrentRequest()) return;
-            const retryRes = await fetch("/api/provider-nodes", {
+            const retryRes = await dashboardRequest("/api/provider-nodes", {
               cache: "no-store",
               signal: AbortSignal.timeout(FETCH_CONNECTIONS_TIMEOUT_MS)
             });

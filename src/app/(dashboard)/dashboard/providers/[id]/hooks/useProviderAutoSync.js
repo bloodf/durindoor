@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 /** Keeps ProviderAutoSync requests and handlers together. */
 export default function useProviderAutoSync({ connections, providerGenerationRef, setCatalogEvidence, setModelsFetchedAt, setSuggestedModels, setSyncingModels }) {
   const handleSyncModels = async () => {
@@ -9,7 +11,7 @@ export default function useProviderAutoSync({ connections, providerGenerationRef
 
     setSyncingModels(true);
     try {
-      const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/models?refresh=1`, {
+      const response = await dashboardRequest(`/api/providers/${encodeURIComponent(connection.id)}/models?refresh=1`, {
         cache: "no-store"
       });
       const data = await response.json();

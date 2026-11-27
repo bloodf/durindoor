@@ -1,0 +1,111 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "open-sse/config/providers/registry/nanogpt/index.ts"
+    ],
+    "registryFields": {
+      "tts": { "id": "nanogpt", "baseUrl": "https://nano-gpt.com/api/v1/audio/speech", "authType": "apikey", "authHeader": "bearer" },
+      "stt": { "id": "nanogpt", "baseUrl": "https://nano-gpt.com/api/v1/audio/transcriptions", "authType": "apikey", "authHeader": "bearer" }
+    },
+    "inventoryNote": "the #2034 inventory also lists an STT row with endpoint https://nano-gpt.com/api/v1/audio/speech; the pinned source has no such pairing: the speech URL belongs to the speech entry and handleAudioTranscription only ever posts to the transcription URL, so that row is a duplicate of the speech row and nothing is staged for it"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/nanogpt.js (exists: id/alias nanogpt, apikey, chat transport, serviceKinds [\"llm\"], no ttsConfig, no sttConfig, no audio model rows)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no nanogpt entry); synthesizeViaConfig needs ttsConfig, which nanogpt lacks",
+      "open-sse/handlers/sttCore.js handleSttCore (returns \"does not support STT\" without sttConfig)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS.openai and sttCore.js transcribeOpenAICompatible (same wire envelope, but no deadline, follow redirects, quote upstream error text, no accepted-job outcome)"
+    ],
+    "result": "the provider exists for chat only; no TTS or STT path reaches NanoGPT today, so this module is the whole audio delta"
+  },
+  "module": "open-sse/services/providerParity/native-nanogpt-tts-stt/index.js",
+  "exports": {
+    "nanogptTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "nanogptSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createNanogptTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "createNanogptSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes } for tests",
+    "buildNanogptSpeechRequest": "(model, text, options) -> source speech body; throws status 400",
+    "buildNanogptTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData, responseFormat } or a 400 error result with local: true",
+    "resolveNanogptContainer": "(requested, gatewayFormat) -> container; throws status 400",
+    "matchesContainer": "(container, bytes) leading-byte check for mp3, opus (Ogg), aac (ADTS/ADIF), flac, wav",
+    "nanogptAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "nanogptUploadFileName": "source upload file name rule",
+    "NANOGPT_AUDIO_DEFINITION": "audio fields to merge into the existing nanogpt registry entry (addServiceKinds, ttsConfig, sttConfig)",
+    "NANOGPT_TTS_MODELS": "speech models",
+    "NANOGPT_STT_MODELS": "transcription models with per-model response formats",
+    "NANOGPT_SPEECH_CONTAINERS": "[\"mp3\", \"opus\", \"aac\", \"flac\", \"wav\"]",
+    "NANOGPT_SPEECH_RESPONSE_FORMATS": "containers plus \"ogg\" (alias of opus) and \"json\" (gateway wrapper)",
+    "NANOGPT_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\", \"verbose_json\"]"
+  },
+  "provider": {
+    "canonicalId": "nanogpt",
+    "aliases": ["nanogpt"],
+    "existingRegistryEntry": "open-sse/providers/registry/nanogpt.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["tts", "stt"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "openai"
+  },
+  "models": {
+    "tts": [
+      { "id": "tts-1-hd", "name": "TTS 1 HD" },
+      { "id": "tts-1", "name": "TTS 1" }
+    ],
+    "stt": [
+      { "id": "whisper-1", "name": "Whisper 1", "responseFormats": ["json", "text", "verbose_json"], "timestamps": true },
+      { "id": "gpt-4o-transcription", "name": "GPT-4o Transcription", "responseFormats": ["json", "text"], "timestamps": false }
+    ],
+    "voiceSuffix": "tts model/voice accepted; default voice alloy",
+    "dynamicDiscovery": "none for audio: the source lists the nanogpt audio models statically; the existing modelsFetcher (https://nano-gpt.com/api/v1/models) is the chat catalog and stays as is"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://nano-gpt.com/api/v1/audio/speech", "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"], "body": "{ model, input, voice, response_format, speed, instructions? }", "answer": "audio bytes in the requested container" },
+    "transcription": { "method": "POST", "url": "https://nano-gpt.com/api/v1/audio/transcriptions", "headers": ["Authorization: Bearer <key>", "Content-Type: multipart/form-data"], "body": "model, language?, prompt?, response_format?, temperature?, timestamp_granularities[]*, file", "answer": "json / verbose_json object with text, or text/plain" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "sttTimeoutMs": 300000,
+    "maxAudioBytes": 52428800,
+    "maxTranscriptBytes": 8388608,
+    "maxSttFileBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/nanogpt.js",
+      "change": "keep every existing field; set serviceKinds to [\"llm\", \"tts\", \"stt\"]; append model rows from NANOGPT_TTS_MODELS / NANOGPT_STT_MODELS with kind; add sttConfig from NANOGPT_AUDIO_DEFINITION (translationModels [] so supportsSttTranslation stays false); no ttsConfig (the adapter is registered in TTS_ADAPTERS)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { nanogptTtsAdapter } and add `nanogpt: nanogptTtsAdapter` to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage adds input characters (cost stays unknown: not the official OpenAI origin)"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add nanogpt to NAMED_FORMAT_PROVIDERS so a query-string response_format reaches the adapter as requestedResponseFormat; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"nanogpt\") return await nanogptSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so the generic openai branch never serves nanogpt"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "record `result.acceptedJob` once on the selected connection (modality stt, endpoint /v1/audio/transcriptions) and stop account fallback for it; today the STT route has no accepted-job path"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list NanoGPT tts and stt kinds after registration"
+    }
+  ]
+}

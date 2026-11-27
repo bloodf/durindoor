@@ -77,8 +77,8 @@ export async function openFalRealtimeSocket({ url, token, signal, onFrame, onClo
     followRedirects: false,
     handshakeTimeout: limits.handshakeTimeoutMs,
     maxPayload: limits.maxFrameBytes,
-    ...(agent ? { agent } : {}),
   };
+  if (agent) options.agent = agent;
   const socket = (socketFactory ?? ((target, opts) => new WebSocket(target, opts)))(url, options);
 
   let controller;

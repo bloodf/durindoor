@@ -59,7 +59,7 @@ function binaryFiles(value, path, artifacts, artifact) {
     value.forEach((item, i) => binaryFiles(item, `${path}[${i}]`, artifacts, artifact));
     return;
   }
-  if (!value || typeof value !== "object" || value instanceof Uint8Array) return;
+  if (!isRecord(value) || value instanceof Uint8Array) return;
   if (value.content instanceof Uint8Array && isString(value.content_type)) {
     const name = isString(value.file_name) ? value.file_name : "realtime-output";
     const url = artifact

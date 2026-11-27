@@ -23,6 +23,8 @@
 // - ext types other than the timestamp (-1, decoded to Date) are refused, and
 //   the encoder refuses values that are not JSON-like or binary.
 
+import { isNumber, isRecord, isString, runtimeTypeName } from "../../../../src/shared/utils/typeChecks.js";
+
 export const FAL_MSGPACK_MAX_DEPTH = 64;
 
 const utf8 = new TextEncoder();
@@ -58,7 +60,7 @@ class Writer {
 const codecError = (message) => Object.assign(new TypeError(message), { code: "FAL_MSGPACK" });
 
 function isPlainObject(value) {
-  if (value === null || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
 }
@@ -93,8 +95,8 @@ function encodeValue(writer, value, depth, maxDepth) {
   if (value === null || value === undefined) return writer.u8(0xc0);
   if (value === false) return writer.u8(0xc2);
   if (value === true) return writer.u8(0xc3);
-  if (typeof value === "number") return encodeNumber(writer, value);
-  if (typeof value === "string") {
+  if (isNumber(value)) return encodeNumber(writer, value);
+  if (isString(value)) {
     const bytes = utf8.encode(value);
     writeLength(writer, bytes.length, [0xa0, 31], [0xd9, 0xda, 0xdb]);
     return writer.bytes(bytes);
@@ -119,7 +121,7 @@ function encodeValue(writer, value, depth, maxDepth) {
     }
     return;
   }
-  throw codecError(`Cannot encode ${typeof value} as MessagePack`);
+  throw codecError(`Cannot encode ${runtimeTypeName(value)} as MessagePack`);
 }
 
 /** One MessagePack frame for a JSON-like value (binary allowed). */
@@ -179,7 +181,7 @@ class Reader {
     const out = {};
     for (let i = 0; i < length; i++) {
       const key = this.value(depth + 1);
-      if (typeof key !== "string" && typeof key !== "number") throw codecError("MessagePack map keys must be strings or numbers");
+      if (!isString(key) && !isNumber(key)) throw codecError("MessagePack map keys must be strings or numbers");
       const name = String(key);
       if (Object.hasOwn(out, name)) throw codecError("Duplicate MessagePack map key");
       Object.defineProperty(out, name, { value: this.value(depth + 1), enumerable: true, writable: true, configurable: true });

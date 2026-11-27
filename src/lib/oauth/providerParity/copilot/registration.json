@@ -1,0 +1,47 @@
+{
+  "status": "staged",
+  "issue": "#2034",
+  "modules": {
+    "src/lib/oauth/providerParity/copilot/index.js": ["decodeCopilotPollResponse"],
+    "src/lib/oauth/providerParity/copilot/gheConnection.js": [
+      "GITHUB_COPILOT_PUBLIC_API_HOSTS",
+      "GheConnectionError",
+      "bindGheConnection",
+      "isTrustedGheEndpoint",
+      "trustedGheEndpoints",
+      "resolveBoundGheApiBase",
+      "proxyTransport",
+      "globalFetchTransport",
+      "gheBoundFetch",
+      "pickGheDeviceResponse",
+      "pickGheUserInfo",
+      "decodeGheSessionToken",
+      "mintBoundGheSession",
+      "refreshBoundGheOAuth",
+      "refreshBoundGheCopilotCredentials"
+    ]
+  },
+  "productionWired": [
+    "src/lib/oauth/gheCopilotProvider.js: requestDeviceCode, pollToken and postExchange use bindGheConnection + gheBoundFetch(globalFetchTransport); postExchange keeps only trustedGheEndpoints",
+    "open-sse/executors/ghe-copilot.js: endpointUrl uses resolveBoundGheApiBase when gheUrl is stored; refreshCredentials uses refreshBoundGheCopilotCredentials"
+  ],
+  "integrationSlots": [
+    {
+      "callsite": "src/lib/oauth/providers.js:1372 github.pollToken",
+      "change": "Replace the JSON.parse/error_description fallback with decodeCopilotPollResponse(await response.text())."
+    },
+    {
+      "callsite": "open-sse/services/tokenRefresh.js:290 \"ghe-copilot\" refresh handler",
+      "change": "Call refreshBoundGheCopilotCredentials(c, log, p) instead of refreshGheCopilotCredentials(c, log, p)."
+    },
+    {
+      "callsite": "src/app/api/providers/[id]/models/modelsConfig.js:671 \"ghe-copilot\" customResolver",
+      "change": "Use resolveBoundGheApiBase(data) for the base and gheBoundFetch(bindGheConnection({ gheUrl: data.gheUrl, proxyOptions }), `${base}/models`, init) instead of proxyAwareFetch."
+    },
+    {
+      "callsite": "src/app/api/providers/[id]/test/testUtils.js:114 \"ghe-copilot\" connection probe",
+      "change": "Send the /api/v3/user probe through gheBoundFetch for the connection binding so a redirect is refused instead of followed."
+    }
+  ],
+  "notes": "Use within the existing OAuth provider object, flow ownership and connection storage. No new store, route or global outbound policy."
+}

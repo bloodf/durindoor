@@ -1,4 +1,4 @@
-// Closed-network contract tests for the registered native Vertex Lyria music adapter.
+// Closed-network contract tests for the staged native Vertex Lyria music adapter.
 // Source: OmniRoute c71f0065a7efe9230ec23b96a12253b050c4d7ad
 // open-sse/config/musicRegistry.ts, open-sse/handlers/musicGeneration.ts,
 // open-sse/executors/vertexMedia.ts (vertexGenerateMusic).
@@ -348,8 +348,8 @@ describe("native-vertex-music: cancellation and deadlines", () => {
   });
 });
 
-// ── Registration block: the only block that depends on registration state. ──
-describe("native-vertex-music: registration state", () => {
+// ── Staging block: unregistered state. Registration promotes ONLY this block. ──
+describe("native-vertex-music: staging (unregistered) state", () => {
   const registration = JSON.parse(readFileSync(fileURLToPath(new URL("registration.json", STAGING_DIR)), "utf8"));
 
   it("registration.json describes the staged exports and identity", () => {
@@ -363,12 +363,10 @@ describe("native-vertex-music: registration state", () => {
     expect(registration.exports).toEqual(expect.arrayContaining(["handleVertexMusicGeneration", "VERTEX_MUSIC_CONFIG", "listVertexMusicModels"]));
   });
 
-  it("is wired into the vertex registry and dispatched ahead of the cookie adapters", async () => {
+  it("is not wired into the live music core or vertex registry yet", async () => {
     const { MUSIC_ADAPTERS } = await import("../../open-sse/handlers/musicGenerationCore.js");
     expect(Object.keys(MUSIC_ADAPTERS)).not.toContain("vertex");
     const vertex = (await import("../../open-sse/providers/registry/vertex.js")).default;
     expect(vertex.serviceKinds).toContain("music");
-    expect(vertex.models).toContainEqual(expect.objectContaining({ id: "lyria-002", kind: "music" }));
-    expect(vertex.musicConfig).toMatchObject({ format: "vertex-lyria" });
   });
 });

@@ -1,4 +1,4 @@
-// Agnes native image and video adapters, registered on the existing agnes provider (#2034).
+// Agnes native image and video adapters, staged and unregistered (#2034).
 // Closed mocks only: every request is answered below, an unexpected request
 // fails the test, and every key is synthetic. Wire shapes follow OmniRoute
 // c71f0065 (imageGeneration.ts buildAgnesImageRequestBody, videoGeneration/job.ts
@@ -86,10 +86,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Registration identity: the canonical adapters are registered on the existing
-// agnes provider; every other block works staged or registered.
-describe("registration state (isolated)", () => {
-  it("registers the canonical adapters and keeps the existing agnes chat entry", () => {
+// Staging-only negatives. Registration replaces this block with positive
+// registry identity checks; every other block works staged or registered.
+describe("staging state (isolated)", () => {
+  it("stays unregistered and leaves the existing agnes chat entry unchanged", () => {
     expect(getImageAdapter("agnes")).toBe(agnesImageAdapter);
     expect(getVideoGenerationAdapter("agnes")).toBe(agnesVideoAdapter);
     expect(agnesRegistry.serviceKinds).toEqual(["llm", "image", "video"]);

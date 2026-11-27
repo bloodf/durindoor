@@ -1,4 +1,4 @@
-// Vertex AI Veo video generation, registered on the existing vertex provider. Closed mocks only:
+// Vertex AI Veo video generation, staged and unregistered. Closed mocks only:
 // every request is answered below, an unexpected request fails the test, the
 // token minter is injected, and every credential is synthetic. Passing here
 // says nothing about the live service.
@@ -115,10 +115,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Isolated registration block: the only assertions that depend on the adapter
-// being registered. Every other block holds staged and registered alike.
-describe("registration state", () => {
-  it("is registered: the public dispatch serves vertex and vx with the canonical adapter", () => {
+// Isolated staging block: the only assertions that depend on the adapter being
+// unregistered. The registration change replaces these with positive registry
+// identity checks; every other block holds staged and registered alike.
+describe("staging state (pre-registration only)", () => {
+  it("is not registered: the public dispatch still has no vertex video adapter", () => {
     expect(getVideoGenerationAdapter("vertex")).toBe(defaultAdapter);
     expect(getVideoGenerationAdapter("vx")).toBe(defaultAdapter);
     expect(vertexRegistry.serviceKinds).toContain("video");

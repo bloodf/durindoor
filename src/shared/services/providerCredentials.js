@@ -337,36 +337,6 @@ proxyOptions = null,
   if (shared) return callerWait(shared, signal, shouldCommit, callerTimeoutMs, laneSignals.get(shared) ?? null);
 
 
-  const resolveExecutor = getExecutorImpl ?? (await import("open-sse/executors/index.js")).getExecutor;
-  assertRefreshActive(signal, shouldCommit);
-  const executor = resolveExecutor(connection.provider);
-  const providerSpecificData = connection.providerSpecificData && isObject(connection.providerSpecificData) ?
-  structuredClone(connection.providerSpecificData) :
-  connection.providerSpecificData;
-  const credentials = {
-    id: connection.provider === "codex" ? connection.id : undefined,
-    accessToken: connection.accessToken,
-    refreshToken: connection.refreshToken,
-    idToken: connection.idToken,
-    expiresAt: connection.expiresAt || connection.tokenExpiresAt,
-    lastRefreshAt: connection.lastRefreshAt,
-    connectionId: connection.id,
-    providerSpecificData,
-    copilotToken: providerSpecificData?.copilotToken,
-    copilotTokenExpiresAt: providerSpecificData?.copilotTokenExpiresAt
-  };
-
-  if (!(force || executor.needsRefresh(credentials))) {
-    return { connection, refreshed: false };
-  }
-
-  // A marked antigravity/agy row issued by another OAuth client (or with no
-  // client configured now) must not spend its refresh token. Stop before the
-  // lease and the outbound request, and leave tokens, status and lease alone.
-  if (antigravityClientBindingBlocks(connection.provider, connection.providerSpecificData)) {
-    throw antigravityClientBindingError();
-  }
-
   // Once the provider request begins, its result must outlive an individual
   // quota subscriber. OAuth providers can rotate a refresh token even when the
   // caller disconnects; dropping that replacement would brick the connection.
@@ -378,6 +348,38 @@ proxyOptions = null,
     signalLaneAcquired = resolve;
   });
   const operation = (async () => {
+    // Register shared work before the lazy executor import yields.
+    const resolveExecutor = getExecutorImpl ?? (await import("open-sse/executors/index.js")).getExecutor;
+    assertRefreshActive(signal, shouldCommit);
+    const executor = resolveExecutor(connection.provider);
+    const providerSpecificData = connection.providerSpecificData && isObject(connection.providerSpecificData) ?
+    structuredClone(connection.providerSpecificData) :
+    connection.providerSpecificData;
+    const credentials = {
+      id: connection.provider === "codex" ? connection.id : undefined,
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+      idToken: connection.idToken,
+      expiresAt: connection.expiresAt || connection.tokenExpiresAt,
+      lastRefreshAt: connection.lastRefreshAt,
+      connectionId: connection.id,
+      providerSpecificData,
+      copilotToken: providerSpecificData?.copilotToken,
+      copilotTokenExpiresAt: providerSpecificData?.copilotTokenExpiresAt
+    };
+
+    if (!(force || executor.needsRefresh(credentials))) {
+      return { connection, refreshed: false };
+    }
+
+    // A marked antigravity/agy row issued by another OAuth client (or with no
+    // client configured now) must not spend its refresh token. Stop before the
+    // lease and the outbound request, and leave tokens, status and lease alone.
+    if (antigravityClientBindingBlocks(connection.provider, connection.providerSpecificData)) {
+      throw antigravityClientBindingError();
+    }
+
+
     // Front 1 (OmniRoute 697946381d): serialize the network refresh across
     // every connection in the same rotation group (Codex + openai share one
     // Auth0 client_id) so two sibling accounts never POST to /oauth/token

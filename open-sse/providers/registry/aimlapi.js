@@ -18,6 +18,9 @@ export default {
     baseUrl: "https://api.aimlapi.com/v1/chat/completions",
     // AI/ML API is OpenAI-compatible even when routing to Claude/Gemini model families.
     thinkingFormat: "openai",
+    // GET /v1/models is public and answers 200 for any key; /v1/key returns 401
+    // for a bad one (upstream 9router #5882).
+    validateUrl: "https://api.aimlapi.com/v1/key",
   },
   models: [
     { id: "gpt-4o", name: "GPT-4o (via AI/ML API)" },

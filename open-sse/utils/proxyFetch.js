@@ -319,6 +319,7 @@ async function resolveViaDoh(hostname, fetchImpl) {
 /**
  * Resolve every IPv4 answer through Google DNS (bypass system DNS). UDP is tried
  * first with a short bound; DNS-over-HTTPS is the fallback when UDP/53 is blocked.
+ * Cache a failure only after both transports fail, for a shorter recovery TTL.
  */
 async function resolveRealIPs(hostname, {
   udpResolve = resolveViaUdp,
@@ -337,9 +338,8 @@ async function resolveRealIPs(hostname, {
       logTransportDiagnostic(console.warn, "dns_resolve_failed", error);
     }
     if (!addresses.length) addresses = await resolveViaDoh(hostname, dohFetch);
-    if (addresses.length) {
-      DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + MEMORY_CONFIG.dnsCacheTtlMs });
-    }
+    const ttlMs = addresses.length ? MEMORY_CONFIG.dnsCacheTtlMs : MEMORY_CONFIG.dnsFailCacheTtlMs;
+    DNS_CACHE.set(hostname, { ips: addresses, expiry: Date.now() + ttlMs });
     return addresses;
   } catch (error) {
     logTransportDiagnostic(console.warn, "dns_resolve_failed", error);

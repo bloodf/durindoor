@@ -361,7 +361,13 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   // The transactional predicate protects a manual schedule or newer credential
   // from a late response. Model locks and quota evidence are left intact.
-  const quota = detectQuotaExhaustion(context?.errorBody ?? errorText);
+  // A caller may supply structured quota evidence instead of message text: an
+  // adapter that read a provider's documented quota signal (adobe-firefly-api
+  // 403 `x-access-error: quota_exhausted`) reports a resetless exhaustion of
+  // the selected connection, with no reset unless one was proven.
+  const quota = context?.quotaExhausted === true ?
+  { exhausted: true, resetAtMs: null } :
+  detectQuotaExhaustion(context?.errorBody ?? errorText);
   if (quota.exhausted && (Number(status) === 200 || Number(status) >= 400 && Number(status) <= 599)) {
     let hinted = Number(resetsAtMs) > Date.now() ? Number(resetsAtMs) : null;
     if (hinted && context?.rateLimitEvidence?.relativeCountdown) {

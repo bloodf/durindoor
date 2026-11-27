@@ -442,6 +442,20 @@ export async function handleImageGenerationCore({
   // and classifies the response before any reset can reach account health.
   const parseImageError = (response) => parseUpstreamError(response, provider === "codex" && response.status === 429 ? executor : null, { provider });
   if (redirectRefused(providerResponse)) return refuseRedirect(providerResponse);
+  // Optional adapter-owned refusal: an adapter that knows its provider's
+  // documented error headers (adobe-firefly-api) describes a refused submit
+  // itself. Its body is cancelled unread, so no upstream text is repeated; only
+  // the adapter's own message, a bounded reset and a resetless-quota flag are.
+  if (!providerResponse.ok && isFunction(adapter.describeSubmitError)) {
+    const refusal = adapter.describeSubmitError(providerResponse);
+    if (refusal) {
+      void providerResponse.body?.cancel().catch(() => {});
+      log?.debug?.("IMAGE", `${provider.toUpperCase()} | submit refused (${refusal.status})`);
+      const evidence = refusal.rateLimitEvidence ?? null;
+      const failed = createErrorResult(refusal.status, refusal.message, evidence?.resetAtMs, undefined, evidence);
+      return refusal.quotaExhausted === true ? { ...failed, quotaExhausted: true } : failed;
+    }
+  }
   let upstreamError = providerResponse.ok ? null : await parseImageError(providerResponse);
   const fallbackBody = upstreamError && adapter.buildFallbackBody?.(
     requestBody, upstreamError.statusCode, upstreamError.message

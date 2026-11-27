@@ -77,7 +77,13 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isXaiApiKey = provider === "xai" && !isCookie;
   // Compatible nodes are often keyless LAN endpoints, so their key is optional.
   const keyOptional = credentialOptional || isCompatible;
-  const credentialLabel = isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : isAuthToken ? "Auth Token" : keyOptional ? "API key (optional)" : "API Key";
+  // Adobe Firefly Services API: the S2S credential's client ID travels with either
+  // its client secret or an access token the operator already holds.
+  const requiresClientId = provider === "adobe-firefly-api";
+  const [adobeMode, setAdobeMode] = useState("client_secret");
+  const [adobeExpiresAt, setAdobeExpiresAt] = useState("");
+  const adobeTokenMode = requiresClientId && adobeMode === "access_token";
+  const credentialLabel = requiresClientId ? adobeTokenMode ? "Access token" : "Client secret" : isOpenCodeServer ? "HTTP Basic credential (username:password)" : isCookie ? "Cookie Value" : isAuthToken ? "Auth Token" : keyOptional ? "API key (optional)" : "API Key";
   const credentialPlaceholder = isCookie ?
   provider === "grok-web" ? "sso=xxxxx... or just the raw value" : "eyJhbGciOi..." :
   isAuthToken ? "eyJhbGciOi..." :
@@ -86,8 +92,6 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   const isAzure = provider === "azure";
   const isCloudflareAi = provider === "cloudflare-ai";
   const requiresAccountId = requiresProviderAccountId(provider);
-  // Adobe Firefly Services API: the S2S credential's client ID travels with its secret.
-  const requiresClientId = provider === "adobe-firefly-api";
   const accountIdProviderLabel = provider === "snowflake" ? "Snowflake Cortex" : "Cloudflare Workers AI";
   const providerRegions = AI_PROVIDERS?.[provider]?.regions || null;
   const defaultRegion = AI_PROVIDERS?.[provider]?.defaultRegion || providerRegions?.[0]?.id || "";
@@ -135,6 +139,8 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
     setAzureData(reset.azureData);
     setAccountIdData(reset.accountIdData);
     setClientId("");
+    setAdobeMode("client_secret");
+    setAdobeExpiresAt("");
     setAwsData(reset.awsData);
     setRegion(reset.region);
   }, [isOpen, existingConnectionNames, defaultRegion]);
@@ -180,6 +186,18 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
   // stores encrypted, never inside the plaintext providerSpecificData.
   const sessionToken = usesAwsCredentialForm && awsData.sessionToken.trim() ? awsData.sessionToken.trim() : undefined;
 
+  // Exactly one Adobe credential mode is sent: the other mode's field is never
+  // included, so the server stores only what was supplied for the chosen mode.
+  const credentialPayload = () => {
+    if (!requiresClientId) return { apiKey: formData.apiKey };
+    if (!adobeTokenMode) return { credentialMode: "client_secret", apiKey: formData.apiKey };
+    return {
+      credentialMode: "access_token",
+      accessToken: formData.apiKey,
+      ...(adobeExpiresAt.trim() ? { expiresAt: adobeExpiresAt.trim() } : null)
+    };
+  };
+
   const apiKeySatisfied = () =>
   isDevinAgentic || keyOptional ||
   !!formData.apiKey ||
@@ -193,7 +211,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
+        body: JSON.stringify({ provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() })
       });
       const data = await res.json();
       setValidationResult(providerValidationOutcome(data));
@@ -255,7 +273,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         const res = await fetch("/api/providers/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, apiKey: formData.apiKey, sessionToken, providerSpecificData: buildProviderSpecificData() })
+          body: JSON.stringify({ provider, ...credentialPayload(), sessionToken, providerSpecificData: buildProviderSpecificData() })
         });
         const data = await res.json();
         isValid = !!data.valid;
@@ -268,7 +286,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
 
       await onSave({
         name: formData.name || (isOllamaLocal ? "Ollama Local" : isLocalWhisper ? "Local Whisper" : isLaya ? "Laya" : ""),
-        apiKey: formData.apiKey,
+        ...credentialPayload(),
         ...(isAuthToken ? { authType: "auth_token" } : null),
         sessionToken,
         defaultModel: isCompatible ? formData.defaultModel.trim() : undefined,
@@ -544,13 +562,43 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
         {requiresClientId &&
           <div className="bg-dd-surface-2/50 p-4 rounded-lg border border-dd-accent/20">
             <h3 className="font-semibold mb-3 text-sm">Adobe Developer Console</h3>
+            <div className="flex gap-2 mb-3" role="radiogroup" aria-label="Adobe credential mode">
+              {[["client_secret", "Client secret"], ["access_token", "Access token"]].map(([value, label]) =>
+              <Button
+                key={value}
+                size="sm"
+                role="radio"
+                aria-checked={adobeMode === value}
+                variant={adobeMode === value ? "primary" : "secondary"}
+                onClick={() => {
+                  if (adobeMode === value) return;
+                  // Switching modes drops what was typed for the other one.
+                  setAdobeMode(value);
+                  setFormData({ ...formData, apiKey: "" });
+                  setAdobeExpiresAt("");
+                  setValidationResult(null);
+                }}>
+                {label}
+              </Button>
+              )}
+            </div>
             <Input
               label="Client ID"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder="OAuth Server-to-Server client ID" />
+            {adobeTokenMode &&
+            <Input
+              label="Token expires at (optional)"
+              value={adobeExpiresAt}
+              onChange={(e) => {setAdobeExpiresAt(e.target.value);setValidationResult(null);}}
+              placeholder="2026-12-01T12:00:00Z" />
+            }
             <p className="text-xs text-dd-muted mt-2">
-              Put the credential&apos;s client secret in the API key field. It needs a Firefly Services API entitlement; a Firefly or Creative Cloud subscription alone does not work.
+              {adobeTokenMode ?
+              "Paste an access token issued to this client ID. It is used as given and never refreshed; add a new one when it expires (Adobe documents 24 hours)." :
+              "Put the credential\u2019s client secret in the Client secret field. Access tokens are minted from it and kept in memory only."}
+              {" "}It needs a Firefly Services API entitlement; a Firefly or Creative Cloud subscription alone does not work.
             </p>
           </div>
           }

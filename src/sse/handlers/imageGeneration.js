@@ -271,9 +271,7 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
         result,
         dispatch,
         resetAt: result.rateLimitEvidence?.resetAtMs ?? null,
-        failureContext: result.rateLimitEvidence
-          ? { rateLimitEvidence: result.rateLimitEvidence, exhaustionScope: "model" }
-          : undefined,
+        failureContext: mediaFailureContext(result),
       };
     },
     async onAccountFailure(result, credentials) {
@@ -291,6 +289,16 @@ async function handleSingleModelImage(body, modelStr, request, apiKey, apiKeyId,
       });
     },
   });
+}
+
+// Only structured evidence from the result reaches account health: a bounded
+// rate-limit reset, kept on the failed model, and an adapter's resetless quota
+// flag (adobe-firefly-api `x-access-error: quota_exhausted`).
+function mediaFailureContext(result) {
+  const context = {};
+  if (result.rateLimitEvidence) Object.assign(context, { rateLimitEvidence: result.rateLimitEvidence, exhaustionScope: "model" });
+  if (result.quotaExhausted === true) context.quotaExhausted = true;
+  return Object.keys(context).length > 0 ? context : undefined;
 }
 
 function sentSecret(credentials) {

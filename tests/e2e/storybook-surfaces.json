@@ -26228,7 +26228,7 @@
       "symbol": "FireflyBrowserPanel",
       "sourceSha256": "ccc163ae0e1fea2997f45789bb501e3cdfdf3788c7c73d2d440d1d53ce2119f9",
       "proposedClassification": "visual",
-      "proposedCoverageRationale": "Owned static CSF scenarios for disabled configuration and synthetic stored connections. Independent source review and browser evidence remain pending.",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
       "reviewedBy": null,
       "approvedClassification": null,
@@ -104732,9 +104732,9 @@
   ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "edad83a6ff52160ec9b138773d2db2709c0abed653e0d8bc074e5743a0d5b32f",
-    "sourceCensusSha256": "bb92fdb1b2fd4cd1b99daa1a620f595204b478a34a6dfc3b57a2b41dec5a0f95",
-    "pendingRows": 451,
+    "builtIndexSha256": "75538484b4051e03eddeffbdee56e343a3db083b8be3d2b7ffb6f38678c5a9e8",
+    "sourceCensusSha256": "ba287415edca688a7f0befe92434139a5bc156812fa1723bd4acd0a077f66d41",
+    "pendingRows": 452,
     "retainedApprovedRows": 197,
     "pendingReferences": 1496,
     "runtimeStatus": "pending"

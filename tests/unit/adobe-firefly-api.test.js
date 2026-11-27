@@ -27,6 +27,7 @@ import * as job from "../../open-sse/services/adobeFireflyApi/job.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { hasSpecializedExecutor } from "../../open-sse/executors/index.js";
+import { isFunction } from "../../src/shared/utils/typeChecks.js";
 
 const API = "https://firefly-api.adobe.io";
 const CLIENT_A = "synthclienta0000000000000000000a";
@@ -68,7 +69,7 @@ function serve(...steps) {
     calls.push({ url: String(url), init });
     const step = steps.shift();
     if (!step) throw new Error(`Unexpected request: ${url}`);
-    return typeof step === "function" ? step(String(url), init) : step;
+    return isFunction(step) ? step(String(url), init) : step;
   });
 }
 

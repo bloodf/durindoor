@@ -19,7 +19,7 @@ import {
 } from "../../providers/private/adobe-firefly-api.js";
 import { defaultAdobeTokenCache, resolveAdobeFireflyAuth } from "../../services/adobeFireflyApi/auth.js";
 import { ADOBE_FIREFLY_MAX_IMAGES, awaitAdobeFireflyImages } from "../../services/adobeFireflyApi/job.js";
-import { isNumber, isString } from "../../../src/shared/utils/typeChecks.js";
+import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS = new Set(ADOBE_FIREFLY_API_MODEL_IDS);
 const MAX_PROMPT_LENGTH = 1024;
@@ -65,7 +65,7 @@ export function createAdobeFireflyApiImageAdapter({ cache = defaultAdobeTokenCac
     async: true,
     buildUrl: (model, credentials, _body, options) => {
       if (!MODELS.has(model)) throw reject("Unsupported Adobe Firefly Services image model");
-      if (options && typeof options === "object") callCredentials.set(options, credentials);
+      if (isRecord(options)) callCredentials.set(options, credentials);
       return ADOBE_FIREFLY_GENERATE_URL;
     },
     buildBody: async (model, body, options) => {

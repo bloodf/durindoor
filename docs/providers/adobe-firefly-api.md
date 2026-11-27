@@ -1,12 +1,12 @@
 ---
 title: Adobe Firefly Services API
-description: Staged and unavailable. Firefly Services image generation with an Adobe Developer Console OAuth Server-to-Server credential, its job flow, errors and limits.
+description: Staged and unavailable. Firefly Services image and text-to-video generation with an Adobe Developer Console OAuth Server-to-Server credential, its job flow, errors and limits.
 status: unreleased
 ---
 
 > **Staged and unavailable.** The code exists, but the provider is not registered. You cannot add an Adobe Firefly Services API connection or send requests to it yet. A later change has to register it.
 
-Adobe Firefly Services API (`adobe-firefly-api`) generates images through Adobe's published, asynchronous [Firefly API](https://developer.adobe.com/firefly-services/docs/firefly-api/). It has been tested only against mocks. No Adobe account, IMS endpoint or Firefly endpoint has been contacted, so there is no claim that it works against the live service.
+Adobe Firefly Services API (`adobe-firefly-api`) generates images, and in a separately staged slice five-second videos, through Adobe's published, asynchronous [Firefly API](https://developer.adobe.com/firefly-services/docs/firefly-api/). It has been tested only against mocks. No Adobe account, IMS endpoint or Firefly endpoint has been contacted, so there is no claim that it works against the live service.
 
 ## Services API entitlement vs. a Firefly subscription
 
@@ -23,7 +23,9 @@ The consumer web app is a separate, declined route: `adobe-firefly` and `firefly
 | Text-to-image with `POST /v3/images/generate-async` | Staged, covered by mocks |
 | Models `image3`, `image4_standard`, `image4_ultra` | Staged. Sent as the `x-model-version` header |
 | Custom models (`image3_custom`, `image4_custom`) | Not supported. Refused |
-| Reference images, style and structure references, expand, fill, upscale, video | Not supported. Refused or not exposed |
+| Text-to-video with `POST /v3/videos/generate`, model `video1_standard` | Staged separately, covered by mocks. See [Video](#video) |
+| Image-to-video keyframes (`image.conditions`) | Not supported. Refused |
+| Reference images, style and structure references, expand, fill, upscale | Not supported. Refused or not exposed |
 | Consumer web app session, cookies or browser sign-in | Never. Refused |
 | Chat | Not part of this provider. It has no chat transport |
 
@@ -151,10 +153,88 @@ The first file covers token minting and its form body, the cache's reuse, expiry
 From `tests/`:
 
 ```bash
-node node_modules/vitest/vitest.mjs run unit/adobe-firefly-api.test.js unit/adobe-firefly-submit.test.js --maxWorkers=2
+node node_modules/vitest/vitest.mjs run unit/adobe-firefly-api-video.test.js unit/adobe-firefly-api.test.js unit/adobe-firefly-submit.test.js --maxWorkers=2
 ```
 
 Mocks show only that the code follows Adobe's published contract. They do not show that a live account is entitled, that Adobe accepts these exact requests or that the documented scopes are enough.
+
+## Video
+
+The video slice is staged on its own. Nothing registers it, and the image adapter, image models and image routes do not know it. It uses the same connection credential, the same in-memory token cache and the same fixed origin as images.
+
+### Entitlement
+
+Generate Video is part of the Firefly Services API. Adobe's [usage notes](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/usage-notes/) have a "Generate Video API usage" section, and the [changelog](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/changelog/) lists its launch on June 19, 2025. Your organization's Services entitlement has to include it. Whether a given credential may generate video is decided by Adobe: a refusal comes back as a submit `403`, with `x-access-error` (`quota_exhausted`, `user_non_entitled`, `user_profile_denied` or `invalid_ims_scope`) repeated in the message when Adobe sends one of those values.
+
+This is Adobe's own native video model through the Services API. It is not the firefly.adobe.com web app, and it gives no access to the third-party video models that web app may offer. No claim is made that it matches the web app's output, options or models. It has not been run against a live Adobe account.
+
+### Exports
+
+From `open-sse/providers/private/adobe-firefly-api.js` (the default export stays image-only, `serviceKinds: ["image"]`):
+
+| Export | Value |
+| --- | --- |
+| `ADOBE_FIREFLY_VIDEO_GENERATE_URL` | `https://firefly-api.adobe.io/v3/videos/generate` |
+| `ADOBE_FIREFLY_VIDEO_MODEL_IDS` | `["video1_standard"]` |
+| `ADOBE_FIREFLY_VIDEO_SECONDS` | `5` |
+| `ADOBE_FIREFLY_VIDEO_SIZES` | The nine documented `[width, height]` pairs |
+| `ADOBE_FIREFLY_STAGED_VIDEO` | `{ serviceKinds: ["video"], models: [{ id: "video1_standard", kind: "video", … }], videoConfig: { baseUrl } }`, for the registration change |
+
+From `open-sse/handlers/videoProviders/adobe-firefly-api.js`: the default adapter, `createAdobeFireflyApiVideoAdapter(options)` and `buildAdobeFireflyVideoRequest(model, body)`. The adapter has `async: true` and one method, `generate({ model, body, credentials, signal, log })`, the same shape as the staged RenderHour video adapter.
+
+From `open-sse/services/adobeFireflyApi/video.js`: `runAdobeFireflyVideoJob`, `awaitAdobeFireflyVideo`, `adobeFireflyVideoAcceptedJob` and the `ADOBE_FIREFLY_VIDEO_*` bounds.
+
+### Routes
+
+Only a **synchronous** generation is supported: `generate()` submits, polls and returns once the job has a URL, failed or was abandoned. Once registered, that fits a one-shot route such as `POST /v1/video/generations`.
+
+The asynchronous `/v1/videos` job API (create, then `GET /v1/videos/{request_id}`) is **not** supported. That route forwards the client's body to a configured base URL, which cannot mint IMS tokens, add `x-api-key` and `x-model-version`, or keep the token on the fixed origin. There is no job-id handoff to the client.
+
+### Request
+
+| Field | Sent as |
+| --- | --- |
+| `prompt` (required) | `prompt`. Adobe documents no length limit; the gateway allows up to 4096 characters |
+| `size` such as `1280x720` | `sizes: [{ width, height }]`. Only the nine sizes in the usage notes: 1920x1080, 1280x720, 960x540, 1080x1920, 720x1280, 540x960, 1080x1080, 720x720, 540x540 |
+| `aspect_ratio` (`16:9`, `9:16`, `1:1`) with `resolution` (`1080p`, `720p`, `540p`) | The matching documented size. A ratio without a resolution is refused |
+| `seed`, or `seeds` with one integer | `seeds: [n]`. Adobe supports one seed |
+| `bitRateFactor` or `bit_rate_factor` | `bitRateFactor`, an integer 0–63 |
+| `cameraMotion`, `promptStyle`, `shotAngle`, `shotSize` (or snake case, or inside `videoSettings`) | `videoSettings`, only with Adobe's documented enum values |
+| `seconds`, `duration`, `duration_s` | Not sent. Must be 5 if present, because every video is five seconds |
+| `n` | Not sent. Must be 1 if present |
+
+The model `video1_standard` is sent as `x-model-version`. Image models are refused with `400`, naming them as image models, and video models are refused by the image adapter. Image inputs (`image`, `image_url`, first and last frames, references, `conditions`) and chat bodies are refused with `400` before anything is sent. Without a size, Adobe's default applies.
+
+### Job flow
+
+| Request | Purpose |
+| --- | --- |
+| `POST https://ims-na1.adobelogin.com/ims/token/v3` | Mint a token (client-credentials mode only), shared with images |
+| `POST https://firefly-api.adobe.io/v3/videos/generate` | Submit one job, `redirect: "manual"`, 30 seconds |
+| `GET https://firefly-api.adobe.io/v3/status/{jobId}` | Read that job, every 10 seconds for up to 10 minutes |
+| `PUT https://firefly-api.adobe.io/v3/cancel/{jobId}` | Best-effort cancel after a disconnect, deadline or late submit answer |
+
+The adapter carries its own submit policy, matching the image core's: a redirect is refused and never followed, a followed redirect is an unknown outcome and drops the token, and the submit is resent only after a `401` with one newly minted token. The token stays in the in-memory cache, and nothing is written to the connection.
+
+If the submit deadline passes or the client disconnects and Adobe answers later, that answer is not used. When it accepted a job, the job is cancelled on the fixed origin; it is never polled.
+
+The status poll is the image poll with video bounds: 10-second interval, 10-minute deadline, 30-second request bound, 64 KiB bodies, one re-mint on a status `401`, and up to 5 retries on `429`/`503` honoring `Retry-After` with waits capped at 60 seconds. Adobe's default rate limit is 4 requests per minute per organization; the spec does not say whether status reads count toward it.
+
+### Result
+
+The spec's status operation names `JobResponse`, whose success schema lists image outputs. The only video result schema it publishes is `AsyncResult`, with `outputs[].video.url`. A succeeded job must have exactly one output with an HTTPS `video.url` without embedded credentials, at most 2083 characters. Anything else is an unknown outcome. Whether a live video job answers exactly this way has not been verified.
+
+The result is `{ created, data: [{ url }] }`. The pre-signed URL is returned **without being downloaded**, even for `response_format: "b64_json"`, and is never fetched with a credential.
+
+### Usage, cost and errors
+
+Usage is `nativeUnits: { videos: 1 }` (`nativeUnitsSource: "returned-videos"`) on the selected connection. Cost is unknown. Adobe returns no price.
+
+Errors follow the image table above, with these differences: submit errors are the gateway's own text (a `400`/`422` becomes `400`, `415` stays, `408` becomes `504`, other statuses `502`), with only a documented `x-access-error` value repeated; a submit `429` `Retry-After` sets the account cooldown; and the local deadline is 10 minutes. Accepted jobs whose outcome is unknown carry `acceptedJob` with `modality: "video"`, `costSource: "accepted-job"` and `jobState` `accepted` or `submit-unknown`.
+
+### Offline evidence
+
+`tests/unit/adobe-firefly-api-video.test.js` drives the real adapter, service and auth modules with a fetch mock that contacts nothing and only synthetic credentials. It covers image/video separation and staging, request mapping and refusals, both credential modes and web-app refusal, IMS refusal, success with fixed status URLs and unfetched results, token reuse, two concurrent accounts, submit `401` re-mint and terminal `401`, `403` with `x-access-error`, `429` `Retry-After`, other submit statuses, redirects, transport failures with no replay, caller abort before and during submit, late-answer cleanup with a fixed-origin cancel, reported and malformed jobs, poll `401`/`403`/`429`/`503`, caller abort and deadline cancels, and secret redaction. The image test files are unchanged.
 
 ## Before registration
 
@@ -164,7 +244,8 @@ A later change has to:
 - add an auth form with a client ID field (`providerSpecificData.clientId`), a secret field (`apiKey`, stored like other API keys) and an optional pasted access token with an expiry
 - keep the image route's `refreshCredentials` unset for this provider (today `leasedAntigravityRefresher` returns `undefined` for it). The adapter handles a submit `401` itself and must not have a minted token merged or persisted
 - read `x-access-error` on a submit `403` for quota cooldowns
-- run one owner-authorized live check with a real Firefly Services credential before any claim of live support
+- for video, add the staged video adapter to the video route and the `ADOBE_FIREFLY_STAGED_VIDEO` models to the provider's model list, keeping image and video models apart
+- run one owner-authorized live check with a real Firefly Services credential before any claim of live support, separately for video
 
 ## Sources
 
@@ -173,4 +254,6 @@ Written from Adobe's own documentation. No third-party code was ported.
 - [AdobeDocs/ffs-firefly-api](https://github.com/AdobeDocs/ffs-firefly-api) at [`1027f559cdb1509a61b34e2f2da9618ec431f2cb`](https://github.com/AdobeDocs/ffs-firefly-api/tree/1027f559cdb1509a61b34e2f2da9618ec431f2cb): [`static/firefly-api.json`](https://github.com/AdobeDocs/ffs-firefly-api/blob/1027f559cdb1509a61b34e2f2da9618ec431f2cb/static/firefly-api.json) (OpenAPI 3.1.0, `info.version` 3.0.0, blob `9004da2c5d57850bb72068e6e06b93e04b1bad9e`, last changed in `0fed5f9c3437ce1072bc7a01616b5d15c5eb1030`)
 - [Authentication](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/) (`src/pages/getting-started/index.md`)
 - [Adobe Developer Console](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/dev-console/) (`src/pages/getting-started/dev-console/index.md`)
+- [Usage notes](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/usage-notes/) (`src/pages/getting-started/usage-notes/index.md`, blob `975ebb6e3e875cb66c0d600abde6d7518682f8b4`): rate limits and Generate Video sizes
+- [Changelog](https://developer.adobe.com/firefly-services/docs/firefly-api/getting-started/changelog/) (`src/pages/getting-started/changelog/index.md`, blob `6c92714c45bbe0a80aa15baf3c4bb3a79190005b`): Generate Video launch
 - [Guides](https://developer.adobe.com/firefly-services/docs/firefly-api/guides/) and [Using the async APIs](https://developer.adobe.com/firefly-services/docs/firefly-api/guides/how-tos/using-async-apis) (`src/pages/guides/how-tos/using-async-apis.md`)

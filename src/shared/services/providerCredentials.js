@@ -1,7 +1,7 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { isAntigravityProvider, openAntigravityLease } from "@/lib/antigravity/refreshProtocol";
 import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
-import { getExecutor } from "open-sse/executors/index.js";
+// Load executors only when refreshing; metadata-only imports must not load the registry.
 import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
 import {
@@ -362,7 +362,7 @@ connection,
 force = false,
 proxyOptions = null,
 {
-  getExecutorImpl = getExecutor,
+  getExecutorImpl = null,
   getProviderConnectionByIdImpl = getProviderConnectionById,
   updateProviderConnectionImpl = updateProviderConnection,
   now = Date.now,
@@ -405,6 +405,7 @@ proxyOptions = null,
   }
   // Capture the exact issuer and credential context before invoking provider
   // code. Executors receive an isolated clone and cannot rewrite the CAS input.
+  const resolveExecutor = getExecutorImpl ?? (await import("open-sse/executors/index.js")).getExecutor;
   const expectedRefreshContext = providerRefreshContext(connection);
   const key = refreshKey(connection);
   const shared = credentialRefreshInflight.get(key);
@@ -413,7 +414,7 @@ proxyOptions = null,
   if (shared) return callerWait(shared, signal, shouldCommit, callerTimeoutMs, laneSignals.get(shared) ?? null);
 
 
-  const executor = getExecutorImpl(connection.provider);
+  const executor = resolveExecutor(connection.provider);
   const providerSpecificData = connection.providerSpecificData && isObject(connection.providerSpecificData) ?
   structuredClone(connection.providerSpecificData) :
   connection.providerSpecificData;

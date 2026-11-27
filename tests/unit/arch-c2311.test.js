@@ -5,6 +5,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// A metadata-only caller may mock default.js without exposing its executor class.
+vi.mock("../../open-sse/executors/default.js", () => ({ normalizeAccountIdPlaceholder: vi.fn() }));
+
 const mocks = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: mocks.proxyAwareFetch }));
 

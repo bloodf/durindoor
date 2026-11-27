@@ -666,9 +666,10 @@ export class BaseExecutor {
       } catch (error) {
         sender.clearHeaderTimer();
         if (isQuotaDispatchUnavailable(error)) throw error;
-        lastError = error;
         const timeoutReason = sender.timeoutReason;
         const isConnectTimeout = Boolean(timeoutReason);
+        if (isConnectTimeout) error = timeoutReason;
+        lastError = error;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
         dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);

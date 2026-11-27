@@ -155,3 +155,23 @@ other `website/` paths, keeps the empty-selection failure. Discovery errors,
 crashes, signals, and timeouts still fail, as do failing selected tests. Those
 browser files are covered by the website browser shards in exact-head local
 CI, and the full inventory checkpoint remains required for merges.
+
+### Batched runner cleanup
+
+`tests/__baseline__/run-ci.mjs` reserves up to one second inside each command's
+five-minute ceiling for termination and verification. It signals the detached
+process group with SIGKILL. If group signaling fails (including EPERM), it also
+signals the known command PID, then enumerates that group with POSIX `ps` and
+signals its remaining members individually. It repeatedly verifies that no live
+members remain; ESRCH and the runner's close event alone are not exit evidence.
+Zombie entries are already terminated and do not count as live workers.
+
+An unreadable inventory or workers still live at the cleanup deadline produces
+an infrastructure error, stops subsequent batches, and fails the gate. It never
+extends the command ceiling or reports denied cleanup as success. When the OS
+denies both group and individual termination, the runner reports that live
+workers may remain; it cannot override OS permissions. No host settings or
+services need changing. Deterministic injected-operation tests cover EPERM,
+ESRCH, other signal errors, successful cleanup, and failure propagation. Native
+process-group integration coverage runs on the host platform; Linux evidence
+does not establish macOS permission behavior.

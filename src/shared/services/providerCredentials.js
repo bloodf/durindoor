@@ -1,5 +1,6 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { isAntigravityProvider, openAntigravityLease } from "@/lib/antigravity/refreshProtocol";
+import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { serializeRefresh } from "open-sse/services/refreshSerializer.js";
 import { isUnrecoverableRefreshError } from "open-sse/services/tokenRefresh.js";
@@ -356,6 +357,13 @@ proxyOptions = null,
 
   if (!(force || executor.needsRefresh(credentials))) {
     return { connection, refreshed: false };
+  }
+
+  // A marked antigravity/agy row issued by another OAuth client (or with no
+  // client configured now) must not spend its refresh token. Stop before the
+  // lease and the outbound request, and leave tokens, status and lease alone.
+  if (antigravityClientBindingBlocks(connection.provider, connection.providerSpecificData)) {
+    throw antigravityClientBindingError();
   }
 
   // Once the provider request begins, its result must outlive an individual

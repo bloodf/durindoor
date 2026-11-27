@@ -1,14 +1,19 @@
 // The public OAuth routes own verifiers, redirect/client metadata and device
 // credentials. Only the server-issued flow handle travels back on completion.
+// Parse a server-issued opaque handle: only a non-blank string qualifies.
+function opaqueHandle(value) {
+  return Object.prototype.toString.call(value) === "[object String]" ? String(value).trim() : "";
+}
+
 function requireFlow(data) {
-  if (typeof data?.flowId !== "string" || !data.flowId.trim()) {
+  if (!opaqueHandle(data?.flowId)) {
     throw new Error("Missing OAuth flow ID; restart sign-in and update the server if needed");
   }
 }
 
 function createCallbackSubmission(provider, data, exchange) {
   requireFlow(data);
-  if (typeof data.state !== "string" || !data.state) throw new Error("Missing OAuth state; restart sign-in");
+  if (!opaqueHandle(data.state)) throw new Error("Missing OAuth state; restart sign-in");
   let submitted = false;
   return async (input) => {
     if (submitted) throw new Error("This callback was already submitted; restart sign-in");

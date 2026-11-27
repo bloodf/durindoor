@@ -128,12 +128,16 @@ function makeRequest(method, path, body = null) {
           
           // Check if response indicates error
           if (res.statusCode >= 400 || parsed.error) {
-            resolve({
+            const failure = {
               success: false,
               error: parsed.error || `HTTP ${res.statusCode}`,
-              ...(path.startsWith("/api/oauth/") && path.endsWith("/poll") && parsed.pending === true ? { pending: true } : {}),
               statusCode: res.statusCode,
-            });
+            };
+            // Device polls report "still waiting" as a non-terminal pending flag.
+            if (path.startsWith("/api/oauth/") && path.endsWith("/poll") && parsed.pending === true) {
+              failure.pending = true;
+            }
+            resolve(failure);
           } else {
             resolve({
               success: true,

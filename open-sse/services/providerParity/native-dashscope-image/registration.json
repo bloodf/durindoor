@@ -1,0 +1,121 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (entries alibaba/ali/alibaba-image, qwen-cloud/qwc/qwen-cloud-image, qwen-cloud-token-plan/qct/qwen-token-plan-image, bailian-coding-plan/bcp/bailian-coding-plan-image: authType apikey, authHeader bearer, baseUrls, models, supportedSizes)",
+      "open-sse/handlers/imageGeneration.ts (the four formats dispatch to handleAlibabaImageGeneration)",
+      "open-sse/handlers/imageGeneration/providers/alibabaImage.ts (allowlist check, apiKey || accessToken, { model, input.messages[0].content [{ image }..., { text }], parameters? }, output.choices[].message.content[].image)",
+      "src/shared/constants/alibabaProviderRegions.ts (global-sg media roots; bailian-coding-plan media override to coding-intl.dashscope.aliyuncs.com/api/v1)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no alibaba, qwen-cloud, qwen-cloud-token-plan or bailian-coding-plan key on this branch or origin/main e183a69458, and no checkout file names the multimodal-generation path.",
+    "reusedReadOnly": "open-sse/services/alibabaVideo/job.js: ALIBABA_DASHSCOPE_INTL_ORIGIN and alibabaVideoResultUrl (https, public literal host, no userinfo). The video request builder, job client, poller and handler are not used or changed.",
+    "notEquivalent": "alibaba-cn, alicode, alicode-intl, alitp-intl, qwen and qwencloud are different identities and are not served here. The source's china-beijing hosts and custom connection base URLs are not ported."
+  },
+  "module": "open-sse/services/providerParity/native-dashscope-image/index.js",
+  "exports": {
+    "alibabaImageAdapter": "default instance for IMAGE_ADAPTERS.alibaba",
+    "qwenCloudImageAdapter": "default instance for IMAGE_ADAPTERS['qwen-cloud']",
+    "qwenCloudTokenPlanImageAdapter": "default instance for IMAGE_ADAPTERS['qwen-cloud-token-plan']",
+    "bailianCodingPlanImageAdapter": "default instance for IMAGE_ADAPTERS['bailian-coding-plan']",
+    "createDashscopeImageAdapter": "factory (providerId, { fetchImpl, submitTimeoutMs, timeoutMs, now }); generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "buildDashscopeImageRequest": "(providerId, model, body) -> exact upstream body; throws status 400 before any network call",
+    "resolveDashscopeImageModel": "(providerId, model) -> allowlist entry or null; prefix must be the identity's own id or alias",
+    "resolveDashscopeImageCredential": "source credentials.apiKey || credentials.accessToken",
+    "isDashscopeImageRegionSupported": "true when providerSpecificData.region is absent or a global-sg spelling",
+    "normalizeDashscopeImageItems": "output.choices[].message.content[].image -> { items: [{ url }], unsafe }",
+    "dashscopeImageAccounting": "success accounting: token counts, numeric usage receipt in meta, returned image units",
+    "dashscopeImageAcceptedJob": "accepted-job accounting for an uncertain or accepted submit",
+    "dashscopeImageIdentity": "identity record by provider id, or null",
+    "dashscopePublicUrl": "https on a public literal host without userinfo, or null",
+    "DASHSCOPE_IMAGE_IDENTITIES": "the four source registry entries",
+    "DASHSCOPE_IMAGE_PROVIDER_IDS": "alibaba, qwen-cloud, qwen-cloud-token-plan, bailian-coding-plan",
+    "DASHSCOPE_IMAGE_PATH": "/api/v1/services/aigc/multimodal-generation/generation"
+  },
+  "providers": [
+    {
+      "canonicalId": "alibaba",
+      "aliases": ["ali"],
+      "format": "alibaba-image",
+      "url": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      "models": ["qwen-image-3.0-pro", "qwen-image-2.0-pro-2026-06-22", "qwen-image-2.0", "z-image-turbo", "wan2.6-t2i"],
+      "textOnlyModels": ["z-image-turbo", "wan2.6-t2i"],
+      "supportedSizes": ["1024x1024", "1280x1280", "2048x2048"]
+    },
+    {
+      "canonicalId": "qwen-cloud",
+      "aliases": ["qwc"],
+      "format": "qwen-cloud-image",
+      "url": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      "models": ["wan2.7-image-pro", "wan2.7-image", "qwen-image-3.0-pro", "qwen-image-2.0-pro-2026-06-22", "qwen-image-2.0-2026-03-03", "z-image-turbo"],
+      "textOnlyModels": ["z-image-turbo"],
+      "supportedSizes": ["1024x1024", "2048x2048"]
+    },
+    {
+      "canonicalId": "qwen-cloud-token-plan",
+      "aliases": ["qct"],
+      "format": "qwen-token-plan-image",
+      "url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      "models": ["wan2.7-image", "wan2.7-image-pro"],
+      "textOnlyModels": [],
+      "supportedSizes": ["1024x1024", "2048x2048"]
+    },
+    {
+      "canonicalId": "bailian-coding-plan",
+      "aliases": ["bcp"],
+      "format": "bailian-coding-plan-image",
+      "url": "https://coding-intl.dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      "models": ["wan2.7-image", "wan2.7-image-pro", "qwen-image-2.0", "qwen-image-2.0-pro"],
+      "textOnlyModels": [],
+      "supportedSizes": ["1024x1024", "2048x2048"]
+    }
+  ],
+  "auth": {
+    "authModes": ["apikey"],
+    "header": "Authorization",
+    "scheme": "Bearer",
+    "credentialFields": ["apiKey", "accessToken"],
+    "isolation": "each adapter sends only the selected connection's key, and only to its own fixed origin",
+    "region": "providerSpecificData.region absent or global-sg; china-beijing and other values refused with 400 before send",
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions"
+  },
+  "request": {
+    "accepted": ["model", "prompt", "n (1..10)", "size (WxH or W*H, sides 64..8192, sent as W*H)", "image / image_url / imageUrls / image_urls (public https, at most 9, image-input models only)", "negative_prompt", "prompt_extend", "watermark", "seed", "enable_sequential", "thinking_mode", "color_palette (1..16 objects)", "response_format url", "user (not sent)", "stream false"],
+    "refused": ["raw parameters object", "model outside the identity's allowlist or with another identity's prefix", "empty prompt", "non-https, private-host or data: input images", "input images for text-only models", "response_format b64_json", "streaming", "any other non-null field", "non-global-sg region"],
+    "responseFormats": ["url"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "<identity url>", "body": "{ model, input: { messages: [{ role: user, content }] }, parameters? }", "answer": "{ output: { choices: [{ message: { content: [{ image }] } }] }, usage?, request_id? }", "billable": true, "redirect": "manual (refused)" }
+  },
+  "bounds": { "submitTimeoutMs": 180000, "totalTimeoutMs": 240000, "responseMaxBytes": 1048576, "errorMaxBytes": 16384, "maxResults": 16 },
+  "accounting": {
+    "success": "once per success: nativeUnits.images = returned public URLs; usage input/output/total_tokens recorded as tokens when reported; numeric usage receipt (incl. image_count, width, height) in meta.providerUsage; cost unknown",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, foreign-origin answer; accepted: a 2xx that is unreadable or without a safe image. Never resent.",
+    "quota": "402, or 400/403 with code Arrearage / AccessDenied.Unpurchased -> 402 quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed; no acceptedJob",
+    "redirect": "3xx -> 502, never followed"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add alibaba, qwen-cloud, qwen-cloud-token-plan and bailian-coding-plan keys mapped to the four default instances (guarded generate adapters)"
+    },
+    {
+      "file": "open-sse/providers/registry/alibaba.js, qwen-cloud.js, qwen-cloud-token-plan.js, bailian-coding-plan.js",
+      "change": "add \"image\" to serviceKinds and the identity's image models with kind image; keep chat transport, aliases and video entries unchanged; resolve bare-id collisions explicitly (several identities list the same image ids)"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list image for the four identities with the supported subset"
+    },
+    {
+      "file": "tests/unit/native-dashscope-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

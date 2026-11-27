@@ -9,6 +9,8 @@ vi.mock("@/lib/usageDb.js", () => ({
 const chat = { prompt_tokens: 100, completion_tokens: 5, cached_tokens: 20 };
 const responses = { input_tokens: 100, output_tokens: 5, cached_tokens: 20 };
 const paths = [
+  ["direct Chat", (extra) => canonicalizeUsage({ ...chat, ...extra })],
+  ["direct Responses", (extra) => canonicalizeUsage({ ...responses, ...extra })],
   ["nonstream Chat", (extra) => extractUsageFromResponse({ usage: { ...chat, ...extra } })],
   ["nonstream Responses", (extra) => extractUsageFromResponse({ usage: { ...responses, ...extra } })],
   ["bare Responses", (extra) => canonicalizeUsage(extractUsage({ usage: { ...responses, ...extra } }))],
@@ -18,6 +20,12 @@ const paths = [
 ];
 
 describe.each(paths)("provider creation alias extraction: %s", (_name, extract) => {
+  it("falls back from null canonical creation without cache reads", () => {
+    expect(extract({ cached_tokens: undefined, cache_creation_input_tokens: null, cache_creation_tokens: 30 })).toEqual({
+      prompt_tokens: 100, completion_tokens: 5, total_tokens: 105,
+      cached_tokens: 0, cache_creation_input_tokens: 30,
+    });
+  });
   it("retains the inclusive prompt and cache creation alias", () => {
     expect(extract({ cache_creation_tokens: 30 })).toEqual({
       prompt_tokens: 100, completion_tokens: 5, total_tokens: 105,
@@ -50,6 +58,16 @@ describe.each(paths)("provider creation alias extraction: %s", (_name, extract) 
   it("accepts explicit alias zero", () => {
     expect(extract({ cache_creation_tokens: 0, input_tokens_details: { cache_creation_tokens: 30 } }))
       .toMatchObject({ prompt_tokens: 100, cache_creation_input_tokens: 0 });
+  });
+});
+
+it.each([0, 7])("keeps numeric canonical creation %s exclusive without cache reads", (value) => {
+  expect(canonicalizeUsage({
+    prompt_tokens: 100, completion_tokens: 5,
+    cache_creation_input_tokens: value, cache_creation_tokens: 30,
+  })).toEqual({
+    prompt_tokens: 100 + value, completion_tokens: 5, total_tokens: 105 + value,
+    cached_tokens: 0, cache_creation_input_tokens: value,
   });
 });
 

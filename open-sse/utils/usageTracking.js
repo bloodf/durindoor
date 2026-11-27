@@ -309,8 +309,9 @@ export function canonicalizeUsage(usage) {
     Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
   const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
     inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
+  // Null creation is absent, matching cacheWrite's nullish alias precedence.
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
-  usage.cache_creation_input_tokens !== undefined &&
+  usage.cache_creation_input_tokens != null &&
   usage.cached_tokens === undefined &&
   inputDetails?.cache_creation_tokens === undefined);
   const cacheCreation = hasExclusiveCache ?

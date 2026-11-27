@@ -8,6 +8,7 @@ import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import UpdatePanel from "./UpdatePanel";
+import api from "@/shared/utils/api";
 import useSettingsStore from "@/store/settingsStore";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion";
 import Modal from "@/shared/ui/components/Modal.jsx";
@@ -86,14 +87,13 @@ export default function Sidebar({ onClose, collapsed: collapsedProp, onToggleCol
   // Wait for settings and discard responses from checks disabled in the meantime.
   useEffect(() => {
     if (!showUpdateNotifications) return;
-    let cancelled = false;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch("/api/version")
-        .then(res => res.json())
-        .then(data => { if (!cancelled && data.hasUpdate) setUpdateInfo(data); })
+      api.get("/api/version", { signal: controller.signal })
+        .then((data) => { if (!controller.signal.aborted && data?.hasUpdate) setUpdateInfo(data); })
         .catch(() => {});
     }, 2500);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [showUpdateNotifications]);
 
   const renderItem = (original, indent = false) => {

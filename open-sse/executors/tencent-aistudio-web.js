@@ -7,7 +7,7 @@
 // Completions. This port keeps that wire contract, adds the session and error
 // handling the source lacks (expired session, quota, redirect to login) and
 // normalises JSON/SSE so the reply always matches what the caller asked for.
-import { WebSessionExecutor } from "./web-session-executor.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { errorResponse } from "../utils/error.js";
 import { isRefusedRedirect } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";

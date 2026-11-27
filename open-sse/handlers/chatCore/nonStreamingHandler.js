@@ -53,13 +53,13 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
-// A token limit or safety filter remains authoritative even with tool calls;
-// other provider finish reasons retain the existing tool-call normalization.
+// Normalize known Claude aliases before checking for a token limit or safety
+// filter; other provider finish reasons retain tool-call normalization.
 function normalizeToolCallFinish(choice) {
-  if (Array.isArray(choice?.message?.tool_calls) && choice.message.tool_calls.length > 0 &&
-      choice.finish_reason !== OPENAI_FINISH.LENGTH && choice.finish_reason !== OPENAI_FINISH.CONTENT_FILTER) {
-    choice.finish_reason = OPENAI_FINISH.TOOL_CALLS;
-  }
+  if (!Array.isArray(choice?.message?.tool_calls) || choice.message.tool_calls.length === 0) return;
+  const reason = normalizeOpenAIFinish(choice.finish_reason);
+  choice.finish_reason = reason === OPENAI_FINISH.LENGTH || reason === OPENAI_FINISH.CONTENT_FILTER ?
+    reason : OPENAI_FINISH.TOOL_CALLS;
 }
 
 /**

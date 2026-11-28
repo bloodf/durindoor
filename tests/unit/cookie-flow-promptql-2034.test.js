@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createBetterSqliteAdapter } from "../../src/lib/db/adapters/betterSqliteAdapter.js";
 import { MIGRATIONS } from "../../src/lib/db/migrations/index.js";
@@ -117,4 +117,191 @@ it("binds updates to the chosen PromptQL connection and refuses foreign origins 
   expect((await prepareCapture({ chrome: wrongTab.chrome, text: JSON.stringify(fresh) })).code).toBe("wrong_tab");
   state.access.mockResolvedValue(false);
   expect((await pair(request(`${dashboard}/api/providers/cookie-import/pairing`, { provider: "promptql", action: "create", name: "Denied" }, { origin: dashboard }))).status).toBe(403);
+});
+
+/**
+ * Public-route evidence for PromptQL (#2034). Each case imports synthetic cookies
+ * through real pairing and import into isolated SQLite, binds each account to its
+ * own strict proxy pool, then calls the actual OpenAI or Anthropic public route.
+ * Only vendor network frames and the operator boundary are synthetic.
+ */
+describe("promptql public route dispatch (#2034)", () => {
+  const REFRESH = "https://auth.pro.ql.app/ddn/project/token";
+  const GQL = "https://data.prompt.ql.app/promptql/playground-v2-hge/v1/graphql";
+  const MODEL = "pql/gpt-5.6-sol";
+  const jwt = (who) => `e.${Buffer.from(JSON.stringify({ iss: "enrich-token", exp: 4102444800, "https://promptql.hasura.io": { "x-hasura-project-id": `project-${who}` } })).toString("base64url")}.${who}`;
+  const accounts = ["alice", "bob", "carol"];
+  const byCookie = (value) => accounts.find((who) => value === header(who));
+  const byToken = (value) => accounts.find((who) => value === `Bearer ${jwt(who)}`);
+  const defaults = {
+    exchange: (who) => Response.json({ token: jwt(who) }),
+    FetchLlmConfigs: () => Response.json({ data: { llm_config: [{ id: "cfg-sol", display_label: "Sol", model_reference: "gpt-5.6-sol", model_id: "gpt-5.6-sol" }] } }),
+    StartThreadWithModel: (who) => Response.json({ data: { start_thread: { thread_id: `thread-${who}`, thread_events: [] } } }),
+    QueryThreadEvents: (who) => Response.json({ data: { thread_events: [{ thread_event_id: 1, event_data: { type: "final_response", message: `synthetic reply ${who}` } }] } }),
+  };
+  /** Network-only vendor: identify the account by the exact credential it sent. */
+  function vendor(flow, overrides = {}) {
+    const calls = [];
+    flow.network.mockImplementation(async (url, init) => {
+      const headers = new Headers(init.headers);
+      const target = String(url);
+      if (target === REFRESH) {
+        const who = byCookie(headers.get("cookie"));
+        calls.push({ op: "exchange", who, cookie: headers.get("cookie"), authorization: headers.get("authorization"), dispatcher: init.dispatcher?.label });
+        return (overrides.exchange ?? defaults.exchange)(who, init);
+      }
+      if (target === GQL) {
+        const who = byToken(headers.get("authorization"));
+        const { operationName } = JSON.parse(init.body);
+        calls.push({ op: operationName, who, cookie: headers.get("cookie"), authorization: headers.get("authorization"), dispatcher: init.dispatcher?.label });
+        return (overrides[operationName] ?? defaults[operationName])(who, init);
+      }
+      throw Error(`Unexpected vendor request ${target}`);
+    });
+    return calls;
+  }
+  const happy = (who, label) => [
+    { op: "exchange", who, cookie: header(who), authorization: null, dispatcher: label },
+    ...["FetchLlmConfigs", "StartThreadWithModel", "QueryThreadEvents"].map((op) => ({ op, who, cookie: null, authorization: `Bearer ${jwt(who)}`, dispatcher: label })),
+  ];
+  async function twoAccounts(flow, a = cookies("alice"), b = cookies("bob")) {
+    const alice = await flow.imported({ action: "create", name: "Alice" }, { origin, cookies: a });
+    const bob = await flow.imported({ action: "create", name: "Bob" }, { origin, cookies: b });
+    await flow.bind(alice.id, "alice");
+    await flow.bind(bob.id, "bob");
+    return { alice, bob };
+  }
+  async function withFlow(run) {
+    const { cookiePublicFlow2034 } = await import("./helpers/cookiePublicFlow2034.js");
+    const flow = await cookiePublicFlow2034("promptql");
+    try { await run(flow); } finally { await flow.close(); }
+  }
+  const secrets = () => [...accounts.flatMap((who) => cookies(who).map((c) => c.value)), ...accounts.map(jwt)];
+  async function visibleOutput(flow, text) {
+    return JSON.stringify({ text, listing: await (await flow.list()).json(), logs: flow.logs.flatMap((spy) => spy.mock.calls) });
+  }
+
+  it.each([
+    [false, false, "header"], [false, true, "curl"], [true, false, "har"], [true, true, "header"],
+    [false, false, "har"], [true, true, "curl"],
+  ])("dispatches a pinned import through only its account and proxy (anthropic=%s, stream=%s, input=%s)", async (anthropic, stream, kind) => {
+    await withFlow(async (flow) => {
+      const value = header("alice");
+      const parsed = kind === "header" ? parseCookieHeaderValue(`Cookie: ${value}`) : kind === "curl"
+        ? parseCurlCommand(`curl '${origin}/' -H 'Cookie: ${value}'`)
+        : parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${origin}/`, headers: [{ name: "Cookie", value }], cookies: [] } }] } }));
+      const selected = buildImportCandidates({ kind, parsed }, getCookieImportContract("promptql"));
+      expect(selected.ok).toBe(true);
+      const { alice, bob } = await twoAccounts(flow, selected.candidates[0].cookies);
+      expect(alice.apiKey).toBe(value);
+      expect(bob.apiKey).toBe(header("bob"));
+      const calls = vendor(flow);
+      const response = await flow.dispatch({ model: MODEL, anthropic, stream, id: alice.id });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("synthetic reply alice");
+      expect(text).not.toContain("synthetic reply bob");
+      expect(calls).toEqual(happy("alice", "alice"));
+      const refreshed = await flow.db.getProviderConnectionById(alice.id);
+      expect(refreshed.accessToken).toBe(jwt("alice"));
+      expect((await flow.db.getProviderConnectionById(bob.id)).accessToken ?? null).toBe(null);
+      const output = await visibleOutput(flow, text);
+      for (const secret of secrets()) expect(output).not.toContain(secret);
+    });
+  });
+  it.each([false, true])("falls back to the other account only after a safe token-exchange refusal (stream=%s)", async (stream) => {
+    await withFlow(async (flow) => {
+      await twoAccounts(flow);
+      let refused;
+      const calls = vendor(flow, { exchange: (who) => { refused ??= who; return who === refused ? new Response("expired", { status: 401 }) : defaults.exchange(who); } });
+      const response = await flow.dispatch({ model: MODEL, stream });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      const other = accounts.find((who) => who !== refused && who !== "carol");
+      expect(calls).toEqual([{ op: "exchange", who: refused, cookie: header(refused), authorization: null, dispatcher: refused }, ...happy(other, other)]);
+      expect(text).toContain(`synthetic reply ${other}`);
+      expect(text).not.toContain(`synthetic reply ${refused}`);
+      for (const secret of secrets()) expect(await visibleOutput(flow, text)).not.toContain(secret);
+    });
+  });
+
+  // Only failures that end before or at the single message mutation are listed; see the report
+  // for malformed, GraphQL-error, 5xx and stalled-body cases, which currently replay the thread.
+  const failures = [
+    ["quota", { StartThreadWithModel: () => new Response("slow down", { status: 429 }) }, ["exchange", "FetchLlmConfigs", "StartThreadWithModel"], 429],
+    ["HTML token exchange", { exchange: () => new Response("<html>sign in</html>", { headers: { "content-type": "text/html" } }) }, ["exchange"], 401],
+    ["token exchange refusal", { exchange: () => new Response("expired", { status: 403 }) }, ["exchange"], 401],
+  ];
+  it.each(failures.flatMap(([label, overrides, ops, status]) => [false, true].flatMap((anthropic) => [false, true].map((stream) => [label, anthropic, stream, overrides, ops, status]))))(
+    "returns a pinned %s failure without a success terminal or replay (anthropic=%s, stream=%s)", async (_label, anthropic, stream, overrides, ops, status) => {
+      await withFlow(async (flow) => {
+        const { alice } = await twoAccounts(flow);
+        const calls = vendor(flow, overrides);
+        const response = await flow.dispatch({ model: MODEL, anthropic, stream, id: alice.id });
+        const text = await response.text();
+        expect(response.status, text).toBe(status);
+        for (const terminal of ["[DONE]", "message_stop", '"finish_reason":"stop"', "end_turn", "synthetic reply"]) expect(text).not.toContain(terminal);
+        expect(calls).toEqual(happy("alice", "alice").filter((c) => ops.includes(c.op)));
+        expect((await flow.db.getProviderConnectionById(alice.id)).accessToken ?? null).toBe(null);
+        for (const secret of secrets()) expect(await visibleOutput(flow, text)).not.toContain(secret);
+      });
+    });
+
+  it.each([false, true])("stops polling when the caller aborts and does not report success (stream=%s)", async (stream) => {
+    await withFlow(async (flow) => {
+      const { alice } = await twoAccounts(flow);
+      const controller = new AbortController();
+      const calls = vendor(flow, { QueryThreadEvents: () => { controller.abort(); return Response.json({ data: { thread_events: [] } }); } });
+      let text = "";
+      try {
+        const response = await flow.dispatch({ model: MODEL, stream, id: alice.id, signal: controller.signal });
+        text = await response.text();
+        expect(response.status).not.toBe(200);
+      } catch (error) {
+        expect(error?.name).toBe("AbortError");
+      }
+      expect(text).not.toContain("[DONE]");
+      expect(text).not.toContain("synthetic reply");
+      expect(calls).toEqual(happy("alice", "alice"));
+    });
+  });
+
+  it("refuses unsafe imports without writing and binds an update to only the paired connection", async () => {
+    await withFlow(async (flow) => {
+      const { alice, bob } = await twoAccounts(flow);
+      const before = async () => JSON.stringify(await Promise.all([alice.id, bob.id].map((id) => flow.db.getProviderConnectionById(id))));
+      const snapshot = await before();
+      const count = (await flow.db.getProviderConnections({ provider: "promptql" })).length;
+      const refused = [
+        [{ action: "create", name: "Wrong origin" }, { origin: "https://prompt.ql.app.evil.example", cookies: cookies("carol") }, 400],
+        [{ action: "create", name: "Expired" }, { origin, cookies: cookies("carol").map((c) => ({ ...c, expirationDate: 1 })) }, 400],
+        [{ action: "create", name: "Storage" }, { origin, cookies: cookies("carol"), localStorage: { token: "synthetic-storage" } }, 400],
+        [{ action: "create", name: "Chunked" }, { origin, cookies: [cookies("carol")[0], { name: `${names[1]}.0`, value: "synthetic-chunk" }] }, 400],
+        [{ action: "update", connectionId: alice.id }, { origin, cookies: cookies("carol"), connectionId: bob.id }, 409],
+      ];
+      for (const [target, body, status] of refused) {
+        const p = await flow.issue(target);
+        const response = await flow.submit(p, { ...(target.name ? { name: target.name } : null), ...body });
+        const text = await response.text();
+        expect(response.status, text).toBe(status);
+        for (const secret of [p.token, ...secrets()]) expect(text).not.toContain(secret);
+      }
+      expect((await flow.pairResponse({ action: "create", name: "Denied" }, "synthetic-stranger")).status).toBe(403);
+      expect(await before()).toBe(snapshot);
+      expect((await flow.db.getProviderConnections({ provider: "promptql" })).length).toBe(count);
+
+      vendor(flow);
+      expect((await (await flow.dispatch({ model: MODEL, id: alice.id })).text())).toContain("synthetic reply alice");
+      const updated = await flow.imported({ action: "update", connectionId: alice.id }, { origin, cookies: cookies("carol") });
+      expect(updated.apiKey).toBe(header("carol"));
+      expect((await flow.db.getProviderConnectionById(bob.id)).apiKey).toBe(header("bob"));
+      flow.network.mockClear();
+      const calls = vendor(flow);
+      const response = await flow.dispatch({ model: MODEL, id: alice.id, stream: true });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(calls).toEqual(happy("carol", "alice"));
+      for (const secret of secrets()) expect(await visibleOutput(flow, text)).not.toContain(secret);
+    });
+  });
 });

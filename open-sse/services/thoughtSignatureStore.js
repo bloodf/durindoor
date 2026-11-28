@@ -169,17 +169,17 @@ function writeSignature(toolCallId, signature, { scope = null, owner = null, acc
     for (const [key, row] of rows) persistLater(key, row);
     return;
   }
-  try {
-    for (const [key, row] of rows) {
+  for (const [key, row] of rows) {
+    try {
       db.run(UPSERT, [SCOPE, key, stringifyJson(row)]);
       unpersisted.delete(key);
+    } catch {
+      // An existing row may be an older capture, even with the same signature.
+      // Retain the complete replacement (provenance and original expiry too).
+      persistLater(key, row, false);
     }
-    prunePersisted(db, now);
-  } catch {
-    // Response translation must not fail when persistence does; keep the rows
-    // for the next persisted read to retry instead of dropping them.
-    for (const [key, row] of rows) if (!readRowOrNull(db, key)) persistLater(key, row, false);
   }
+  prunePersisted(db, now);
 }
 
 // Write-behind rows not yet confirmed in SQLite, by key. A capture made before
@@ -200,13 +200,13 @@ function persistLater(key, row, writeNow = true) {
 
 async function persistEntry(key, entry) {
   try {
-    await signatureKv.set(key, entry.row);
+    const db = await getAdapter();
+    // Opening can yield to a newer capture, successful sync write, or clear.
+    // Check after that boundary so a superseded write cannot overwrite it.
+    if (unpersisted.get(key) !== entry) return;
+    db.run(UPSERT, [SCOPE, key, stringifyJson(entry.row)]);
     if (unpersisted.get(key) === entry) unpersisted.delete(key);
   } catch {/* kept for the next persisted read */}
-}
-
-function readRowOrNull(db, key) {
-  try {return readRow(db, key);} catch {return null;}
 }
 
 // The persisted boundary of every async read: settle the key's pending write
@@ -214,20 +214,28 @@ function readRowOrNull(db, key) {
 // cannot take is returned as written, so provenance and expiry checks apply to
 // it exactly as to a persisted row.
 async function readPersisted(key) {
-  const entry = unpersisted.get(key);
+  let entry = unpersisted.get(key);
   if (entry) {
     await entry.write;
-    if (unpersisted.get(key) === entry) {
+    entry = unpersisted.get(key);
+    if (entry) {
       entry.write = persistEntry(key, entry);
       await entry.write;
     }
-    if (unpersisted.get(key) === entry) {
+    // A newer capture may have replaced the entry during either await. Return
+    // that complete row if still pending; never fall back to an older DB row.
+    entry = unpersisted.get(key);
+    if (entry) {
       if (liveEntry(entry.row)) return entry.row;
-      unpersisted.delete(key);
+      // Keep expired replacements pending too: dropping them could resurrect
+      // an older, longer-lived SQLite row after another failed write.
       return null;
     }
   }
-  return signatureKv.get(key);
+  const db = await getAdapter();
+  // A capture can also arrive while the read itself is opening the adapter.
+  const pending = unpersisted.get(key);
+  return pending ? liveEntry(pending.row) : readRow(db, key);
 }
 
 // A usable selected-account id, or null ("unknown" is the gateway's placeholder).
@@ -439,7 +447,7 @@ export function getKeyedThoughtSignature(key) {
     if (usable(cached)) return cached.signature;
     if (!db) continue;
     try {
-      let row = readRow(db, candidate);
+      let row = unpersisted.has(candidate) ? liveEntry(unpersisted.get(candidate).row) : readRow(db, candidate);
       if (!usable(row)) continue;
       if (exact && parts.scope && !row.createdAt) {
         // A failed rewrite must not hide a readable signature.

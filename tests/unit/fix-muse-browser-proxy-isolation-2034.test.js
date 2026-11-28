@@ -302,7 +302,9 @@ describe("#2034 executor guard", () => {
       proxyOptions: { vercelRelayUrl: "https://relay.invalid/", strictProxy: true },
       credentials: { connectionId: "relay", apiKey: COOKIE_A, providerSpecificData: { enableSessionDispatch: true } },
     });
-    expect(result.response.status).toBe(502);
+    // Post-fix (#2034): the local refusal keeps its own 503 and an "unsupported" category, not a bootstrap 502.
+    expect(result.response.status).toBe(503);
+    expect((await result.response.json()).error).toMatchObject({ type: "unsupported", code: "meta_ai_refresh_unsupported" });
     expect(sent).toEqual([]);
     expect(acquire).not.toHaveBeenCalled();
   });

@@ -497,7 +497,8 @@ describe("Muse Spark Web imported credential consumption", () => {
   });
 
   // The registry hint offers a bare value. The import dialog refuses it; the manual Add form stores it as typed.
-  it("names a manually added bare value, and refuses one containing = before any traffic", async () => {
+  // Post-fix (#2034): "=" used only as trailing padding is part of a bare value, not a cookie name.
+  it("names a manually added bare value, including one with trailing = padding", async () => {
     const add = async (name, apiKey) => {
       const res = await routes.providers.POST(json("/api/providers", { provider: PROVIDER, name, apiKey }));
       expect(res.status).toBe(201);
@@ -505,8 +506,32 @@ describe("Muse Spark Web imported credential consumption", () => {
     };
     const padded = await add("Padded", `${COOKIE_B}==`);
     await optIn(padded.id, PROXY_B, 1);
-    expect((await chat()).status).toBe(401);
-    nothingSent();
+    // The shared fake page derives its token from the cookie; this one strips the padding it cannot carry.
+    const muse = await import("../../open-sse/executors/muse-spark-web.js");
+    muse.__setMuseSparkBrowserPoolForTesting({
+      acquire: async (key) => {
+        browser.acquired.push(key);
+        const pooled = { value: "" };
+        pooled.context = { addCookies: async (cookies) => { browser.cookies.push(...cookies); pooled.value = cookies[0].value; } };
+        return pooled;
+      },
+      openPage: async (pooled) => ({
+        route: async () => {}, routeWebSocket: async () => {}, goto: async () => {}, close: async () => {},
+        url: () => `${ORIGIN}/`, content: async () => `"accessToken":"ecto1:access-${pooled.value.replace(/=+$/, "")}"`,
+      }),
+      release: async () => {},
+    });
+    expect((await chat()).status).toBe(200);
+    expect(proxied.map(({ url, route, cookie }) => ({ url, route, cookie }))).toEqual(Array(3).fill({ url: GRAPHQL, route: PROXY_B, cookie: `ecto_1_sess=${COOKIE_B}==` }));
+    expect(browser.cookies).toEqual([{ name: "ecto_1_sess", value: `${COOKIE_B}==`, domain: "www.meta.ai", path: "/", secure: true }]);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].options.agent.proxy.href).toBe(`${PROXY_B}/`);
+    expect(direct.mock.calls.filter(([url]) => /meta\.ai|meta\.com/.test(String(url)))).toEqual([]);
+    expect((await db.getProviderConnectionById(padded.id)).apiKey).toBe(`${COOKIE_B}==`);
+    proxied.length = 0;
+    browser.acquired.length = 0;
+    browser.cookies.length = 0;
+    sockets.length = 0;
 
     await db.deleteProviderConnection(padded.id);
     const bare = await add("Bare", COOKIE_A);
@@ -529,7 +554,8 @@ describe("Muse Spark Web imported credential consumption", () => {
     expectNoSecrets(logged());
   });
 
-  it("uses a rotated cookie for the turn without writing it to the stored credential", async () => {
+  // Post-fix (#2034): the rotation is written back through the dispatcher's guarded callback.
+  it("uses a rotated cookie for the turn and writes it to the stored credential", async () => {
     const saved = await importValue(COOKIE_A, { action: "create", name: "Muse" });
     await optIn(saved.id, PROXY_A, 1);
     upstream = () => proxied.length === 1
@@ -538,8 +564,10 @@ describe("Muse Spark Web imported credential consumption", () => {
     expect((await chat()).status).toBe(200);
     expect(proxied.map((call) => call.cookie)).toEqual([COOKIE_A, COOKIE_NEW, COOKIE_NEW].map((v) => `ecto_1_sess=${v}`));
     expect(browser.cookies.map((cookie) => cookie.value)).toEqual([COOKIE_NEW]);
-    // Documented limitation: rotation is not persisted.
-    expect((await db.getProviderConnectionById(saved.id)).apiKey).toBe(`ecto_1_sess=${COOKIE_A}`);
+    // Post-fix: the stored credential now holds the rotated value, in the stored header shape.
+    expect((await db.getProviderConnectionById(saved.id)).apiKey).toBe(`ecto_1_sess=${COOKIE_NEW}`);
+    expect((await chat()).status).toBe(200);
+    expect(proxied.slice(3).map((call) => call.cookie)).toEqual(Array(3).fill(`ecto_1_sess=${COOKIE_NEW}`));
     expectNoSecrets(logged());
   });
 

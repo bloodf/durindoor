@@ -1,5 +1,5 @@
 import { createSseFrameDispatcher } from "./sseFrames.js";
-import { createClientFrameFramer } from "../handlers/chatCore/proxyTimelineFrame.js";
+import { createClientFrameFramer } from "./sseFrames.js";
 
 /** Share the output stage's observations, retaining the legacy line/NDJSON view. */
 export function createTimelineFrameObserver({ format, onFrame }) {

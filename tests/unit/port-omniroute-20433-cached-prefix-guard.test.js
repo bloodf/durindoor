@@ -66,4 +66,24 @@ describe("OmniRoute #20433 - compression leaves the provider-cached prefix alone
     expect(shouldProtectCachedPrefix({ provider: "openai", format: "openai", estimatedTokens: 5000, contextWindow: 4000 })).toBe(false);
     expect(shouldProtectCachedPrefix({ provider: "openai", format: "openai", estimatedTokens: 3000, contextWindow: 4000 })).toBe(true);
   });
+
+  it.each([
+    ["reserve-output", { outputReserve: 2000, safetyMargin: 1000 }, 7000],
+    ["percentage", { pct: 0.7 }, 7000],
+    ["absolute", { absoluteBudget: 7000 }, 7000],
+  ])("uses the %s adaptive target for a caching provider", async (policy, settings, target) => {
+    const input = body();
+    const runAt = (estimatedTokens, overrides = {}) => runCompressionSeam(input, undefined, {
+      enabled: true, engines: ENGINES,
+      applyOpts: { format: "openai", cachedPrefix: shouldProtectCachedPrefix({ provider: "openai", format: "openai", estimatedTokens, contextWindow: 10000 }) },
+      adaptive: { mode: "replace-autotrigger", policy, modelContextLimit: 10000, estimatedTokens, ...settings, ...overrides },
+    });
+    const above = await runAt(target + 1);
+    expect(toolContents(above.body)[0]).toMatch(/\.\.\.\[truncated\]$/);
+    expect(above.headerValue).toMatch(/^lite\|/);
+    expect(toolContents((await runAt(target)).body)[0]).toBe(LONG);
+    expect(toolContents((await runAt(target + 1, { mode: "off" })).body)[0]).toBe(LONG);
+    expect(toolContents((await runAt(target + 1, { modelContextLimit: null })).body)[0]).toBe(LONG);
+    expect(toolContents((await runAt(target + 1)).body)[2]).toBe(LONG);
+  });
 });

@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
   dir: "",
@@ -120,8 +120,30 @@ import { ACCEPTED_JOB_HEADER } from "../../open-sse/services/combo.js";
 import { fakeLauncher, syntheticWorkspace, syntheticMapping } from "../fixtures/fireflyWebUi/fakeBrowser.js";
 import * as auth from "../../src/sse/services/auth.js";
 
+// The real request-correlation path opens SQLite using the live environment,
+// independently of the mocked account store and dataDir getter. Isolate it
+// before importing the routes so other test files cannot share its database.
+const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "video-dispatch-db-"));
+const previousDataDir = process.env.DATA_DIR;
+process.env.DATA_DIR = dbDir;
+m.dir = dbDir;
+
 const { handleVideoGeneration } = await import("../../src/sse/handlers/video.js");
 const { POST: createConnection } = await import("@/app/api/providers/route.js");
+
+afterAll(async () => {
+  const state = globalThis._dbAdapter;
+  if (state?.file === path.join(dbDir, "db", "data.sqlite")) {
+    await state.instance?.close?.();
+    state.instance = null;
+    state.initPromise = null;
+    state.file = null;
+    state.cacheKey = null;
+  }
+  if (previousDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = previousDataDir;
+  fs.rmSync(dbDir, { recursive: true, force: true });
+});
 
 const NOW = Math.floor(Date.now() / 1000) * 1000;
 const PENDING_MS = 90_000;

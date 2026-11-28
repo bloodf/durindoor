@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import Input from "@/shared/ui/components/Input.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
+import api from "@/shared/utils/api.js";
 import { normalizeSslmode, SSL_MODES } from "./sslmode.js";
 
 export default function PostgresConnectionTarget({ effective, password, onUnauthorized, onPersisted }) {
@@ -17,19 +18,18 @@ export default function PostgresConnectionTarget({ effective, password, onUnauth
     setBusy(true);
     setResult(null);
     try {
-      const response = await fetch("/api/settings/database/test", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-9r-password": password },
-        body: JSON.stringify({ ...draft, password: credential, persist: true }),
-      });
-      if (response.status === 401) { onUnauthorized(); return; }
-      const body = await response.json();
-      if (!response.ok || !body.ok) throw new Error(body.error || "Failed to test PostgreSQL target");
+      const body = await api.post(
+        "/api/settings/database/test",
+        { ...draft, password: credential, persist: true },
+        { headers: { "x-9r-password": password } },
+      );
+      if (!body?.ok) throw new Error(body?.error || "Failed to test PostgreSQL target");
       setCredential("");
       setResult({ ok: true, message: `Target saved. Connected in ${body.latencyMs ?? 0}ms (${body.serverVersion || "unknown"}). Ready for cutover without restarting.` });
       await onPersisted();
     } catch (error) {
-      setResult({ ok: false, message: error.message });
+      if (error?.status === 401) { onUnauthorized(); return; }
+      setResult({ ok: false, message: error?.body?.error || error.message || "Failed to test PostgreSQL target" });
     } finally { setBusy(false); }
   }
 

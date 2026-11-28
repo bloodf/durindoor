@@ -124,14 +124,14 @@ async function GETHandler(request, { params }) {
 }
 
 /**
- * HEAD stays catalog-free: known kinds and provider-prefixed lookup paths are
- * routable; unknown legacy one-segment kinds remain 404.
+ * HEAD stays catalog-free: known kinds, registry model ids, and provider-prefixed
+ * lookup paths are routable; unknown legacy one-segment kinds remain 404.
  */
 async function HEADHandler(_request, { params }) {
   const { model } = await params;
   const path = Array.isArray(model) ? model : [model];
   const identifier = path.filter(Boolean).join("/");
-  if (KIND_SLUG_MAP[identifier] || path.length > 1 || identifier.includes("/")) {
+  if (KIND_SLUG_MAP[identifier] || path.length > 1 || identifier.includes("/") || isRegistryModelId(identifier)) {
     return headOkResponse();
   }
   return headNotFoundResponse();

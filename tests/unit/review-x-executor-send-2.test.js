@@ -192,11 +192,13 @@ const cases = [
     setup() {
       reply(
         () => Response.json({ id: "chat-1" }),
-        () => new Response('data: {"data":{"delta_content":"hi","phase":"answer"}}\n\n')
+        // A complete source-shaped event stream: the executor refuses non-SSE or unterminated replies.
+        () => new Response('data: {"data":{"delta_content":"hi","phase":"answer"}}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } })
       );
       return new ZaiWebExecutor();
     },
-    input: { model: "glm-5.3", credentials: { apiKey: zaiToken } }
+    // Synthetic opaque CAPTCHA proof (a stored source location) so the executor dispatches at all.
+    input: { model: "glm-5.3", credentials: { apiKey: zaiToken, providerSpecificData: { captchaVerifyParam: "synthetic-proof-send" } } }
   }
 ];
 

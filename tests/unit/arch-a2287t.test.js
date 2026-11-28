@@ -66,7 +66,7 @@ async function run(name, steps) {
 
 beforeEach(async () => {
   vi.resetModules();
-  tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "arch-a2287t-"));
+  tmpHome = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "arch-a2287t-")));
   vi.stubEnv("XDG_CONFIG_HOME", "");
   vi.doMock("os", async (importOriginal) => {
     const actual = await importOriginal();

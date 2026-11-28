@@ -1401,6 +1401,23 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/providers/[id]/FireflyBrowserPanel.stories.jsx",
+    "title": "V5 review/Pages/providers/FireflyBrowserPanel",
+    "storyId": "v5-review-pages-providers-fireflybrowserpanel--disabled",
+    "states": [
+      "Disabled",
+      "Configured"
+    ],
+    "storyIds": [
+      "v5-review-pages-providers-fireflybrowserpanel--disabled",
+      "v5-review-pages-providers-fireflybrowserpanel--configured"
+    ],
+    "pathname": "/dashboard/providers/adobe-firefly-web",
+    "routePattern": "/dashboard/providers/[^/]+",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/providers/[id]/InferenceStatus.stories.jsx",
     "title": "V5 review/Pages/providers/InferenceStatus",
     "storyId": "v5-review-pages-providers-inferencestatus--empty",

@@ -13,6 +13,7 @@ import { getSettings } from "@/lib/db/repos/settingsRepo";
 import { PROVIDERS } from "open-sse/config/providers.js";
 import { getAzureDeploymentPool } from "open-sse/providers/azureDeployment.js";
 import { isLegacyOllamaEmbeddingModel } from "open-sse/services/ollamaCatalog.js";
+import { resolveOpenRouterDecisionModels } from "open-sse/services/openrouterCatalog.js";
 import { resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { aggregateComboCapabilities, capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel, overlayComboCapabilities, resolveModelLimits } from "open-sse/providers/capabilities.js";
 import { isPaidModel } from "open-sse/providers/pricing.js";
@@ -543,7 +544,18 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         getProviderAlias(providerId) ||
         staticAlias).
         trim();
-        const providerModels = PROVIDER_MODELS[staticAlias] ?? [];
+        let providerModels = PROVIDER_MODELS[staticAlias] ?? [];
+        /** Project Vertex's declared transcription kind before ID lookup deduplication.
+         * Chat and mixed requests keep the canonical chat row for shared IDs.
+         */
+        if (providerId === "vertex" && kindFilter.includes("stt") && !kindFilter.includes(LLM_KIND)) {
+          const transcriptionModels = new Map(
+            (AI_PROVIDERS[providerId]?.sttConfig?.models ?? []).map((model) => [model.id, model])
+          );
+          providerModels = providerModels.map((model) => transcriptionModels.has(model.id)
+            ? { ...model, ...transcriptionModels.get(model.id), kind: "stt" }
+            : model);
+        }
         let enabledModels = resolveEnabledModels(providerId, conn);
         // An explicit provider-level allowlist restricts what this provider may
         // publish, even when the intersection ends up empty. Only Azure needs the
@@ -768,6 +780,32 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
             }
           } catch (err) {
             console.log(`Live model classification failed for ${providerId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (providerId === "openrouter" && syncedModels && kindFilter.includes("systemone")) {
+          // Synced OpenRouter models come from the default listing, which hides
+          // System One decision models: keep merging the decisions catalog so
+          // /v1/models/systemone still lists them alongside synced models.
+          try {
+            const psd = isRecord(conn.providerSpecificData) ? conn.providerSpecificData : {};
+            const proxyOptions = await resolveConnectionProxyConfig(psd);
+            const decisionModels = await withCatalogDeadline(
+              ["openrouter-decisions", ...catalogIdentity],
+              () => resolveOpenRouterDecisionModels({ proxyOptions })
+            );
+            for (const m of decisionModels ?? []) {
+              if (!isRecord(m) || !isString(m.id)) continue;
+              if (hasExplicitEnabledModels && !enabledModels.includes(m.id)) continue;
+              if (!rawModelIds.includes(m.id)) rawModelIds.push(m.id);
+              syncedModelIds.add(m.id);
+              if (!liveModelById.has(m.id)) liveModelById.set(m.id, m);
+              liveModelIds.add(m.id);
+              liveModelKindById.set(m.id, "systemone");
+              if (!liveCapabilitiesById.has(m.id) && isRecord(m.capabilities)) {
+                liveCapabilitiesById.set(m.id, m.capabilities);
+              }
+            }
+          } catch {
+            // Decisions discovery is optional; synced catalog remains authoritative.
           }
         }
         // Native media catalog rows join the chat discovery. An id the chat

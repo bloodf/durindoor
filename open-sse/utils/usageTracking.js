@@ -193,7 +193,10 @@ export function normalizeUsage(usage) {
   assignNumber("total_tokens", usage?.total_tokens);
   assignNumber("cache_read_input_tokens", usage?.cache_read_input_tokens);
   const details = usage.prompt_tokens_details ?? usage.input_tokens_details;
-  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ??
+  // #5904's top-level alias is an inclusive subset, with typed nonnegative counters.
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
+    Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
     details?.cache_creation_tokens ?? details?.cache_write_tokens;
   assignNumber("cache_creation_input_tokens", cacheWrite);
   assignNumber("cache_creation_1h_input_tokens", oneHourCacheWrite(usage));
@@ -301,13 +304,22 @@ export function canonicalizeUsage(usage) {
   const foldReasoning = usage.reasoning_included_in_output !== 0 && reasoning > reportedCompletion &&
     reasoningIsSubsetOfOutput(usage);
   const completion = foldReasoning ? reasoning : reportedCompletion;
-  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
+  // Resolve creation aliases before applying the provider accounting convention.
+  const creationAlias = isNumber(usage.cache_creation_tokens) &&
+    Number.isFinite(usage.cache_creation_tokens) && usage.cache_creation_tokens >= 0 ? usage.cache_creation_tokens : undefined;
+  const cacheWrite = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? creationAlias ??
+    inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
+  // Null creation is absent, matching cacheWrite's nullish alias precedence.
   const hasExclusiveCache = usage.cache_read_input_tokens !== undefined || (
-  usage.cache_creation_input_tokens !== undefined &&
+  usage.cache_creation_input_tokens != null &&
   usage.cached_tokens === undefined &&
   inputDetails?.cache_creation_tokens === undefined);
+  // Exclusive flat counters override stale nested inclusive details. Resolve only
+  // top-level creation aliases here; nested fallback belongs to inclusive usage.
+  // Match translator aliasCount: cache_write_tokens must be a nonnegative integer.
+  const writeAlias = Number.isInteger(usage.cache_write_tokens) && usage.cache_write_tokens >= 0 ? usage.cache_write_tokens : undefined;
   const cacheCreation = hasExclusiveCache ?
-  num(usage.cache_creation_input_tokens) :
+  num(usage.cache_creation_input_tokens ?? writeAlias ?? creationAlias) :
   num(cacheWrite);
 
   let prompt = num(usage.prompt_tokens ?? usage.input_tokens);
@@ -453,8 +465,8 @@ export function hasValidUsage(usage) {
 /**
  * Extract usage from any format (Claude, OpenAI, Gemini, Responses API)
  */
-// Claude message_start can carry a positive output count before any output is
-// produced. It is provisional until a message_delta receipt reports the final
+// Only numeric message_start output_tokens:1 is the known placeholder.
+// It is provisional until a message_delta receipt reports the final
 // cumulative count. Markers live outside the usage object so they never reach
 // clients or persisted logs.
 const provisionalOutputUsage = new WeakSet();
@@ -470,14 +482,21 @@ export function isProvisionalOutput(usage) {
 }
 
 /**
- * Raise a provisional output count to the estimate of the output already
- * received, so an interrupted stream is not billed at the placeholder.
+ * Project provisional output without consuming its state. Empty output is
+ * canonical zero. Snapshots must still allow a later measured zero or one.
  */
 export function refreshProvisionalOutput(usage, outputChars) {
   if (!isProvisionalOutput(usage)) return usage;
   const estimate = estimateOutputTokens(outputChars);
-  if (estimate <= (Number(usage.completion_tokens) || 0)) return usage;
   return mark(provisionalOutputUsage, { ...usage, completion_tokens: estimate });
+}
+
+/** Resolve once before final accounting; repeated finalization is idempotent. */
+export function resolveProvisionalOutput(usage, outputChars) {
+  if (!isProvisionalOutput(usage)) return usage;
+  const resolved = refreshProvisionalOutput(usage, outputChars);
+  provisionalOutputUsage.delete(resolved);
+  return mark(finalOutputReceipts, resolved);
 }
 
 export function extractUsage(chunk) {
@@ -488,7 +507,7 @@ export function extractUsage(chunk) {
   // so callers must MERGE (mergeUsage), not overwrite, to keep cache counts.
   if (chunk.type === "message_start" && chunk.message?.usage && isObject(chunk.message.usage)) {
     const u = chunk.message.usage;
-    const provisional = Number(u.output_tokens) > 0;
+    const provisional = u.output_tokens === 1;
     const extracted = normalizeUsage({
       prompt_tokens: u.input_tokens || 0,
       completion_tokens: u.output_tokens || 0,
@@ -496,12 +515,14 @@ export function extractUsage(chunk) {
       cache_creation_input_tokens: u.cache_creation_input_tokens,
       cache_creation: u.cache_creation
     });
-    return provisional ? mark(provisionalOutputUsage, extracted) : extracted;
+    if (provisional) return mark(provisionalOutputUsage, extracted);
+    return isNumber(u.output_tokens) && Number.isFinite(u.output_tokens) && u.output_tokens >= 0 ?
+      mark(finalOutputReceipts, extracted) : extracted;
   }
   // Claude format (message_delta event). Anthropic reports thinking as a
   // subset of output_tokens, so preserve the detail without inflating output.
   if (chunk.type === "message_delta" && chunk.usage && isObject(chunk.usage)) {
-    const hasFinalOutput = chunk.usage.output_tokens != null && Number.isFinite(Number(chunk.usage.output_tokens));
+    const hasFinalOutput = isNumber(chunk.usage.output_tokens) && Number.isFinite(chunk.usage.output_tokens) && chunk.usage.output_tokens >= 0;
     const extracted = normalizeUsage({
       prompt_tokens: chunk.usage.input_tokens || 0,
       completion_tokens: chunk.usage.output_tokens || 0,
@@ -524,17 +545,20 @@ export function extractUsage(chunk) {
     const usage = responsesUsage;
     const inputDetails = usage.input_tokens_details;
     const cachedTokens = usage.cached_tokens ?? inputDetails?.cached_tokens;
-    const cacheCreationTokens = usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? inputDetails?.cache_creation_tokens ?? inputDetails?.cache_write_tokens;
     return normalizeUsage({
       prompt_tokens: usage.input_tokens ?? usage.prompt_tokens ?? 0,
       completion_tokens: usage.output_tokens ?? usage.completion_tokens ?? 0,
       total_tokens: usage.total_tokens,
       cached_tokens: cachedTokens,
-      cache_creation_input_tokens: cacheCreationTokens,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens,
+      cache_write_tokens: usage.cache_write_tokens,
+      cache_creation_tokens: usage.cache_creation_tokens,
       reasoning_tokens: usage.output_tokens_details?.reasoning_tokens,
       cost_in_usd: usage.cost_in_usd,
       cost_in_usd_ticks: usage.cost_in_usd_ticks,
-      prompt_tokens_details: cacheCreationTokens == null ? inputDetails : { ...inputDetails, cache_creation_tokens: cacheCreationTokens }
+      // Responses creation counters remain inclusive even without cache reads.
+      prompt_tokens_details: usage.cache_creation_input_tokens == null ? inputDetails :
+        { ...inputDetails, cache_creation_tokens: usage.cache_creation_input_tokens }
     });
   }
 
@@ -564,6 +588,7 @@ export function extractUsage(chunk) {
       cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
       cache_creation_input_tokens: chunk.usage.cache_creation_input_tokens,
       cache_write_tokens: chunk.usage.cache_write_tokens,
+      cache_creation_tokens: chunk.usage.cache_creation_tokens,
       input_tokens_details: chunk.usage.input_tokens_details,
       prompt_tokens_details: chunk.usage.prompt_tokens_details,
       completion_tokens_details: chunk.usage.completion_tokens_details,
@@ -742,10 +767,14 @@ export function mergeUsage(prev, next) {
       merged[k] = v; // Kiro credit unit label: take latest
     }
   }
-  if (prevProvisional && finalOutputReceipts.has(next)) {
-    // The final receipt replaces the placeholder, even when it is lower.
+  if (finalOutputReceipts.has(next)) {
+    // A later measured receipt replaces earlier output, even when lower.
     merged.completion_tokens = next.completion_tokens;
-    return merged;
+    return mark(finalOutputReceipts, merged);
+  }
+  if (finalOutputReceipts.has(prev)) {
+    if (isProvisionalOutput(next)) merged.completion_tokens = prev.completion_tokens;
+    return mark(finalOutputReceipts, merged);
   }
   return prevProvisional || isProvisionalOutput(next) ? mark(provisionalOutputUsage, merged) : merged;
 }

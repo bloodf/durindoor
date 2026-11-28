@@ -140,17 +140,34 @@ checkout. Use a private, disk-backed `TMPDIR` and run lint separately. The
 runner resolves Vitest's transitive test dependencies once, then runs all
 selected files in batches of 50 with four isolated fork workers. Discovery
 and each batch have an independent five-minute ceiling, including termination
-grace. An empty selection or a failed batch fails the check. The full
-inventory checkpoint remains required for merges.
+grace. A discovery error or a failed batch fails the check. An empty
+selection also fails, with one exception: when every changed file is under
+`website/tests/` (Playwright specs and browser helpers), Vitest can correctly
+select nothing, so the runner logs that and exits 0. The exemption fails
+closed. Each entry must be a canonical repo-relative POSIX path that starts
+with exactly `website/tests/`, with no backslashes, surrounding whitespace,
+control characters, or empty, `.`, or `..` segments. LF and CRLF lists are
+both accepted. It must also name an existing regular file whose `realpath`
+stays inside the real `website/tests` directory, which must not itself be a
+symlink. Absolute paths, case variants, symlink escapes, deleted files, and
+resolution errors all lose the exemption. Any other changed file, including
+other `website/` paths, keeps the empty-selection failure. Discovery errors,
+crashes, signals, and timeouts still fail, as do failing selected tests. Those
+browser files are covered by the website browser shards in exact-head local
+CI, and the full inventory checkpoint remains required for merges.
 
 ### Batched runner cleanup
 
-`tests/__baseline__/run-ci.mjs` reserves up to one second inside each command's
-five-minute ceiling for termination and verification. It signals the detached
-process group with SIGKILL. If group signaling fails (including EPERM), it also
-signals the known command PID, then enumerates that group with POSIX `ps` and
-signals its remaining members individually. It repeatedly verifies that no live
-members remain; ESRCH and the runner's close event alone are not exit evidence.
+`tests/__baseline__/run-ci.mjs` reserves up to five seconds (a quarter of the
+ceiling when that is shorter) inside each command's five-minute ceiling for
+termination and verification. It signals the detached process group with
+SIGKILL, then enumerates that group with POSIX `ps` and signals each live member
+individually, including when group signaling fails (EPERM or any other error).
+It never signals a PID that the inventory has not just reported as a member of
+the command group. It repeatedly verifies that no live members remain; ESRCH and
+the runner's close event alone are not exit evidence. A failed `ps` listing is
+unknown, not empty: transient listing failures are retried, and part of the
+cleanup budget is reserved for one final inventory after the last signal.
 Zombie entries are already terminated and do not count as live workers.
 
 An unreadable inventory or workers still live at the cleanup deadline produces

@@ -1,0 +1,78 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (hyperbolic: baseUrl https://api.hyperbolic.xyz/v1/image/generation, authType apikey, authHeader bearer, format hyperbolic, models [SDXL1.0-base], supportedSizes [1024x1024], note 'Curruntly no models serving')",
+      "open-sse/handlers/imageGeneration.ts (format hyperbolic -> handleHyperbolicImageGeneration)",
+      "open-sse/handlers/imageGeneration/providers/hyperbolic.ts (body { model_name, prompt, height, width, backend: auto }, Bearer apiKey || accessToken, { images: [{ image }] } -> { b64_json, revised_prompt })",
+      "open-sse/handlers/imageGeneration/fanOut.ts (hyperbolic in SINGLE_IMAGE_FANOUT_FORMATS: n > 1 becomes n separate billable calls; not ported)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no hyperbolic or hyp entry; open-sse/providers/registry/hyperbolic.js has no serviceKinds/imageConfig (chat transport https://api.hyperbolic.xyz/v1/chat/completions only). The only other Hyperbolic media path is TTS (open-sse/handlers/ttsProviders/genericFormats.js format hyperbolic, POST { text } -> { audio }), a different endpoint and envelope.",
+    "sourceReachability": "the source entry is registered and dispatched (not disabled); its registry carries the upstream note that no models were serving at the pinned commit, so live availability of SDXL1.0-base is unproven"
+  },
+  "module": "open-sse/services/providerParity/native-hyperbolic-image/index.js",
+  "exports": {
+    "hyperbolicImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createHyperbolicImageAdapter": "factory; options { fetchImpl, submitTimeoutMs, timeoutMs, now } for tests",
+    "buildHyperbolicImageRequest": "(model, body) -> { model_name, prompt, height, width, backend } in source order; throws status 400 before any network call",
+    "resolveHyperbolicImageModel": "strip hyperbolic/ or hyp/; null for models outside the source registry",
+    "resolveHyperbolicImageCredential": "source order apiKey > accessToken (trimmed) | null",
+    "extractHyperbolicImages": "source images[].image, strict base64 PNG/JPEG/WebP only -> { images, unsafe }",
+    "sniffImageBase64": "strict base64 + container magic check -> png | jpeg | webp | null",
+    "hyperbolicAcceptedJob": "accepted-job accounting for an uncertain submit",
+    "HYPERBOLIC_*": "config constants (ids, aliases, origin, path, url, models, sizes, bounds)"
+  },
+  "provider": {
+    "canonicalId": "hyperbolic",
+    "aliases": ["hyp"],
+    "serviceKinds": ["image"],
+    "existingServiceKinds": "registry declares none (implicit llm); registration adds image alongside, chat untouched",
+    "authModes": ["apikey"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "credentialFields": ["apiKey", "accessToken (source fallback)"],
+      "sentTo": ["https://api.hyperbolic.xyz"]
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions"
+  },
+  "models": [
+    { "id": "SDXL1.0-base", "sizes": ["1024x1024"] }
+  ],
+  "request": {
+    "accepted": ["model", "prompt", "size (1024x1024, default)", "n (1 only)", "response_format b64_json (default)", "user (not sent)", "stream false"],
+    "refused": ["unknown model", "any other size", "n != 1 (source fanned out)", "mask / image / input images", "negative_prompt, seed, steps, cfg_scale and other sampler options (source dropped them)", "quality / style / output_format", "streaming", "response_format url or binary"],
+    "responseFormats": ["b64_json"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://api.hyperbolic.xyz/v1/image/generation", "body": "{ model_name, prompt, height, width, backend: \"auto\" }", "answer": "{ images: [{ image: <base64> }] }", "billable": true, "redirect": "manual (refused)" },
+    "discovery": "none: the source has no image model discovery; https://api.hyperbolic.xyz/v1/models is the chat model list already used by src/app/api/providers/[id]/models"
+  },
+  "bounds": { "submitTimeoutMs": 120000, "totalTimeoutMs": 180000, "responseMaxBytes": 25165824, "maxImageBase64Chars": 20971520, "maxResultImages": 4, "maxPromptChars": 8000 },
+  "accounting": {
+    "success": "nativeUnits.images = returned images; cost unknown (no usage field in the answer)",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, redirect, foreign-origin answer; accepted: a 2xx that is unreadable or holds no valid image. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed with no acceptedJob; other 4xx passed without the upstream body"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add hyperbolic: hyperbolicImageAdapter and hyp: hyperbolicImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore enforces responseFormats, calls adapter.generate and records success)"
+    },
+    {
+      "file": "open-sse/providers/registry/hyperbolic.js",
+      "change": "serviceKinds [\"llm\", \"image\"] and imageConfig { baseUrl: \"https://api.hyperbolic.xyz/v1/image/generation\" } with image model SDXL1.0-base; keep authType apikey and the chat transport unchanged"
+    },
+    {
+      "file": "tests/unit/native-hyperbolic-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

@@ -57,18 +57,18 @@ Target `bloodf/durindoor:main`. Do not send PRs to `decolua/9router:dev` from th
 
 `npx commitlint --from=origin/main --to=HEAD` must exit 0. The PR title must also pass `echo "<title>" | npx commitlint`, because squash-merge uses the title as the commit subject.
 
-PRs require root lint and independently reviewed scoped checks, or a full checkpoint when the risk floor requires it. The body lists scope, exact base/head, tests, docs, and baseline impact. One branch per PR. Never force-push without explicit authorization.
+PRs require root lint and independently reviewed scoped checks. Until v5 is complete the reduced gate in Local gate authority applies; afterwards, a full checkpoint when the risk floor requires it. The body lists scope, exact base/head, tests, docs, and baseline impact. One branch per PR. Never force-push without explicit authorization.
 
 ## Local gate authority
 
 `scripts/local-ci.mjs` defaults to `--mode full`: lint and build, the conditional website build, the complete test inventory, reports and commitlint. A PR merges when two things are true:
 
-1. A full local CI run passes on the exact PR head, started by the orchestrator or a review worker from a clean checkout of `main`, not from the candidate's own runner.
+1. The reduced gate passes on the exact PR head (or merge-train head), started by the orchestrator or a review worker from a clean checkout of `main`, not from the candidate's own runner. Until the owner declares v5 complete (owner decision 2026-11-27), the reduced gate is: root lint, typecheck, build (including the CLI build), docs/catalog/inventory checks, Vitest `related` runs for the files changed against `main`, and commitlint for the range and the PR title. Run these commands directly; do not use `scripts/local-ci.mjs --mode full`, and do not run browser, e2e or full-inventory suites before then. Their failures go on the end-of-project bug list and never block a merge. When the owner declares v5 complete, one full local CI run plus e2e is done on `main`, followed by a bug-fix round; after that, full mode is the gate again.
 2. A reviewer from a different model family than the author has reviewed the diff and recorded its verdict on the PR.
 
 No human-held receipt, frozen runner bundle, SHA256 manifest or owner-posted status is required. The repository owner can still review any PR, and GitHub-hosted checks, where configured, still apply.
 
-Scoped mode (`--mode scoped`) is allowed for docs-only changes under `docs/` or `internal/docs/`. Everything else runs in full mode: code, tests, dependencies, toolchain, auth, crypto, money, DB, registry and gate changes.
+After v5 is complete, scoped mode (`--mode scoped`) is allowed for docs-only changes under `docs/` or `internal/docs/`, and everything else runs in full mode: code, tests, dependencies, toolchain, auth, crypto, money, DB, registry and gate changes.
 
 Run focused tests directly from `tests/` with `node node_modules/vitest/vitest.mjs run <explicit-files> --maxWorkers=2`. Root runs need `--config tests/vitest.config.js`. Don't pass selectors to `pnpm -C tests run test:ci`: its wrapper doesn't forward them.
 

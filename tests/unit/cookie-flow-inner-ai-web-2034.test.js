@@ -130,6 +130,8 @@ describe("inner-ai-web real cookie import contract", () => {
     });
     const proxyModule = await import("../../open-sse/utils/proxyFetch.js");
     vi.spyOn(proxyModule, "proxyAwareFetch").mockImplementation(send);
+    // proxyFetch patches global fetch at import time; prevent that path from bypassing the spy.
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("unexpected network access"); }));
     const result = await new InnerAiWebExecutor().execute({ model: "gpt-4o", credentials, proxyOptions: proxy, body: { messages: [{ role: "user", content: "hi" }] }, stream: false });
     expect(result.response.status).toBe(200);
     expect(calls.map((c) => c.url)).toEqual([INNER_AI_WEB_PROFILE_URL, INNER_AI_WEB_MODELS_URL, INNER_AI_WEB_CHAT_URL]);

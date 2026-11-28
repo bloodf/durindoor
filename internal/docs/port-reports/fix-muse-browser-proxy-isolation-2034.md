@@ -80,6 +80,28 @@ tests. The full suite, build and e2e checks were not run.
 
 ## Limits, not fixed here
 
+### Exactgate3 retry (2026-11-28)
+
+Carried the full `490e128679456faa46bc3acf2adc7f58c936c5c1` ancestry. The 19-case regression
+file and all existing suites remain unchanged. Reused the project's `isString` helper for relay
+and page-body validation; constructed refusal results and context options before conditionally
+assigning fields. These are lint-only rewrites preserving the existing route/cache/guard contracts.
+The actual anti-slop run exposed two additional diagnostics at context options and page-body
+validation; both were addressed, without suppressions.
+
+Retry evidence is in `/var/tmp/muse-exactgate3-check-pijc12kx`. Initial root lint timed out;
+the required own suite and the explicit related/review suite attempts could not collect because
+`tests/node_modules/vitest/vitest.mjs` was absent. No dependencies were installed or repaired by
+this worker. The earlier 19/204/302 results above are carried evidence, not new retry passes.
+The isolated native gate must supply setup and rerun the exact suites before qualification.
+The full earlier exactgate3 output was not available in this checkout; the retry records actual
+local diagnostics rather than claiming that earlier output was inspected.
+The final real anti-slop check passed with zero diagnostics across 3,702 files. Both edited
+modules passed `node --check`, and `git diff --check` passed.
+The complete final `pnpm run lint` passed (exit 0): ESLint reported zero errors and 348
+warnings; the bundled anti-slop gate reported zero diagnostics. Full output is retained in
+`root-lint-final.log` in the retry evidence directory.
+
 - **Unverified live behaviour.** Nothing here shows that a launched Chromium sends its traffic through the context
   proxy, that a SOCKS proxy with credentials works, or that Meta accepts the cookie. `cloakbrowser` and Obscura were
   not checked. They are refused for proxied refreshes rather than assumed safe.

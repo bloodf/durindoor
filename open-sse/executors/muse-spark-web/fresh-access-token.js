@@ -1,6 +1,7 @@
 // Ported from OmniRoute 4265bb2ad5477450a07d3a43ea33a62c6c874878 (MIT).
 // DurinDoor #2034: the browser leg uses the selected connection's egress route.
 import { createHash } from "node:crypto";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { acquireBrowserContext, getBrowserPoolStatus, openPage, releaseBrowserContext } from "../../services/browserPool.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
@@ -79,11 +80,15 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", pr
     }, MUSE_REFRESH_LIMITS.overallMs);
   } catch (err) {
     const refused = err instanceof MuseBrowserRefusal;
-    return {
+    const result = {
       ok: false,
-      ...(refused ? { status: 503, refused: true } : {}),
       error: `fetchFreshAccessToken failed: ${sanitizeErrorMessageWithSecrets(err instanceof Error ? err.message : String(err), secrets)}`
     };
+    if (refused) {
+      result.status = 503;
+      result.refused = true;
+    }
+    return result;
   } finally {
     clearTimeout(overallTimer);
     signal?.removeEventListener("abort", onCallerAbort);
@@ -121,13 +126,14 @@ async function refreshUncached({ cookieHeader, cacheKey, route, proxyOptions, si
   const releaseQuietly = () => Promise.resolve().then(() => release(poolKey)).catch(() => {});
   const stage = (promise, ms, label, onLate) => within(promise, { signal, ms, label, cleanups, onLate });
 
-  const pooled = await stage(Promise.resolve().then(() => acquire(poolKey, {
+  const contextOptions = {
     cookieDomain: "www.meta.ai",
     blockServiceWorkers: true,
     warmupUrl: null,
     userAgent: META_AI_USER_AGENT,
-    ...(route.proxyUrl ? { proxyUrl: route.proxyUrl } : {})
-  })), MUSE_REFRESH_LIMITS.launchMs, "browser launch", releaseQuietly);
+  };
+  if (route.proxyUrl) contextOptions.proxyUrl = route.proxyUrl;
+  const pooled = await stage(Promise.resolve().then(() => acquire(poolKey, contextOptions)), MUSE_REFRESH_LIMITS.launchMs, "browser launch", releaseQuietly);
   let page = null;
   try {
     if (route.proxyUrl) {
@@ -150,7 +156,7 @@ async function refreshUncached({ cookieHeader, cacheKey, route, proxyOptions, si
     })), MUSE_REFRESH_LIMITS.navigationMs, "navigation");
     if (new URL(page.url()).origin !== META_AI_ORIGIN) return { ok: false, status: 401, error: "Meta AI session expired" };
     const html = await stage(Promise.resolve(page.content()), MUSE_REFRESH_LIMITS.bodyMs, "page body");
-    if (typeof html !== "string" || html.length > MUSE_REFRESH_LIMITS.maxHtmlChars) {
+    if (!isString(html) || html.length > MUSE_REFRESH_LIMITS.maxHtmlChars) {
       throw new MuseBrowserRefusal("Meta AI page body exceeded the refresh limit");
     }
     const match = html.match(ACCESS_TOKEN_RE);

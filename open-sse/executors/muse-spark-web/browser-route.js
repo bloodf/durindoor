@@ -1,5 +1,6 @@
 // DurinDoor (MIT). Egress route and stage bounds for the Muse Spark Web token refresh (#2034).
 import { createHash } from "node:crypto";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { resolvePlaywrightProxy } from "../../services/browserPool.js";
 import { resolveConnectProxyForRequest, resolveProxyForRequest } from "../../utils/proxyFetch.js";
 
@@ -36,7 +37,7 @@ export class MuseBrowserRefusal extends Error {
  * @throws {MuseBrowserRefusal} with a message that never contains the proxy URL or credentials
  */
 export function resolveMetaBrowserRoute(proxyOptions) {
-  if (typeof proxyOptions?.vercelRelayUrl === "string" && proxyOptions.vercelRelayUrl.trim()) {
+  if (isString(proxyOptions?.vercelRelayUrl) && proxyOptions.vercelRelayUrl.trim()) {
     throw new MuseBrowserRefusal("Meta AI browser refresh cannot use an HTTP relay; refusing before any send");
   }
   let route;

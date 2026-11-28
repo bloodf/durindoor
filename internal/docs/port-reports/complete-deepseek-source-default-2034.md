@@ -166,3 +166,40 @@ workers and the same credential-free 300-second command limit. Root lint passes:
 zero errors, 348 existing warnings, zero anti-slop diagnostics. Evidence:
 `/var/tmp/ds2034-lint-gate.NaqY1A/output.log`.
 No full inventory, production build, live request or protected-file edit is used.
+
+## Second gate follow-up
+
+The second gate failed `tests/unit/web-session-redirects.test.js`: its DeepSeek
+chat step list still assumed users/current, session, completion, so the third
+request (now the proof challenge) received the completion redirect. The
+follow-up order explicitly authorizes changing only DeepSeek's step list in that
+shared file. The change is additive (five lines added, none removed): a
+deterministic `DeepSeekHashV1` challenge (salt `fixture-2034`, nonce 3, the same
+vector as the other migrated suites) is inserted before the completion step.
+Proof stays mandatory and no assertion is changed.
+
+| Case | Before | After |
+| --- | --- | --- |
+| DeepSeek validation redirect | 1 request, HTTP 302 error | unchanged |
+| users/current redirect | 1 request, 401 | unchanged |
+| chat_session/create redirect | 2 requests, 401 | unchanged |
+| completion redirect | request 3, 401 | request 4 (after a solved challenge), 401 |
+| other providers | unchanged | unchanged |
+
+The challenge step is marked as outside this file's generated 401 redirect
+loop because its redirect contract is pinned by the existing source-vector case
+in `deepseek-web-source-parity-2034` ("does not follow challenge redirects"):
+HTTP 502, three requests, no completion. Mapping a challenge redirect to 401
+would contradict that preserved case, so production is unchanged. The file
+still has 46 cases.
+
+Verification (mocked/offline only, no live provider): ten files, 564 cases,
+zero failures or skips: complete-default 41, cookie-flow 35, capture 23,
+provider 6, source-parity 79, reasoner 10, batch-a 24, shared-sender 36,
+SSE splitter guard 264 (unchanged allow list), web-session-redirects 46.
+Commands ran under `env -i` with an explicit PATH, LANG and CI, a private
+`/var/tmp` HOME/TMPDIR/DATA_DIR/store, a 300-second limit and two workers.
+Evidence: `/var/tmp/ds2034-a3.yrB3w0/results-final.json`. Root lint: zero
+errors, 348 existing warnings, zero anti-slop diagnostics
+(`/var/tmp/ds2034-a3.yrB3w0/lint.log`). No full inventory, build, pack or
+protected-file edit is used.

@@ -107,7 +107,9 @@ export function createNanogptEmbeddingAdapter(options = {}) {
       const secrets = nanogptSecrets(credentials);
       const deadline = now() + timeoutMs;
       const remaining = () => Math.max(1, deadline - now());
-      const transport = send ?? ((url, init) => proxyAwareFetch(url, init, resolveCredentialProxyOptions(credentials)));
+      // A send whose outcome is unknown must never be resent directly after a proxy failure.
+      const transport = send ?? ((url, init) =>
+        proxyAwareFetch(url, { ...init, noTransportReplay: true }, resolveCredentialProxyOptions(credentials)));
 
       let response;
       try {

@@ -102,7 +102,9 @@ export function createClovaEmbeddingAdapter(options = {}) {
       if (signal?.aborted) return aborted();
       const secrets = clovaSecrets(credentials);
       const totalDeadline = now() + totalTimeoutMs;
-      const transport = send ?? ((url, init) => proxyAwareFetch(url, init, resolveCredentialProxyOptions(credentials)));
+      // A send whose outcome is unknown must never be resent directly after a proxy failure.
+      const transport = send ?? ((url, init) =>
+        proxyAwareFetch(url, { ...init, noTransportReplay: true }, resolveCredentialProxyOptions(credentials)));
       const headers = clovaHeaders(token);
 
       const vectors = [];

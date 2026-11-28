@@ -1,3 +1,4 @@
+import { isolateZaiRequestProof } from "../services/zaiRequestProof.js";
 import { estimateCompressionTokens } from "../services/compression/stats.js";
 import { githubRateLimit } from "./chatCore/githubRateLimit.js";
 import { updateProviderConnection } from "@/lib/localDb.js";
@@ -416,6 +417,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   if (credentials && (apiKeyId || apiKey)) credentials._cachePrincipalId = apiKeyId || apiKey;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
+  body = isolateZaiRequestProof(body, provider);
   if (provider === "adobe-firefly-web") return createErrorResult(400, "Adobe Firefly browser supports image and synchronous video generation only");
   if (isCursorProvider(provider)) {
     try {

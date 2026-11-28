@@ -1952,6 +1952,8 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
         reexecute,
         signal: providerSignal,
         log,
+        // Native Gemini clients get a post-commit Google RPC error, never a replay.
+        replayCommitted: clientRawRequest?.geminiNativeResponse !== true,
         onInBandError: (error, attemptBody) => {
           if (error?.code === 401 || error?.code === 403) evictResponseDispatcher(attemptBody);
         },

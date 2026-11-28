@@ -9,6 +9,18 @@ import { sanitizeErrorMessage } from "../../utils/error.js";
 import { isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 import { chargeRetained, releaseRetained } from "../../utils/streamRetainedBudget.js";
 
+import { storeGeminiThoughtSignature as storeSessionSignature } from "../../services/thoughtSignatureStore.js";
+import { generatedGeminiToolCallId } from "./gemini-to-openai.js";
+
+// The direct Gemini keyed contract stays intact; Antigravity records account provenance.
+function captureSignature(state, id, signature) {
+  if (state.provider === "antigravity" || state.provider === "agy") {
+    storeSessionSignature(id, signature, state.sessionId, state.requestedModel || state.model, state.signatureNamespace);
+  } else {
+    storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), signature);
+  }
+}
+
 function restoreToolName(name, toolNameMap) {
   return normalizeClaudeToolName(name, toolNameMap);
 }
@@ -66,7 +78,7 @@ export function geminiToClaudeResponse(chunk, state) {
         const emittedIds = (state.emittedToolUseIds ??= new Set());
         if (emittedIds.has(providerCallId)) {
           if (inlineSignature) {
-            storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, providerCallId), inlineSignature);
+            captureSignature(state, providerCallId, inlineSignature);
           }
           continue;
         }
@@ -76,13 +88,13 @@ export function geminiToClaudeResponse(chunk, state) {
       if (state.openTextBlockIdx !== null) {results.push({ type: "content_block_stop", index: state.openTextBlockIdx });state.openTextBlockIdx = null;}
       const index = state.contentBlockIndex++;
       const call = part.functionCall;
-      const id = call.id || `toolu_${Date.now()}_${index}`;
+      const id = call.id || generatedGeminiToolCallId("toolu", index);
       let callSignature = inlineSignature;
       if (!callSignature && state.standaloneSignatureQueue.length) {
         callSignature = state.standaloneSignatureQueue.shift();
         releaseRetained(state, callSignature.length);
       }
-      if (callSignature) storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(state.signatureNamespace, id), callSignature);
+      if (callSignature) captureSignature(state, id, callSignature);
       results.push({ type: "content_block_start", index, content_block: { type: "tool_use", id, name: restoreToolName(call.name, state.toolNameMap), input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(geminiPlaceholderStripperFor(state)(call.name, call.args || {})) } }, { type: "content_block_stop", index });
       state.hasToolUse = true;
       continue;

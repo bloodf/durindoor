@@ -9,6 +9,7 @@
     "test:watch": "vitest --reporter=verbose",
     "test:json": "vitest run --reporter=json --outputFile=./.test-results.json",
     "gate": "node __baseline__/verify-no-regression.mjs ./.test-results.json",
+    "test:projects": "node __baseline__/check-vitest-projects.mjs",
     "test:ci": "node __baseline__/run-ci.mjs"
   },
   "devDependencies": {

@@ -129,7 +129,9 @@ export function warmRequestModelLimits(provider, credentials) {
   try {
     const registry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider || entry.uiAlias === provider);
     const fetcher = registry?.modelsFetcher;
-    const genericFetcher = fetcher && LIVE_MODEL_FETCHER_TYPES.has(fetcher.type) ? fetcher : null;
+    // The generic lookup sends the stored credential as a Bearer token. A session-cookie provider's
+    // credential is a Cookie header (ChatPlayground's `__client`/`__session`), so it never goes there (#2034).
+    const genericFetcher = fetcher && LIVE_MODEL_FETCHER_TYPES.has(fetcher.type) && registry.authType !== "cookie" ? fetcher : null;
     const anthropic = provider?.startsWith("anthropic-compatible-");
     const compatible = anthropic || provider?.startsWith("openai-compatible-");
     const kimi = KIMI_LIVE_MODEL_PROVIDERS.has(provider);

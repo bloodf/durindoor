@@ -9,7 +9,9 @@ Claude Web uses a session from your own Claude.ai account. It does not use an An
 
 Create a `Claude Web` cookie connection and import cookies with the provider cookie capture extension while signed in at [claude.ai](https://claude.ai). You can also paste a `Cookie:` header, a `sessionKey=value` cookie, or a cURL/HAR request containing that cookie into the dashboard's cookie import flow. Keep the `sessionKey` value private; anyone who obtains it may use your signed-in session.
 
-DurinDoor checks the session against Claude.ai's organization endpoint and discovers the account's organization before sending chat requests. The provider exposes the model IDs listed below; Claude.ai may change availability, model access, rate limits, and account quotas at any time. A 401/403 indicates an expired or rejected session, and a 429 indicates a rate or quota limit.
+Import and the extension also keep the optional `lastActiveOrg` cookie when your browser has it. With several chat organizations, DurinDoor then posts to the organization you last used, the same as when you paste the full `Cookie` header; without it, the first organization that allows chat is used.
+
+DurinDoor checks the session against Claude.ai's organization endpoint and discovers the account's organization before sending chat requests. **Test Connection** cannot check a connection that uses an outbound proxy: the URL guard refuses that probe before anything is sent, so the result is shown as skipped and unverified and the connection's saved status is left unchanged. Chat requests still use the proxy. The provider exposes the model IDs listed below; Claude.ai may change availability, model access, rate limits, and account quotas at any time. A 401/403 indicates an expired or rejected session, and a 429 indicates a rate or quota limit.
 
 ## Models
 

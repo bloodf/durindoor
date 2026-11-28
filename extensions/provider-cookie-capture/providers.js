@@ -35,6 +35,8 @@ export const PROVIDERS = deepFreeze({
     origin: "https://claude.ai",
     cookieNames: ["sessionKey"],
     cookiePrefixes: [],
+    // Organization hint the executor reads; a capture without it still succeeds.
+    optionalCookies: ["lastActiveOrg"],
   },
   // DeepSeek has no session cookie the API accepts: the token is the `userToken` localStorage item.
   "deepseek-web": {
@@ -61,6 +63,8 @@ export const PROVIDERS = deepFreeze({
     origin: "https://grok.com",
     cookieNames: ["sso"],
     cookiePrefixes: [],
+    // Paired write cookie; included when the browser has it, never required.
+    optionalCookies: ["sso-rw"],
   },
   "lmarena": {
     label: "Arena",

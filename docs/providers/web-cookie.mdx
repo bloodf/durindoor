@@ -58,7 +58,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 
 | Provider | Id | Credential and current flow |
 | --- | --- | --- |
-| Grok Web | `grok-web` | `sso` value/header; dashboard import, browser extension, and in-page login. Runnable. |
+| Grok Web | `grok-web` | `sso` value/header; dashboard import and the browser extension also keep the optional `sso-rw` cookie when present. In-page login. Runnable. |
 | Perplexity Web | `perplexity-web` | `__Secure-next-auth.session-token` including all chunks; dashboard import, extension, and in-page login. Runnable; no provider-specific guide in this checkout. |
 | Copilot Web | `copilot-web` | Personal `access_token`, bearer token, accepted cookie/JSON, or origin-matched HAR. Manual and HAR only; runnable. |
 | Microsoft 365 Copilot Web | `copilot-m365-web` | `access_token` plus `chathubPath`, a Chathub WebSocket URL, or matching HAR. Manual/HAR paste, or native work/school sign-in with refresh. See the [Microsoft 365 Copilot Web guide](./copilot-m365-web.mdx). |
@@ -70,7 +70,7 @@ The field is plain text, not a password field, so the cookie is visible on scree
 | Muse Spark Web | `muse-spark-web` | `ecto_1_sess` or full header; dashboard import, extension, and in-page login. Chat dispatch requires **Allow session dispatch** on that connection and the gateway's headless browser; without the opt-in, requests return HTTP 501 (`provider_port_pending`). |
 | Adapta Web | `adapta-web` | `__client` from the Clerk origin. Dashboard paste/HAR import only; extension and in-page login are unavailable. Runnable. |
 | Tencent Yuanbao Web | `yuanbao-web` | Both `hy_user` and `hy_token`; dashboard import and extension capture. Runnable. |
-| Claude Web | `claude-web` | `sessionKey` cookie or full header from claude.ai; dashboard import, extension and in-page login. Runnable; see [Claude Web](./claude-web.mdx). |
+| Claude Web | `claude-web` | `sessionKey` cookie or full header from claude.ai; dashboard import and the extension also keep the optional `lastActiveOrg` cookie. In-page login. Runnable; see [Claude Web](./claude-web.mdx). |
 | Gemini Web | `gemini-web` | `__Secure-1PSID` and `__Secure-1PSIDTS` from gemini.google.com; dashboard import and extension. Runnable (needs Playwright Chromium); see [Gemini Web](./gemini-web.mdx). |
 | DeepSeek Web | `deepseek-web` | Not a cookie: the `userToken` local storage value from chat.deepseek.com, as an API key, a pasted import field or an extension capture. Runnable; see [DeepSeek Web](./deepseek-web.mdx). |
 | Doubao Web | `doubao-web` | `sessionid` and `s_v_web_id` (or `fp`) from www.dola.com; dashboard import, extension and in-page login. Runnable; see [Doubao Web](./doubao-web.mdx). |
@@ -142,6 +142,8 @@ To use it, create a pairing as an operator, sign in to the provider in a tab, op
 ## Validation
 
 **Validate** posts to `/api/providers/validate` with a 10 second limit. Grok Web, Copilot Web, ZenMux Free, Suno, Udio, Adapta Web, Doubao Web, Z.ai Web, NoTrack Web, Tencent Yuanbao Web, Poe Web and v0 Vercel Web skip network validation (so do HuggingChat and Muse Spark Web, to avoid creating a conversation) rather than creating a conversation or generation; this does not prove the cookie works. ZenMux Free still rejects a pasted cookie missing `ctoken` locally; Poe Web and v0 Vercel Web reject a value without exactly one `p-b` or `__vercel_session` locally. Perplexity Web, ChatGPT Web, ChatGPT Web Codex, Claude Web (organization list), Gemini Web (signed-in page check), MaxAI (config request), Arena (a method check on its chat route, since the site has no session endpoint) and ChatPlayground (user request), Notion AI Web (workspace and model list), Tencent AI Studio Web (`GET /api/user/info`, unverified), Blackbox Web (`/api/auth/session`), Conol Web (`/api/agent-servers`), Inner.ai Web (profile and model catalog), Venice Web (Clerk `GET /v1/client`) and PromptQL (project-token request) use read-only session requests; TinyCMS Web asks for a signed challenge with its device UUID; DeepSeek Web reads its `users/current` endpoint with the token; an expired or incomplete ChatGPT Web cookie (such as a missing `.1` chunk) fails with a message asking for every chunk. T3 Chat Web uses a read-only `HEAD` request against the site root: a 401 or 403 rejects the session, and a redirect or a transport failure reports the check as unavailable. Microsoft 365 Copilot Web checks locally that both fields are present, the host is allowed and the token has not expired. Copilot Web reports an expired JWT token locally; any other paste stays skipped. Kimi Web calls the site's model list endpoint with the access token. A provider with no probe answers `Provider validation not supported`.
+
+When a connection uses an outbound proxy and its provider's probe runs behind the URL guard (Claude Web, for example), **Test Connection** cannot send that probe: the guard refuses it before anything leaves DurinDoor, because a proxy would bypass its address check. The result is shown as skipped and unverified, and the connection's saved status and error are left unchanged.
 
 A passing probe means the site accepted the cookie at that moment. It does not keep the session alive.
 

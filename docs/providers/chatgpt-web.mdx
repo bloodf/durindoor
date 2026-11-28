@@ -127,7 +127,7 @@ These optional `providerSpecificData` fields apply to a ChatGPT Web connection:
 | Field | Use |
 | --- | --- |
 | `transport` | `auto`, `browser` or `http`. |
-| `storageState` | A Playwright storage-state JSON (cookies and local storage) to use instead of the pasted cookie. Rotated cookies are not written back for this form. |
+| `storageState` | A Playwright storage-state JSON (cookies and local storage) to use instead of the pasted cookie. Rotated cookies are not written back for this form. A cookie import or an **Edit** that replaces the cookie clears it on that connection, unless the same edit sets it. |
 | `chromeExecutablePath` | Browser binary for this connection. |
 | `headless` | `true` or `false`, overriding `DURINDOOR_CHATGPT_WEB_HEADLESS`. |
 | `customUserAgent`, `locale`, `timezone` | Browser context settings. |

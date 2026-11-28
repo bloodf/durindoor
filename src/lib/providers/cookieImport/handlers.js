@@ -21,6 +21,7 @@ import { isString, isRecord } from "@/shared/utils/typeChecks";
 import { normalizeAccountEmail, contractUsesCookies } from "@/shared/utils/cookieImportContract";
 import { getCookieImportContract, describeCookieImportContract, buildImportedCookieHeader, validateImportedLocalStorage } from "./contract";
 import { issuePairing, consumePairing, isWellFormedPairingToken, PAIRING_TTL_MS } from "./pairing";
+import { savedBrowserStateInvalidation } from "@/lib/providers/browserStateInvalidation";
 
 export const PAIRING_HEADER = "x-durindoor-pairing-token";
 export const MAX_IMPORT_BODY_BYTES = 32 * 1024;
@@ -211,7 +212,16 @@ export async function handleCookieImport(request) {
     if (contractUsesCookies(contract)) update.apiKey = built.header;
     else update.apiKey = null;
     if (hasStoredValues) update.providerSpecificData = { ...(existing.providerSpecificData || {}), ...stored.values };
-    const updated = await updateProviderConnection(target.connectionId, update, { replacesCredential: true });
+    // A replaced ChatGPT cookie also drops that row's saved browser state, which the browser transport
+    // would otherwise keep using; the write applies only while the row still holds the cookie read here.
+    const invalidation = savedBrowserStateInvalidation(existing, update.apiKey);
+    if (invalidation) update.providerSpecificData = { ...(update.providerSpecificData || {}), ...invalidation.providerSpecificData };
+    const written = await updateProviderConnection(target.connectionId, update, {
+      replacesCredential: true,
+      ...(invalidation ? { shouldCommitConnection: invalidation.shouldCommitConnection, returnCommitResult: true } : null),
+    });
+    if (invalidation && written && !written.applied) return json({ error: "Connection changed during import; pair again" }, 409);
+    const updated = invalidation ? written?.connection : written;
     if (!updated) return json({ error: "Connection not found" }, 404);
     return json({ ok: true, action: "update", connection: { id: updated.id, provider: updated.provider, name: updated.name } });
   } catch (error) {

@@ -24,6 +24,7 @@ import { sanitizeConnectionProxyUrl } from "@/shared/utils/proxyUrlRedaction.js"
 import { AI_PROVIDERS, isSystemoneCompatibleProvider, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider } from "@/shared/constants/providers";
 import { checkBedrockProfileInput } from "open-sse/shared/awsCredentials.js";
 import { adobeFireflyCredentialFields } from "open-sse/services/adobeFireflyApi/auth.js";
+import { savedBrowserStateInvalidation } from "@/lib/providers/browserStateInvalidation";
 import {
   compatibleNodeConflictMessage,
   resolveCompatibleNodeIdentity
@@ -586,7 +587,20 @@ export async function PUT(request, { params }) {
       Object.assign(updateData, adobe.fields);
     }
 
-    const updated = await updateProviderConnection(id, updateData);
+    // A re-pasted ChatGPT cookie also drops the row's saved browser state, unless this request sets
+    // that state itself. The write applies only while the row still holds the cookie read above.
+    const invalidation = Object.hasOwn(providerSpecificData || {}, "storageState") ? null :
+      savedBrowserStateInvalidation(existing, updateData.apiKey);
+    if (invalidation) {
+      updateData.providerSpecificData = { ...(updateData.providerSpecificData || {}), ...invalidation.providerSpecificData };
+    }
+    const written = invalidation ?
+      await updateProviderConnection(id, updateData, { shouldCommitConnection: invalidation.shouldCommitConnection, returnCommitResult: true }) :
+      await updateProviderConnection(id, updateData);
+    if (invalidation && written && !written.applied) {
+      return NextResponse.json({ error: "Connection changed during update; reload and try again" }, { status: 409 });
+    }
+    const updated = invalidation ? written?.connection : written;
     // Activation clears persisted model locks; invalidate any in-flight probe
     // only after that update succeeds. Quota and reauthentication remain separate.
     if (updated && testStatus === "active") globalCircuitManager.reset(id);

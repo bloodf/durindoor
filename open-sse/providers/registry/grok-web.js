@@ -16,6 +16,17 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste your sso= cookie value from grok.com",
+  // Import and capture keep `sso` required and also keep `sso-rw` when the browser has it.
+  // OmniRoute (MIT) b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523 names the credential `sso + sso-rw`
+  // (src/shared/providers/webSessionCredentials.ts) and forwards `sso-rw` when present
+  // (src/lib/providers/webCookieAuth.ts, buildGrokCookieHeader). Cloudflare cookies stay out.
+  cookieImport: {
+    origin: "https://grok.com",
+    cookieNames: ["sso"],
+    cookiePrefixes: [],
+    optionalCookies: ["sso-rw"],
+    extensionCapture: true,
+  },
   webLogin: {
     startUrl: "https://grok.com/",
     origin: "https://grok.com",

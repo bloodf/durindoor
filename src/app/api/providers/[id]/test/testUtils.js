@@ -695,6 +695,21 @@ async function testRegistryOpenAIConnection(connection, effectiveProxy = null) {
   return { valid, error: valid ? null : "Invalid API key" };
 }
 
+// proxyAwareFetch refuses a guarded probe dispatcher on a proxy route before any byte is sent, since the
+// proxy would bypass the guard's DNS check. That refusal says nothing about the credential.
+const GUARDED_PROBE_PROXY_REFUSAL = "Guarded provider probe cannot use an outbound proxy";
+const UNVERIFIED_PROXY_TEST_ERROR = "Not verified: provider probes cannot use this connection's outbound proxy, so nothing was sent";
+
+/** The exact predispatch proxy refusal, thrown or returned as a blocked probe result. */
+function isGuardedProbeProxyRefusal(value) {
+  if (!value) return false;
+  if (value instanceof OutboundUrlGuardError) return value.code === "OUTBOUND_URL_GUARD_BLOCKED" && value.message === GUARDED_PROBE_PROXY_REFUSAL;
+  return value.blocked === true && value.error === GUARDED_PROBE_PROXY_REFUSAL;
+}
+
+/** Unverified, not invalid: testSingleConnection keeps the stored status and error unchanged. */
+const unverifiedTestResult = (error) => ({ valid: false, skipped: true, unverified: true, error });
+
 async function testApiKeyConnection(connection, effectiveProxy = null) {
   if (connection.provider === "opencode-server") {
     const result = await fetchOpenCodeServerModels(connection);
@@ -1233,6 +1248,7 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
             { sessionToken: connection.sessionToken }
           );
           if (result) {
+            if (isGuardedProbeProxyRefusal(result)) return unverifiedTestResult(UNVERIFIED_PROXY_TEST_ERROR);
             if (!result.blocked && (result.unavailable === true || result.status >= 500)) {
               return { valid: false, unavailable: true, error: result.error || "Provider unavailable - try again later" };
             }
@@ -1245,12 +1261,14 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         }
     }
   } catch (err) {
+    if (isGuardedProbeProxyRefusal(err)) return unverifiedTestResult(UNVERIFIED_PROXY_TEST_ERROR);
     return { valid: false, error: err.message };
   }
 }
 
 /**
  * Test a single connection by ID, update DB, and return result.
+ * An unverified result (no request reached a verdict) is returned without writing the row.
  */
 export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
@@ -1309,6 +1327,10 @@ export async function testSingleConnection(id) {
   null :
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
+  // An unverified probe (no request reached a verdict) says nothing about the stored credential either.
+  if (result.unverified === true && !result.newTokens) {
+    return { valid: false, skipped: true, unverified: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
+  }
   // A provider outage says nothing about the stored credential or prior status.
   if (result.unavailable === true && !result.newTokens) {
     return { valid: false, unavailable: true, error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };

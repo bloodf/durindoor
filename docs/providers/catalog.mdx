@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 407 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 408 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -227,7 +227,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Lemonade Server | `lemonade` | apikey | 0 | [site](https://lemonade-server.ai) |
 | Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
 | Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |
-| Liquid AI | `liquid` | apikey | 1 | [site](https://www.liquid.ai) |
+| Liquid AI | `liquid` | apikey | 6 | [site](https://www.liquid.ai) |
 | LiteRouter | `literouter` | apikey | 0 |  |
 | llama.cpp | `llama-cpp` | apikey | 0 | [site](https://github.com/ggml-org/llama.cpp) |
 | Llamafile | `llamafile` | apikey | 0 | [site](https://github.com/Mozilla-Ocho/llamafile) |
@@ -379,6 +379,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Tortoise TTS | `tortoise` | none | 1 | [site](https://github.com/neonbjb/tortoise-tts) |
 | Trae | `trae` | oauth | 9 | [site](https://trae.ai) |
 | NVIDIA Triton | `triton` | apikey | 0 | [site](https://developer.nvidia.com/triton-inference-server) |
+| TrustedRouter | `trustedrouter` | apikey | 21 | [site](https://trustedrouter.com) |
 | TwinMind | `twinmind` | apikey | 13 | [site](https://twinmind.com) |
 | TypeSafe (Jev) | `typesafe` | apikey | 3 | [site](https://typesafe.ai) |
 | Typhoon | `typhoon` | apikey | 1 | [site](https://docs.opentyphoon.ai) |

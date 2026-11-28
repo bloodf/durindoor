@@ -1,0 +1,23 @@
+# OmniRoute #21399 vision follow-ups review
+
+**Verdict: concrete missing behavior — medium severity.** The local `auto/vision` path ranks native-vision candidates first but retains text-only candidates as fallback for a user image. A later text-only attempt can therefore receive an image it cannot handle, or trigger the text caption bridge and lose follow-up image detail. The applicable upstream fix is not present in the frozen train.
+
+## Source and frozen revisions
+
+- Upstream PR [cheaper-inference/OmniRoute#21399](https://github.com/cheaper-inference/OmniRoute/pull/21399) was open at review time. Read-only `gh api` returned base `release/v3.8.55` at `9671192011beb2d7f83979f40be488c5da8772b9` and head `fix/auto-vision-native` at `795a8170410a170ad383e3044dd093fe76a9958c`.
+- The changed runtime paths are `open-sse/handlers/chatCore.ts`, `open-sse/handlers/chatCore/nativeVisionTransport.ts`, `open-sse/services/combo/comboPredicates.ts`, `open-sse/services/combo/mediaCompatibility.ts`, `open-sse/services/combo/resolveAutoStrategy.ts`, `open-sse/services/model.ts`, `open-sse/utils/mediaParts.ts`, `src/lib/guardrails/visionBridge.ts`, `src/lib/providerModels/visionOverrides.ts`, `src/sse/handlers/chat.ts`, `src/sse/handlers/chat/resolvedModelPolicy.ts`, and `src/sse/handlers/chatHelpers.ts`. Regression coverage includes `tests/integration/chat-pipeline.test.ts`, `tests/unit/combo-auto-api-key-connection-scope.test.ts`, `tests/unit/combo-identical-error-streak.test.ts`, `tests/unit/guardrails/vision-bridge-auto-reroute.test.ts`, `tests/unit/vision-bridge-internal-node-16801.test.ts`, and `tests/unit/chat-route-coverage.test.ts`.
+- Compared Git objects: DurinDoor `origin/main` is `29490b783e83176d4d6a4162f76ee3dc79db66ea`; frozen `train/2` is `32a783d76d45d90bf0517015442f43fadd96106c`. The relevant local source files are identical at both refs. The active integration checkout also matches these files.
+
+## Behavior trace
+
+`open-sse/services/model.js:257-261` deliberately passes `auto/*` requests through Vision Bridge before combo resolution. The `auto/vision` combo path in `src/sse/handlers/chat/combo.js:302-320` invokes `handleComboChat` with `allowVisionBridge: false` for each selected model. In `open-sse/services/combo.js:288-302`, `reorderByCapabilities` explicitly preserves every candidate and only moves compatible candidates earlier. For an image request, `handleComboChat` computes `required` at lines 1603-1616 and reorders on that set, but only `getFusionRequiredInput(body)` and tool-output media enter the hard filter at lines 1620-1626. Ordinary user image input does not enter that filter. The fallback loop at lines 1726 onward consequently still dispatches the remaining text-only candidates with the original body.
+
+This differs from a simple feature-list gap: it is a specific fall-through in the actual auto-combo path. Upstream #21399 adds image compatibility filtering after candidate expansion and rechecks native-image support at the resolved dispatch target; its changed tests exercise `auto/vision` image follow-ups, transport forms, and fallback targets. Local tests at `tests/unit/combo-autoswitch.test.js:92` confirm reordering while retaining fallback, and `tests/unit/vision-bridge.test.js:108` confirms `auto/vision` itself is not rerouted. No local auto/vision user-image fallback test closes the traced path.
+
+**Reproduction trace (source inspection; not executed):** request an image through `auto/vision`; make the native-vision first candidate fail; the retained text-only candidate reaches the `handleSingleModelChat` callback with the same image body and with Vision Bridge disabled. This can cause unsupported media or a caption-only answer, including stale/generalized caption behavior on follow-up questions. Severity is medium because it degrades or rejects image requests on fallback, without evidence here of data exposure or broader routing impact.
+
+## Ownership and scope
+
+The existing refresh ledger lists this head as review-required in `internal/docs/port-reports/2026-11-27-full-parity-refresh.md:1687`; it contains no prior verdict for this behavior. No active claim for this candidate was found in the supplied sync lane list: #21435, #21432, #21426, #21412, #21425, #21427, #21349, #21433, or 9router #5884/#5904. Upstream PR text relates the issue to #21397, #18008 and #18203; those references do not establish a DurinDoor owner. This report records the gap only; it does not implement or assign it.
+
+No dependencies or application code were run. The conclusion is based on exact upstream metadata and static inspection of the local Git objects.

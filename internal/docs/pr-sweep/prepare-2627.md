@@ -1,39 +1,27 @@
-Verdict: READY
-PR: #2695
-Old head: c862b331c653458a2c4a03e24f000688818efb87
-New side-branch head: dcf39f4c75e8d869d0ce2d96f983eb14fd540a3d
-origin/main: c0ab5d52df1a4c9f8cf2bfa26c16cbe0ac845492
+Verdict: BLOCKED
+PR: #2708
+Old head: 5722701a01da2921cf94b37117d511ff58df7180
+New side-branch head: 523c39d69992c051e5bd0105b3e4881ecd25052e (sweep/2708)
+origin/main: 8cc1101db890fd129f7d078e10a7c139766d359d
 Conflicts: none.
-Finding: scripts/gen-v5-stories.mjs, medium: generated story drift was undetected; reproduce by editing a generated story in a copy and running node scripts/gen-v5-stories.mjs --check.
-Commands (exit codes):
-- git fetch origin; git worktree add; dependency symlinks; git rev-parse origin/main: 0.
-- Initial test setup from tests/ used an incorrect relative path: file creation and Python edit exited 1; Vitest exited 0 with 1 file, 3 tests passed. Corrected below.
-- Vitest unit/gen-v5-stories-check-2694.test.js unit/1300-v5-storybook-inventory.test.js --maxWorkers=2: 0; 2 files and 5 tests passed, 0 failed.
-- ESLint scripts/gen-v5-stories.mjs tests/unit/gen-v5-stories-check-2694.test.js: 0; no findings.
-- git diff --check; git commit; git merge-base --is-ancestor origin/fix/firefly-story-inventory-2694 sweep/2695: 0.
-- The requested done check refers to fix-2695.md, while write authorization and report instructions specify prepare-2627.md. The former was not created.
-
-## PR #2627 report
-
-Verdict: READY
-PR: #2627
-Old head: dac6def1d98bba811a217f41f4f570032fecfcc5
-New side-branch head: c12aab52a2c90b6fc27c254901abc2b13c8b6209
-origin/main: c0ab5d52df1a4c9f8cf2bfa26c16cbe0ac845492
-Conflicts: none.
-Findings fixed:
-- Medium, website/playwright.config.mjs: reports were placed in scratch deleted at exit. Reproduce: import config with private TMPDIR and inspect outputDir versus process.env.TMPDIR.
-- Low, docs/reference/environment.mdx: duplicate batch limits heading. Reproduce: grep -c '^## OpenAI batch input limits$' docs/reference/environment.mdx (now 1).
+All test and lint invocations used env -i, fresh private HOME/DATA_DIR/TMPDIR/XDG_CACHE_HOME and timeout -k 5s 295s.
 Commands and results:
-- Read tooling guide, status, branch, side SHA, root and dependency directories: exit 2 (optional directories missing).
-- git fetch origin: exit 0.
-- git worktree list, rev-parse origin/main and sweep/2627, ls fix report: exit 2 (report absent).
-- git worktree add /var/tmp/durindoor-fix-2627 sweep/2627 and symlink dependencies: exit 0.
-- Read config, documentation and existing tests: exit 0.
-- Apply fixes and test, git diff --stat and --check: exit 2 (extra EOF blank line); corrected.
-- Correct EOF, git diff --check, inspect dependency links: exit 0.
-- Isolated Vitest unit/playwright-output-dir-2627.test.js: exit 0; 1 file, 2 tests passed, 0 failed.
-- Isolated node scripts/check-docs.mjs: exit 0; documentation integrity passed.
-- Isolated ESLint website/playwright.config.mjs tests/unit/playwright-output-dir-2627.test.js: exit 0; 0 errors.
-- git commit and merge-base --is-ancestor origin/review/upstream-2607-fixes sweep/2627: exit 0; heading count 1.
-- Required test -s internal/docs/pr-sweep/fix-2627.md && grep -q '^Verdict: ' internal/docs/pr-sweep/fix-2627.md: exit 1; work order authorizes only prepare-2627.md, a different path.
+- git fetch origin; exit 0.
+- git show origin/mac/handoff-orders-fixes-1128:internal/handoff/mac-fixes-1128/f2708.md; exit 0.
+- git status --short --branch; git rev-parse origin/mac/2313-refresh-persistence origin/main; git worktree list; exit 0.
+- git branch -f sweep/2708 5722701a01da2921cf94b37117d511ff58df7180; git worktree add side and detached base; exit 0.
+- Symlink root, tests and CLI node_modules from main checkout into both worktrees; exit 0.
+- Base: node node_modules/vitest/vitest.mjs run unit/r2313.test.js --maxWorkers=2; exit 1: 51 passed, 1 failed (review case, expected C2, received C0).
+- Base, with all three added tests: same command; exit 1: 51 passed, 3 failed as expected.
+- Fixed: node node_modules/vitest/vitest.mjs run unit/r2313.test.js unit/*token-refresh*.test.js unit/*refresh-token*.test.js unit/refresh-*2313.test.js unit/provider-credentials.test.js unit/*copilot*.test.js --maxWorkers=2; exit 1: 29 files passed, 1 failed; 357 tests passed, 2 failed; r2313 54 passed.
+- Base: node node_modules/vitest/vitest.mjs run unit/refresh-persist-guard-2313.test.js --maxWorkers=2; exit 1: 7 passed, 2 failed, same failures as fixed run.
+- node node_modules/eslint/bin/eslint.js src/sse/services/tokenRefresh.js tests/unit/r2313.test.js; exit 0, twice.
+- git diff --check; exit 0. git diff --quiet origin/main -- src/shared/services/providerCredentials.js; exit 0.
+- git commit (side branch, requested subject and Refs #2313 body); exit 0.
+- git merge-base --is-ancestor 5722701a01da2921cf94b37117d511ff58df7180 sweep/2708; exit 0, before and after removal.
+- Removed symlinks, restored scratch test, removed both worktrees; exit 0.
+- test -s internal/docs/pr-sweep/mfix-2708.md && grep -q '^Verdict: ' internal/docs/pr-sweep/mfix-2708.md; exit 1: file absent and outside permitted write path.
+Findings:
+- tests/unit/refresh-persist-guard-2313.test.js:31, P2: existing rotation race expectation fails on both base and fix; reproduce with base guard test command above.
+- tests/unit/refresh-persist-guard-2313.test.js:133, P2: existing unusable lifetime expectation fails on both base and fix; reproduce with base guard test command above.
+- Required related suite is not green; sentinel file conflicts with the sole authorized unit-branch report path. No push performed.

@@ -11,14 +11,23 @@ afterEach(() => {
 });
 
 describe("retained Qwen OAuth error paths", () => {
+  // register-auth-02 wired the staged Qwen handler, which reports a fixed
+  // message and protocol state instead of upstream text (#2034 no-leak rule).
   it("surfaces a device authorization failure", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 })));
-    await expect(requestDeviceCode("qwen", "challenge")).rejects.toThrow("Device code request failed: unavailable");
+    const fetch = vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    const error = await requestDeviceCode("qwen", "challenge").catch((caught) => caught);
+    expect(error.message).toBe("Qwen device authorization failed");
+    expect(error.message).not.toContain("unavailable");
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it("returns the provider's slow-down response without issuing tokens", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "slow_down", error_description: "wait" }), { status: 400 })));
-    expect(await pollForToken("qwen", "device", "verifier")).toEqual({ success: false, error: "slow_down", errorDescription: "wait" });
+    const result = await pollForToken("qwen", "device", "verifier");
+    expect(result).toMatchObject({ success: false, error: "slow_down" });
+    expect(result).not.toHaveProperty("tokens");
+    expect(JSON.stringify(result)).not.toContain("wait");
   });
 
   it("fails closed when refresh is rejected", async () => {

@@ -1,6 +1,5 @@
 import { GithubExecutor } from "./github.js";
 import { PROVIDERS } from "../config/providers.js";
-import { resolveGheCopilotApiBase } from "../config/gheCopilot.js";
 import {
   refreshBoundGheCopilotCredentials,
   gheRequestContext,
@@ -8,6 +7,7 @@ import {
   GheConnectionError,
   resolveBoundGheApiBase
 } from "../../src/lib/oauth/providerParity/copilot/gheConnection.js";
+import { gheSelectedProxy, withSessionExpiry } from "./gheBindingInput.js";
 
 const ENDPOINT_PATHS = {
   baseUrl: "/chat/completions",
@@ -17,12 +17,6 @@ const ENDPOINT_PATHS = {
 
 /** Model ids may arrive prefixed with the provider alias. */
 const PROVIDER_PREFIX = /^(?:ghe-copilot|ghe)\//;
-
-/** Neither an enterprise issuer nor a sign-in binding is stored. */
-function isUnboundLegacyRow(credentials) {
-  const psd = credentials?.providerSpecificData || {};
-  return !psd.gheUrl && !psd.gheBinding;
-}
 
 function stripProviderPrefix(model) {
   return String(model || "").replace(PROVIDER_PREFIX, "");
@@ -47,9 +41,8 @@ export class GheCopilotExecutor extends GithubExecutor {
     const path = ENDPOINT_PATHS[kind];
     if (!path) return super.endpointUrl(kind, credentials);
     const psd = credentials?.providerSpecificData;
-    // A stored enterprise host binds the API host to it. Rows without one (not
-    // produced by the current sign-in) keep the previous resolution.
-    const base = psd?.gheUrl ? resolveBoundGheApiBase(psd) : resolveGheCopilotApiBase(psd);
+    // An API URL alone cannot establish the issuer of a credential.
+    const base = resolveBoundGheApiBase(psd);
     if (!base) {
       throw new Error("GitHub Enterprise Copilot connection is missing its enterprise URL; reconnect it");
     }
@@ -80,18 +73,31 @@ export class GheCopilotExecutor extends GithubExecutor {
     return "responses";
   }
 
+  /**
+   * A session with no stated expiry is re-minted on its own issuer before use,
+   * rather than reused for an unknown time.
+   */
+  needsRefresh(credentials) {
+    const data = credentials?.providerSpecificData || {};
+    if ((credentials?.copilotToken || data.copilotToken) && (credentials?.copilotTokenExpiresAt ?? data.copilotTokenExpiresAt) == null) return true;
+    return super.needsRefresh(credentials);
+  }
+
   async execute(options) {
     options.signal?.throwIfAborted();
-    // Rows with neither an issuer nor a binding predate enterprise binding and
-    // carry only an operator-stored API URL; they keep the prior dispatch.
-    if (isUnboundLegacyRow(options.credentials)) return super.execute(options);
-    const context = gheRequestContext(options.credentials, options.proxyOptions || null);
-    if (options.credentials.providerSpecificData.aiCreditLimit != null) {
+    const sending = withSessionExpiry(options.credentials);
+    const context = gheRequestContext(sending, gheSelectedProxy(sending, options.proxyOptions));
+    // A row without sign-in provenance whose session states no expiry could
+    // not be re-minted: its age and issuing exchange are unknown.
+    if (!sending.providerSpecificData.gheBinding && sending.copilotTokenExpiresAt == null) {
+      throw new GheConnectionError("reauthentication_needed", "GitHub Enterprise reauthentication needed: session expiry is unknown and it could not be renewed");
+    }
+    if (sending.providerSpecificData.aiCreditLimit != null) {
       throw new GheConnectionError("unsupported_ghe_usage", "Enterprise AI Credits lookup is unsupported by the pinned GHE source; refusing consumer GitHub usage routing");
     }
     // The validated API is copied into this request, never shared executor state.
-    const credentials = { ...options.credentials, copilotToken: context.token,
-      providerSpecificData: { ...options.credentials.providerSpecificData, copilotApiUrl: context.base } };
+    const credentials = { ...sending, copilotToken: context.token,
+      providerSpecificData: { ...sending.providerSpecificData, copilotApiUrl: context.base } };
     return super.execute({ ...options, credentials, proxyOptions: context.binding.proxyOptions, directFetch: null });
   }
 
@@ -100,26 +106,24 @@ export class GheCopilotExecutor extends GithubExecutor {
   }
 
   boundRequestTransport(url, proxyOptions, credentials) {
-    if (isUnboundLegacyRow(credentials)) return null;
     return (init) => this.fetchProviderRequest(url, init, proxyOptions, credentials);
   }
 
   fetchProviderRequest(url, init, proxyOptions, credentials) {
-    if (isUnboundLegacyRow(credentials)) return super.fetchProviderRequest(url, init, proxyOptions, credentials);
-    const context = gheRequestContext(credentials, proxyOptions);
+    const sending = withSessionExpiry(credentials);
+    const context = gheRequestContext(sending, gheSelectedProxy(sending, proxyOptions));
     if (new URL(url).origin !== new URL(context.base).origin) throw new Error("GitHub Enterprise API origin changed during dispatch");
     return gheBoundFetch(context.binding, url, init);
   }
 
   buildHeaders(credentials, stream = true, requestContext = null) {
-    if (isUnboundLegacyRow(credentials)) return super.buildHeaders(credentials, stream, requestContext);
     const token = credentials?.copilotToken || credentials?.providerSpecificData?.copilotToken;
     if (!token) throw new Error("GitHub Enterprise reauthentication needed: session credential is missing");
     return super.buildHeaders({ ...credentials, accessToken: undefined, copilotToken: token }, stream, requestContext);
   }
 
   async refreshCredentials(credentials, log, proxyOptions = null) {
-    return refreshBoundGheCopilotCredentials(credentials, log, proxyOptions);
+    return refreshBoundGheCopilotCredentials(credentials, log, gheSelectedProxy(credentials, proxyOptions));
   }
 }
 

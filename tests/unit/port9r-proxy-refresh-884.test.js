@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ update: vi.fn(async () => true), refresh: vi.fn(), copilot: vi.fn() }));
+const mocks = vi.hoisted(() => ({ update: vi.fn(async () => ({ applied: true })), refresh: vi.fn(), copilot: vi.fn() }));
 vi.mock("../../src/lib/localDb.js", async (original) => ({ ...(await original()), updateProviderConnection: mocks.update }));
 vi.mock("../../open-sse/services/oauthCredentialManager.js", async (original) => ({
   ...(await original()), refreshProviderCredentials: mocks.refresh, shouldRefreshCredentials: () => true,
@@ -47,6 +47,10 @@ it("keeps saved proxy settings when a Copilot token rotates", async () => {
   const refreshed = await checkAndRefreshToken("github", credentials);
   expect(mocks.update).toHaveBeenCalledWith("github-connection", {
     providerSpecificData: { proxyPoolId: "pool", copilotToken: "copilot-new", copilotTokenExpiresAt: 2_000_000_000 },
-  });
+  }, { returnCommitResult: true, shouldCommitConnection: expect.any(Function) });
+  const guard = mocks.update.mock.calls[0][2].shouldCommitConnection;
+  expect(guard({ ...credentials, providerSpecificData: { proxyPoolId: "pool" } })).toBe(true);
+  expect(guard({ ...credentials, accessToken: "reconnected", providerSpecificData: { proxyPoolId: "new-pool" } })).toBe(false);
+  expect(guard(null)).toBe(false);
   expect(refreshed.providerSpecificData.connectionProxyUrl).toBe("http://runtime");
 });

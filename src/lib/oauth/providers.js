@@ -11,6 +11,9 @@ import { buildKimiDeviceHeaders } from "../../../open-sse/config/appConstants.js
 import { antigravityAgeRestrictionError, antigravityOnboardOperationError, extractAntigravityOnboardTier, extractAntigravityProject } from "../../../open-sse/services/antigravityProvisioning.js";
 import { readBoundedResponseText } from "../../../open-sse/utils/error.js";
 
+import { buildKiroRegistration } from "./providerParity/kiro/index.js";
+import { createQwenProviderHandlers } from "./providerParity/qwen/index.js";
+import { decodeCopilotPollResponse } from "./providerParity/copilot/index.js";
 import { generatePKCE, generateState } from "./utils/pkce.js";
 import { parseClaudeAuthorizationCode, claudeExchangeFailure } from "./providerParity/claude/exchange.js";
 import { withCodexAuthorizeDelta, codexDevicePollError, exchangeCodexCode } from "./providerParity/codex/index.js";
@@ -1174,8 +1177,8 @@ const PROVIDERS = {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token exchange failed: ${error}`);
+        await response.body?.cancel();
+        throw new Error("iFlow token exchange failed");
       }
 
       return await response.json();
@@ -1193,13 +1196,13 @@ const PROVIDERS = {
       );
 
       if (!userInfoRes.ok) {
-        const errorText = await userInfoRes.text();
-        throw new Error(`Failed to fetch user info: ${errorText}`);
+        await userInfoRes.body?.cancel();
+        throw new Error("iFlow user info request failed");
       }
 
       const result = await userInfoRes.json();
       if (!result.success) {
-        throw new Error(`User info request failed: ${result.message || 'Unknown error'}`);
+        throw new Error("iFlow user info request failed");
       }
 
       const userInfo = result.data || {};
@@ -1230,60 +1233,7 @@ const PROVIDERS = {
   qoder: createQoderProviderHandlers(QODER_CONFIG),
   "qoder-cn": createQoderProviderHandlers(QODER_CN_CONFIG),
 
-  qwen: {
-    config: QWEN_CONFIG,
-    flowType: "device_code",
-    requestDeviceCode: async (config, codeChallenge, options = {}, proxyOptions) => {
-      const response = await fetch(config.deviceCodeUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json"
-        },
-        body: new URLSearchParams({
-          client_id: config.clientId,
-          scope: config.scope,
-          code_challenge: codeChallenge,
-          code_challenge_method: config.codeChallengeMethod
-        }),
-        proxyOptions
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Device code request failed: ${error}`);
-      }
-
-      return await response.json();
-    },
-    pollToken: async (config, deviceCode, codeVerifier, extraData, proxyOptions) => {
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json"
-        },
-        body: new URLSearchParams({
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-          client_id: config.clientId,
-          device_code: deviceCode,
-          code_verifier: codeVerifier
-        }),
-        proxyOptions
-      });
-
-      return {
-        ok: response.ok,
-        data: await response.json()
-      };
-    },
-    mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      providerSpecificData: { resourceUrl: tokens.resource_url }
-    })
-  },
+  qwen: createQwenProviderHandlers(QWEN_CONFIG),
 
   github: {
     config: GITHUB_CONFIG,
@@ -1324,19 +1274,9 @@ const PROVIDERS = {
         proxyOptions
       });
 
-      // Read once so a non-JSON response can still be returned as an error.
-      // Adapted from OmniRoute src/lib/oauth/providers/github.ts.
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { error: "invalid_response", error_description: text };
-      }
-
       return {
         ok: response.ok,
-        data: data
+        data: decodeCopilotPollResponse(await response.text())
       };
     },
     postExchange: async (tokens, proxyOptions) => {
@@ -1397,15 +1337,7 @@ const PROVIDERS = {
       const authMethod = options.authMethod === "idc" ? "idc" : "builder-id";
       const registerClientUrl = `https://oidc.${region}.amazonaws.com/client/register`;
       const deviceAuthUrl = `https://oidc.${region}.amazonaws.com/device_authorization`;
-      const registration = {
-        clientName: config.clientName,
-        clientType: config.clientType,
-        scopes: config.scopes,
-        grantTypes: config.grantTypes
-      };
-      // OmniRoute src/lib/oauth/providers/kiro.ts: enterprise start URLs
-      // must not be bound to the fixed Builder ID issuer.
-      if (authMethod !== "idc") registration.issuerUrl = config.issuerUrl;
+      const registration = buildKiroRegistration(config, authMethod);
 
       const registerRes = await fetch(registerClientUrl, {
         method: "POST",

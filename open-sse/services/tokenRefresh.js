@@ -21,7 +21,8 @@ import {
 "./tokenRefresh/providers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { resolveCodexAccountId } from "../shared/codexAccountId.js";
-import { refreshGheCopilotCredentials } from "./gheCopilotAuth.js";
+import { refreshBoundGheCopilotCredentials } from "../../src/lib/oauth/providerParity/copilot/gheConnection.js";
+import { gheSelectedProxy } from "../executors/gheBindingInput.js";
 import { refreshOpenferenceToken } from "./openferenceAuth.js";
 import { refreshMuseCodeToken } from "./museCodeAuth.js";
 import { refreshM365Token } from "./tokenRefresh/copilotM365.js";
@@ -287,7 +288,7 @@ const REFRESH_HANDLERS = {
   github: (c, log, p) => refreshGitHubToken(c.refreshToken, log, p),
   // Every GHE endpoint lives on the connection's own host, so the generic
   // refresh path (which reads a static registry tokenUrl) cannot serve it.
-  "ghe-copilot": (c, log, p) => refreshGheCopilotCredentials(c, log, p),
+  "ghe-copilot": (c, log, p) => refreshBoundGheCopilotCredentials(c, log, gheSelectedProxy(c, p)),
   kiro: (c, log, p) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log, p),
   "amazon-q": (c, log, p) => refreshKiroToken(c.refreshToken, c.providerSpecificData, log, p),
   xai: (c, log, p) => refreshXaiToken(c.refreshToken, log, p),

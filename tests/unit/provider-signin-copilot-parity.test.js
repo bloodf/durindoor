@@ -7,6 +7,16 @@ vi.mock("open", () => ({ default: vi.fn() }));
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("Copilot sign-in boundaries", () => {
+  it("refuses legacy API-only enterprise credentials before dispatch", async () => {
+    const { GheCopilotExecutor } = await import("../../open-sse/executors/ghe-copilot.js");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await expect(new GheCopilotExecutor().execute({
+      model: "gpt-4o", body: { messages: [] }, stream: false,
+      credentials: { accessToken: "long-lived-oauth", providerSpecificData: { copilotApiUrl: "https://operator.example.test" } }
+    })).rejects.toThrow(/reauthentication needed/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each(["getDeviceCode", "getCopilotToken", "getUserInfo"])("does not expose the %s upstream body", async (method) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("synthetic-secret", { status: 401 }));
     await expect(new GitHubService()[method]("synthetic-token")).rejects.toThrow(/HTTP 401/);
@@ -261,10 +271,18 @@ describe("GHE connection binding", () => {
 
     const sse = 'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
     network = installTransport(async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
-    const result = await executor.execute({
+    const send = (credentials) => executor.execute({
       model: "gpt-4.1", stream: true, body: { model: "gpt-4.1", stream: true, messages: [{ role: "user", content: "hello" }] },
-      credentials: { connectionId: "alpha", ...psd("https://collector.attacker.test") }, proxyOptions: proxyFor("alpha")
+      credentials, proxyOptions: proxyFor("alpha")
     });
+    // register-auth-02: a historical (unbound) session with no stated expiry is
+    // re-minted first (needsRefresh) and is never dispatched as-is.
+    const historical = { connectionId: "alpha", ...psd("https://collector.attacker.test") };
+    expect(executor.needsRefresh(historical)).toBe(true);
+    await expect(send(historical)).rejects.toMatchObject({ code: "reauthentication_needed" });
+    expect(network.calls).toHaveLength(0);
+    historical.providerSpecificData.copilotTokenExpiresAt = Math.floor(Date.now() / 1000) + 3600;
+    const result = await send(historical);
     expect(network.calls).toHaveLength(1);
     const [{ url, init, proxy }] = network.calls;
     expect(url).toBe(`${origin("alpha")}/chat/completions`);
@@ -289,10 +307,11 @@ describe("GHE connection binding", () => {
   });
 });
 
-// Staging-only assertions. Replace with positive registration checks when the
-// auth batch wires the central callsites listed in registration.json.
+// The manifest stays immutable and still says "staged"; the auth batch
+// (register-auth-02) wired its four slots, so each callsite is checked
+// positively for the helper it must call and for the removed path.
 describe("staged Copilot registration manifest", () => {
-  it("lists real exports and existing central callsites", async () => {
+  it("lists real exports and wires every central callsite", async () => {
     const { readFileSync } = await import("node:fs");
     const root = new URL("../../", import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL("src/lib/oauth/providerParity/copilot/registration.json", root), "utf8"));
@@ -302,10 +321,18 @@ describe("staged Copilot registration manifest", () => {
       expect(Object.keys(mod).sort()).toEqual([...names].sort());
     }
     expect(manifest.integrationSlots).toHaveLength(4);
+    const wired = {
+      "src/lib/oauth/providers.js": { calls: ["decodeCopilotPollResponse(await response.text())"], removed: [] },
+      "open-sse/services/tokenRefresh.js": { calls: ['"ghe-copilot": (c, log, p) => refreshBoundGheCopilotCredentials(c, log, gheSelectedProxy(c, p))'], removed: ["refreshGheCopilotCredentials("] },
+      "src/app/api/providers/[id]/models/modelsConfig.js": { calls: ["gheRequestContext(sending, gheSelectedProxy(sending, proxyOptions))", "gheBoundFetch(context.binding, `${context.base}/models`"], removed: ["resolveGheCopilotApiBase("] },
+      "src/app/api/providers/[id]/test/testUtils.js": { calls: ["storedGheBinding(connection, gheSelectedProxy(connection, effectiveProxy), { refresh: true })", "gheBoundFetch(gheBinding, testUrl, fetchOpts)"], removed: ["normalizeGheUrl("] }
+    };
     for (const { callsite } of manifest.integrationSlots) {
-      const [, file, line, needle] = callsite.match(/^(\S+):(\d+) (.+)$/);
-      const source = readFileSync(new URL(file, root), "utf8").split("\n")[Number(line) - 1];
-      expect(source).toContain(needle.split(" ")[0].replace(/^github\./, ""));
+      const [, file] = callsite.match(/^(\S+):(\d+) (.+)$/);
+      const source = readFileSync(new URL(file, root), "utf8");
+      expect(wired[file], file).toBeDefined();
+      for (const call of wired[file].calls) expect(source).toContain(call);
+      for (const gone of wired[file].removed) expect(source).not.toContain(gone);
     }
   });
 });

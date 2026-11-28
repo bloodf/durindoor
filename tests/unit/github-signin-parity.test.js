@@ -42,9 +42,11 @@ describe("GitHub device sign-in", () => {
       expect(url).toBe(GITHUB_CONFIG.tokenUrl);
       return new Response("upstream unavailable", { status: 502 });
     }));
-    expect(await pollForToken("github", "device")).toMatchObject({
-      success: false, error: "invalid_response", errorDescription: "upstream unavailable"
-    });
+    // register-auth-02 decodes polls with decodeCopilotPollResponse, which
+    // keeps the protocol error and drops the untrusted upstream text.
+    const result = await pollForToken("github", "device");
+    expect(result).toMatchObject({ success: false, error: "invalid_response" });
+    expect(JSON.stringify(result)).not.toContain("upstream unavailable");
   });
 
   it("refreshes missing and nearly expired scoped tokens", () => {

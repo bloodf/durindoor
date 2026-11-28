@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { isAntigravityProvider, openAntigravityLease } from "@/lib/antigravity/refreshProtocol";
 import { antigravityClientBindingBlocks, antigravityClientBindingError } from "open-sse/services/antigravityClientBinding.js";
@@ -21,7 +22,8 @@ const REFRESH_METADATA_FIELDS = new Set([
 "provider",
 "tokenEndpoint",
 "scope",
-"copilotApiUrl"]
+"copilotApiUrl",
+"gheSession"]
 );
 const REFRESH_LOG_CATEGORIES = new Set(["AUTH", "KIRO", "TOKEN", "TOKEN_REFRESH", "VERTEX"]);
 const MAX_REFRESH_SECRET_LENGTH = 64 * 1024;
@@ -211,7 +213,26 @@ function safeMetadataUrl(value, { httpsOnly = false } = {}) {
   return value;
 }
 
+const GHE_SESSION_KINDS = new Set(["session", "issuer-oauth"]);
+
+/**
+ * GitHub Enterprise Copilot session provenance written by the connection-bound
+ * refresh (#2034). Only its exact shape is stored; the executor still checks it
+ * against the stored issuer, client, API origin and session digest.
+ */
+function safeGheSession(value) {
+  if (!isObject(value) || Array.isArray(value)) throw malformedRefreshResult();
+  const keys = Object.keys(value).sort().join(",");
+  if (keys !== "apiOrigin,clientId,issuer,kind,tokenHash" || !GHE_SESSION_KINDS.has(value.kind) ||
+      !/^[0-9a-f]{64}$/.test(value.tokenHash)) throw malformedRefreshResult();
+  safeMetadataUrl(value.issuer, { httpsOnly: true });
+  safeMetadataUrl(value.apiOrigin, { httpsOnly: true });
+  safeMetadataString(value.clientId);
+  return { issuer: value.issuer, clientId: value.clientId, apiOrigin: value.apiOrigin, kind: value.kind, tokenHash: value.tokenHash };
+}
+
 function validatedMetadataValue(field, value) {
+  if (field === "gheSession") return safeGheSession(value);
   if (field === "baseUrl" || field === "resourceUrl") return safeMetadataUrl(value);
   if (field === "tokenEndpoint" || field === "copilotApiUrl") return safeMetadataUrl(value, { httpsOnly: true });
   if (field === "region") return safeMetadataString(value, { pattern: /^[a-z]{2}(?:-[a-z0-9]+)+-\d{1,2}$/ });
@@ -509,12 +530,19 @@ proxyOptions = null,
       !Array.isArray(connection.providerSpecificData) ?
       connection.providerSpecificData :
       {};
-      for (const [field, value] of Object.entries(refreshResult.providerSpecificData)) {
+      const refreshedData = refreshResult.providerSpecificData;
+      // A re-minted enterprise session that names no API is served by its
+      // issuer; drop the previous API so it matches the new provenance.
+      if (connection.provider === "ghe-copilot" && Object.hasOwn(refreshedData, "gheSession") &&
+          refreshedData.copilotApiUrl === null && originalProviderData.copilotApiUrl) {
+        providerSpecificUpdates.copilotApiUrl = null;
+      }
+      for (const [field, value] of Object.entries(refreshedData)) {
         if (!REFRESH_METADATA_FIELDS.has(field) || value === null || value === undefined || value === "") continue;
         // Some legacy refreshers echo their entire input metadata object. Do
         // not revalidate or rewrite unchanged stored values after an upstream
         // may already have rotated its one-time refresh token.
-        if (Object.hasOwn(originalProviderData, field) && originalProviderData[field] === value) continue;
+        if (Object.hasOwn(originalProviderData, field) && isDeepStrictEqual(originalProviderData[field], value)) continue;
         providerSpecificUpdates[field] = validatedMetadataValue(field, value);
       }
     }

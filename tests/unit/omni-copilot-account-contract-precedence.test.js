@@ -27,12 +27,24 @@ const contract = (endpoint) => buildCopilotEndpointContract([{ id: model, suppor
 /** A contract that states the route of some other model, so it says nothing about `model`. */
 const foreignContract = (endpoint, id = "gpt-test-other") =>
   buildCopilotEndpointContract([{ id, supported_endpoints: [endpoint] }]);
+/**
+ * Enterprise hosts belong to a GHE connection. register-auth-02 (#2034) refuses
+ * an operator-stored API URL that has no OAuth issuer, so enterprise fixtures
+ * name their issuer (`gheUrl`) and carry a scoped session credential; the
+ * long-lived OAuth credential is never the dispatch credential.
+ */
+const enterprise = (host) => host ? {
+  gheUrl: `https://${host}`,
+  copilotApiUrl: `https://${host}`,
+  copilotToken: `session-${host}`,
+  copilotTokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+} : {};
 const account = (id, endpoint, host) => ({
   connectionId: id,
   accessToken: "fixture",
   providerSpecificData: {
     ...(endpoint ? { copilotEndpointContract: contract(endpoint) } : {}),
-    ...(host ? { copilotApiUrl: `https://${host}` } : {}),
+    ...enterprise(host),
   },
 });
 /** An account whose routing metadata is the given contract, if any. */
@@ -80,6 +92,12 @@ it("reuses a same-account escalation, isolates other accounts, and honors refres
   expect(calls().map(({ path }) => path)).toEqual(["/chat/completions", "/responses", "/responses", "/chat/completions", "/chat/completions", "/responses"]);
 });
 
+it("refuses an enterprise account with only an operator-stored API URL before any request", async () => {
+  const legacy = { connectionId: "a", accessToken: "fixture", providerSpecificData: { copilotApiUrl: "https://one.example" } };
+  await expect(dispatch(new GheCopilotExecutor(), legacy)).rejects.toThrow(/reauthentication needed/);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 it("does not share learned routes between enterprise hosts or anonymous calls", async () => {
   fetchMock.mockResolvedValueOnce(new Response("not accessible via the /chat/completions endpoint", { status: 400 }))
     .mockImplementation(() => Promise.resolve(new Response("{}", { status: 200 })));
@@ -88,6 +106,9 @@ it("does not share learned routes between enterprise hosts or anonymous calls", 
   await dispatch(executor, account("a", null, "two.example"));
   expect(calls().map(({ host, path }) => [host, path])).toEqual([
     ["one.example", "/chat/completions"], ["one.example", "/responses"], ["two.example", "/chat/completions"],
+  ]);
+  expect(fetchMock.mock.calls.map(([url, options]) => [new URL(url).host, new Headers(options.headers).get("authorization")])).toEqual([
+    ["one.example", "Bearer session-one.example"], ["one.example", "Bearer session-one.example"], ["two.example", "Bearer session-two.example"],
   ]);
   fetchMock.mockReset().mockResolvedValueOnce(new Response("not accessible via the /chat/completions endpoint", { status: 400 }))
     .mockImplementation(() => Promise.resolve(new Response("{}", { status: 200 })));

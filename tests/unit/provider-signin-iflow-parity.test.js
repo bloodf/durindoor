@@ -79,13 +79,15 @@ describe("iFlow production OAuth contracts", () => {
 
 describe("staged iFlow cookie import", () => {
   // Staging-only: flip these assertions when the helper is registered in the cookie route.
+  // register-auth-02 registered it (flipped below); the manifest itself stays immutable.
   it("is declared staged with its exact export", async () => {
     const registration = JSON.parse(fs.readFileSync(new URL("../../src/lib/oauth/providerParity/iflow/registration.json", import.meta.url), "utf8"));
     const helper = await import("../../src/lib/oauth/providerParity/iflow/cookie.js");
     expect(registration.status).toBe("staged");
     expect(Object.keys(helper).sort()).toEqual([...registration.exports].sort());
     const route = fs.readFileSync(new URL("../../src/app/api/oauth/iflow/cookie/route.js", import.meta.url), "utf8");
-    expect(route).not.toContain("providerParity/iflow");
+    expect(route).toContain("providerParity/iflow/cookie.js");
+    expect(route).toContain("await importIflowCookie(cookie, { signal: request.signal })");
   });
 
   it("keeps concurrent sessions separate and posts once per accepted lookup", async () => {

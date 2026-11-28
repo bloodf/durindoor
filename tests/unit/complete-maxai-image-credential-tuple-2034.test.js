@@ -108,6 +108,15 @@ async function configureAccount(id, proxyUrl, priority) {
   expect(response.status).toBe(200);
 }
 
+/** Persist a complete account order after all creates/updates, which may reorder rows. */
+async function selectAccountOrder(ids) {
+  await db.updateSettings({ providerStrategies: { maxai: { fallbackStrategy: "fill-first" } } });
+  await db.reorderProviderConnectionsByIds("maxai", ids);
+  const ordered = await db.getProviderConnections({ provider: "maxai" });
+  expect(ordered.map((entry) => entry.id)).toEqual(ids);
+  expect(ordered.map((entry) => entry.priority)).toEqual(ids.map((_id, index) => index + 1));
+}
+
 /** Synthetic MaxAI web app and API. Any other URL fails the test. */
 function maxaiNetwork({ chat = () => new Response(`data: ${JSON.stringify({ text: "synthetic answer" })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } }) } = {}) {
   return async (url, init) => {
@@ -224,6 +233,8 @@ it("constructs chat and images for two imported accounts despite stale PSD and u
     await configureAccount(id, index === 0 ? PROXY_A : PROXY_B, index + 1);
     ids.push(id);
   }
+  expect(new Set(ids).size).toBe(2);
+  await selectAccountOrder(ids);
   for (const [index, tuple] of [A, C].entries()) {
     const credentials = await row(ids[index]);
     expect(credentials.apiKey).toBe(headerOf(tuple));
@@ -307,11 +318,15 @@ it.each([
 });
 
 it("uses the integrated terminal chat outcome marker to prevent replay across two imported accounts", async () => {
+  const ids = [];
   for (const [index, tuple] of [A, C].entries()) {
     const imported = await importCookies({ action: "create", name: `Unknown ${index}` }, cookiesOf(tuple));
     expect(imported.status).toBe(201);
+    ids.push(imported.body.connection.id);
     await configureAccount(imported.body.connection.id, index === 0 ? PROXY_A : PROXY_B, index + 1);
   }
+  expect(new Set(ids).size).toBe(2);
+  await selectAccountOrder(ids);
   upstream = maxaiNetwork({ chat: () => { throw new Error("socket closed after write"); } });
   const response = await sendChat();
   expect(response.ok).toBe(false);
@@ -344,4 +359,15 @@ it.each([
   expect(sent).toEqual([]);
   expectNoSecrets(await response.text(), secretsOf(A, B));
   expectNoSecrets(logs.join("\n"), secretsOf(A, B));
+});
+
+
+it("enforces the authorized native precedence migration as one exact cookie tuple", () => {
+  const providerSpecificData = { maxaiAccessToken: "psd" };
+  expect(resolveMaxaiImageCredential({ apiKey: "access_token=t; device_id=d; user_id=u", providerSpecificData }))
+    .toEqual({ token: "t", deviceId: "d", userId: "u" });
+  for (const apiKey of ["access_token=t; device_id=d", "access_token=t; user_id=u"]) {
+    expect(resolveMaxaiImageCredential({ apiKey, providerSpecificData: { ...providerSpecificData, maxaiDeviceId: "saved-d", maxaiUserId: "saved-u" } }))
+      .toBeNull();
+  }
 });

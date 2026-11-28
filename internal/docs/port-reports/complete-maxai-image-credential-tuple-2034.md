@@ -85,4 +85,33 @@ Root and test dependencies are absent. No install, borrowed dependency mutation,
 full inventory, test:ci or local-ci run was performed. The focused suite and root
 lint are **not validated**; the native gate must supply isolated dependency setup
 and run the named commands. Syntax and smoke checks do not replace that gate.
-No baseline, skip, todo or expected-failure entry was added.
+The failure baseline and existing test inventory configuration are unchanged.
+
+## Gate correction
+
+The first native evidence run executed the focused suite and rejected two own-suite
+assertions: chat selected Charlie where the fixture expected Alpha (the first
+chat/image case and the two-account unknown-outcome case). The test setup relied
+on per-row priority updates during account creation rather than persisting a full
+final account order. The corrected harness explicitly sets MaxAI's fill-first
+strategy in its disposable database, atomically orders all created IDs after setup,
+and asserts both the distinct IDs and persisted priorities before dispatch.
+Bearer, decrypted signature, selected proxy and exactly-one-send assertions remain
+strict. Production selection and terminal-outcome policy are unchanged.
+
+The native test-file delta is the user-authorized assertion migration, not removal
+of a scenario: the expected token changes from stale `psd` to cookie `t`, with the
+same exact device/user assertions. An additional own regression now repeats that
+literal tuple and refuses missing members even with complete saved identities.
+The report now describes the unchanged failure baseline directly.
+
+The corrected suite still requires execution with isolated dependencies: this
+worker checkout has no root or test node_modules. The prior gate failures are
+recorded above rather than represented as a pass.
+
+Correction verification evidence is retained in
+`/var/tmp/maxai-2034-correction-tzijhohx` (0700), using a new private environment
+and 300-second limits. The named focused command and all three direct root-lint
+commands again exited 1 because their dependencies are absent. The corrected
+suite passes Node syntax checking and `git diff --check` passes. No execution pass
+is claimed for this correction.

@@ -2471,6 +2471,29 @@ export const REVIEW_SURFACES = [
     "standalone": false
   },
   {
+    "source": "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx",
+    "title": "V5 review/Pages/usage/ResetCreditsModal",
+    "storyId": "v5-review-pages-usage-resetcreditsmodal--open",
+    "states": [
+      "Open",
+      "ClaudeGrants",
+      "Loading",
+      "Error",
+      "Empty"
+    ],
+    "storyIds": [
+      "v5-review-pages-usage-resetcreditsmodal--open",
+      "v5-review-pages-usage-resetcreditsmodal--claude-grants",
+      "v5-review-pages-usage-resetcreditsmodal--loading",
+      "v5-review-pages-usage-resetcreditsmodal--error",
+      "v5-review-pages-usage-resetcreditsmodal--empty"
+    ],
+    "pathname": "/dashboard/usage",
+    "routePattern": "/dashboard/usage/components/ProviderLimits",
+    "routePriority": 0,
+    "standalone": false
+  },
+  {
     "source": "src/app/(dashboard)/dashboard/usage/components/UsageSurface.stories.jsx",
     "title": "V5 review/Pages/usage/Usage surfaces",
     "storyId": "v5-review-pages-usage-usage-surfaces--overview",

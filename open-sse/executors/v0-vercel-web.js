@@ -1,7 +1,7 @@
 // Adapted from OmniRoute open-sse/executors/v0-vercel-web.ts, revision
 // 9671192011beb2d7f83979f40be488c5da8772b9 (MIT).
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
+import { isRefusedRedirect } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { errorResponse } from "../utils/error.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
@@ -34,12 +34,9 @@ function completion(model, message, usage) {
   return result;
 }
 
-export class V0VercelWebExecutor extends BaseExecutor {
+export class V0VercelWebExecutor extends WebSessionExecutor {
   constructor() { super("v0-vercel-web", { id: "v0-vercel-web", baseUrl: V0_CHAT_URL }); }
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input);
-    return withBillableDispatch(sender, async (billed) => {
+  async runSession(input, transport) {
       const cookie = v0SessionCookie(input.credentials);
       if (!cookie) return failure(401, "v0 session cookie is missing or malformed", input.body);
       const body = input.body || {};
@@ -48,7 +45,7 @@ export class V0VercelWebExecutor extends BaseExecutor {
       const request = { messages: (Array.isArray(body.messages) ? body.messages : []).map(({ role, content }) => ({ role, content })), model, stream };
       const headers = { "Content-Type": "application/json", Accept: stream ? "text/event-stream" : "application/json", Origin: ORIGIN, Referer: `${ORIGIN}/`, Cookie: cookie };
       try {
-        const upstream = billed(await sender.sendRequest(V0_CHAT_URL, { method: "POST", headers, body: JSON.stringify(request), redirect: "manual", signal: input.signal }, input.proxyOptions));
+        const upstream = await transport.sendBillable(V0_CHAT_URL, { method: "POST", headers, body: JSON.stringify(request), redirect: "manual", signal: input.signal });
         if (!upstream.ok) return statusFailure(upstream.status, request);
         const result = { url: V0_CHAT_URL, headers: { Cookie: "[REDACTED]" }, transformedBody: request };
         if (stream) {
@@ -68,7 +65,6 @@ export class V0VercelWebExecutor extends BaseExecutor {
         if (isRefusedRedirect(error)) return statusFailure(302, request);
         return failure(502, "v0 request failed", request);
       }
-    });
   }
 }
 export default V0VercelWebExecutor;

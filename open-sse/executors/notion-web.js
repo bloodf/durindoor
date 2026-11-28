@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -108,14 +106,9 @@ export function parseNotionInference(raw) {
   return fragments.join("");
 }
 
-export class NotionWebExecutor extends BaseExecutor {
-  constructor(deps = {}) { super("notion-web", { id: "notion-web", baseUrl: INFERENCE }); this.fetcher = deps.fetcher || null; }
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-  async runChat(input, sender, billed) {
+export class NotionWebExecutor extends WebSessionExecutor {
+  constructor(deps = {}) { super("notion-web", { id: "notion-web", baseUrl: INFERENCE }, { observePatchedFetch: false }); this.fetcher = deps.fetcher || null; }
+  async runSession(input, transport) {
     const cookie = notionCookie(input.credentials);
     const body = input.body || {};
     if (!cookie || !/(?:^|;\s*)token_v2=/i.test(cookie)) return this.fail(401, "Missing Notion token_v2 cookie", body);
@@ -125,11 +118,10 @@ export class NotionWebExecutor extends BaseExecutor {
       // An injected fetcher replaces the network send under the same transport policy.
       const fetcher = async (target, init) => {
         const quotaBearing = target === INFERENCE;
-        const response = await sender.sendRequest(target, { signal: input.signal, ...init }, input.proxyOptions, {
-          quotaBearing,
+        const response = await transport[quotaBearing ? "sendBillable" : "send"](target, init, {
           transport: this.fetcher ? (options) => this.fetcher(target, options, input.proxyOptions) : null,
         });
-        return quotaBearing ? billed(response) : response;
+        return response;
       };
       const { spaceId, userId } = await discoverNotionModels(cookie, fetcher);
       const clientId = input.clientHeaders?.["x-notion-thread-id"] || body.notion_thread_id || "";
@@ -158,7 +150,7 @@ export class NotionWebExecutor extends BaseExecutor {
       return this.fail(error.status || 502, error.message || "Notion request failed", body);
     }
   }
-  fail(status, message, body) { return { response: errorResponse(status, message, { type: "upstream_error", code: `HTTP_${status}` }), url: INFERENCE, headers: {}, transformedBody: body }; }
+  fail(status, message, body) { return { response: this.errorReply(status, message), url: INFERENCE, headers: {}, transformedBody: body }; }
 }
 
 export default NotionWebExecutor;

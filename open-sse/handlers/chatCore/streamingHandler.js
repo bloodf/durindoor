@@ -266,7 +266,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard, emittedFormat === FORMATS.OLLAMA,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard, !!clientTap,
   );
 
   trackStreamTokenLimit(transformedBody, transformStream.hasTokenLimitTerminal);

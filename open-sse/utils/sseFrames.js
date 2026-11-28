@@ -182,10 +182,47 @@ export function encodeObservedSseFrames(text, frames) {
  * A batch returned by push/flush also supplies decoded text to legacy line taps.
  * Complete frames forwarded by the empty-terminal guard reuse its observations.
  */
-export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder(), parseFrames = true } = {}) {
+export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder(), parseFrames = true, lineDelimited = false } = {}) {
   // Line-oriented client timelines consume decoded text directly; retaining an
   // SSE frame there would accumulate every NDJSON line until the size cap.
-  const reader = parseFrames ? createSseFrameReader({ preserveWire: true }) : null;
+  const reader = parseFrames && !lineDelimited ? createSseFrameReader({ preserveWire: true }) : null;
+  // Line-delimited observations cannot wait for SSE blank lines: providers may
+  // send an arbitrarily long sequence of independent data records.
+  let pendingLine = "";
+  let eventName = null;
+  const readLines = (text, final = false) => {
+    pendingLine += text;
+    const lines = pendingLine.split("\n");
+    pendingLine = lines.pop();
+    if (final && pendingLine) { lines.push(pendingLine); pendingLine = ""; }
+    if (sharedEncoder.encode(pendingLine).byteLength > MAX_PENDING_SSE_LINE_BYTES) {
+      pendingLine = "";
+      throw createFrameLimitError();
+    }
+    const frames = [];
+    for (let line of lines) {
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (exceedsByteLimit(line, MAX_PENDING_SSE_LINE_BYTES)) throw createFrameLimitError();
+      if (!line) {
+        if (eventName) frames.push(parseSseFrame(`event: ${eventName}`));
+        eventName = null;
+        continue;
+      }
+      const frame = parseSseFrame(line);
+      if (line.startsWith("event:")) eventName = frame.eventName;
+      else if (frame.hasData) {
+        frame.eventName = eventName;
+        Object.defineProperty(frame, "wire", { value: line });
+        frames.push(frame);
+        eventName = null;
+      }
+    }
+    if (final && eventName) {
+      frames.push(parseSseFrame(`event: ${eventName}`));
+      eventName = null;
+    }
+    return frames;
+  };
   let decodedBytes = false;
   const observe = (frames) => {
     for (const frame of frames) {
@@ -220,12 +257,14 @@ export function createSseFrameDispatcher(observers = [], { decoder = new TextDec
       }
       decodedBytes = true;
       const text = decoder.decode(bytes, { stream: true });
-      return { text, frames: observe(parse(reader?.push(text) ?? [])) };
+      const frames = observe(parse(lineDelimited && parseFrames ? readLines(text) : reader?.push(text) ?? []));
+      return { text, frames, pendingBytes: sharedEncoder.encode(pendingLine).byteLength };
     },
     flush() {
       const text = decodedBytes ? decoder.decode() : "";
       decodedBytes = false;
-      return { text, frames: observe(parse(reader ? [...reader.push(text), ...reader.flush()] : [])) };
+      const frames = observe(parse(lineDelimited && parseFrames ? readLines(text, true) : reader ? [...reader.push(text), ...reader.flush()] : []));
+      return { text, frames, pendingBytes: sharedEncoder.encode(pendingLine).byteLength };
     },
   };
 }

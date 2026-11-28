@@ -157,7 +157,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   let terminalEmitted = false;
   const frames = terminalTracker || onClientBytes ? createSseFrameDispatcher([
     (frame) => terminalTracker?.observeParsedClientFrame?.(frame),
-  ], { parseFrames: !lineTimeline || !!terminalTracker }) : null;
+  ], { parseFrames: !lineTimeline || !!terminalTracker, lineDelimited: lineTimeline }) : null;
   let keepaliveTimer = null;
   let clientBytesStarted = false;
 

@@ -265,3 +265,40 @@ it("drops the trailing newline of an unterminated SSE frame", () => {
   timeline.flush();
   expect(events).toEqual(["data: x"]);
 });
+
+it("bounds line observations with a terminal tracker past 64 MiB", async () => {
+  const line = encoder.encode(`data: ${JSON.stringify({ text: "x".repeat(1024) })}\n`);
+  const iterations = Math.ceil((65 * 1024 * 1024) / line.length);
+  let maxPending = 0;
+  let observed = 0;
+  const tracker = { observeParsedClientFrame: () => observed++, buildRecoveryBytes: () => null };
+  let sent = 0;
+  const source = new ReadableStream({ pull(controller) {
+    if (sent < iterations * 2) {
+      controller.enqueue(sent++ % 2 === 0 ? line.subarray(0, 10) : line.subarray(10));
+    } else controller.close();
+  } });
+  const controller = { isConnected: () => true, handleComplete: vi.fn(), handleError: vi.fn() };
+  const stream = createDisconnectAwareStream({ readable: source }, controller, null, tracker,
+    (_bytes, batch) => {
+      maxPending = Math.max(maxPending, batch.pendingBytes);
+    }, null, null, null, 0, true);
+  const reader = stream.getReader();
+  while (!(await reader.read()).done) { /* consume without retaining client bytes */ }
+  expect(observed).toBe(iterations);
+  expect(maxPending).toBe(10);
+  expect(controller.handleComplete).toHaveBeenCalledOnce();
+});
+
+
+it("tracks an event-only terminal on a line-delimited stream", async () => {
+  const source = new ReadableStream({ start(controller) {
+    controller.enqueue(encoder.encode("event: message_stop\n\n"));
+    controller.close();
+  } });
+  const controller = { isConnected: () => true, handleComplete: vi.fn(), handleError: vi.fn() };
+  const stream = createDisconnectAwareStream({ readable: source }, controller, null, createTerminalTracker(FORMATS.CLAUDE),
+    () => {}, null, null, null, 0, true);
+  expect(new TextDecoder().decode(await new Response(stream).arrayBuffer())).toBe("event: message_stop\n\n");
+  expect(controller.handleComplete).toHaveBeenCalledOnce();
+});

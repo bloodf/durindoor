@@ -127,3 +127,119 @@ describe("blackbox-web real cookie flow", () => {
     expect((await getProviderConnectionById(second.id)).apiKey).toBe(`${NAME}=${B}`);
   });
 });
+
+// The public fixture unloads the legacy adapter mocks and uses the real database and routes.
+import { cookiePublicFlow2034 } from "./helpers/cookiePublicFlow2034.js";
+describe("blackbox-web imported accounts through public routes", () => {
+  let flow;
+  const candidate = (value) => ({ origin: ORIGIN, cookies: [{ name: NAME, value }] });
+  const dispatch = (options = {}) => flow.dispatch({ model: "blackbox-web/gpt-4", ...options });
+  beforeEach(async () => { flow = await cookiePublicFlow2034("blackbox-web"); });
+  afterEach(async () => { await flow?.close(); });
+  async function accounts() {
+    const a = await flow.imported({ action: "create", name: "Public A" }, candidate(A));
+    const b = await flow.imported({ action: "create", name: "Public B" }, candidate(B));
+    return { a, b, da: await flow.bind(a.id, "a"), db: await flow.bind(b.id, "b") };
+  }
+  function vendor(url) {
+    return String(url).endsWith("/api/auth/session") ? Response.json({}) : new Response("synthetic public answer");
+  }
+  function snapshot(value, dispatcher) {
+    expect(flow.network.mock.calls.map(([url]) => String(url))).toEqual([`${ORIGIN}/api/auth/session`, `${ORIGIN}/api/chat`]);
+    for (const [, init] of flow.network.mock.calls) {
+      expect(init.headers.Cookie).toBe(`${NAME}=${value}`);
+      expect(init.dispatcher).toBe(dispatcher);
+    }
+    const body = JSON.parse(flow.network.mock.calls[1][1].body);
+    expect(body.messages[0].content).toBe("synthetic question");
+    expect(body.userSelectedModel).toBe("gpt-4");
+  }
+  it.each([false, true].flatMap((anthropic) => [false, true].flatMap((stream) => ["a", "b"].map((label) => [anthropic, stream, label]))))(
+    "pins account %s/%s/%s through the public route", async (anthropic, stream, label) => {
+      const { a, b, da, db } = await accounts();
+      flow.network.mockImplementation(vendor);
+      const response = await dispatch({ anthropic, stream, id: label === "a" ? a.id : b.id });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("synthetic public answer");
+      snapshot(label === "a" ? A : B, label === "a" ? da : db);
+      const listed = await (await flow.list()).text();
+      for (const secret of [A, B]) {
+        expect(listed).not.toContain(secret);
+        expect(text).not.toContain(secret);
+        expect(JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls))).not.toContain(secret);
+      }
+    }
+  );
+  it.each(["header", "curl", "har"])("dispatches a persisted %s candidate", async (kind) => {
+    const parsed = kind === "header" ? parseCookieHeaderValue(`Cookie: ${NAME}=${A}`) : kind === "curl" ? parseCurlCommand(`curl '${ORIGIN}/api/chat' -H 'Cookie: ${NAME}=${A}'`) : parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${ORIGIN}/api/chat`, cookies: [{ name: NAME, value: A }] } }] } }));
+    const built = buildImportCandidates({ kind, parsed }, getCookieImportContract("blackbox-web"));
+    expect(built.ok).toBe(true);
+    const row = await flow.imported({ action: "create", name: `Parsed ${kind}` }, built.candidates[0]);
+    expect(row.apiKey).toBe(`${NAME}=${A}`);
+    const dispatcher = await flow.bind(row.id, kind);
+    flow.network.mockImplementation(vendor);
+    const response = await dispatch({ id: row.id });
+    expect(response.status, await response.text()).toBe(200);
+    snapshot(A, dispatcher);
+  });
+  it("updates the paired account and refuses a different connection without writing", async () => {
+    const { a, b, db } = await accounts();
+    const before = await flow.db.getProviderConnectionById(a.id);
+    const pairing = await flow.issue({ action: "update", connectionId: a.id });
+    expect((await flow.submit(pairing, { ...candidate(B), connectionId: b.id })).status).toBe(409);
+    expect(await flow.db.getProviderConnectionById(a.id)).toEqual(before);
+    await flow.imported({ action: "update", connectionId: b.id }, candidate("synthetic-replacement"));
+    expect(await flow.db.getProviderConnectionById(a.id)).toEqual(before);
+    flow.network.mockImplementation(vendor);
+    const response = await dispatch({ id: b.id });
+    expect(response.status, await response.text()).toBe(200);
+    snapshot("synthetic-replacement", db);
+  });
+  it.each([401, 429, 502])("does not rotate a pinned account after session HTTP %s", async (status) => {
+    const { a, da } = await accounts();
+    flow.network.mockImplementation(() => new Response("refused", { status }));
+    const response = await dispatch({ id: a.id, stream: true });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network.mock.calls.map(([url]) => String(url))).toEqual([`${ORIGIN}/api/auth/session`]);
+    expect(flow.network.mock.calls[0][1].headers.Cookie).toBe(`${NAME}=${A}`);
+    expect(flow.network.mock.calls[0][1].dispatcher).toBe(da);
+  });
+  it("falls back after a session authentication refusal", async () => {
+    const { a, b, da, db } = await accounts();
+    await flow.db.updateProviderConnection(a.id, { priority: 1 });
+    await flow.db.updateProviderConnection(b.id, { priority: 2 });
+    flow.network.mockResolvedValueOnce(new Response("refused", { status: 401 })).mockImplementation(vendor);
+    const response = await dispatch();
+    expect(response.status, await response.text()).toBe(200);
+    expect(flow.network.mock.calls.map(([, init]) => [init.headers.Cookie, init.dispatcher])).toEqual([
+      [`${NAME}=${A}`, da], [`${NAME}=${B}`, db], [`${NAME}=${B}`, db],
+    ]);
+  });
+  it("does not replay a rejected chat transport with an uncertain outcome", async () => {
+    const { a, da } = await accounts();
+    flow.network.mockImplementation((url) => String(url).endsWith("/api/auth/session") ? Response.json({}) : Promise.reject(new Error("synthetic transport failure")));
+    const response = await dispatch({ id: a.id, stream: true });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(flow.network.mock.calls.map(([url]) => String(url))).toEqual([`${ORIGIN}/api/auth/session`, `${ORIGIN}/api/chat`]);
+    for (const [, init] of flow.network.mock.calls) {
+      expect(init.headers.Cookie).toBe(`${NAME}=${A}`);
+      expect(init.dispatcher).toBe(da);
+    }
+  });
+  it.each([["foreign origin", { origin: "https://foreign.example" }], ["expired cookie", { cookies: [cookie(A, { expirationDate: 1 })] }], ["localStorage", { localStorage: { token: A } }]])("refuses %s without a write", async (_label, change) => {
+    const { a, b } = await accounts();
+    const before = await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById));
+    const pairing = await flow.issue({ action: "update", connectionId: a.id });
+    const response = await flow.submit(pairing, { ...candidate(A), connectionId: a.id, ...change });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(await response.text()).not.toContain(A);
+    expect(await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById))).toEqual(before);
+    expect(flow.network).not.toHaveBeenCalled();
+  });
+});

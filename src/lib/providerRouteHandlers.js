@@ -56,7 +56,11 @@ const SENSITIVE_PROVIDER_SPECIFIC_FIELDS = new Set([
 "mimoPassToken",
 "app-config-uuid",
 "copilotToken",
-"dcaToken"]
+"dcaToken",
+// Z.ai Web opaque browser-issued CAPTCHA proof aliases (#2034); exact keys only.
+"captcha_verify_param",
+"captchaVerifyParam",
+"zaiCaptchaVerifyParam"]
 );
 
 function isSecretProviderSpecificKey(key) {

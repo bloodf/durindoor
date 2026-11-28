@@ -22,7 +22,7 @@ const nonSecrets = {
 const credentialReads = [
   "cookie", "copilotToken", "extraApiKeys", "firebaseRefreshToken", "jwt",
   "mimoPassToken", "recaptchaV3Token", "refreshToken", "refresh_token",
-  "sessionToken", "storageState", "turnstileToken", "userToken",
+  "sessionToken", "storageState", "token", "turnstileToken", "userToken",
 ];
 
 function sourceFiles(dir) {

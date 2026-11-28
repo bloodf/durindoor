@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:net";
 import { spawn, spawnSync } from "node:child_process";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { planWebsiteBrowserShards, extractPlaywrightTests, verifyWebsiteBrowserCoverage } from "../../scripts/local-ci.mjs";
 import { findOwnedProcesses, cleanupShardServer } from "../../scripts/lib/website-shard-server.mjs";
 
@@ -12,30 +12,37 @@ const cli = path.join(root, "website/node_modules/@playwright/test/cli.js");
 const configURL = new URL("../../website/playwright.config.mjs", import.meta.url).href;
 
 describe("browser checkpoint follow-ups", () => {
-  it("fails closed when process enumeration fails even with a free port", async () => {
+  it("fails closed when readable procfs cannot be enumerated or is absent", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "proc-failure-"));
     try {
       // A regular file passes exists checks but cannot be enumerated as procfs.
       const file = path.join(dir, "file");
       writeFileSync(file, "");
       expect(() => findOwnedProcesses("a".repeat(32), { procRoot: file })).toThrow(/enumerate/);
-      // A readable procfs with an enumeration error must also fail closed.
-      // A private fake procfs keeps this host-independent (macOS has no /proc).
-      const fakeProc = path.join(dir, "proc");
-      mkdirSync(path.join(fakeProc, "self"), { recursive: true });
-      writeFileSync(path.join(fakeProc, "self", "stat"), "");
-      const result = await cleanupShardServer({ owner: "a".repeat(32), port: 4000, procRoot: fakeProc, readDirectory: () => { throw new Error("enumeration denied"); },
-        probe: async () => false, selfExitMs: 0 });
-      expect(result.ok).toBe(false);
+      // A procfs that looks available but cannot be listed must fail closed
+      // even when the port is free, and must not signal anything.
+      const procRoot = path.join(dir, "proc");
+      mkdirSync(path.join(procRoot, "self"), { recursive: true });
+      writeFileSync(path.join(procRoot, "self", "stat"), "");
+      const kill = vi.fn();
+      const result = await cleanupShardServer({ owner: "a".repeat(32), port: 4000, procRoot, kill,
+        readDirectory: () => { throw new Error("enumeration denied"); }, probe: async () => false, selfExitMs: 0 });
+      expect(result).toMatchObject({ ok: false, verification: "procfs" });
       expect(result.reason).toMatch(/enumeration denied/);
+      expect(kill).not.toHaveBeenCalled();
+      // Hosts without procfs (macOS) cannot prove ownership: cleanup signals
+      // nothing and fails even with a free port. Native macOS support stays
+      // unresolved under #2661.
       const absent = await cleanupShardServer({ owner: "a".repeat(32), port: 4000,
-        procRoot: path.join(dir, "missing"), probe: async () => false });
-      expect(absent.ok).toBe(false);
+        procRoot: path.join(dir, "missing"), kill, probe: async () => false });
+      expect(absent).toMatchObject({ ok: false, verification: "port-only", signalled: [] });
+      expect(absent.reason).toMatch(/cannot be verified/);
+      expect(kill).not.toHaveBeenCalled();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("pins a fresh direct-run port and a short private Chromium directory", async () => {
-    const script = `const {default:c}=await import(${JSON.stringify(configURL)}); console.log(JSON.stringify({url:c.use.baseURL,tmp:process.env.TMPDIR,mode:(await import('node:fs')).statSync(process.env.TMPDIR).mode & 511,only:c.forbidOnly}));`;
+    const script = `const fs=await import('node:fs'); const {default:c}=await import(${JSON.stringify(configURL)}); console.log(JSON.stringify({url:c.use.baseURL,tmp:process.env.TMPDIR,mode:(()=>{try{return fs.statSync(process.env.TMPDIR).mode & 511}catch{return null}})(),only:c.forbidOnly}));`;
     const run = (extraEnv = {}) => {
       const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
         env: { PATH: process.env.PATH, TMPDIR: `/tmp/${"long-output-path".repeat(20)}`, ...extraEnv }, timeout: 10000, encoding: "utf8",
@@ -69,6 +76,9 @@ describe("browser checkpoint follow-ups", () => {
     expect(existsSync(a.tmp)).toBe(false);
     expect(a.only).toBe(true);
     expect(run({ WEBSITE_TRANSIENT_PORT: "43219" }).url).toBe("http://127.0.0.1:43219");
+    // Importing the config from Vitest must not allocate runner-owned scratch.
+    const imported = run({ VITEST: "true" });
+    expect(imported.tmp).toMatch(/long-output-path/);
   });
 
   it("rejects an occupied explicit port without attaching to its listener", async () => {

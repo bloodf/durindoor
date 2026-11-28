@@ -185,12 +185,14 @@ cases in discovery and execution. Before executing, local CI asks Playwright to
 list each proposed shard, reduces the count if a shard is empty, and verifies the
 complete exact-once union. Serial/file/project groups therefore follow Playwright's
 own allocation. Execution still rejects empty, skipped, failed and flaky reports.
-Owned-process enumeration errors fail cleanup even when the port is free; missing
-procfs cannot establish successful cleanup. No unverified process is signalled.
+When procfs is present but cannot be enumerated, cleanup fails even when the
+port is free, and no unverified process is signalled. Missing procfs cannot
+establish successful cleanup either (see the macOS note below).
 Direct browser runs select and pin a fresh loopback port, while CI supplies each
 shard's port. An occupied selected port remains a hard failure. Chromium scratch
 uses a private short `/tmp/dd-pw-*` directory, removed on normal runner exit,
-independent of long report/output paths. Each planning and execution command
+independent of long report/output paths; merely importing the config from Vitest
+does not create it. Each planning and execution command
 retains the five-minute ceiling and private allowlisted CI environment.
 
 Browser shard cleanup ownership (#2684): every PID in `/proc` is classified
@@ -244,7 +246,8 @@ and cleanup fails closed. Tests use a synthetic procfs with injected read
 errors and mocked `kill` and probe
 (`tests/unit/browser-shard-cleanup-procfs.test.js`).
 
-macOS is not a supported host for browser shard cleanup. It has no `/proc`, so
+macOS is not a supported host for browser shard cleanup, and native macOS
+support remains unresolved under #2661. macOS has no `/proc`, so
 `scripts/lib/website-shard-server.mjs` signals nothing there and every shard
 cleanup step fails, even when the port is free. Local CI then stops the
 remaining shards. Stock macOS tools cannot supply the proof this guard needs:
@@ -258,7 +261,7 @@ remaining shards. Stock macOS tools cannot supply the proof this guard needs:
 - A process list and a port probe are separate moments, so both can look clear
   while a late child binds the port.
 
-Supporting macOS needs a source that separates the environment and reports
-precise start times per PID, such as a native `sysctl(KERN_PROCARGS2)` or
-`proc_pidinfo` reader. Until one exists, cleanup stays fail-closed. Run the
-browser checkpoint on Linux.
+The #2684 classification above depends on `/proc/<pid>/environ`, `status` uids
+and clock-tick start times, none of which stock macOS exposes, so it does not
+carry over. Until a validated native process-identity source exists, macOS
+cleanup stays fail-closed. Run the browser checkpoint on Linux.

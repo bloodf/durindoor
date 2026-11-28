@@ -59,8 +59,8 @@ describe("proactive refresh persistence guard", () => {
 
     const stored = await repo.getProviderConnectionById(connection.id);
     expect(stored).toMatchObject({ accessToken: "A-winner", refreshToken: "R-winner" });
-    // The request still gets the access token the provider just issued.
-    expect(result.accessToken).toBe("A-late");
+    // A rejected rotation returns the stored winner (2026-11-27 cross-family review on #2708).
+    expect(result.accessToken).toBe("A-winner");
   });
 
   it("persists a rotation when the stored refresh token is the one presented", async () => {
@@ -125,12 +125,12 @@ describe("refresh persist field validation", () => {
     expect(stored.lastRefreshAt ?? null).toBeNull();
   });
 
-  it("does not throw away a rotation when a provider reports an unusable lifetime", () => {
+  it("rejects a rotation when a provider reports an unusable lifetime", () => {
     const now = Date.parse("2026-01-01T00:00:00Z");
 
     const merged = mergeRefreshedCredentials("test", {}, { accessToken: "A1", refreshToken: "R1", expiresIn: "soon" }, now);
 
-    expect(merged).toMatchObject({ accessToken: "A1", refreshToken: "R1", expiresAt: new Date(now + 3600_000).toISOString() });
-    expect(merged).not.toHaveProperty("expiresIn");
+    // An invalid lifetime is rejected outright (2026-11-27 cross-family review on #2708).
+    expect(merged).toBeNull();
   });
 });

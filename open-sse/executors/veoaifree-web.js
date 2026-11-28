@@ -1,5 +1,4 @@
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { errorJson, jsonResponse, sanitizeErrorMessage } from "./websession-utils.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -14,32 +13,6 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 function throwIfAborted(signal) {
   if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-}
-
-function withTimeout(signal) {
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason || new Error("Request aborted"));
-  const timeout = setTimeout(() => controller.abort(new Error("VeoAIFree request timed out")), FETCH_TIMEOUT_MS);
-  if (signal?.aborted) abort();else
-  signal?.addEventListener("abort", abort, { once: true });
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-    }
-  };
-}
-
-async function fetchWithTimeout(send, url, init = {}, signal) {
-  throwIfAborted(signal);
-  const timeout = withTimeout(signal);
-  try {
-    // The site takes no credential, so redirects stay allowed on uncharged requests.
-    return await send(url, { redirect: "follow", ...init, signal: timeout.signal });
-  } finally {
-    timeout.cleanup();
-  }
 }
 
 function waitForPoll(signal) {
@@ -58,7 +31,7 @@ function waitForPoll(signal) {
 }
 
 async function fetchNonce(send, signal) {
-  const res = await fetchWithTimeout(send, BASE_URL, { headers: { "User-Agent": USER_AGENT } }, signal);
+  const res = await send(BASE_URL, { headers: { "User-Agent": USER_AGENT } });
   const html = await res.text();
   const match = html.match(/nonce":"([a-f0-9]+)"/);
   if (!match) throw new Error("Failed to extract CSRF nonce from veoaifree.com");
@@ -67,11 +40,11 @@ async function fetchNonce(send, signal) {
 
 async function postAjax(send, nonce, params, signal) {
   const body = new URLSearchParams({ action: "veo_video_generator", nonce, ...params });
-  const res = await fetchWithTimeout(send, AJAX_URL, {
+  const res = await send(AJAX_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/` },
     body: body.toString()
-  }, signal);
+  });
   return res.text();
 }
 
@@ -88,7 +61,7 @@ export function detectIntent(model = "", prompt = "") {
 }
 
 async function handleVideo({ setup, generate }, nonce, prompt, aspectRatio, signal) {
-  const genResult = await postAjax(generate, nonce, { prompt, totalVariations: "1", aspectRatio, actionType: "full-video-generate" }, signal);
+  const genResult = await postAjax(generate, nonce, { prompt, totalVariations: "1", aspectRatio, actionType: "full-video-generate" });
   const sceneData = genResult.trim();
   if (!sceneData || sceneData === "0" || sceneData.toLowerCase().includes("error")) return errorJson(502, "Video generation failed");
   for (let i = 0; i < MAX_POLLS; i++) {
@@ -103,7 +76,7 @@ async function handleVideo({ setup, generate }, nonce, prompt, aspectRatio, sign
 }
 
 async function handleImage({ generate }, nonce, prompt, aspectRatio, signal) {
-  const result = await postAjax(generate, nonce, { promptIMG: prompt, totalVariationsIMG: "1", aspectRatioIMG: aspectRatio, actionType: "banan-image-generator" }, signal);
+  const result = await postAjax(generate, nonce, { promptIMG: prompt, totalVariationsIMG: "1", aspectRatioIMG: aspectRatio, actionType: "banan-image-generator" });
   const trimmed = result.trim();
   if (!trimmed || trimmed === "0" || trimmed.toLowerCase().includes("error")) return errorJson(502, "Image generation failed");
   const data = trimmed.split(",").map((s) => s.trim()).filter(Boolean).map((part) => part.startsWith("http") ? { url: part, type: "image" } : { b64_json: part, type: "image" });
@@ -111,11 +84,11 @@ async function handleImage({ generate }, nonce, prompt, aspectRatio, signal) {
 }
 
 async function handleTTS({ generate }, prompt, voice, lang, signal) {
-  const res = await fetchWithTimeout(generate, TTS_URL, {
+  const res = await generate(TTS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": USER_AGENT, Origin: BASE_URL, Referer: `${BASE_URL}/free-ai-text-to-speech/` },
     body: JSON.stringify({ text: prompt.slice(0, 10000), voice: voice || "en-US-AvaNeural", lang: lang || "en-US", pitch: "0", speed: "1.0" })
-  }, signal);
+  });
   if (!res.ok) return errorJson(502, `TTS failed (${res.status})`);
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("audio") || contentType.includes("octet-stream") || contentType.includes("wav")) {
@@ -131,7 +104,7 @@ async function handleTTS({ generate }, prompt, voice, lang, signal) {
 }
 
 async function handleEnhance({ generate }, nonce, prompt, signal) {
-  const result = await postAjax(generate, nonce, { prompt, actionType: "main-prompt-generation" }, signal);
+  const result = await postAjax(generate, nonce, { prompt, actionType: "main-prompt-generation" });
   const enhanced = result.trim();
   if (!enhanced || enhanced === "0") return errorJson(502, "Prompt enhancement failed");
   return jsonResponse({ object: "prompt.enhancement", enhanced, status: "completed" });
@@ -149,30 +122,24 @@ function systemFromBody(body = {}) {
   return isString(systemMsg?.content) ? systemMsg.content : "";
 }
 
-export class VeoAIFreeWebExecutor extends BaseExecutor {
+export class VeoAIFreeWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("veoaifree-web", { id: "veoaifree-web", baseUrl: BASE_URL, noAuth: true });
+    super("veoaifree-web", { id: "veoaifree-web", baseUrl: BASE_URL, noAuth: true, timeoutMs: FETCH_TIMEOUT_MS }, { observePatchedFetch: false });
     this.noAuth = true;
   }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat(input, sender, billed) {
+  // Session transport owns cancellation, deadlines and quota dispatch.
+  async runSession(input, transport) {
     const body = input.body || {};
     const model = input.model || body.model || "veo-3.1";
     const prompt = promptFromBody(body);
     const systemText = systemFromBody(body);
-    const proxyOptions = input.proxyOptions || null;
     if (!prompt.trim()) return { response: errorJson(400, "No prompt provided"), url: AJAX_URL, headers: {}, transformedBody: null };
 
     // The nonce and result polling are not charged; the generation send is quota-bearing.
     const sends = {
-      setup: (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false }),
-      generate: async (url, init) => billed(await sender.sendRequest(url, init, proxyOptions))
+      setup: (url, init) => transport.send(url, { redirect: "follow", ...init }),
+      generate: (url, init) => transport.sendBillable(url, { redirect: "follow", ...init })
     };
 
     const intent = detectIntent(model, prompt);

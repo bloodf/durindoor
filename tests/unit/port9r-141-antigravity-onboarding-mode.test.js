@@ -50,8 +50,9 @@ describe("upstream PR #141 - Antigravity onboarding mode", () => {
     expect(onboard[0]).toBe(service.config.onboardUserEndpoint);
     expect(JSON.parse(load[1].body)).toEqual({ metadata: service.getMetadata(), mode: 1 });
     expect(JSON.parse(onboard[1].body)).toEqual({
-      tierId: "free-tier", metadata: service.getMetadata(), mode: 1,
+      tier_id: "free-tier", metadata: service.getMetadata(), mode: 1,
     });
+    expect(JSON.parse(onboard[1].body)).not.toHaveProperty("tierId");
     expect(load[1].headers.Authorization).toBe("Bearer synthetic-token");
     expect(onboard[1].headers.Authorization).toBe("Bearer synthetic-token");
   });

@@ -186,7 +186,7 @@ describe("stream transform framing", () => {
 // files below except stream.js and streamToJsonConverter.js: moving the rest is
 // separate work.
 const EXECUTORS = `
-  adapta-web chatgpt-plan chatgpt-web-http claude-web codebuddy-protocol codex commandcode
+  adapta-web chatgpt-plan chatgpt-web/conversation claude-web codebuddy-protocol codex commandcode
   conol-web copilot-web deepseek-web doubao-web duckduckgo-web github grokCliCustomTools
   grokCliNamespaceTools hyperagent inner-ai kiro lmarena maxai muse-spark-web/response-parser
   notrack-web oneminai perplexity-web qoder replicate tencent-aistudio-web theoldllm

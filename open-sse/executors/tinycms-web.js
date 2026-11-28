@@ -7,10 +7,10 @@
 // request with the x-secure-* headers. The upstream answers in OpenAI format (JSON
 // or SSE), so a good response is passed through and only failures are mapped.
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { isRefusedRedirect } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 // The vendored signer inlines about 78 KB of WASM; it is loaded on the first request, not with the
@@ -96,21 +96,16 @@ export async function validateTinyCmsSession({ apiKey, providerSpecificData, fet
   }
 }
 
-export class TinyCmsExecutor extends BaseExecutor {
-  constructor() { super("tinycms-web", { id: "tinycms-web", baseUrl: TINYCMS_CHAT_URL }); }
+export class TinyCmsExecutor extends WebSessionExecutor {
+  constructor() { super("tinycms-web", { id: "tinycms-web", baseUrl: TINYCMS_CHAT_URL }, { observePatchedFetch: false }); }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat(input, sender, billed) {
+  // The session base owns cancellation, dispatch and quota settlement.
+  async runSession(input, transport) {
     const body = isRecord(input.body) ? input.body : {};
     const uuid = tinyCmsDeviceUuid(input.credentials ?? {});
     if (!isTinyCmsDeviceUuid(uuid)) return failure(401, "TinyCMS: invalid or missing device UUID (must start with 'R')", "authentication_error", TINYCMS_CHAT_URL, input.body);
     // The IP lookup and the challenge are not charged; only the chat send is quota-bearing.
-    const fetcher = (url, options) => sender.sendRequest(url, options, input.proxyOptions, { quotaBearing: false });
+    const fetcher = (url, options) => transport.send(url, options);
     try {
       const { initTinyCmsWasm, generateSecurePayload } = await loadSigner();
       await initTinyCmsWasm();
@@ -154,7 +149,7 @@ export class TinyCmsExecutor extends BaseExecutor {
       const chatBody = { ...body, model, stream };
       let upstream;
       try {
-        upstream = billed(await sender.sendRequest(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal }, input.proxyOptions));
+        upstream = await transport.sendBillable(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal });
       } catch (error) {
         if (!isRefusedRedirect(error)) throw error;
         const mapped = classify(302);

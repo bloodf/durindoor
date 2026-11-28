@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { acquireBrowserContext, openPage } from "../services/browserPool.js";
+import { acquireBrowserContext, openPage, BrowserUnavailableError } from "../services/browserPool.js";
 
 import {
   extractChatGptWebAttachmentSources,
@@ -166,6 +166,22 @@ function normalizedModel(value) {
 
 function resolveSelection(model, body) {
   const normalized = normalizedModel(model);
+  // Codex performance lanes alias selections already supported by this adapter.
+  // Keep their effort fixed even when the caller supplies a different effort.
+  // Model/effort equivalence: executors/chatgpt-web/models.js; existing picker
+  // selections: OmniRoute (MIT), fbd339668384803bc3a9d42370fc413a55e013d5,
+  // open-sse/utils/chatgptWebExecutorAdapter.ts. No new UI positions are assumed.
+  const codexAliases = {
+    "gpt-5-6-sol-instant": ["gpt-5-6-instant"],
+    "gpt-5-6-sol-medium": ["gpt-5-6-thinking", "medium"],
+    "gpt-5-6-sol-high": ["gpt-5-6-thinking", "high"],
+    "gpt-5-6-sol-xhigh": ["gpt-5-6-thinking", "xhigh"],
+    "gpt-5-6-sol-pro": ["gpt-5-6-pro"],
+  };
+  if (Object.hasOwn(codexAliases, normalized)) {
+    const [alias, effort] = codexAliases[normalized];
+    return resolveSelection(alias, { reasoning_effort: effort });
+  }
   if (normalized === "gpt-5-6-luna-free") {
     return { kind: "free", thinkEnabled: false };
   }
@@ -211,6 +227,11 @@ function resolveSelection(model, body) {
   throw new Error(`ChatGPT Web clean-room adapter received an unsupported model: ${model}`);
 }
 
+/**
+ * Prepare and validate before opening a session or dispatching a turn. Codex
+ * aliases reuse existing selections with fixed lane effort; unsupported names
+ * still fail closed. This mapping does not establish live picker availability.
+ */
 export function prepareChatGptWebBrowserRequest(model, body) {
   if (!isRecord(body)) throw new Error("ChatGPT Web clean-room adapter requires an object body");
   const prompt = buildPrompt(body);
@@ -434,6 +455,10 @@ async function persistRotatedSessionCookie(session, input, deps) {
   }
 }
 
+/**
+ * Session startup may signal BrowserUnavailableError for safe auto fallback.
+ * Once runTurn starts, acceptance is unknown: never authorize an HTTP replay.
+ */
 export async function executeChatGptWebCleanRoom(input, deps = {}) {
   const prepared = prepareChatGptWebBrowserRequest(input.model, input.body);
   const attachments = await resolveChatGptWebAttachments(prepared.attachments);
@@ -455,11 +480,22 @@ export async function executeChatGptWebCleanRoom(input, deps = {}) {
     proxyUrl: input.proxyUrl,
     headless: resolveChatGptWebHeadless(providerData),
   });
-  const result = await (deps.runTurn ?? runChatGptWebBrowserTurn)(session, {
-    prompt: prepared.prompt,
-    attachments,
-    signal: input.signal,
-  });
+  let result;
+  try {
+    result = await (deps.runTurn ?? runChatGptWebBrowserTurn)(session, {
+      prompt: prepared.prompt,
+      attachments,
+      signal: input.signal,
+    });
+  } catch (error) {
+    // Only session startup can safely authorize the executor's HTTP fallback.
+    // Once a turn starts, acceptance is unknown; never replay even if its error
+    // happens to use the startup-unavailable class.
+    if (error instanceof BrowserUnavailableError) {
+      throw new Error("ChatGPT Web browser turn failed after dispatch; outcome unknown", { cause: error });
+    }
+    throw error;
+  }
   await persistRotatedSessionCookie(session, input, deps);
   return buildChatGptWebOpenAiResponse(input.model, result, input.stream, {
     id: deps.id?.(),

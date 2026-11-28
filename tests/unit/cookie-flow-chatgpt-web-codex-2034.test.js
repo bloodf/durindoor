@@ -582,21 +582,24 @@ describe("imported credential consumption, default `auto` transport", () => {
     expect(tlsCalls.map((call) => call.url)).toContain(CONVERSATION_URL);
   });
 
-  // NOT PARITY. A product defect, pinned here as the current fail-closed behaviour: the Codex
-  // lane map emits `gpt-5.6-sol-*`, which the browser request builder does not know. The
-  // repair unit must replace these expectations with a dispatch assertion per lane.
+  // #2034: each formerly refused lane now binds exactly one existing selection.
   it.each([
-    ["instant", "gpt-5.6-sol-instant"], ["medium", "gpt-5.6-sol-medium"], ["high", "gpt-5.6-sol-high"],
-    ["extra-high", "gpt-5.6-sol-xhigh"], ["pro", "gpt-5.6-sol-pro"],
-  ])("currently refuses the %s lane (%s) before any send, with no HTTP fallback", async (lane, slug) => {
+    ["instant", 0], ["medium", 1], ["high", 2],
+    ["extra-high", 3], ["pro", 4],
+  ])("dispatches the %s lane at existing selection %s exactly once", async (lane, index) => {
     const id = await freshImport();
-    const { create } = browserSeam();
+    const { create, sessions } = browserSeam();
+    const turn = vi.fn(executor.deps.browser.runTurn);
+    executor.deps.browser.runTurn = turn;
     const res = await chat(lane);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).toContain(`ChatGPT Web clean-room adapter received an unsupported model: ${slug}`);
+    expect(JSON.parse(text).choices[0].message.content).toBe("browser-pong");
+    expect(sessions[0]).toMatchObject({ connectionId: id, proxyUrl: "http://proxy-alpha.invalid:8080", sameOriginRedirects: true, selection: { kind: "picker", modelLabel: "GPT-5.6 Sol", effortIndex: index } });
+    expect(sessions[0].storageState.cookies.map(({ name, value }) => `${name}=${value}`).join("; ")).toBe(header("alpha"));
     expect(text).not.toMatch(SECRET_PATTERN);
-    expect(create).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledOnce();
+    expect(turn).toHaveBeenCalledOnce();
     expect(tlsCalls).toEqual([]);
     expect(outbound).not.toHaveBeenCalled();
     expect((await db.getProviderConnectionById(id)).apiKey).toBe(header("alpha"));

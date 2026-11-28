@@ -199,13 +199,23 @@ export function parseCurlCommand(raw) {
 }
 
 /**
+ * Scope/expiry evidence for entries returned by parseHarDocument, keyed by entry object.
+ * Entries built or cloned elsewhere carry none and are treated like raw Cookie headers.
+ * @type {WeakMap<object, { invalid: boolean, expiry: Map<string, number> }>}
+ */
+const HAR_EVIDENCE = new WeakMap();
+
+/**
  * Read the request origins and cookies out of a HAR file.
  *
  * Only the request URL and its own header and cookie fields are read. The file
  * stays in the browser: it is never uploaded. Explicit scope and expiry metadata
- * must be applicable and fresh; a repeated header cannot erase it. Session cookies
- * without expiry remain usable. Raw headers (including header-only HAR requests)
- * carry no domain/path/expiry evidence beyond the request URL; no expiry is invented.
+ * must be applicable and fresh; a repeated header cannot erase it. The returned entry
+ * shape is unchanged ({ name, value } cookies); the evidence is kept privately and
+ * applied by buildImportCandidates, which refuses an entry whose explicit metadata is
+ * expired, malformed or out of scope and forwards fresh expiry as `expirationDate`.
+ * Session cookies without expiry remain usable. Raw headers (including header-only HAR
+ * requests) carry no domain/path/expiry evidence beyond the request URL; no expiry is invented.
  *
  * @param {string} raw HAR file contents
  * @returns {{ ok: true, entries: { origin: string, url: string, cookies: { name: string, value: string }[] }[] } | { ok: false, error: string }}
@@ -232,28 +242,30 @@ export function parseHarDocument(raw) {
       continue;
     }
     if (!/^https?:$/.test(url.protocol) || url.username || url.password) continue;
+    // Public entry shape stays { name, value }; scope and expiry evidence lives beside it.
     const cookies = new Map();
+    const expiry = new Map();
     let invalid = false;
     const requestCookies = Array.isArray(request?.cookies) ? request.cookies : [];
     for (const cookie of requestCookies) {
       if (!isValidCookieName(cookie?.name)) continue;
-      if (!isValidCookieValue(cookie?.value)) { invalid = true; continue; }
-      // Explicit metadata must be valid and applicable to this request. Never let a
-      // repeated raw header erase a rejected structured cookie's expiry or scope.
+      if (!isValidCookieValue(cookie?.value)) invalid = true;
+      if (!isString(cookie?.value) || !cookie.value) continue;
+      // Explicit metadata must be valid and applicable to this request. A repeated
+      // raw header must not erase a rejected structured cookie's expiry or scope.
       if (cookies.has(cookie.name)) invalid = true;
       if (cookie.domain !== undefined && !cookieDomainAllowed(url.hostname, cookie.domain)) invalid = true;
       if (cookie.path !== undefined && (!isString(cookie.path) || !cookie.path.startsWith("/") ||
         !(url.pathname === cookie.path || (url.pathname.startsWith(cookie.path) && (cookie.path.endsWith("/") || url.pathname[cookie.path.length] === "/"))))) invalid = true;
       if (cookie.secure !== undefined && (!isBoolean(cookie.secure) || (cookie.secure && url.protocol !== "https:"))) invalid = true;
-      const out = { name: cookie.name, value: cookie.value };
       for (const key of ["expires", "expirationDate", "expiry"]) {
         if (!Object.hasOwn(cookie, key)) continue;
         const value = cookie[key];
         const seconds = key === "expires" && isString(value) && value.trim() ? Date.parse(value) / 1000 : value;
         if (!isNumber(seconds) || !Number.isFinite(seconds) || seconds * 1000 <= Date.now()) invalid = true;
-        else out.expirationDate = Math.min(out.expirationDate ?? Infinity, seconds);
+        else expiry.set(cookie.name, Math.min(expiry.get(cookie.name) ?? Infinity, seconds));
       }
-      cookies.set(cookie.name, out);
+      cookies.set(cookie.name, cookie.value);
     }
     const headers = Array.isArray(request?.headers) ? request.headers : [];
     for (const header of headers) {
@@ -261,12 +273,13 @@ export function parseHarDocument(raw) {
       const parsedHeader = parseCookieHeaderValue(String(header?.value || ""));
       if (!parsedHeader.ok) continue;
       for (const cookie of parsedHeader.cookies) {
-        const previous = cookies.get(cookie.name);
-        if (previous && previous.value !== cookie.value) invalid = true;
-        if (!previous) cookies.set(cookie.name, cookie);
+        if (cookies.has(cookie.name) && cookies.get(cookie.name) !== cookie.value) invalid = true;
+        cookies.set(cookie.name, cookie.value);
       }
     }
-    if (!invalid) parsed.push({ origin: url.origin, url: url.href, cookies: [...cookies.values()] });
+    const parsedEntry = { origin: url.origin, url: url.href, cookies: [...cookies].map(([name, value]) => ({ name, value })) };
+    HAR_EVIDENCE.set(parsedEntry, { invalid, expiry });
+    parsed.push(parsedEntry);
   }
   if (!parsed.length) return fail("The HAR file has no usable request entries.");
   return { ok: true, entries: parsed };
@@ -379,7 +392,12 @@ export function buildImportCandidates(input, contract) {
     const candidates = [];
     for (const entry of input.parsed.entries ?? []) {
       if (entry.origin !== contract.origin) continue;
-      const filtered = filterCandidateCookies(entry, contract);
+      const evidence = HAR_EVIDENCE.get(entry);
+      if (evidence?.invalid) continue;
+      const withExpiry = evidence?.expiry.size
+        ? { ...entry, cookies: entry.cookies.map((cookie) => evidence.expiry.has(cookie.name) ? { ...cookie, expirationDate: evidence.expiry.get(cookie.name) } : cookie) }
+        : entry;
+      const filtered = filterCandidateCookies(withExpiry, contract);
       if (!filtered.ok) continue;
       candidates.push({ origin: contract.origin, originKnown: true, url: entry.url, cookies: filtered.cookies, dropped: filtered.dropped });
     }

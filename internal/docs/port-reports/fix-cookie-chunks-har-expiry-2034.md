@@ -42,23 +42,35 @@ without expiry. These are synthetic offline observations, not evidence about liv
 
 ## Behavior and limits
 
-Chunk-capable capture enumerates the provider root URL in the confirmed tab's store, checks
-names before values, and fails closed beyond the existing 64-entry enumeration ceiling.
-Canonical numeric indices must be unique, contiguous from zero and below the existing 16-cookie
-ceiling. Invalid or excessive chunk values and an import body beyond the endpoint's 32 KiB
-ceiling fail before POST. Unrelated cookie values are ignored. Complete chunks supersede a stale
-whole cookie under the existing shared contract; the canonical ordered chunks alone are sent.
-Fixed-name providers retain their exact-name reads; hashed families retain their existing rule.
-The popup permissions, provider allowlist, pairing authority and destination checks stay intact.
-Browser APIs supply the URL-scoped cookie set; enumeration is a snapshot, not an atomic browser
-session lock. This does not prove a provider accepts a captured credential.
+**The chunk-hole reproduction is not fixed in the extension.** The first attempt enumerated the
+provider jar with `cookies.getAll` to find holes, duplicates and hidden tails. Existing tests that
+must not change (`cookie-flow-chatgpt-web-2034`, `cookie-flow-chatgpt-web-codex-2034` and
+`provider-cookie-capture-extension`) pin the shared capture contract: chunked families use exact-name
+reads only, `cookies.getAll` is forbidden, probing stops at the first gap (a `.0`, `.1`, `.3` jar
+submits `.0` and `.1`), and the 16-cookie ceiling truncates instead of refusing. The gate failed
+on that enumeration, so it was removed. Under exact-name reads a chunk after a gap is never read,
+so the extension cannot tell `.0`+`.2` apart from a complete single `.0`. The new test now states
+this limit as a passing assertion: the `.0`+`.2` jar submits only `.0`, and `.2` never leaves the
+browser. Refusing the hole needs a server-side import-contract rule (under `src/lib/**`, out of
+scope) or an approved change to the capture contract and its tests.
+
+What capture now enforces before any POST, within that contract: every approved value must be
+at most 8192 characters of printable ASCII with no `;` and no leading or trailing whitespace,
+and the import body must fit the endpoint's 32 KiB ceiling. Noncanonical names such as `.00`, `.-1`,
+`.16` or huge indices are never requested, so they cannot be captured. Unrelated cookies, store
+binding, origin checks, the permission flow and hashed-family enumeration are unchanged.
 
 HAR extraction checks explicit domain and RFC-style path matching against the request URL,
 secure metadata, and recognized `expires` (date string or Unix seconds), `expirationDate` and
 `expiry` (Unix seconds). Every explicit expiry must be finite, fresh and valid. Multiple expiry
 fields use the earliest value. A duplicate structured cookie, mismatched repeated header, or
 invalid metadata refuses that request entry instead of letting a header erase the evidence.
-Fresh expiry survives into the import request and is checked again before candidate selection.
+`parseHarDocument` keeps its public entry shape (`{ name, value }` cookies; an entry with stale
+metadata is still listed), which an existing claude-web test pins. The scope and expiry evidence
+is held in a module-private `WeakMap` keyed by entry object. `buildImportCandidates` refuses
+flagged entries and forwards fresh expiry as `expirationDate`, which is checked again before
+candidate selection. An entry built or cloned outside `parseHarDocument` carries no evidence and
+is treated like a raw Cookie header. The dashboard passes the parser's own result directly.
 Session cookies with no expiry remain supported. Other valid HAR entries can still be offered.
 Unknown exporter metadata is not interpreted. Conservatively rejecting an entry can also reject
 one with an expired unrelated structured cookie.
@@ -68,6 +80,21 @@ a request origin but no per-cookie expiry/domain/path proof. They remain support
 invented expiry. The parser neither executes cURL nor contacts any URL from input.
 
 ## Validation
+
+Retry run (current head): private archive `/var/tmp/durindoor-chunks-retry.DKTMtw` of the tracked
+worktree files, frozen-lockfile root and tests installs with a private store, `env -i` with
+explicit PATH/LANG/CI and private HOME/DATA_DIR/TMPDIR, 300-second ceiling, two workers.
+`better-sqlite3` was rebuilt inside that archive. Results:
+
+- `unit/fix-cookie-chunks-har-expiry-2034.test.js`: 18 passed.
+- Every unit file that references `capture.js`, `cookieImportParser` or `parseHarDocument`
+  (40 files, including the three capture-contract suites that failed the gate and
+  `cookie-flow-claude-web-2034`): 1058 passed, 0 failed.
+- ESLint on the three changed source/test files: clean.
+
+The full `test:ci` suite, build and independent review were not run locally.
+
+Earlier attempt, kept for history:
 
 Private directory: `/var/tmp/durindoor-integrity-2034.aK0tvh`. A tracked-source archive of the
 frozen base received only this patch. Root, CLI and tests frozen-lockfile installs succeeded in
@@ -114,11 +141,9 @@ exact-name-only matrix, and three Codex capture/error cases. Their legitimate fi
 not converted into failure fixtures, and no test or baseline was changed to hide these failures.
 The stricter implementation cannot establish duplicate/invalid-index absence through exact-name
 reads alone. A future explicitly authorized assertion/harness migration is required for those
-immutable suites to exercise the new capture boundary. This patch is **not a passing full gate**.
+immutable suites to exercise that boundary. That attempt was **not a passing gate**; see the retry above.
 
 Full local CI, build and independent review have not been run. No push or merge was performed.
 
-Retry note: the test and this report were renamed from `cookie-chunk-har-integrity-2034.*` to the
-required `fix-cookie-chunks-har-expiry-2034.*` paths with no case or product change. The renamed
-focused file was not re-run locally in this checkout because it has no installed dependencies;
-the native gate supplies the isolated setup.
+Rename note: the test and this report were renamed from `cookie-chunk-har-integrity-2034.*` to
+the required `fix-cookie-chunks-har-expiry-2034.*` paths.

@@ -8,7 +8,7 @@
  *  - asks for optional permissions on exactly two origins (provider, paired
  *    dashboard) plus `cookies`, and gives back what it was granted afterwards;
  *  - reads only cookie names that are in both the built-in table and the pairing, each by its exact
- *    name; chunked and built-in hashed families use bounded provider-URL enumeration in the confirmed
+ *    name; built-in hashed families use one bounded provider-URL enumeration in the confirmed
  *    tab store, matching names before reading values;
  *  - for a provider whose credential is a localStorage item (TinyCMS, DeepSeek Web), reads only the
  *    built-in item names, once, from the confirmed tab, through `chrome.scripting`, and only
@@ -228,15 +228,10 @@ function approvedCookie(cookie, host) {
   return out;
 }
 
-/** URL and store stay bound to the confirmed tab; never enumerate another profile. */
-async function enumerateCookies(chrome, plan, storeId) {
-  return chrome.cookies.getAll({ url: plan.providerOrigin + "/", storeId });
-}
-
 /** One bounded enumeration for built-in hashed families; unrelated values are never inspected. */
 async function readHashedFamily(chrome, plan, storeId, cancelled, now) {
   if (!(await tabOnProvider(chrome, plan))) return { cookies: [], navigated: true };
-  const entries = await enumerateCookies(chrome, plan, storeId);
+  const entries = await chrome.cookies.getAll({ url: plan.providerOrigin + "/", storeId });
   if (!(await tabOnProvider(chrome, plan))) return { cookies: [], navigated: true };
   if (cancelled() || !Array.isArray(entries) || entries.length > 64) return { cookies: [] };
   const cookies = [];
@@ -281,37 +276,11 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     await take(name);
     if (cancelled()) return done();
   }
-  if (plan.cookiePrefixes.length) {
-    // Exact-name probing cannot detect duplicates, noncanonical indices or a hidden tail.
-    // Inspect names first within the existing enumeration ceiling; unrelated values stay unread.
-    if (!(await tabOnProvider(chrome, plan))) return done(true);
-    const entries = await enumerateCookies(chrome, plan, storeId);
-    if (!(await tabOnProvider(chrome, plan)) || cancelled() || !Array.isArray(entries) || entries.length > 64) return done(true);
-    for (const name of plan.cookieNames) {
-      if (entries.filter((entry) => entry?.name === name).length > 1) return done(true);
-    }
-    for (const prefix of plan.cookiePrefixes) {
-      const members = entries.filter((entry) => isRecord(entry) && isString(entry.name) && entry.name.startsWith(prefix));
-      const indices = new Set();
-      const chunks = [];
-      for (const entry of members) {
-        const suffix = entry.name.slice(prefix.length);
-        const index = Number(suffix);
-        if (!/^(0|[1-9][0-9]*)$/.test(suffix) || !Number.isSafeInteger(index) || index >= MAX_COOKIES || indices.has(index) || entry.storeId !== storeId) return done(true);
-        indices.add(index);
-        const cookie = approvedCookie(entry, host);
-        if (!cookie || cookie.value.length > 8192 || /[^\x20-\x7e]|;|^\s|\s$/.test(cookie.value)) return done(true);
-        chunks.push({ index, cookie });
-      }
-      chunks.sort((a, b) => a.index - b.index);
-      if (chunks.some((entry, index) => entry.index !== index)) return done(true);
-      if (chunks.length) {
-        // Shared import contract: complete chunks supersede a stale whole cookie.
-        const whole = plan.cookieNames.find((name) => prefix === `${name}.`);
-        const position = found.findIndex((cookie) => cookie.name === whole);
-        if (position !== -1) found.splice(position, 1);
-        found.push(...chunks.map((entry) => entry.cookie));
-      }
+  for (const prefix of plan.cookiePrefixes) {
+    // Exact-name reads only: chunks are contiguous from .0 and probing stops at the first gap
+    // or the cookie ceiling. A chunk beyond a gap is never read, so it cannot be detected here.
+    for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
+      if (!(await take(`${prefix}${index}`)) || cancelled()) break;
     }
   }
   if (found.length > MAX_COOKIES || found.some((cookie) => cookie.value.length > 8192 || /[^\x20-\x7e]|;|^\s|\s$/.test(cookie.value))) return done(true);

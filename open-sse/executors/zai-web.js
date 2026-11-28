@@ -96,11 +96,14 @@ export class ZaiWebExecutor extends BaseExecutor {
     const chatBody = { chat: { id: "", title: "New Chat", models: [model], params: {}, history: { messages: { [chatMessageId]: { id: chatMessageId, parentId: null, childrenIds: [], role: "user", content: prompt, timestamp: Math.floor(Date.now() / 1000), models: [model] } }, currentId: chatMessageId }, tags: [], flags: [], features: [], mcp_servers: [], enable_thinking: true, reasoning_effort: input.body.reasoning_effort ?? "max", auto_web_search: false, message_version: 1, extra: {}, timestamp: Date.now(), type: "default" } };
     const sender = createExecutorSender(this, input);
     let upstream = null;
+    // Set just before the billable completion send, so a throw from that send still counts as uncertain work.
+    let completionStarted = false;
     // Every response returned after the completion send carries its quota ticket.
     const carry = (result) => {
       transferProviderAttemptDispatch(upstream, result.response);
-      // Existing request-scoped terminal flag suppresses account/model replay after uncertain work.
-      return { ...result, claudeRequestScoped: !result.response.ok, attemptStartedAt: sender.attemptStartedAt };
+      // The existing request-scoped terminal flag stops account/model replay after uncertain work. A setup
+      // failure comes before any completion was sent, so ordinary account fallback stays allowed.
+      return { ...result, claudeRequestScoped: completionStarted && !result.response.ok, attemptStartedAt: sender.attemptStartedAt };
     };
     try {
       // Creating the empty chat is setup; only the completion is quota-bearing.
@@ -112,6 +115,7 @@ export class ZaiWebExecutor extends BaseExecutor {
       const timestamp = Date.now(); const requestId = randomUUID();
       const url = completionUrl(token, userId, requestId, timestamp);
       const payload = { captcha_verify_param: proof, stream: true, model, messages, signature_prompt: prompt, params: {}, extra: {}, features: { preview_mode: true, enable_thinking: true }, variables: {}, chat_id: chatId, id: randomUUID(), current_user_message_id: chatMessageId, current_user_message_parent_id: null, background_tasks: { title_generation: true, tags_generation: true } };
+      completionStarted = true;
       upstream = await sender.sendRequest(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions);
       if (!upstream.ok) return carry(await this.upstreamError(upstream, input.body, COMPLETIONS));
       const answer = await readCompletion(upstream, input.signal);

@@ -12,8 +12,10 @@ The repair changes only `open-sse/executors/zai-web.js`, the helpers
 the new regression file `tests/unit/fix-zai-source-token-proof-2034.test.js`,
 this report and the private handoff
 `internal/docs/port-reports/fix-zai-source-token-proof-2034-handoff.json`.
-Public capture, registry, import activation, shared auth and existing suites are
-unchanged. No live origin, token location, proof validity or completion is claimed.
+With explicit authorization, it also migrates the three existing Zai suites listed
+under "Migrated existing assertions". Public capture, registry, import activation
+and shared auth are unchanged. No live origin, token location, proof validity or
+completion is claimed.
 
 ### Source reproduction and attribution
 
@@ -21,20 +23,26 @@ Re-read `acaef33ca45:internal/docs/port-reports/cookie-flows/zai-web-2034.md` an
 the current executor. The old executor ignores both request and stored proofs
 and accepts a non-SSE 200 as an empty completion; this is reproducible directly
 from its `readCompletion` and payload construction. The protected reproduction
-at `tests/unit/cookie-flow-zai-web-2034.test.js:669` now fails exactly where it
-asserts that proof is dropped (see the conflicts section), which confirms the
-old behavior was what that test pinned.
+at `tests/unit/cookie-flow-zai-web-2034.test.js:669` failed against the repair
+exactly where it asserted that proof is dropped, which confirms the old behavior
+was what that test pinned. It is now migrated (see below).
 
 Only existing pins before the freeze (2026-11-27T23:49:25.752045Z) were read.
-These source reads were made by the first repair attempt (commit `2b7540b78b0`
-on the attempt branch). Its scratch clones no longer exist, and this revision
-did not read the pins again. Read-only Git commands used `GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0` in
-`/tmp/omni-2034` for `4265bb2ad5477450a07d3a43ea33a62c6c874878` and
-`/tmp/omniroute-2034-d3f06` for
-`b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523`. The four source blobs in the original
-table were rechecked and are identical at those pins. Protocol and executor
-contents were read at the port pin, including `buildZaiBrowserChatOptions`,
-`useSignedApi` and proof extraction. No source fetch or later pin was used.
+This revision read the primary source again. All commands were read-only Git
+commands with `GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0`, run in the existing
+scratch clones `/tmp/omni-2034` (pin `4265bb2ad5477450a07d3a43ea33a62c6c874878`)
+and `/tmp/omniroute-2034-d3f06` (pin `b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523`).
+Nothing was fetched, and no later pin was used. Blobs that were read:
+
+| Path at `4265bb2` | Blob | What was read |
+| --- | --- | --- |
+| `open-sse/executors/zai-web.ts` | `236943166d94eb43c6e14c863272659ccc4d69a6` | `buildZaiBrowserChatOptions`: token-hash `poolKey`, `localStorage: { token }` on `https://chat.z.ai`, `headless: false`, `reuseContext: true`, no proxy option. `execute`: `useSignedApi = Boolean(captchaVerifyParam) && imageUrls.length === 0`, otherwise `fetchThroughBrowser`. Audit body `captcha_verify_param: "[REDACTED]"` |
+| `open-sse/executors/zai-web/protocol.ts` | `511e5d3aa9937ef537712b8163ad6b997878a9f7` | `extractZaiToken` (JSON `token`/`accessToken`/`access_token`, Bearer, `token=` cookie), `extractZaiCaptchaVerifyParam` (three aliases, nested `providerSpecificData`, JSON, `captcha_verify_param=` cookie), `resolveZaiCaptchaVerifyParam` precedence body, PSD, `apiKey`, `accessToken`, payload field `captcha_verify_param` |
+| `open-sse/executors/zai-web/stream.ts` | `1c87321bf1b9643089f9fb5d1201baf08929a3a5` | terminal signals `data.done`, phase `done`/`finish`, `chat:completion:finish`, OpenAI `finish_reason` |
+| `open-sse/services/tokenExtractionConfig.ts` | `d91c9cdb413b8fbc16c06d5bf506173c303235e7` | Z.ai Web entry `[{ type: "localStorage", key: "token" }]` on `https://chat.z.ai`, with the note that the browser transport handles CAPTCHA |
+
+At `b15b2ee`, `zai-web.ts`, `protocol.ts` and `stream.ts` have the same blob IDs,
+so the contract is unchanged between the two pins.
 
 Proof extraction in `open-sse/executors/zai-web/session.js` is adapted from
 OmniRoute `open-sse/executors/zai-web/protocol.ts`, blob
@@ -67,11 +75,17 @@ against `open-sse/executors/zai-web/stream.ts` at the same port pin.
   OpenAI finish reasons and `[DONE]` terminals are recognized. The executor
   still buffers before constructing its OpenAI response/stream, so an upstream
   failure cannot emit a success stop or usage frame first.
-- Failures after setup carry the existing internal `claudeRequestScoped` flag.
-  Despite its historical name, `chatCore`, single-model `postProcess`, combo
-  and transient-retry code use it as a request terminal. This avoids account,
-  model, credential-refresh or uncertain-work replay without shared changes.
-  No new retry loop is added. Caller cancellation settles dispatch and throws.
+- A failure from the moment the billable completion send starts carries the
+  existing internal `claudeRequestScoped` flag. This includes a throw from that
+  send. Despite its historical name, `chatCore`, single-model `postProcess`,
+  combo and transient-retry code use it as a request terminal. It stops account,
+  model and credential-refresh replay, and the cooldown after uncertain work,
+  with no shared changes. A setup failure (`chats/new` rejected, thrown, or with
+  no id) comes before any completion is sent. It does **not** carry the flag, so
+  normal account fallback and health marking still apply. The proof is sent
+  only once in that case, to the completion of the account that is finally
+  selected. No new retry loop is added. Caller cancellation settles dispatch
+  and throws.
 - Body reads have local 120-second and 16-MiB bounds, cancel their reader on
   failure, and honor caller cancellation. These are local safety bounds,
   **not** a provider proof TTL. Error messages never include provider response
@@ -105,51 +119,34 @@ No live sign-in, site token location, actual proof validity or completion was
 verified. This unit does not advertise a usable browser branch or full parity.
 
 
-### Existing assertions that conflict with the required proof gate
+### Migrated existing assertions
 
-No existing test was edited. `tests/unit/cookie-flow-zai-web-2034.test.js` is
-protected. The other two files below are left unchanged, so the conflict can be
-resolved in one place by the test owners. Every case fails for one of two
-reasons. All but one assert a successful or provider-shaped result from a
-request that carries **no** CAPTCHA proof, and the executor now refuses that
-request locally with HTTP 400 `zai_proof_required` before any POST. The
-remaining case asserts that a supplied proof is dropped.
+The retry adjudication authorized migrating exactly
+`tests/unit/cookie-flow-zai-web-2034.test.js`, `tests/unit/zai-web-provider.test.js`
+and `tests/unit/fleet-provider-zai-web-acceptance.test.js`. Every original case
+is kept. A successful request now supplies a distinct synthetic opaque proof.
+The test asserts that proof appears in the completion JSON body only: not in the
+URL, not in the setup body, and (through `expectNoSecretLeak`) not in logs or
+the database. Failure cases still assert the same failure after a proof
+permits dispatch. Nothing is in `known-fails.txt`, skipped or marked as an
+expected failure.
 
-The proofless cases are below. The line given is the first assertion that fails.
-
-| File:line | Test | Asserted today | Stricter replacement |
-| --- | --- | --- | --- |
-| `cookie-flow-zai-web-2034.test.js:317` | carries exactly the tab's chat.z.ai token cookie … | 200 success without proof | supply a synthetic proof, assert it reaches the completion body only |
-| `cookie-flow-zai-web-2034.test.js:428` (×4, `it.each` at 404) | stores only the token pair from a Cookie header / cURL / cURL -b / HAR paste … | 200 success without proof | same |
-| `cookie-flow-zai-web-2034.test.js:490` | accepts a bare Local Storage value through Add Connection … | 200 success without proof | same |
-| `cookie-flow-zai-web-2034.test.js:569` | keeps each account on its own token and proxy … | 200 for both accounts without proof | per-account synthetic proofs, assert each stays with its own account and proxy |
-| `cookie-flow-zai-web-2034.test.js:584` | returns a pinned account's rejection without rotating … | provider 401 | supply proof, then assert the provider 401 with no rotation |
-| `cookie-flow-zai-web-2034.test.js:604` | falls back on its own proxy, then recovers … | 200 after re-capture | supply proof on both turns |
-| `cookie-flow-zai-web-2034.test.js:636` | keeps the query-string token out of the response … | 502 transport failure | supply proof, then assert the redacted 502 |
-| `cookie-flow-zai-web-2034.test.js:657`, `:661` (`it.each` at 648) | reports a failure for a 200 reply that is not an event stream | 502 / streamed failure | supply proof; the stricter executor still fails a non-SSE 200 |
-| `zai-web-provider.test.js:63`, `:73`, `:81` | JSON/SSE chat, Anthropic Messages route, two-session isolation | 200 success without proof | supply proof per request, or assert `zai_proof_required` |
-| `fleet-provider-zai-web-acceptance.test.js:107` | zai-web credentials are never sent to another vendor's endpoint | at least one outbound call | supply a proof so dispatch occurs, keep the origin assertion |
-
-The proof-dropping case:
-
-- `cookie-flow-zai-web-2034.test.js:681`: the NOT PARITY reproduction at line 669
-  expects the provider's refusal text in the response, and at lines 683–684 that
-  the completion body has no `captcha_verify_param`. The repair forwards the
-  selected request's proof in the body. It also returns a fixed redacted failure
-  message instead of provider-controlled text. The stricter replacement should
-  assert that the proof is present in the completion body, absent from the URL
-  and audit output, and that the provider rejection stays a terminal failure.
-
-The re-import wording at `cookie-flow-zai-web-2034.test.js:502` still passes:
-the 401 message keeps "Re-import the chat.z.ai token cookie" and adds the stored
-Local Storage token. The Local Storage capture refusal at lines 386–399 also
-still passes. It remains correct until the shared owner activates capture.
-
-None of these conflicts is hidden in `tests/__baseline__/known-fails.txt`, a
-skipped test or an expected-failure marker. Weakening the proof gate so these
-proofless successes pass would reintroduce the unsafe dispatch this issue
-removes. Until the owners migrate them, these 17 cases fail in full CI, and
-this branch is not ready for PR qualification.
+| File: case | Before | After |
+| --- | --- | --- |
+| cookie-flow: capture through to the executor | 200 without proof | proof `capture` forwarded in body only, same token/proxy/redirect assertions |
+| cookie-flow: Cookie header / cURL / cURL -b / HAR paste (×4) | 200 without proof | per-paste proof forwarded in body only |
+| cookie-flow: bare Local Storage value via Add Connection | 200 without proof | proof `manual` forwarded in body only |
+| cookie-flow: two accounts, own token and proxy, either order | 200 without proof | a distinct proof per turn (b, a, b) stays with that turn's account and proxy |
+| cookie-flow: pinned rejection without rotation | provider 401, no rotation | same, with proof |
+| cookie-flow: fallback on own proxy, then re-capture | 200 after fallback and re-capture | same, with proof on both turns. Needed the setup-scope fix above: a setup 401 rotates, so the proof reaches only the fallback account's completion |
+| cookie-flow: transport error quotes token URL | 502 "Provider unavailable", socket text in `lastError` and logs | stricter: 502 with fixed "completion was not replayed" message. The socket text (which quotes the token URL) reaches no response, log or row. No cooldown, one completion call |
+| cookie-flow: non-SSE 200 (stream false / true) | 502 / streamed 200 error frame, account unavailable | stricter: 502 in both modes before any client byte, no `finish_reason: "stop"`, no provider text, no cooldown after uncertain work, one completion call |
+| cookie-flow: former "NOT PARITY: sends no CAPTCHA proof" | proof dropped, provider text echoed | renamed "forwards the request's CAPTCHA proof…": request proof wins over the stored proof, body only, terminal failure with fixed redacted text, one completion call |
+| cookie-flow: **new** no-proof refusal | — | 400 `zai_proof_required`, no transport call at all, no change to account health |
+| zai-web-provider: JSON and SSE chat | 200 without proof | per-request proofs, each forwarded in body only |
+| zai-web-provider: Anthropic Messages route | 200 without proof | proof stored on the connection (`providerSpecificData.captchaVerifyParam`, a source location), because Messages translation keeps only Messages fields. Forwarded in body only |
+| zai-web-provider: expiry, quota, two-session isolation | 200 / 401 / 429 without proof | same statuses with per-account proofs. Each account's completion carries its own proof |
+| fleet acceptance: never sent to another vendor | ≥1 outbound call | synthetic proof so dispatch occurs, same origin assertion |
 
 ### Validation status
 
@@ -161,14 +158,15 @@ Dependencies were installed into this worktree with
 shared dependency directory was read through or modified. No live provider,
 browser, Docker or `~/.9router` was used.
 
-- PASS: root `pnpm run lint` (0 ESLint errors; anti-slop gate OK with 0
-  diagnostics). This revision replaces the helper's runtime `typeof` checks with
+- PASS: root `pnpm run lint`, exit 0 (0 ESLint errors, 348 existing warnings,
+  none in touched files; anti-slop gate OK with 0 diagnostics). This revision replaces the helper's runtime `typeof` checks with
   the shared `isRecord` / `isString` guards from `src/shared/utils/typeChecks.js`.
-- PASS: `node node_modules/vitest/vitest.mjs run --maxWorkers=2 unit/fix-zai-source-token-proof-2034.test.js`
-  from `tests/`, 19 of 19 tests.
-- FAIL (expected, listed above): the same command over
-  `unit/cookie-flow-zai-web-2034.test.js`, `unit/zai-web-provider.test.js` and
-  `unit/fleet-provider-zai-web-acceptance.test.js`: 17 failed, 22 passed.
+- PASS: from `tests/`, `node node_modules/vitest/vitest.mjs run --maxWorkers=2
+  unit/fix-zai-source-token-proof-2034.test.js unit/cookie-flow-zai-web-2034.test.js
+  unit/zai-web-provider.test.js unit/fleet-provider-zai-web-acceptance.test.js`:
+  4 files, 60 of 60 tests. That is the 19 original own cases plus one new
+  setup-versus-completion scope case, 31 cookie-flow cases (30 original plus the
+  no-proof refusal), 3 provider cases and 6 fleet cases.
 - NOT RUN: `test:ci`, full inventory, build, `scripts/checks.sh final`. These
   are outside this unit's scope and belong to later PR qualification.
 

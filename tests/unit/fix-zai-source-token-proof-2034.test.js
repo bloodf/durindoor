@@ -129,6 +129,24 @@ describe("Z.ai pinned source proof contract", () => {
       expect(wire.calls).toHaveLength(2);
     }
   });
+  it("leaves a setup failure before the billable POST open to account fallback, but not a completion failure", async () => {
+    // Setup (chats/new) is not quota-bearing, so no completion work is uncertain yet.
+    for (const setup of [() => new Response("expired", { status: 401 }), () => { throw new Error("synthetic setup socket failure"); }, () => Response.json({})]) {
+      wire.calls = [];
+      wire.reply = (url) => (String(url).endsWith("/new") ? setup() : sse());
+      const result = await run();
+      expect(result.response.ok).toBe(false);
+      expect(result.claudeRequestScoped).toBe(false);
+      expect(wire.calls.map((call) => new URL(call.url).pathname)).toEqual(["/api/v1/chats/new"]);
+      expect(await result.response.text()).not.toMatch(/synthetic-proof|synthetic setup|h\./);
+    }
+    // A completion send that throws is uncertain work and stays terminal.
+    wire.calls = [];
+    wire.reply = (url) => { if (String(url).endsWith("/new")) return Response.json({ id: "chat" }); throw new Error("synthetic completion socket failure"); };
+    const failed = await run();
+    expect(failed.claudeRequestScoped).toBe(true);
+    expect(wire.calls).toHaveLength(2);
+  });
   it("honors cancellation before dispatch and during a pending response body", async () => {
     const controller = new AbortController();
     controller.abort();

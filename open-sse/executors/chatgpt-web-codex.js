@@ -1,6 +1,7 @@
 import { ChatGptWebExecutor } from "./chatgpt-web.js";
 import { prepareChatGptWebBrowserRequest } from "../utils/chatgptWebExecutorAdapter.js";
 import { errorResponse } from "../utils/error.js";
+import { isString } from "../../src/shared/utils/typeChecks.js";
 
 // The upstream Codex catalog exposes performance lanes; DurinDoor routes them
 // through its existing ChatGPT Web HTTP conversation implementation, which
@@ -27,10 +28,10 @@ export class ChatGptWebCodexExecutor extends ChatGptWebExecutor {
    * A minimal request isolates model validation from transport-specific features.
    */
   execute(input) {
-    const model = typeof input.model === "string" && Object.hasOwn(MODEL_LANES, input.model)
+    const model = isString(input.model) && Object.hasOwn(MODEL_LANES, input.model)
       ? MODEL_LANES[input.model] : input.model;
     try {
-      if (typeof model !== "string") throw new Error("Invalid model");
+      if (!isString(model)) throw new Error("Invalid model");
       prepareChatGptWebBrowserRequest(model, { messages: [{ role: "user", content: "validation" }] });
     } catch {
       return Promise.resolve({

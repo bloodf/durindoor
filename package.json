@@ -8,6 +8,7 @@
     "node": ">=24.22.2 <25"
   },
   "scripts": {
+    "check:v5-stories": "node scripts/gen-v5-stories.mjs --check",
     "dev": "node scripts/next-owner-server.cjs --dev --port 20127",
     "build": "node scripts/build-app.mjs",
     "start": "node .next/standalone/custom-server.js",

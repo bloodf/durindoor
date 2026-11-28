@@ -57,3 +57,5 @@ The Firefox and WebKit matrix for the exact integrated release candidate remains
 The [production integration plan](./v5-production-integration.md#1-acceptance-status) says S20 made V5 the default and retained the documented `DURINDOOR_UI_V5=0` opt-out. It defers S21 removal of legacy branches, the switch and the Storybook boundary until #1067 accepts the release candidate.
 
 The plan's surface status table still labels S05 and S09–S19 as Planned. The `tests/unit/v5-int-*.test.js` slice suites record the implemented behavior, including [S01 foundation](../../tests/unit/v5-int-01-foundation.test.js), [S08 model picker](../../tests/unit/v5-int-08-model-picker.test.js) and the dashboard surfaces from [S09 combos](../../tests/unit/v5-int-09-combos.test.js) through [S19 settings](../../tests/unit/v5-int-19-settings.test.js). The [S05 provider-story suite](../../tests/unit/v5-int-05-provider-stories.test.js) checks the source stories and inventory entries. Approval of the five mappings remains subject to source review.
+
+Run `node scripts/gen-v5-stories.mjs --check` to verify generated V5 stories and the review manifest are current.

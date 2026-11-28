@@ -1,40 +1,10 @@
-// Issue #2702: only numeric Claude start output_tokens:1 is provisional.
-// Drive the real transform selection, completion/abandonment finalizers and
-// captured saveRequestUsage boundary. sourceFormat is the client format;
-// targetFormat is the upstream provider format. No provider calls are made.
-// Empty estimated output persists as canonical literal zero, not null (ask5).
-// Historical pre-fix reproduction notes follow. The translated fixture was
-// reversed; the corrected real-path findings are in the linked report.
-// Issue #2702 (OmniRoute PR #21336, "native Claude" usage accounting):
-// an Anthropic `message_start` frame carries `output_tokens: 1` before any
-// output exists. That number is a PLACEHOLDER, not a measurement: the real
-// cumulative output arrives in a later `message_delta` receipt.
-//
-// This file reproduces the placeholder handling end to end through the real
-// Claude stream transform (`buildTransformStream` -> Claude passthrough /
-// Claude->OpenAI translation), the real stream finalizer
-// (`buildOnStreamComplete`) and the captured persistence callback
-// (`saveRequestUsage`, mocked at the `@/lib/usageDb.js` boundary). No product
-// code is changed here.
-//
-// Established with the current tree (see
-// internal/docs/port-reports/review-claude-output-placeholder.md):
-//
-//   native Claude client path (Claude -> Claude, passthrough)
-//     80 observed chars, no receipt   -> persisted output 20   (estimate)
-//     no content, no receipt          -> persisted output 1    (placeholder)
-//     explicit final receipt 0        -> persisted output 0    (authoritative)
-//     explicit final receipt 5        -> persisted output 5    (authoritative)
-//     interrupted snapshot            -> snapshot output 20    (estimate)
-//
-//   OpenAI client path (Claude upstream -> OpenAI client, translated)
-//     80 observed chars, no receipt   -> persisted output 1    (placeholder)
-//     explicit final receipt 0 / 5    -> persisted output 0 / 5 (authoritative)
-//
-// A positive provider measurement is authoritative: only the `message_start`
-// placeholder is provisional. The failing expectations below are limited to
-// the placeholder cases that are demonstrated to persist today.
-// End historical notes. The assertions below use the corrected contract.
+// Issue #2702: only an initial numeric Claude output count of 1 is provisional.
+// Exercise real transform selection, completion/abandonment finalizers and
+// saveRequestUsage, mocked only at the usageDb persistence boundary.
+// sourceFormat is the client format; targetFormat is the upstream format.
+// Measured and explicit final receipts remain authoritative. Empty estimated
+// canonical output is zero. No live provider calls or frequency claim.
+// Contract: internal/docs/port-reports/2702-claude-initial-output-accounting.md.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import "../translator/registerAll.js";

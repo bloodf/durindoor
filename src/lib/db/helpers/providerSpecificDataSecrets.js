@@ -54,7 +54,11 @@ export const SENSITIVE_PSD_KEYS = Object.freeze([
 "alibabaConsoleCookie",
 "QWEN_CLOUD_COOKIE",
 // TinyCMS Web's imported localStorage credential is a named PSD field.
-"app-config-uuid"]
+"app-config-uuid",
+// Z.ai Web opaque browser-issued CAPTCHA proof aliases (#2034); exact keys only.
+"captcha_verify_param",
+"captchaVerifyParam",
+"zaiCaptchaVerifyParam"]
 );
 
 const SENSITIVE_PSD_SET = new Set(SENSITIVE_PSD_KEYS);

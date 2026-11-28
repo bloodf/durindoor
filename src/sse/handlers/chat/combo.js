@@ -20,8 +20,10 @@ import { getModelQuotaFamily, getDispatchUpstreamModelId, PROVIDER_ID_TO_ALIAS }
 import { rankQuotaConnections } from "@/shared/services/quotaSelection";
 import { buildQuotaResourceKeys, inspectProviderQuota } from "@/shared/services/providerQuotaPreflight";
 import { quotaDecisionDiagnostic, rankQuotaCandidates } from "open-sse/services/quota/scoring.js";
+import { isString } from "../../../shared/utils/typeChecks.js";
 import { combineAbortSignals } from "./shared.js";
 import { handleSingleModelChat } from "./singleModel.js";
+import { unknownBareModelResponse } from "./singleModel/resolveModel.js";
 
 /**
  * Per-combo `timeoutMs` wins, including 0 (no combo timer). A nullish value
@@ -493,6 +495,9 @@ export async function dispatchNestedCombo({ body, modelStr, clientRawRequest, re
         try {await recordTokenSaverEvent(nestedCollector.latest);} catch {/* telemetry must not break requests */}
       }
       return nestedResult;
+    }
+    if (isString(modelStr) && modelStr && !modelStr.includes("/")) {
+      return unknownBareModelResponse(modelStr);
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format");

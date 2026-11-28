@@ -88,7 +88,7 @@ describe("#2195 OIDC allowlist", () => {
     const login = fs.readFileSync(path.resolve(__dirname, "../../src/app/login/page.js"), "utf8");
     expect(login).toContain("oidc_allowlist_empty");
     expect(login).toMatch(/loopback/);
-    const profile = fs.readFileSync(path.resolve(__dirname, "../../src/app/(dashboard)/dashboard/profile/page.js"), "utf8");
+    const profile = fs.readFileSync(path.resolve(__dirname, "../../src/app/(dashboard)/dashboard/profile/OidcLoginCard.jsx"), "utf8");
     expect(profile).toContain("OIDC allowlist is empty");
   });
 });

@@ -8,7 +8,8 @@ import os from "os";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
 const BOOTSTRAP_URL = "https://api.xiaomimimo.com/api/free-ai/bootstrap";
-const CHAT_URL = PROVIDERS["mimo-free"].baseUrl;
+// Read after module initialization: registry entries can import executor helpers.
+const CHAT_URL = () => PROVIDERS["mimo-free"].baseUrl;
 const SESSION_AFFINITY_PREFIX = "ses_";
 const SESSION_ID_LENGTH = 24;
 const JWT_FALLBACK_TTL_SEC = 3000;
@@ -115,7 +116,7 @@ export class MimoFreeExecutor extends BaseExecutor {
   }
 
   buildUrl() {
-    return CHAT_URL;
+    return CHAT_URL();
   }
 
   buildHeaders(credentials, stream = true) {
@@ -179,7 +180,7 @@ export class MimoFreeExecutor extends BaseExecutor {
 
 export const __test__ = {
   generateFingerprint, generateSessionId, bootstrapJwt, resetJwtCache, parseJwtExp,
-  injectSystemMarker, MIMO_SYSTEM_MARKER, BOOTSTRAP_URL, CHAT_URL, SESSION_AFFINITY_PREFIX
+  injectSystemMarker, MIMO_SYSTEM_MARKER, BOOTSTRAP_URL, get CHAT_URL() { return CHAT_URL(); }, SESSION_AFFINITY_PREFIX
 };
 
 export default MimoFreeExecutor;

@@ -1,0 +1,25 @@
+{
+  "status": "staged; not publicly wired",
+  "source": "https://github.com/decolua/9router/pull/3047",
+  "sourceCommit": "c088ba7e1175b425f30e14227781aa80c750d719",
+  "adapter": "open-sse/services/usage/tokenrouterQuotaAdapter.js",
+  "implementation": "open-sse/services/usage/tokenrouterQuotaAdapter.js (single canonical implementation; no src/lib compatibility shim needed)",
+  "export": "getTokenRouterUsage(connection, proxyOptions)",
+  "credential": "connection.managementApiKey (existing encrypted top-level field, decrypted on read)",
+  "endpoints": [
+    "GET https://api.tokenrouter.com/api/management/self/wallet",
+    "GET https://api.tokenrouter.com/api/management/api-keys?page=1&page_size=100"
+  ],
+  "activationPrerequisites": [
+    "Auth owner enables TokenRouter credential create and update using encrypted top-level storage.",
+    "Auth owner adds an authenticated read-only management-key probe and activates registry usage flags.",
+    "Coordinate usage-handler wiring and quota presentation for unlimited keys, expiry and currency; pass the owner-required gate and independent review before activation."
+  ],
+  "limitations": [
+    "No public handler or registry activation; no live provider validation.",
+    "Only the first 100 keys are requested; wallet failures are reported as partial results.",
+    "Relay routing is refused because it forwards authorization headers; selected proxies must not fall back to direct transport.",
+    "Source treats wallet balances as USD and key quotas as reported numeric values; no inference readiness or allowance is inferred."
+  ],
+  "qualification": "Standalone adapter is staged and unadvertised; registration owners receive the final gated/reviewed head separately. No full source-PR parity or live-provider claim."
+}

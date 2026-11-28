@@ -24,6 +24,8 @@ vi.mock("../../src/sse/services/apiKeyPolicy.js", () => ({
 }));
 vi.mock("open-sse/handlers/systemoneCore.js", () => ({ handleSystemoneCore: mocks.core }));
 
+const { getModelInfo } = await import("../../src/sse/services/model.js");
+
 const { handleSystemone } = await import("../../src/sse/handlers/systemone.js");
 
 const post = (headers = {}) => new Request("http://localhost/v1/systemone", {
@@ -43,5 +45,26 @@ describe("System One connection pin", () => {
   it("leaves selection open without a pin", async () => {
     await handleSystemone(post());
     expect(mocks.getCreds.mock.calls[0][3].strictConnectionId).toBeUndefined();
+  });
+});
+
+
+describe("Liquid credential selection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["", "../d1", "d1/extra", "d1 2", "a".repeat(101)])("rejects resolved malformed Liquid ID %j before selecting credentials", async (model) => {
+    vi.mocked(getModelInfo).mockResolvedValueOnce({ provider: "liquid", model });
+    const response = await handleSystemone(post());
+    expect(response.status).toBe(400);
+    expect(mocks.getCreds).not.toHaveBeenCalled();
+    expect(mocks.core).not.toHaveBeenCalled();
+  });
+
+  it.each([["liquid", "d1.2"], ["openrouter", "liquid/d1.2"]])("selects credentials for %s without crossing provider boundaries", async (provider, model) => {
+    vi.mocked(getModelInfo).mockResolvedValueOnce({ provider, model });
+    await handleSystemone(post({ "x-connection-id": "selected" }));
+    expect(mocks.getCreds.mock.calls[0][0]).toBe(provider);
+    expect(mocks.getCreds.mock.calls[0][3]).toMatchObject({ strictConnectionId: "selected" });
+    expect(mocks.core.mock.calls[0][0].modelInfo).toEqual({ provider, model });
   });
 });

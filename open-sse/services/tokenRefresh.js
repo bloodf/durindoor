@@ -32,9 +32,10 @@ import { sanitizeErrorMessage } from "../utils/error.js";
 import { digestMemoryKey } from "../utils/memoryKey.js";
 import { proxyRouteFingerprint } from "./tokenRefresh/dedup.js";
 import { antigravityClientBindingBlocks } from "./antigravityClientBinding.js";
+import { requestAbortError } from "../executors/sendRequest.js";
 
 // Re-export all provider refresh functions (preserves public API for all consumers)
-import { isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 export {
   refreshAccessToken,
   refreshClaudeOAuthToken,
@@ -276,7 +277,7 @@ async function refreshAntigravityProvider(provider, credentials, log, proxyOptio
 
 const REFRESH_HANDLERS = {
   openference: (c, log, p) => refreshOpenferenceToken(c, log, p),
-  cursor: (c, log, p) => refreshCursorToken(c.refreshToken, log, p),
+  cursor: (c, log, p, options) => refreshCursorToken(c.refreshToken, log, p, options),
   "gemini-cli": (c, log, p) => refreshGoogleToken(c.refreshToken, PROVIDERS["gemini-cli"].clientId, PROVIDERS["gemini-cli"].clientSecret, log, p),
   antigravity: (c, log, p) => refreshAntigravityProvider("antigravity", c, log, p),
   agy: (c, log, p) => refreshAntigravityProvider("agy", c, log, p),
@@ -350,14 +351,15 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyOptions)
 
 /**
  * Refresh credentials using the caller's immutable egress contract.
- * `proxyOptions` is intentionally trailing so existing integrations remain
- * source-compatible while proactive and reactive refresh paths can opt in.
+ * The optional Cursor caller options follow the existing proxy context. They
+ * detach only that caller; the shared token exchange uses its own deadline.
+ * Other provider adapters retain their existing refresh signatures.
  */
-export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null) {
+export async function refreshTokenByProvider(provider, credentials, log, proxyOptions = null, options = null) {
   if (!credentials.refreshToken) return null;
   const handler = REFRESH_HANDLERS[provider];
   return handler ?
-  handler(credentials, log, proxyOptions) :
+  handler(credentials, log, proxyOptions, options) :
   refreshAccessToken(provider, credentials.refreshToken, credentials, log, proxyOptions);
 }
 
@@ -442,22 +444,88 @@ function isTransientRefreshError(error) {
   status >= 500 && status < 600;
 }
 
-export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null) {
+function resolveAbortSignal(options) {
+  if (!options || !isObject(options)) return null;
+  if ("aborted" in options && isFunction(options.addEventListener)) return options;
+  return options.signal ?? null;
+}
+
+function waitWithAbort(delayMs, signal = null) {
+  if (signal?.aborted) return Promise.reject(requestAbortError(signal.reason));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, requestAbortError(signal?.reason));
+    const timer = setTimeout(() => finish(resolve), Math.max(0, delayMs));
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+function raceRefreshAbort(pending, signal = null) {
+  if (!signal) return pending;
+  const operation = Promise.resolve(pending);
+  if (signal.aborted) {
+    operation.catch(() => {});
+    return Promise.reject(requestAbortError(signal.reason));
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, requestAbortError(signal.reason));
+    signal.addEventListener?.("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        if (signal.aborted) finish(reject, requestAbortError(signal.reason));
+        else finish(resolve, value);
+      },
+      (error) => finish(reject, error)
+    );
+  });
+}
+
+/**
+ * Retry a credential refresh with linear backoff, honoring an optional caller
+ * `AbortSignal` (`options.signal` or bare `AbortSignal`). Pre-aborted signals
+ * reject before invoking `refreshFn`, backoff sleeps abort immediately with
+ * timer/listener cleanup, and mid-flight aborts detach the caller without
+ * cancelling an already-started refresh operation.
+ */
+export async function refreshWithRetry(refreshFn, maxRetries = 3, log = null, options = null) {
+  const signal = resolveAbortSignal(options);
+  if (signal?.aborted) throw requestAbortError(signal.reason);
+
   let attempt = 0;
   let immediateRetries = 0;
 
   while (attempt < maxRetries) {
+    if (signal?.aborted) throw requestAbortError(signal.reason);
     if (attempt > 0) {
       const delay = attempt * 1000;
       log?.debug?.("TOKEN_REFRESH", `Retry ${attempt}/${maxRetries} after ${delay}ms`);
-      await new Promise((r) => setTimeout(r, delay));
+      await waitWithAbort(delay, signal);
     }
 
     try {
-      const result = await refreshFn();
+      const pending = refreshFn();
+      const result = signal ? await raceRefreshAbort(pending, signal) : await pending;
+      if (signal?.aborted) throw requestAbortError(signal.reason);
       if (result) return result;
       attempt += 1;
     } catch (error) {
+      if (signal?.aborted) {
+        throw error?.name === "AbortError" ? error : requestAbortError(signal.reason);
+      }
       if (isTransientRefreshError(error) && immediateRetries < 3) {
         immediateRetries += 1;
         log?.debug?.("TOKEN_REFRESH", `Immediate retry ${immediateRetries}/3 after transient error`);

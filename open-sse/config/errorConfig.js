@@ -198,6 +198,9 @@ export const WRONG_MODEL_TEXT = [
   "model not found",
   "model does not exist",
   "unknown model",
+  // Local bare-model inference 404 (OmniRoute #21349 / KEA-9627): keeps combo
+  // fallback advancing without cooling accounts or penalizing health scores.
+  "could not be resolved to a known provider",
   // OpenRouter (and similar routers) echo the requested id: "<id> is not a valid model ID".
   // Keep this ahead of billing/capacity text rules so a client-chosen id containing
   // those phrases cannot bench the shared account (#2315).

@@ -165,7 +165,7 @@ describe("chat policy enforcement sequence", () => {
 
     expect(mocks.isExactRoutableModelId).not.toHaveBeenCalled();
     expect(mocks.getComboModels).toHaveBeenCalledWith(model, false, expect.objectContaining({ hidePaidModels: false }));
-    expect(mocks.getModelInfo).toHaveBeenCalledWith(model);
+    expect(mocks.getModelInfo).toHaveBeenCalledWith(model, { rejectUnknownBare: true });
   });
   it("normalizes a projected Claude route before policy and preserves original identity", async () => {
     mocks.getModelInfo.mockResolvedValue({ provider: "openai", model: "gpt-5.5" });
@@ -219,7 +219,7 @@ describe("chat policy enforcement sequence", () => {
     }));
 
     expect(mocks.getComboModels).toHaveBeenCalledWith(model, false, expect.objectContaining({ hidePaidModels: false }));
-    expect(mocks.getModelInfo).toHaveBeenCalledWith(model);
+    expect(mocks.getModelInfo).toHaveBeenCalledWith(model, { rejectUnknownBare: true });
   });
 
   it("passes an unknown official Claude model through to resolution intact", async () => {
@@ -231,6 +231,6 @@ describe("chat policy enforcement sequence", () => {
     }));
 
     expect(mocks.getComboModels).toHaveBeenCalledWith("claude-sonnet-unknown-xyz", false, expect.objectContaining({ hidePaidModels: false }));
-    expect(mocks.getModelInfo).toHaveBeenCalledWith("claude-sonnet-unknown-xyz");
+    expect(mocks.getModelInfo).toHaveBeenCalledWith("claude-sonnet-unknown-xyz", { rejectUnknownBare: true });
   });
 });

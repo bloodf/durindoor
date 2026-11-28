@@ -13,7 +13,7 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveClineModels } from "open-sse/services/clineModels.js";
-import { resolveOpenRouterModels } from "open-sse/services/openrouterCatalog.js";
+import { OPENROUTER_LOOKUP_BUDGET_MS, resolveOpenRouterModels } from "open-sse/services/openrouterCatalog.js";
 import { normalizeVeniceModel, resolveLiveAnthropicModels, resolveLiveCloudflareModels, resolveLiveModelIds, resolveLiveOpenAIModels } from "open-sse/services/liveModelLimits.js";
 import { extractApiCapabilities, extractLiveModelLimits } from "open-sse/services/modelMetadata.js";
 import { getCodexModels } from "open-sse/services/usage/codex.js";
@@ -348,11 +348,21 @@ export const LIVE_MODEL_RESOLVERS = {
     map((m) => ({ id: m.id, ...(isString(m.name) ? { name: m.name } : null) }));
     return models.length ? { models } : null;
   },
-  // Without an explicit selection, list OpenRouter's free models; with one,
-  // the whole public catalog only enriches the selected IDs' capabilities.
+  // Without an explicit selection, list OpenRouter's free models plus discovered
+  // System One decision models; with one, the whole public catalog enriches the
+  // selected IDs' capabilities and kinds.
   openrouter: async (conn) => {
+    // The caller's catalog deadline starts with this resolver, so the budget
+    // includes the proxy-config lookup below.
+    const deadlineAt = Date.now() + OPENROUTER_LOOKUP_BUDGET_MS;
     const enabled = isRecord(conn.providerSpecificData) ? conn.providerSpecificData.enabledModels : null;
-    const models = await resolveOpenRouterModels({ freeOnly: !(Array.isArray(enabled) && enabled.length > 0) });
+    const { proxyOptions } = await liveResolverOptions(conn);
+    const models = await resolveOpenRouterModels({
+      freeOnly: !(Array.isArray(enabled) && enabled.length > 0),
+      includeDecisions: true,
+      deadlineAt,
+      proxyOptions
+    });
     return models?.length ? { models } : null;
   },
   cline: async (conn) => {

@@ -208,6 +208,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [documentation-plan.md](./documentation-plan.md)
 - [local-ci.md](./local-ci.md)
 - [local-development.mdx](./local-development.mdx)
+- [macOS browser-shard cleanup investigation](./macos-browser-shard-cleanup.md) (unapproved design)
 - [minimax-code-2034.md](./minimax-code-2034.md)
 - [operational-metrics-1129-remainder.md](./operational-metrics-1129-remainder.md)
 - [test-progress-recovery.md](./test-progress-recovery.md)

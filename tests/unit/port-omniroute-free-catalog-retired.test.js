@@ -66,8 +66,28 @@ describe("OmniRoute #21096 (cbe1172862a5) free-catalog re-audit and retired ledg
     for (const m of rows("agentrouter")) expect(m).toMatchObject({ freeType: "one-time-initial", creditTokens: 0 });
   });
 
+  it("records LLM7's last evidenced quota once without restoring active access", () => {
+    const historical = RETIRED_FREE_ROWS.filter((entry) => entry.provider === "llm7");
+    expect(historical).toEqual([{
+      provider: "llm7",
+      modelId: "gpt-4o-mini-2024-07-18",
+      poolKey: "llm7-free",
+      lastListedMonthlyTokens: 3_000_000,
+      retiredAt: "2026-11-23",
+      reason: "unverifiable",
+      evidence: "https://docs.llm7.io/limits listed 100,000 tokens per 24 hours on 2026-11-18 and answered 404 on 2026-11-23",
+    }]);
+    expect(historical.reduce((sum, entry) => sum + entry.lastListedMonthlyTokens, 0)).toBe(3_000_000);
+    expect(new Set(historical.map((entry) => entry.poolKey))).toEqual(new Set(["llm7-free"]));
+    expect(PROVIDERS_WITH_FREE_MODELS.has("llm7")).toBe(false);
+    for (const model of rows("llm7")) {
+      expect(model).toMatchObject({ freeType: "discontinued", monthlyTokens: 0, creditTokens: 0 });
+      expect(isFreeModel("llm7", { id: model.modelId })).toBe(false);
+    }
+  });
+
   it("keeps each ledger row paired with a discontinued, zeroed catalog row", () => {
-    expect(RETIRED_FREE_ROWS).toHaveLength(95);
+    expect(RETIRED_FREE_ROWS).toHaveLength(96);
     expect(new Set(RETIRED_FREE_ROWS.map((r) => `${r.provider}/${r.modelId}`)).size).toBe(RETIRED_FREE_ROWS.length);
     for (const entry of RETIRED_FREE_ROWS) {
       expect(row(entry.provider, entry.modelId), `${entry.provider}/${entry.modelId}`).toMatchObject({

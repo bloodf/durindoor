@@ -31,6 +31,7 @@ function formatResetTimeDisplay(resetTime) {
   }
 }
 
+/** Remaining quota is a bounded meter, not task progress; unlimited plans have no meter. */
 export default function QuotaProgressBar({ percentage = 0, label = "", used = 0, total = 0, unlimited = false, resetTime = null, recurring = true }) {
   const safeUsed = Number.isFinite(Number(used)) ? Number(used) : 0;
   const safeTotal = Number.isFinite(Number(total)) ? Number(total) : 0;
@@ -46,7 +47,7 @@ export default function QuotaProgressBar({ percentage = 0, label = "", used = 0,
         <span className={`shrink-0 font-medium dd-tnum ${tone.text}`}>{unlimited ? "Unlimited" : `${remaining}%`}</span>
       </div>
       {!unlimited ? (
-        <div className={`h-2 overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${label} quota remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
+        <div className={`h-2 overflow-hidden rounded-dd ${tone.surface}`} role="meter" aria-label={`${label} quota remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
           <div className={`h-full rounded-dd transition-[width] motion-reduce:transition-none ${tone.bar}`} style={{ width: `${remaining}%` }} />
         </div>
       ) : null}

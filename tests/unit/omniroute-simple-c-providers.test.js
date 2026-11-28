@@ -122,9 +122,10 @@ const expectedShape = {
   liquid: {
     alias: "liquid",
     authType: "apikey",
-    baseUrl: "https://api.liquid.ai/v1/chat/completions",
+    baseUrl: "https://api.liquid.ai/openai/v1/chat/completions",
+    modelsFetcher: "https://api.liquid.ai/openai/v1/models",
     authHeader: "bearer",
-    modelIds: ["liquid-lfm-40b"],
+    modelIds: ["lfm3-1.7b", "lfm3-vl-2b", "lfm2.5-24b-a2b"],
   },
   llamagate: {
     alias: "llamagate",

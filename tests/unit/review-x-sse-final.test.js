@@ -206,7 +206,6 @@ const ALLOWED = {
   "services/responseMasking.js": "rewrites forwarded wire text in place",
   "services/responseModelEcho.js": "rewrites forwarded wire text in place",
   "translator/response/kiro-to-openai.js": "decodes Kiro's own event text",
-  "utils/emptyStreamTerminal.js": "scans forwarded wire text for a missing terminal",
   "utils/geminiLongDecode.js": "rewrites forwarded wire text in place",
   "utils/kiroCreateResponse.js": "decodes Kiro's own event text",
   "utils/streamContentPeek.js": "peeks at buffered upstream lines before the stream is accepted",
@@ -240,7 +239,7 @@ describe("no hand-written SSE splitting outside sseFrames.js", () => {
     expect(handSplitters()).toEqual(Object.keys(ALLOWED).sort());
   });
 
-  it.each(["utils/stream.js", "handlers/chatCore/emptyStreamGuard.js"])("%s reads fields through sseFrames", (file) => {
+  it.each(["utils/stream.js", "handlers/chatCore/emptyStreamGuard.js", "utils/emptyStreamTerminal.js"])("%s reads fields through sseFrames", (file) => {
     const source = readFileSync(join(root, file), "utf8");
     expect(source).toMatch(/from "(?:\.\/|\.\.\/\.\.\/utils\/)sseFrames\.js"/);
     expect(source).not.toMatch(/startsWith\(["']data:|slice\(5\)|\/\^data:\\s/);

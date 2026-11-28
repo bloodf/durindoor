@@ -1,3 +1,4 @@
+import { createSseFrameDispatcher, encodeObservedSseFrames } from "./sseFrames.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { FORMATS } from "../translator/formats.js";
 import { buildStreamErrorBytes, formatSSE } from "./streamHelpers.js";
@@ -27,35 +28,35 @@ export function hasResponsesSnapshotOutput(payload) {
 
 /** Hold only success terminals while the completion classifier is still pending. */
 export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
-  const decoder = new TextDecoder();
-  let pending = "";
   let held = "";
+  let heldFrames = [];
   let timer = null;
   let released = false;
   let sawError = false;
   let sawOutput = false;
   const clear = () => { if (timer) clearTimeout(timer); timer = null; };
-  const send = (controller, value) => { if (value) controller.enqueue(encoder.encode(value)); };
+  const send = (controller, value, frames) => {
+    if (value) controller.enqueue(frames?.length ? encodeObservedSseFrames(value, frames) : encoder.encode(value));
+  };
   const release = (controller) => {
     clear();
     if (!held) return;
     const value = held;
     held = "";
     released = true;
-    send(controller, value);
+    send(controller, value, heldFrames);
+    heldFrames = [];
   };
   const hasOutput = () => {
     const snapshot = getSnapshot?.();
     return sawOutput || snapshot?.hasTokenLimitTerminal || snapshot?.upstreamError || snapshot?.content?.trim?.() || snapshot?.thinking?.trim?.() || snapshot?.hadToolCalls ||
       Number(snapshot?.usage?.completion_tokens ?? snapshot?.usage?.output_tokens ?? snapshot?.usage?.candidatesTokenCount ?? 0) > 0;
   };
-  const process = (controller, frame) => {
-    const data = frame.match(/^data:\s*(.*)$/m)?.[1];
-    let payload;
-    try { payload = JSON.parse(data); } catch { /* sentinel or non-JSON frame */ }
-    const event = frame.match(/^event:\s*(.*)$/m)?.[1] || payload?.type;
+  const process = (controller, observation) => {
+    const { wire: frame, payload } = observation;
+    const event = observation.eventName || payload?.type;
     const error = payload?.error || payload?.response?.error || event === "error" || event === "response.failed";
-    if (error) { sawError = true; held = ""; clear(); send(controller, frame); return; }
+    if (error) { sawError = true; held = ""; heldFrames = []; clear(); send(controller, frame, [observation]); return; }
     // Native Claude and Responses passthrough content is not accumulated by
     // the OpenAI-oriented accounting snapshot, so observe client output too.
     // An explicit provider safety/refusal stop is the provider's answer, not an
@@ -69,7 +70,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
       sawOutput = true;
     }
     const reason = payload?.choices?.find((choice) => choice.finish_reason)?.finish_reason;
-    const kind = emittedFormatTerminalKind(format, frame);
+    const kind = emittedFormatTerminalKind(format, observation);
     // Same end as the client tracker: [DONE], message_stop, response.completed
     // / failed, or a final Gemini candidate. finish_reason is not that end.
     const terminal = kind === "success" || kind === "done";
@@ -78,6 +79,7 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
     const pendingOpenAIStop = format === FORMATS.OPENAI && reason === "stop";
     if ((terminal || pendingOpenAIStop) && !released && !sawError && !hasOutput()) {
       held += frame;
+      heldFrames.push(observation);
       if (!timer) {
         timer = setTimeout(() => { try { release(controller); } catch { clear(); } }, GRACE_MS);
         timer.unref?.();
@@ -89,24 +91,23 @@ export function createEmptyTerminalGuard(format, getVerdict, getSnapshot) {
       release(controller);
       released = true;
     }
-    send(controller, frame);
+    send(controller, frame, [observation]);
   };
+  // One incremental decoder owns split UTF-8 and frame boundaries for this guard.
+  let outputController;
+  const frames = createSseFrameDispatcher([(frame) => process(outputController, frame)]);
   return new TransformStream({
     transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      let match;
-      while ((match = /\r?\n\r?\n/.exec(pending))) {
-        const end = match.index + match[0].length;
-        process(controller, pending.slice(0, end));
-        pending = pending.slice(end);
-      }
+      outputController = controller;
+      frames.push(chunk);
     },
     flush(controller) {
-      pending += decoder.decode();
-      if (pending) process(controller, pending);
+      outputController = controller;
+      frames.flush();
       clear();
       if (held && !sawError && !hasOutput() && getVerdict() === true) {
         held = "";
+        heldFrames = [];
         if (format === FORMATS.OPENAI_RESPONSES) {
           send(controller, formatSSE({ event: "response.failed", data: { type: "response.failed", response: { status: "failed", error: { type: "stream_error", message: "Provider returned empty content" } } } }, format) + "data: [DONE]\n\n");
         } else {

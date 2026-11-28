@@ -95,7 +95,7 @@ export function parseResponsesSseData({ data, dataLines }) {
  * wire text as the non-enumerable `wire` string for transparent forwarding.
  * A final CR is held until the next chunk or flush to preserve split CRLF.
  */
-export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } = {}) {
+export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES, preserveWire = false } = {}) {
   let pendingChunks = [];
   let pendingBytes = 0;
   let scanTail = "";
@@ -142,7 +142,7 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
         const firstLength = buffer.slice(delimiterStart, delimiterStart + 2) === "\r\n" ? 2 : 1;
         const secondLength = buffer.slice(delimiterStart + firstLength, delimiterStart + firstLength + 2) === "\r\n" ? 2 : 1;
         const end = delimiterStart + firstLength + secondLength;
-        Object.defineProperty(frame, "wire", { value: !/^\s*\{/.test(raw) || !frame.hasData ? buffer.slice(offset, end) : `data: ${frame.data}\n\n` });
+        Object.defineProperty(frame, "wire", { value: preserveWire || !/^\s*\{/.test(raw) || !frame.hasData ? buffer.slice(offset, end) : `data: ${frame.data}\n\n` });
         offset = end;
         return frame;
       });
@@ -154,7 +154,7 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
       reset();
       if (!tail) return frames;
       const frame = parseSseFrame(tail);
-      if (frame.hasData && tail.trimStart().startsWith("{")) {
+      if (!preserveWire && frame.hasData && tail.trimStart().startsWith("{")) {
         Object.defineProperty(frame, "wire", { value: `data: ${frame.data}\n\n` });
       }
       return [...frames, frame];
@@ -165,4 +165,106 @@ export function createSseFrameReader({ maxBytes = MAX_PENDING_SSE_LINE_BYTES } =
 /** Format an Anthropic error event with the standard SSE wire spelling. */
 export function formatClaudeSseError(error) {
   return `event: error\ndata: ${JSON.stringify({ type: "error", error })}\n\n`;
+}
+
+// Guard output consists of complete frames. Retain their observations without
+// putting metadata on client bytes or retaining completed streams globally.
+const observedChunks = new WeakMap();
+
+export function encodeObservedSseFrames(text, frames) {
+  const bytes = sharedEncoder.encode(text);
+  observedChunks.set(bytes, { text, frames });
+  return bytes;
+}
+
+/**
+ * Decode each byte chunk once and fan parsed frames out to synchronous observers.
+ * A batch returned by push/flush also supplies decoded text to legacy line taps.
+ * Complete frames forwarded by the empty-terminal guard reuse its observations.
+ */
+export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder(), parseFrames = true, lineDelimited = false } = {}) {
+  // Line-oriented client timelines consume decoded text directly; retaining an
+  // SSE frame there would accumulate every NDJSON line until the size cap.
+  const reader = parseFrames && !lineDelimited ? createSseFrameReader({ preserveWire: true }) : null;
+  // Line-delimited observations cannot wait for SSE blank lines: providers may
+  // send an arbitrarily long sequence of independent data records.
+  let pendingLine = "";
+  let eventName = null;
+  const readLines = (text, final = false) => {
+    pendingLine += text;
+    const lines = pendingLine.split("\n");
+    pendingLine = lines.pop();
+    if (final && pendingLine) { lines.push(pendingLine); pendingLine = ""; }
+    if (sharedEncoder.encode(pendingLine).byteLength > MAX_PENDING_SSE_LINE_BYTES) {
+      pendingLine = "";
+      throw createFrameLimitError();
+    }
+    const frames = [];
+    for (let line of lines) {
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (exceedsByteLimit(line, MAX_PENDING_SSE_LINE_BYTES)) throw createFrameLimitError();
+      if (!line) {
+        if (eventName) frames.push(parseSseFrame(`event: ${eventName}`));
+        eventName = null;
+        continue;
+      }
+      const frame = parseSseFrame(line);
+      if (line.startsWith("event:")) eventName = frame.eventName;
+      else if (frame.hasData) {
+        frame.eventName = eventName;
+        Object.defineProperty(frame, "wire", { value: line });
+        frames.push(frame);
+        eventName = null;
+      }
+    }
+    if (final && eventName) {
+      frames.push(parseSseFrame(`event: ${eventName}`));
+      eventName = null;
+    }
+    return frames;
+  };
+  let decodedBytes = false;
+  const observe = (frames) => {
+    for (const frame of frames) {
+      for (const callback of observers) callback(frame);
+    }
+    return frames;
+  };
+  const parse = (frames) => frames.map((frame) => {
+    let payload;
+    let linePayloads;
+    if (frame.hasData && frame.data.trim() !== "[DONE]") {
+      try { payload = JSON.parse(frame.data); } catch {
+        // Legacy passthrough can emit independent data lines without blank
+        // delimiters. Parse those once too, after trying valid multiline JSON.
+        if (frame.dataLines.length > 1) {
+          linePayloads = frame.dataLines.map((line) => {
+            if (line.trim() === "[DONE]") return undefined;
+            try { return JSON.parse(line); } catch { return undefined; }
+          });
+          payload = linePayloads[0];
+        }
+      }
+    }
+    return { ...frame, wire: frame.wire ?? frame.raw, payload, linePayloads };
+  });
+  return {
+    push(bytes) {
+      const cached = observedChunks.get(bytes);
+      if (cached) {
+        observe(cached.frames);
+        return cached;
+      }
+      decodedBytes = true;
+      const text = decoder.decode(bytes, { stream: true });
+      const frames = observe(parse(lineDelimited && parseFrames ? readLines(text) : reader?.push(text) ?? []));
+      return { text, frames, pendingBytes: sharedEncoder.encode(pendingLine).byteLength };
+    },
+    flush() {
+      const text = decodedBytes ? decoder.decode() : "";
+      decodedBytes = false;
+      const frames = observe(parse(lineDelimited && parseFrames ? readLines(text, true) : reader ? [...reader.push(text), ...reader.flush()] : []));
+      return { text, frames, pendingBytes: sharedEncoder.encode(pendingLine).byteLength };
+    },
+  };
 }

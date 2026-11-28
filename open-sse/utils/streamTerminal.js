@@ -373,7 +373,13 @@ function parseFramePayload(data) {
 
 /** OpenAI finish_reason is progress, not the client end. A later usage frame can still follow. */
 function openAIFinishReasonSeen(format, frame) {
-  if (format !== FORMATS.OPENAI || !isString(frame)) return false;
+  if (format !== FORMATS.OPENAI) return false;
+  if (isRecord(frame)) {
+    return (frame.linePayloads ?? [frame.payload]).some((payload) =>
+      Array.isArray(payload?.choices) && payload.choices.some((choice) =>
+        isString(choice?.finish_reason) && choice.finish_reason.length > 0));
+  }
+  if (!isString(frame)) return false;
   for (const line of frame.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("data:")) continue;
@@ -414,14 +420,18 @@ function geminiClientTerminalKind(payload) {
  * `success` and `done` are empty-completion candidates. `failure` has ended
  * the stream and must be forwarded unchanged.
  *
+ * @param {string|object} frame - Wire text or a shared SSE observation.
  * @returns {"success"|"done"|"failure"|null}
  */
 export function emittedFormatTerminalKind(format, frame) {
-  if (!isString(frame) || frame.length === 0) return null;
-  const data = frameData(frame);
-  if (data === "[DONE]" || /^data: \[DONE\]/m.test(frame)) return "done";
-  const payload = parseFramePayload(data);
-  const event = frameEvent(frame, payload);
+  const observation = isRecord(frame) ? frame : null;
+  const wire = observation ? observation.wire : frame;
+  if (!isString(wire) || wire.length === 0) return null;
+  const data = observation ? observation.data.trim() : frameData(wire);
+  if (data === "[DONE]" || /^data: \[DONE\]/m.test(wire)) return "done";
+  const payload = observation ? observation.payload : parseFramePayload(data);
+  const event = observation ? observation.eventName?.trim().split(/\s/, 1)[0] || payload?.type : frameEvent(wire, payload);
+  frame = wire;
 
   if (format === FORMATS.OPENAI) {
     return isRecord(payload?.error) || /"error"\s*:\s*\{/.test(frame) ? "failure" : null;
@@ -452,15 +462,17 @@ export function createTerminalTracker(format) {
   let terminated = false;
   let sawOpenAIFinish = false;
 
-  return {
-    observeClientFrame(frame) {
+  const observeClientFrame = (frame) => {
       if (terminated || !frame) return;
       if (emittedFormatTerminalKind(format, frame) !== null) {
         terminated = true;
         return;
       }
       if (openAIFinishReasonSeen(format, frame)) sawOpenAIFinish = true;
-    },
+  };
+  return {
+    observeClientFrame,
+    observeParsedClientFrame: observeClientFrame,
     /**
      * @param {{drop?: boolean}} [options] `drop` is a network or abort close.
      * A clean EOF after an OpenAI finish_reason is a finished translation

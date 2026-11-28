@@ -1,9 +1,14 @@
+// DeepSeek request/proof and fragment parity adapted from cheaper-inference/OmniRoute (MIT),
+// open-sse/executors/deepseek-web.ts at 4265bb2ad5477450a07d3a43ea33a62c6c874878.
+// Copyright and license: ./deepseek-web/LICENSE.omniroute.
+import { solveChallenge, POW_TARGET } from "./deepseek-web/pow.js";
+import { readBounded, envelopeStatus } from "./deepseek-web/protocol.js";
 import { BaseExecutor } from "./base.js";
-import { createExecutorSender } from "./sendRequest.js";
+import { createExecutorSender, cancelDiscardedResponse } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const BASE = "https://chat.deepseek.com/api";
 const HEADERS = {
@@ -57,30 +62,68 @@ function promptFrom(messages = []) {
   return usable.map((message, index) => index === lastUser ? message.content : `${message.role}: ${message.content}`).join("\n\n");
 }
 
-async function readEvents(body) {
-  const text = await body.text();
-  const events = [];
-  for (const line of text.split(/\r?\n/)) {
-    const raw = line.startsWith("data:") ? line.slice(5).trim() : line.trim();
-    if (!raw || raw === "[DONE]") continue;
-    try { events.push(JSON.parse(raw)); } catch { /* ignore framing and metadata lines */ }
-  }
-  return events;
-}
-
-function contentFrom(events) {
+// Fragment decoding adapted from cheaper-inference/OmniRoute (MIT),
+// open-sse/executors/deepseek-web.ts at 4265bb2ad5477450a07d3a43ea33a62c6c874878.
+// A provider-private parser kept inside its executor. Malformed frames fail closed.
+function decodeEvents(text, thinking = false) {
   let content = "";
   let reasoning = "";
-  for (const event of events) {
-    const delta = event?.choices?.[0]?.delta;
-    if (delta) {
-      content += delta.content || "";
-      reasoning += delta.reasoning_content || "";
+  let path = thinking ? "thinking" : "content";
+  let source = false;
+  let legacy = false;
+  let nativeFinished = false;
+  const append = value => { if (path === "thinking") reasoning += value; else content += value; };
+  const fragment = f => {
+    if (!f || !isObject(f)) throw new Error("Invalid DeepSeek fragment");
+    if (f.type === "THINK") path = "thinking";
+    if (f.type === "ANSWER" || f.type === "RESPONSE") path = "content";
+    if (f.content !== undefined && !isString(f.content)) throw new Error("Invalid DeepSeek content");
+    if (f.content) append(f.content);
+  };
+  for (const line of text.split(/\r?\n/)) {
+    const raw = line.trim();
+    if (!raw || raw.startsWith(":")) continue;
+    if (/^(event|id|retry):/.test(raw)) {
+      if (raw === "event: hint" || raw === "event: error") throw new Error("DeepSeek stream rejected");
+      continue;
+    }
+    const data = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
+    if (data === "[DONE]") continue;
+    const event = JSON.parse(data);
+    const status = envelopeStatus(event);
+    if (status) throw Object.assign(new Error("DeepSeek rejection"), { status });
+    if (event?.error) throw new Error("DeepSeek stream rejected");
+    const { p, v } = event;
+    if (p !== undefined || v !== undefined) source = true;
+    if (p === "response/status") { if (v === "FINISHED") nativeFinished = true; continue; }
+    if (v?.response) {
+      if (v.response.thinking_enabled !== undefined) path = v.response.thinking_enabled ? "thinking" : "content";
+      if (Array.isArray(v.response.fragments)) v.response.fragments.forEach(fragment);
+    } else if (p === "response/fragments") {
+      (Array.isArray(v) ? v : [v]).forEach(fragment);
+    } else if (isString(v) && !p?.startsWith("response/search")) append(v);
+    else if (p === "response" && Array.isArray(v)) {
+      for (const entry of v) {
+        if (entry?.v?.thinking_enabled === true) path = "thinking";
+        if (Array.isArray(entry?.v)) entry.v.forEach(fragment);
+      }
+    }
+    const choice = event?.choices?.[0];
+    if (choice?.delta) {
+      legacy = true;
+      content += choice.delta.content || "";
+      reasoning += choice.delta.reasoning_content || "";
     }
     const payload = event?.data?.biz_data || event?.biz_data || event?.data;
-    const fragment = payload?.response || payload?.content || payload?.message?.content;
-    if (isString(fragment)) content += fragment;
+    const value = payload?.response || payload?.content || payload?.message?.content;
+    if (isString(value)) { content += value; legacy = true; }
   }
+  // Native source streams require FINISHED; [DONE] alone is never a native DeepSeek terminal.
+  // Legacy biz_data and choices[].delta bodies keep the pre-repair contract: a clean end of a
+  // fully valid body is accepted, since those shapes carry no DeepSeek terminal to check.
+  if (source && !nativeFinished) throw new Error("DeepSeek stream ended before completion");
+  if (!source && !legacy) throw new Error("DeepSeek stream ended before completion");
+  if (!content && !reasoning) throw new Error("Empty DeepSeek completion");
   return { content, reasoning };
 }
 
@@ -102,12 +145,25 @@ export function resolveDeepSeekWebModelOptions(model, body) {
   };
 }
 
+/**
+ * Whether completions first fetch and solve the source proof-of-work challenge.
+ * `DURINDOOR_DEEPSEEK_WEB_POW=source` turns it on; any other value keeps it off.
+ * Read per request so an operator change applies without a restart.
+ */
+export function deepSeekWebProofOfWorkEnabled(env = process.env) {
+  return String(env?.DURINDOOR_DEEPSEEK_WEB_POW ?? "").trim().toLowerCase() === "source";
+}
+
 export class DeepSeekWebExecutor extends BaseExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
+  shouldRefreshAfterAuthFailure() { return false; }
+
   async execute(input) {
-    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
-    const sender = createExecutorSender(this, input);
+    const { model, body, stream, credentials, proxyOptions = null } = input;
+    const deadline = AbortSignal.timeout(60_000);
+    const signal = input.signal ? AbortSignal.any([input.signal, deadline]) : deadline;
+    const sender = createExecutorSender(this, { ...input, signal });
     const token = userToken(credentials);
     if (!token) return { response: json({ error: { message: "DeepSeek Web requires a web userToken from local storage", type: "authentication_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/chat/completion`, headers: {}, transformedBody: body };
     const prompt = promptFrom(body?.messages);
@@ -117,27 +173,35 @@ export class DeepSeekWebExecutor extends BaseExecutor {
     // The user and session requests are setup; only the completion is quota-bearing.
     // This executor sends through the patched global fetch, which routes `proxyOptions`.
     const send = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false, globalFetch: true });
-    const post = (url, payload, headers) => sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal }, proxyOptions, { globalFetch: true });
+    const post = (url, payload, headers) => sender.sendRequest(url, { method: "POST", headers, noTransportReplay: true, body: JSON.stringify(payload), redirect: "manual", signal }, proxyOptions, { globalFetch: true });
     let completion;
+    let outcomeUnknown = false;
     // Every result after the completion send carries its quota ticket.
     const carry = (result) => {
       transferProviderAttemptDispatch(completion, result.response);
-      return { ...result, attemptStartedAt: sender.attemptStartedAt };
+      // Existing request-scoped terminal contract is honored by chatCore and
+      // account fallback for both client dialects. Never replay uncertain work.
+      if (outcomeUnknown && !result.response.ok) result.response.upstreamPartialOutput = true;
+      return { ...result, claudeRequestScoped: outcomeUnknown && !result.response.ok, attemptStartedAt: sender.attemptStartedAt };
     };
     try {
       const current = await send(`${BASE}/v0/users/current`, { headers: common, redirect: "manual", signal });
+      if (!current.ok) cancelDiscardedResponse(current);
       if (current.status >= 300 && current.status < 400) return sessionRejected(`${BASE}/v0/users/current`, common);
       if (!current.ok) return { response: json({ error: { message: current.status === 401 || current.status === 403 ? "DeepSeek web userToken is invalid or expired" : `DeepSeek users/current returned HTTP ${current.status}`, type: "upstream_error", code: `HTTP_${current.status}` } }, current.status), url: `${BASE}/v0/users/current`, headers: common, transformedBody: body };
-      const currentData = await current.json();
+      const currentData = JSON.parse(await readBounded(current, signal, 64 * 1024));
+      if (envelopeStatus(currentData)) return sessionRejected(`${BASE}/v0/users/current`, common);
       const accessToken = currentData?.data?.biz_data?.token || currentData?.biz_data?.token;
-      if (!accessToken) return { response: json({ error: { message: "DeepSeek did not return an access token for this userToken", type: "upstream_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/users/current`, headers: common, transformedBody: body };
+      if (!isString(accessToken) || !accessToken || accessToken.length > 8192 || /[^\x21-\x7e]/.test(accessToken)) return { response: json({ error: { message: "DeepSeek did not return an access token for this userToken", type: "upstream_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/users/current`, headers: common, transformedBody: body };
       const authHeaders = { ...HEADERS, Authorization: `Bearer ${accessToken}` };
       const sessionResponse = await send(`${BASE}/v0/chat_session/create`, { method: "POST", headers: { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" }, body: "{}", redirect: "manual", signal });
+      if (!sessionResponse.ok) cancelDiscardedResponse(sessionResponse);
       if (sessionResponse.status >= 300 && sessionResponse.status < 400) return sessionRejected(`${BASE}/v0/chat_session/create`, authHeaders);
       if (!sessionResponse.ok) return { response: json({ error: { message: `DeepSeek session creation returned HTTP ${sessionResponse.status}`, type: "upstream_error", code: `HTTP_${sessionResponse.status}` } }, sessionResponse.status), url: `${BASE}/v0/chat_session/create`, headers: authHeaders, transformedBody: body };
-      const sessionData = await sessionResponse.json();
+      const sessionData = JSON.parse(await readBounded(sessionResponse, signal, 64 * 1024));
+      if (envelopeStatus(sessionData)) return sessionRejected(`${BASE}/v0/chat_session/create`, authHeaders);
       const sessionId = sessionData?.data?.biz_data?.chat_session?.id || sessionData?.biz_data?.chat_session?.id;
-      if (!sessionId) return { response: json({ error: { message: "DeepSeek did not return a chat session id", type: "upstream_error" } }, 502), url: `${BASE}/v0/chat_session/create`, headers: authHeaders, transformedBody: body };
+      if (!isString(sessionId) || !sessionId || sessionId.length > 8192) return { response: json({ error: { message: "DeepSeek did not return a chat session id", type: "upstream_error" } }, 502), url: `${BASE}/v0/chat_session/create`, headers: authHeaders, transformedBody: body };
       const modelId = String(model || "deepseek-chat");
       const { modelType, thinkingEnabled, searchEnabled } = resolveDeepSeekWebModelOptions(modelId, body);
       const payload = {
@@ -150,15 +214,43 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         search_enabled: searchEnabled,
         preempt: false,
       };
-      completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });
+      // Challenge reads are unbilled, use the selected route, and never retry a submit.
+      // Off by default: the existing request contract is users/current, session, completion.
+      const proofHeaders = {};
+      if (deepSeekWebProofOfWorkEnabled()) {
+        const challengeResponse = await send(`${BASE}/v0/chat/create_pow_challenge`, {
+          method: "POST", headers: authHeaders, body: JSON.stringify({ target_path: POW_TARGET }), redirect: "manual", signal,
+        });
+        if (!challengeResponse.ok) cancelDiscardedResponse(challengeResponse);
+        if (!challengeResponse.ok) throw Object.assign(new Error("DeepSeek challenge refused"), {
+          status: challengeResponse.status === 401 || challengeResponse.status === 403 ? 401 : challengeResponse.status === 429 ? 429 : 502,
+        });
+        const challengeData = JSON.parse(await readBounded(challengeResponse, signal, 64 * 1024));
+        const challengeStatus = envelopeStatus(challengeData);
+        if (challengeStatus) throw Object.assign(new Error("DeepSeek challenge refused"), { status: challengeStatus });
+        const challenge = challengeData?.data?.biz_data?.challenge ?? challengeData?.biz_data?.challenge;
+        proofHeaders["X-Ds-Pow-Response"] = await solveChallenge({ ...challenge, target_path: POW_TARGET }, { signal });
+      }
+      signal.throwIfAborted();
+      outcomeUnknown = true;
+      completion = await post(`${BASE}/v0/chat/completion`, payload, { ...authHeaders, ...proofHeaders, Cookie: "intercom-HWWAFSESTIME=0; HWWAFSESTIME=0" });
+      if (!completion.ok) cancelDiscardedResponse(completion);
       if (completion.status >= 300 && completion.status < 400) return carry(sessionRejected(`${BASE}/v0/chat/completion`, authHeaders));
       if (!completion.ok) {
+        outcomeUnknown = ![401, 403, 429].includes(completion.status);
         const status = completion.status === 401 || completion.status === 403 ? 401 : completion.status === 429 ? 429 : completion.status;
         const message = status === 401 ? "DeepSeek web session expired or is unauthorized" : status === 429 ? "DeepSeek web quota or rate limit reached" : `DeepSeek completion returned HTTP ${completion.status}`;
         return carry({ response: json({ error: { message, type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload });
       }
-      const events = await readEvents(completion);
-      const result = contentFrom(events);
+      const responseText = await readBounded(completion, signal);
+      if (completion.headers.get("content-type")?.includes("application/json")) {
+        const rejection = envelopeStatus(JSON.parse(responseText));
+        if (rejection) outcomeUnknown = false;
+        const status = rejection || 502;
+        throw Object.assign(new Error("DeepSeek completion refused"), { status });
+      }
+      const result = decodeEvents(responseText, thinkingEnabled);
+      signal.throwIfAborted();
       const cid = `chatcmpl-dsweb-${crypto.randomUUID()}`;
       const created = Math.floor(Date.now() / 1000);
       const message = { role: "assistant", content: result.content };
@@ -169,8 +261,8 @@ export class DeepSeekWebExecutor extends BaseExecutor {
       return carry({ response: new Response(sse, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } }), url: `${BASE}/v0/chat/completion`, headers: authHeaders, transformedBody: payload });
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
-      const status = error?.name === "AbortError" ? 499 : 502;
-      return carry({ response: json({ error: { message: error?.message || "DeepSeek Web request failed", type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: common, transformedBody: body });
+      const status = input.signal?.aborted ? 499 : deadline.aborted ? 504 : [401, 429].includes(error?.status) ? error.status : 502;
+      return carry({ response: json({ error: { message: status === 401 ? "DeepSeek web session expired or is unauthorized" : status === 429 ? "DeepSeek web quota or rate limit reached" : status === 499 ? "DeepSeek Web request aborted" : status === 504 ? "DeepSeek Web request deadline exceeded" : "DeepSeek Web request failed", type: "upstream_error", code: `HTTP_${status}` } }, status), url: `${BASE}/v0/chat/completion`, headers: common, transformedBody: body });
     }
   }
 }

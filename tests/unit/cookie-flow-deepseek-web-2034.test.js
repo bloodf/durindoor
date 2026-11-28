@@ -8,8 +8,9 @@
  * synthetic. Nothing here shows that a live DeepSeek sign-in or completion works; see
  * internal/docs/port-reports/cookie-flows/deepseek-web-2034.md for the execution gaps.
  *
- * The `{ code: 40003 }` envelope shape follows cheaper-inference/OmniRoute (MIT),
- * open-sse/executors/deepseek-web.ts at 4265bb2ad5477450a07d3a43ea33a62c6c874878.
+ * The `{ code: 40003 }` envelope shape and the proof-of-work challenge request follow
+ * cheaper-inference/OmniRoute (MIT), open-sse/executors/deepseek-web.ts and
+ * open-sse/executors/deepseek-web/pow.ts at 4265bb2ad5477450a07d3a43ea33a62c6c874878.
  */
 import fs from "node:fs";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +60,8 @@ import {
 import REGISTRY from "../../open-sse/providers/registry/index.js";
 import deepseekWeb from "../../open-sse/providers/registry/deepseek-web.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
+import { POW_TARGET } from "../../open-sse/executors/deepseek-web/pow.js";
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
 import { resolveCredentialProxyOptions } from "../../open-sse/services/oauthCredentialManager.js";
 import {
   __clearProxyDispatchersForTesting, __setOriginalFetchForTesting, __setProxyDispatcherForTesting,
@@ -442,8 +445,11 @@ describe("a selected imported account reaches the executor over its own proxy", 
     // Every real egress path in proxyFetch ends here. An unprogrammed send fails the test.
     socket = vi.fn(async () => { throw new Error("unprogrammed outbound request"); });
     restoreSocket = __setOriginalFetchForTesting(socket);
+    // The source challenge runs before the completion only when the operator opts in.
+    vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "source");
   });
   afterEach(() => {
+    vi.unstubAllEnvs();
     restoreSocket();
     __clearProxyDispatchersForTesting();
   });
@@ -480,28 +486,44 @@ describe("a selected imported account reaches the executor over its own proxy", 
     return { result, text: await result.response.text() };
   }
 
-  const setupReplies = () => socket
+  // A deterministic DeepSeekHashV1 challenge whose answer is nonce 5, solved by the real worker.
+  const powChallenge = (salt) => ({
+    algorithm: "DeepSeekHashV1", challenge: deepSeekHashV1(`${salt}_1900000000_5`), salt,
+    signature: `synthetic-signature-${salt}`, difficulty: 16, expire_at: 1900000000, expire_after: 300000, target_path: POW_TARGET,
+  });
+  const setupReplies = (salt) => socket
     .mockResolvedValueOnce(json({ data: { biz_data: { token: ACCESS } } }))
-    .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "synthetic-session" } } } }));
+    .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "synthetic-session" } } } }))
+    .mockResolvedValueOnce(json({ code: 0, msg: "", data: { biz_code: 0, biz_msg: "", biz_data: { challenge: powChallenge(salt) } } }));
   const wire = () => JSON.stringify(socket.mock.calls.map(([url, init]) => [url, init.headers, init.body ?? null]));
 
   it.each([["A", TOKEN_A, TOKEN_B2, PROXY_A], ["B", TOKEN_B2, TOKEN_A, PROXY_B]])(
     "builds account %s's requests with its token and proxy only", async (label, token, otherToken, proxyUrl) => {
       const ids = await twoAccounts();
       // The completion is answered with a quota refusal: this proves what is sent, not reply decoding.
-      setupReplies().mockResolvedValueOnce(json({ msg: `limited ${ACCESS}` }, 429));
+      const salt = `synthetic-salt-${label}`;
+      setupReplies(salt).mockResolvedValueOnce(json({ msg: `limited ${ACCESS}` }, 429));
       const { result, text } = await execute(ids[label]);
 
       expect(socket.mock.calls.map(([url, init]) => `${init.method ?? "GET"} ${url}`)).toEqual([
-        `GET ${API}/users/current`, `POST ${API}/chat_session/create`, `POST ${API}/chat/completion`,
+        `GET ${API}/users/current`, `POST ${API}/chat_session/create`,
+        `POST ${API}/chat/create_pow_challenge`, `POST ${API}/chat/completion`,
       ]);
       for (const [, init] of socket.mock.calls) {
         expect(init.dispatcher).toBe(dispatchers[proxyUrl]);
         expect(init).not.toHaveProperty("proxyOptions");
       }
-      expect(socket.mock.calls.map(([, init]) => init.headers.Authorization)).toEqual([`Bearer ${token}`, `Bearer ${ACCESS}`, `Bearer ${ACCESS}`]);
+      expect(socket.mock.calls.map(([, init]) => init.headers.Authorization)).toEqual([`Bearer ${token}`, `Bearer ${ACCESS}`, `Bearer ${ACCESS}`, `Bearer ${ACCESS}`]);
       expect(socket.mock.calls[0][1].headers).not.toHaveProperty("Cookie");
-      expect(JSON.parse(socket.mock.calls[2][1].body)).toEqual({
+      expect(socket.mock.calls[2][1]).toMatchObject({ method: "POST", redirect: "manual" });
+      expect(JSON.parse(socket.mock.calls[2][1].body)).toEqual({ target_path: POW_TARGET });
+      expect(socket.mock.calls[2][1].headers).not.toHaveProperty("X-Ds-Pow-Response");
+      // Exactly one billable completion, carrying the real solver's answer to this account's challenge.
+      expect(JSON.parse(Buffer.from(socket.mock.calls[3][1].headers["X-Ds-Pow-Response"], "base64").toString())).toEqual({
+        algorithm: "DeepSeekHashV1", challenge: powChallenge(salt).challenge, salt, answer: 5,
+        signature: `synthetic-signature-${salt}`, target_path: POW_TARGET,
+      });
+      expect(JSON.parse(socket.mock.calls[3][1].body)).toEqual({
         chat_session_id: "synthetic-session", parent_message_id: null, model_type: "default",
         prompt: "system: be brief\n\nsynthetic question", ref_file_ids: [], thinking_enabled: true, search_enabled: true, preempt: false,
       });

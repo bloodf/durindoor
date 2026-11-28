@@ -66,7 +66,7 @@ export async function getTokenRouterUsage(connection, proxyOptions = null) {
     const notices = [];
     if (walletUnavailable) notices.push("Wallet balance is unavailable.");
     if (data.items.length === 100 || (number(data.total) && data.total > data.items.length)) notices.push("Only the first 100 API keys are included.");
-    if (!Object.keys(quotas).length) notices.push("No API keys were reported.");
+    if (data.items.length === 0) notices.push("No API keys were reported.");
     const result = { plan: "TokenRouter", quotas };
     if (notices.length) result.message = notices.join(" ");
     return result;

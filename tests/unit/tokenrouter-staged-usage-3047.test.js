@@ -48,6 +48,14 @@ describe("staged TokenRouter usage", () => {
     expect(result.quotas).not.toHaveProperty("Account Balance");
     expect(JSON.stringify(result)).not.toContain("management-one");
   });
+  it.each([0, 100.019508])("reports an empty key list with wallet balance %s", async (balance) => {
+    proxyAwareFetch.mockResolvedValueOnce(reply({ data: { topUpBalance: balance, voucherEfficientAmount: 0 } }))
+      .mockResolvedValueOnce(reply(page([])));
+    const result = await getTokenRouterUsage(connection);
+    expect(result.message).toBe("No API keys were reported.");
+    expect(Object.keys(result.quotas)).toEqual(["Account Balance"]);
+    expect(result.quotas["Account Balance"]).toMatchObject({ total: balance, remaining: balance, currency: "USD" });
+  });
   it.each([401, 403, 500, 302])("reports HTTP %s without returning fabricated quotas", async (status) => {
     proxyAwareFetch.mockResolvedValueOnce(reply(wallet)).mockResolvedValueOnce(reply({}, status));
     expect(await getTokenRouterUsage(connection)).toMatchObject({ quotas: {}, message: expect.any(String) });

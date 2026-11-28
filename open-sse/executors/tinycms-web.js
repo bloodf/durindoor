@@ -10,8 +10,11 @@ import { randomUUID } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { cancelDiscardedResponse, createExecutorSender, isRefusedRedirect, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
+import { readBodyWithTimeout } from "../utils/bodyTimeout.js";
+import { peekStreamForContent } from "../utils/streamContentPeek.js";
+import { MAX_PROVIDER_BODY_BYTES, PROVIDER_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 // The vendored signer inlines about 78 KB of WASM; it is loaded on the first request, not with the
 // executor map, so every other provider's import path stays as light as before registration.
@@ -74,11 +77,54 @@ function failure(status, message, type, url, body, retryAfter = null) {
   return { response: errorResponse(status, message, { type, code }, retryAfter), url, headers: {}, transformedBody: body };
 }
 
-async function upstreamFailure(response, url, body) {
+/**
+ * A failure after the chat POST left the gateway, where nothing proves TinyCMS refused the
+ * work: a reset, 5xx, body deadline, malformed or error reply. The existing request-scoped
+ * executor flag makes it terminal, so neither account fallback nor the outer transient retry
+ * sends the same chat again on this or a sibling account (#2034).
+ */
+function outcomeUnknown(message, body) {
+  return {
+    response: errorResponse(502, message, { type: "upstream_error", code: "upstream_outcome_unknown" }),
+    url: TINYCMS_CHAT_URL, headers: {}, transformedBody: body, claudeRequestScoped: true,
+  };
+}
+
+/** Auth, quota and other 4xx answers are vendor refusals; a 5xx after the chat POST is not. */
+function chatRefusalIsProven(mapped) {
+  return mapped.status !== 502;
+}
+
+async function upstreamFailure(response, url, body, afterChatSend = false) {
   const retry = Number(response.headers?.get?.("retry-after"));
   await response.text().catch(() => "");
   const mapped = classify(response.status);
+  if (afterChatSend && !chatRefusalIsProven(mapped)) return outcomeUnknown(mapped.message, body);
   return failure(mapped.status, mapped.message, mapped.type, url, body, Number.isFinite(retry) ? retry : null);
+}
+
+/**
+ * Read a buffered chat reply within the provider body deadline and accept only a completion
+ * with choices. An error envelope keeps its auth/quota mapping; anything else is outcome-unknown.
+ */
+async function bufferedChat(upstream, signal, chatBody) {
+  let text;
+  try {
+    text = await readBodyWithTimeout(upstream, { signal, maxBytes: MAX_PROVIDER_BODY_BYTES, timeoutMs: PROVIDER_BODY_TIMEOUT_MS });
+  } catch (error) {
+    if (signal?.aborted) throw requestAbortError(signal.reason);
+    return outcomeUnknown(error?.name === "BodyReadTimeoutError" ? "TinyCMS response body timed out" : "TinyCMS response body could not be read", chatBody);
+  }
+  let payload = null;
+  try { payload = JSON.parse(text); } catch { /* handled below as malformed */ }
+  if (isRecord(payload) && payload.error && !payload.choices) {
+    const status = Number(payload.error.code ?? payload.error.status);
+    const mapped = classify(Number.isInteger(status) && status >= 400 ? status : 502);
+    if (!chatRefusalIsProven(mapped)) return outcomeUnknown(mapped.message, chatBody);
+    return failure(mapped.status, mapped.message, mapped.type, TINYCMS_CHAT_URL, chatBody);
+  }
+  if (!isRecord(payload) || !Array.isArray(payload.choices) || payload.choices.length === 0) return outcomeUnknown("TinyCMS returned a malformed response", chatBody);
+  return { response: new Response(text, { status: 200, headers: { "Content-Type": "application/json" } }), url: TINYCMS_CHAT_URL, headers: { uuid: "[REDACTED]" }, transformedBody: chatBody };
 }
 
 /** Validate a device UUID by asking the challenge endpoint for a challenge. */
@@ -94,6 +140,27 @@ export async function validateTinyCmsSession({ apiKey, providerSpecificData, fet
   } catch (error) {
     return { valid: false, status: 502, error: error?.name === "AbortError" ? "TinyCMS validation timed out" : "TinyCMS validation request failed" };
   }
+}
+
+/**
+ * Hold a 200 stream until its first output frame. A stream that ends, resets or stays silent
+ * before any output follows an accepted chat POST, so it is outcome-unknown and terminal; the
+ * gateway's sibling retry for an empty stream would otherwise send the same chat again. An
+ * in-stream error frame is not vendor evidence of refusal here, so it is outcome-unknown too.
+ * The returned body replays every byte.
+ */
+async function streamedChat(upstream, signal, chatBody) {
+  const peek = await peekStreamForContent(upstream);
+  if (signal?.aborted) {
+    if (peek.body) cancelDiscardedResponse({ body: peek.body });
+    throw requestAbortError(signal.reason);
+  }
+  if (!peek.body || peek.hasContent) {
+    const response = peek.body ? new Response(peek.body, { status: upstream.status, statusText: upstream.statusText, headers: upstream.headers }) : upstream;
+    return { response, url: TINYCMS_CHAT_URL, headers: { uuid: "[REDACTED]" }, transformedBody: chatBody };
+  }
+  cancelDiscardedResponse({ body: peek.body });
+  return outcomeUnknown(peek.outcome === "timeout" ? "TinyCMS stream produced no output in time" : "TinyCMS stream ended before any output", chatBody);
 }
 
 export class TinyCmsExecutor extends BaseExecutor {
@@ -156,25 +223,23 @@ export class TinyCmsExecutor extends BaseExecutor {
       try {
         upstream = billed(await sender.sendRequest(TINYCMS_CHAT_URL, { method: "POST", headers, redirect: "manual", body: JSON.stringify(chatBody), signal: input.signal }, input.proxyOptions));
       } catch (error) {
-        if (!isRefusedRedirect(error)) throw error;
-        const mapped = classify(302);
-        return failure(mapped.status, mapped.message, mapped.type, TINYCMS_CHAT_URL, chatBody);
-      }
-      if (!upstream.ok) return await upstreamFailure(upstream, TINYCMS_CHAT_URL, chatBody);
-      const type = upstream.headers.get("content-type") || "";
-      if (!stream && type.includes("json")) {
-        // A 200 that carries an error envelope instead of choices is still a failure.
-        const text = await upstream.text();
-        let payload = null;
-        try { payload = JSON.parse(text); } catch { /* not JSON: hand the text on unchanged */ }
-        if (payload?.error && !payload.choices) {
-          const status = Number(payload.error.code ?? payload.error.status);
-          const mapped = classify(Number.isInteger(status) && status >= 400 ? status : 502);
+        if (isRefusedRedirect(error)) {
+          const mapped = classify(302);
           return failure(mapped.status, mapped.message, mapped.type, TINYCMS_CHAT_URL, chatBody);
         }
-        return { response: new Response(text, { status: 200, headers: { "Content-Type": "application/json" } }), url: TINYCMS_CHAT_URL, headers: { uuid: "[REDACTED]" }, transformedBody: chatBody };
+        if (input.signal?.aborted || error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
+        // The POST may have reached TinyCMS before the connection failed.
+        return outcomeUnknown("TinyCMS request failed", chatBody);
       }
-      return { response: upstream, url: TINYCMS_CHAT_URL, headers: { uuid: "[REDACTED]" }, transformedBody: chatBody };
+      if (!upstream.ok) return await upstreamFailure(upstream, TINYCMS_CHAT_URL, chatBody, true);
+      const type = (upstream.headers.get("content-type") || "").toLowerCase();
+      // A 200 that carries an error envelope, no choices or a page instead of a reply is still a failure.
+      if (type.includes("json")) return await bufferedChat(upstream, input.signal, chatBody);
+      if (!type.includes("text/event-stream")) {
+        cancelDiscardedResponse(upstream);
+        return outcomeUnknown("TinyCMS returned an unusable response", chatBody);
+      }
+      return await streamedChat(upstream, input.signal, chatBody);
     } catch (error) {
       if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
       return failure(502, "TinyCMS request failed", "upstream_error", TINYCMS_CHAT_URL, input.body);

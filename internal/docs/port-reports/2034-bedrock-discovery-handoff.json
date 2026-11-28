@@ -37,10 +37,10 @@
   "credentialModes": {
     "apiKey": "bearer only; SigV4 identity refused",
     "static": "SigV4 only; encrypted top-level sessionToken; bearer identity refused",
-    "profile": "SigV4 via shared fromIni helper; local extension, not in source",
+    "profile": "SigV4 via shared fromIni; effective direct route only; selected proxy/relay/strict routes refused before provider construction",
     "sessionTokenWithoutAccessKeyId": "refused (config)"
   },
-  "origin": "https://bedrock.{region}.amazonaws.com (explicit endpoint; FIPS/dual-stack off; other origins refused; profile mode also allows sts/portal.sso/oidc *.amazonaws.com)",
+  "origin": "Bedrock action handler accepts only exact https://bedrock.{region}.amazonaws.com; STS/SSO/custom origins refused",
   "billable": false,
   "tests": {
     "file": "tests/unit/bedrock-sigv4-discovery-2034.test.js",
@@ -83,5 +83,11 @@
     "Authorized live AWS wire check (prohibited here)"
   ],
   "liveAws": "not-run-prohibited",
-  "readyForPromotion": false
+  "readyForPromotion": false,
+  "profileCredentialBoundary": {
+    "transport": "Separate SDK credential clients/processes; no selected-proxy, response-body-cap or cancellation guarantee",
+    "deadline": "Bounds caller wait only for credential resolution; does not cancel credential-chain work",
+    "evidence": "Pinned dependency source inspection and mocked tests only; no live AWS permissions proven",
+    "report": "internal/docs/port-reports/fix-bedrock-discovery-profile-boundary-2034.md"
+  }
 }

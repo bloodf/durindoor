@@ -13,7 +13,7 @@
 // - static:  access key id + secret (+ the encrypted top-level session token), SigV4 only.
 //            The secret is never sent as a bearer token.
 // - profile: a named local profile resolved by the SDK's `fromIni`. Not in the source, which
-//            has no profile mode; it is supported because the executor already supports it.
+//            has no profile mode; discovery supports it only on an effective direct route.
 //
 // Private and unregistered: nothing imports this module outside its tests. Public
 // registration and promotion are owned elsewhere (see manifest.json).
@@ -25,7 +25,7 @@ import { Readable } from "node:stream";
 import { BEDROCK_CREDENTIAL_MODE, resolveBedrockRegion } from "../../../config/bedrock.js";
 import { buildBedrockClientAuth, detectBedrockCredentialMode } from "../../../shared/awsCredentials.js";
 import { readBoundedResponseText } from "../../../utils/error.js";
-import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
+import { proxyAwareFetch, resolveProxyForRequest } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
 import { isString } from "../../../../src/shared/utils/typeChecks.js";
 import {
@@ -41,9 +41,6 @@ export const BEDROCK_DISCOVERY_MAX_PROFILE_PAGES = 10;
 export const BEDROCK_DISCOVERY_MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_NEXT_TOKEN_LENGTH = 4096;
 
-// AWS hosts a profile's credential chain may call through the parent client's handler (STS
-// AssumeRole and IAM Identity Center). Only reachable in profile mode.
-const CREDENTIAL_HOST_PATTERN = /^(?:sts|portal\.sso|oidc)(?:\.[a-z0-9-]+)?\.amazonaws\.com$/;
 // fetch derives these from the URL; a relay must not inherit the signed Host.
 const FETCH_OWNED_HEADERS = new Set(["host", "content-length", "connection", "expect", "transfer-encoding"]);
 const CREDENTIAL_PROVIDER_ERRORS = new Set(["CredentialsProviderError", "TokenProviderError"]);
@@ -94,13 +91,6 @@ function refusingIdentity(name, message) {
   };
 }
 
-/** Whether a request target is one this discovery may send to. */
-function allowedTarget(target, origin, allowCredentialHosts) {
-  if (target.origin === origin) return true;
-  return allowCredentialHosts && target.protocol === "https:" && !target.port &&
-    CREDENTIAL_HOST_PATTERN.test(target.hostname);
-}
-
 function discard(response) {
   void response?.body?.cancel?.().catch(() => {});
 }
@@ -127,7 +117,7 @@ function waitFor(promise, signal) {
  * SDK HTTP handler bound to one discovery: fixed origin, no redirects, caller abort plus the
  * discovery deadline, and a bounded body read. The SDK signs before it calls `handle`.
  */
-function createDiscoveryRequestHandler({ origin, allowCredentialHosts, transport, signal, end }) {
+function createDiscoveryRequestHandler({ origin, transport, signal, end }) {
   return {
     metadata: { handlerProtocol: "http/1.1" },
     async handle(request, { abortSignal } = {}) {
@@ -135,7 +125,7 @@ function createDiscoveryRequestHandler({ origin, allowCredentialHosts, transport
       for (const [name, value] of Object.entries(request.query || {})) {
         for (const item of [value].flat()) target.searchParams.append(name, item ?? "");
       }
-      if (!allowedTarget(target, origin, allowCredentialHosts)) throw refusal("OriginRefused");
+      if (target.origin !== origin) throw refusal("OriginRefused");
       const headers = Object.fromEntries(
         Object.entries(request.headers || {}).filter(([name]) => !FETCH_OWNED_HEADERS.has(name.toLowerCase()))
       );
@@ -255,8 +245,9 @@ async function listInferenceProfiles(client, sendOptions) {
  * Read-only control-plane calls (ListFoundationModels, ListInferenceProfiles): nothing is
  * invoked or billed. The request goes to `https://bedrock.<region>.amazonaws.com` for the
  * connection's region, through the connection's proxy settings, signed or bearer-authenticated
- * by the AWS SDK. `timeoutMs` bounds everything: credential resolution, every page and every
- * body read.
+ * by the AWS SDK. The deadline bounds caller wait and action transport/body reads. A direct
+ * profile chain has separate SDK clients/processes: its network is not routed, body-capped or
+ * cancelled by this handler. Profile discovery therefore refuses selected proxy/relay/strict routes.
  *
  * @param {object} options
  * @param {object} options.credentials - The selected connection (apiKey, sessionToken, providerSpecificData).
@@ -294,19 +285,30 @@ export async function discoverBedrockModels({
     );
   }
 
+  const effectiveProxyOptions = resolveCredentialProxyOptions(credentials, proxyOptions);
+  if (mode === BEDROCK_CREDENTIAL_MODE.PROFILE) {
+    const route = resolveProxyForRequest(origin, effectiveProxyOptions);
+    if (route.source !== "direct" || route.strict) {
+      throw new BedrockDiscoveryError(
+        "config", 400,
+        "AWS profile discovery cannot honor this connection route. Use static AWS credentials or a Bedrock API key, or explicitly select direct profile discovery.",
+        "ProfileRouteUnsupported"
+      );
+    }
+  }
+
   let auth;
   try {
     auth = buildBedrockClientAuth(credentials);
   } catch (error) {
     throw toDiscoveryError(error, state);
   }
-  // Pin the auth scheme to the connection's mode so the SDK can never fall back to an
-  // ambient credential (environment bearer token, SSO token cache, instance metadata).
+  // Refuse the other identity type; pin the selected auth scheme after merging auth below.
+  // A direct named profile still uses its own configured SDK credential chain.
   const modeGuard = mode === BEDROCK_CREDENTIAL_MODE.API_KEY ?
   { credentials: refusingIdentity("CredentialsProviderError", "SigV4 is not used for a Bedrock API key connection") } :
   {
     token: refusingIdentity("TokenProviderError", "Bearer auth is not used for an AWS credential connection"),
-    authSchemePreference: ["sigv4"],
   };
 
   const total = Math.min(BEDROCK_DISCOVERY_MAX_TIMEOUT_MS, Math.max(1, Number(timeoutMs) || BEDROCK_DISCOVERY_DEFAULT_TIMEOUT_MS));
@@ -322,7 +324,7 @@ export async function discoverBedrockModels({
   };
   signal?.addEventListener("abort", onCallerAbort, { once: true });
 
-  const send = transport ?? ((url, init) => proxyAwareFetch(url, init, resolveCredentialProxyOptions(credentials, proxyOptions)));
+  const send = transport ?? ((url, init) => proxyAwareFetch(url, init, effectiveProxyOptions));
   const client = new BedrockClient({
     region,
     endpoint: origin,
@@ -333,9 +335,9 @@ export async function discoverBedrockModels({
     defaultsMode: "standard",
     ...modeGuard,
     ...auth,
+    authSchemePreference: [mode === BEDROCK_CREDENTIAL_MODE.API_KEY ? "httpBearerAuth" : "sigv4"],
     requestHandler: createDiscoveryRequestHandler({
       origin,
-      allowCredentialHosts: mode === BEDROCK_CREDENTIAL_MODE.PROFILE,
       transport: send,
       signal: controller.signal,
       end,
@@ -361,7 +363,7 @@ export async function discoverBedrockModels({
   work.catch(() => {});
 
   try {
-    // The race keeps the deadline binding even if a credential provider ignores the signal.
+    // Bound caller wait; this does not cancel the separate fromIni chain or its processes.
     return await waitFor(work, controller.signal);
   } catch (error) {
     throw toDiscoveryError(error, state);

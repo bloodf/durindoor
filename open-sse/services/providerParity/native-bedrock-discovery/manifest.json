@@ -1,0 +1,32 @@
+{
+  "canonicalId": "stage-bedrock-sigv4-discovery",
+  "issue": 2034,
+  "status": "staged-unregistered",
+  "activation": "private",
+  "publicImports": [],
+  "registryEntries": [],
+  "uiActivation": false,
+  "publicRegistrationAndPromotion": "auth native14",
+  "source": {
+    "repository": "cheaper-inference/OmniRoute",
+    "commit": "3a17f7e908308a217887a7617c2c793b95ea83c0",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Cheaper Inference - Created by Diego Souza",
+    "files": ["open-sse/services/bedrock.ts", "open-sse/config/bedrock.ts"]
+  },
+  "exports": {
+    "discoverBedrockModels": "index.js",
+    "BedrockDiscoveryError": "index.js",
+    "normalizeBedrockDiscoveredModels": "normalize.js"
+  },
+  "dependency": { "package": "@aws-sdk/client-bedrock", "version": "3.1132.0" },
+  "operations": ["ListFoundationModels (byOutputModality=TEXT)", "ListInferenceProfiles (typeEquals=SYSTEM_DEFINED, maxResults=100, max 10 pages)"],
+  "billable": false,
+  "origin": "https://bedrock.{region}.amazonaws.com",
+  "credentialModes": {
+    "apiKey": "supported: bearer only, SigV4 identity refused",
+    "static": "supported: SigV4 only, session token from encrypted top-level field, bearer identity refused",
+    "profile": "supported locally (not in source) only when the selected Bedrock action route is direct: SDK fromIni via shared helper, SigV4 only; credential resolution is separate from the action handler and its proxy, body-cap and cancellation controls"
+  },
+  "test": "tests/unit/bedrock-sigv4-discovery-2034.test.js"
+}

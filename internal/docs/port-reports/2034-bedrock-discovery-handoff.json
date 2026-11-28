@@ -1,0 +1,93 @@
+{
+  "canonicalId": "stage-bedrock-sigv4-discovery",
+  "issue": 2034,
+  "status": "implemented-private-awaiting-native-gate",
+  "activation": "private-unregistered",
+  "implementationPresent": true,
+  "exports": {
+    "discoverBedrockModels": "open-sse/services/providerParity/native-bedrock-discovery/index.js",
+    "BedrockDiscoveryError": "open-sse/services/providerParity/native-bedrock-discovery/index.js",
+    "normalizeBedrockDiscoveredModels": "open-sse/services/providerParity/native-bedrock-discovery/normalize.js"
+  },
+  "activationManifest": "open-sse/services/providerParity/native-bedrock-discovery/manifest.json",
+  "publicImports": [],
+  "pins": {
+    "integration": "d742d28270c",
+    "integrationIncludes": "8f4fc37ee778aeb99f59e450de5ff932e95dae1b",
+    "dependencyCheckpoint": "7d2f9f1fb51ee7b0a00acefbab3e7249f30f7927",
+    "qualifiedMain": "dc624113dc5728c04a01c1dd49e37f9a1dd80c4b",
+    "sourceOmni20103": "3a17f7e908308a217887a7617c2c793b95ea83c0",
+    "census": "afed4d23461"
+  },
+  "source": {
+    "repository": "cheaper-inference/OmniRoute",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Cheaper Inference - Created by Diego Souza",
+    "files": ["open-sse/services/bedrock.ts", "open-sse/config/bedrock.ts"],
+    "verifiedExactPinInReadOnlyCache": true
+  },
+  "dependency": {
+    "package": "@aws-sdk/client-bedrock",
+    "version": "3.1132.0",
+    "lockGeneratedBy": "pnpm 12.18.0",
+    "privateLockResolution": "passed",
+    "privateFrozenRootInstallIgnoreScripts": "passed",
+    "privateFrozenTestsInstallIgnoreScripts": "passed"
+  },
+  "credentialModes": {
+    "apiKey": "bearer only; SigV4 identity refused",
+    "static": "SigV4 only; encrypted top-level sessionToken; bearer identity refused",
+    "profile": "SigV4 via shared fromIni; effective direct route only; selected proxy/relay/strict routes refused before provider construction",
+    "sessionTokenWithoutAccessKeyId": "refused (config)"
+  },
+  "origin": "Bedrock action handler accepts only exact https://bedrock.{region}.amazonaws.com; STS/SSO/custom origins refused",
+  "billable": false,
+  "tests": {
+    "file": "tests/unit/bedrock-sigv4-discovery-2034.test.js",
+    "environment": "env -i, private /var/tmp HOME/DATA_DIR/TMPDIR/cache/store, AWS_EC2_METADATA_DISABLED=true, timeout 300, maxWorkers 2",
+    "mockedBoundaries": ["open-sse/utils/proxyFetch.js proxyAwareFetch", "@aws-sdk/credential-provider-ini fromIni"],
+    "realSdk": ["serializer", "SigV4 signer", "bearer signer", "deserializer"],
+    "results": {
+      "discoveryPlusAwsCredentials": "2 files, 61 passed (35 + 26)",
+      "withEmbeddingAndCredentialBoundaries": "4 files, 128 passed",
+      "eslint": "clean"
+    },
+    "mutationChecks": {
+      "noPinnedEndpoint": "8 failed",
+      "noModeGuard": "7 failed",
+      "followRedirect": "2 failed",
+      "noOuterDeadlineRace": "1 failed",
+      "fipsAllowed": "8 failed"
+    }
+  },
+  "preservation": {
+    "awsCredentialsTestGitBlob": "45bd3dc98f2d36e14fb43654202b1445a5bd243d",
+    "awsCredentialsHelperGitBlob": "b31877af7fb73fb41dfde3f2e5563f89b67d0824",
+    "executorAndProtectedPaths": "unchanged",
+    "bearerOnlyEmbeddingStaging": "unchanged"
+  },
+  "privateProgress": {
+    "directory": "/var/tmp/bedrock2034.Ws407B",
+    "sharedGraphsMutated": false
+  },
+  "ownership": {
+    "implementation": "open-sse/services/providerParity/native-bedrock-discovery/",
+    "test": "tests/unit/bedrock-sigv4-discovery-2034.test.js",
+    "publicRegistrationAndPromotion": "auth native14",
+    "reviewTrainLock": "preserved"
+  },
+  "remaining": [
+    "Exact-head isolated native gate",
+    "Independent review",
+    "Public registration/promotion by auth native14 (out of scope)",
+    "Authorized live AWS wire check (prohibited here)"
+  ],
+  "liveAws": "not-run-prohibited",
+  "readyForPromotion": false,
+  "profileCredentialBoundary": {
+    "transport": "Separate SDK credential clients/processes; no selected-proxy, response-body-cap or cancellation guarantee",
+    "deadline": "Bounds caller wait only for credential resolution; does not cancel credential-chain work",
+    "evidence": "Pinned dependency source inspection and mocked tests only; no live AWS permissions proven",
+    "report": "internal/docs/port-reports/fix-bedrock-discovery-profile-boundary-2034.md"
+  }
+}

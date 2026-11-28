@@ -24,6 +24,8 @@ const MAX_PAIRING_TEXT = 4096;
 const MAX_PAIRING_LIFETIME_MS = 10 * 60 * 1000;
 const MAX_TARGET_LENGTH = 200;
 const REQUEST_TIMEOUT_MS = 15_000;
+// Mirror the import endpoint body ceiling; oversized sessions must never leave the browser.
+const MAX_IMPORT_BODY_BYTES = 32 * 1024;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** Fixed user-facing text. Nothing here is built from cookie values, the secret or server output. */
@@ -275,11 +277,13 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     if (cancelled()) return done();
   }
   for (const prefix of plan.cookiePrefixes) {
-    // Chunks are contiguous from .0; stop at the first gap.
+    // Exact-name reads only: chunks are contiguous from .0 and probing stops at the first gap
+    // or the cookie ceiling. A chunk beyond a gap is never read, so it cannot be detected here.
     for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
       if (!(await take(`${prefix}${index}`)) || cancelled()) break;
     }
   }
+  if (found.length > MAX_COOKIES || found.some((cookie) => cookie.value.length > 8192 || /[^\x20-\x7e]|;|^\s|\s$/.test(cookie.value))) return done(true);
   return done();
 }
 
@@ -441,6 +445,8 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     if (planUsesCookies(plan)) body.cookies = cookies;
     if (localStorage) body.localStorage = localStorage;
     if (plan.action === "update") body.connectionId = plan.connectionId;
+
+    if (new TextEncoder().encode(JSON.stringify(body)).length > MAX_IMPORT_BODY_BYTES) return fail("ambiguous_cookies");
 
     // From here the secret is spent, whatever the outcome.
     spentPlans.add(plan);

@@ -4,6 +4,7 @@ import { createExecutorSender, requestAbortError, withBillableDispatch } from ".
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+import { resolveMaxaiCredential } from "./maxaiCredentials.js";
 
 const BASE = "https://api.maxai.me";
 const PATH = "/gpt/cwc/chat";
@@ -11,17 +12,12 @@ const CONFIG_URL = `${BASE}/models/get_config`;
 const WEB_APP = "https://www.maxai.co/app/";
 let cachedSigningConstants = null;
 const fail = (status, message) => Response.json({ error: { message, type: status === 401 || status === 403 ? "authentication_error" : "provider_error" } }, { status });
-const parseCookie = (cookie) => Object.fromEntries(cookie.split(";").map((part) => part.trim().split(/=(.*)/s).slice(0, 2)).filter(([key, value]) => key && value));
-function resolveUserId(token) {
-  try { const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")); return payload.subject?.user_id || payload.sub || ""; } catch { return ""; }
-}
-const cookieValues = (credentials) => {
-  const source = credentials?.cookie || credentials?.apiKey || "";
-  const jar = parseCookie(source);
-  const data = credentials?.providerSpecificData || {};
-  const token = data.maxaiAccessToken || data.accessToken || jar.access_token || credentials?.accessToken || "";
-  return { token, deviceId: data.maxaiDeviceId || data.deviceId || jar.device_id || "", userId: data.maxaiUserId || data.userId || jar.user_id || resolveUserId(token) };
-};
+/**
+ * The selected connection's account tuple. See maxaiCredentials.js: a stored cookie
+ * header with access_token supplies all three members; otherwise only a complete
+ * providerSpecificData tuple is used. Never mixes sources.
+ */
+const cookieValues = (credentials) => resolveMaxaiCredential(credentials);
 async function signingConstants(credentials, fetcher) {
   const saved = credentials?.providerSpecificData?.maxaiSigningConstants;
   if (saved?.hmacKey && saved?.aesKey && saved?.appVersion && saved?.ctxKey) return saved;
@@ -55,10 +51,10 @@ async function signingConstants(credentials, fetcher) {
     return values;
   } catch { return null; }
 }
-async function signedHeaders(path, credentials, fetcher = proxyAwareFetch) {
+async function signedHeaders(path, credentials, auth, fetcher = proxyAwareFetch) {
+  if (!auth?.ok) return null;
   const c = await signingConstants(credentials, fetcher);
-  const auth = cookieValues(credentials);
-  if (!c?.hmacKey || !c?.aesKey || !c?.appVersion || !c?.ctxKey || !auth.deviceId || !auth.userId) return null;
+  if (!c?.hmacKey || !c?.aesKey || !c?.appVersion || !c?.ctxKey) return null;
   const t = Date.now();
   const proof = crypto.createHmac("sha1", `${t}:${c.hmacKey}`).update(`${c.appVersion}:${t}:${path}:${auth.userId}`).digest("hex");
   const p = crypto.createHash("sm3").update(`${t}:${proof}:${c.hmacKey}`).digest("hex");
@@ -73,8 +69,8 @@ async function signedHeaders(path, credentials, fetcher = proxyAwareFetch) {
 }
 export async function validateMaxaiSession(credentials, fetcher = proxyAwareFetch) {
   const auth = cookieValues(credentials);
-  if (!auth.token || !auth.deviceId || !auth.userId) return { valid: false, status: null, error: "MaxAI access token, device ID and user ID are required" };
-  const headers = await signedHeaders("/models/get_config", credentials, fetcher);
+  if (!auth.ok) return { valid: false, status: null, error: auth.reason === "conflict" ? "MaxAI credentials name more than one account; reconnect the browser session" : "MaxAI access token, device ID and user ID are required" };
+  const headers = await signedHeaders("/models/get_config", credentials, auth, fetcher);
   if (!headers) return { valid: false, status: null, error: "MaxAI signing constants are unavailable; reconnect the browser session" };
   const response = await fetcher(CONFIG_URL, { method: "GET", headers, redirect: "manual", signal: AbortSignal.timeout(8000) });
   const result = { valid: response.ok, status: response.status };
@@ -104,10 +100,13 @@ export class MaxaiExecutor extends BaseExecutor {
     const { model, body, stream, credentials, signal, proxyOptions = null } = input;
     // Loading the signing constants is not charged; only the chat send is quota-bearing.
     const setup = (url, init) => sender.sendRequest(url, { ...init, signal: signal ? AbortSignal.any([signal, init.signal]) : init.signal }, proxyOptions, { quotaBearing: false });
-    const auth = cookieValues(credentials); const headers = await signedHeaders(PATH, credentials, setup);
+    // Refuse an incomplete or mixed account tuple before any send, setup loads included.
+    const auth = cookieValues(credentials);
+    if (!auth.ok) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
+    const headers = await signedHeaders(PATH, credentials, auth, setup);
     // The constants loader swallows errors, an abort included.
     if (signal?.aborted) throw requestAbortError(signal.reason);
-    if (!auth.token || !headers) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
+    if (!headers) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
     let upstream;
     try { upstream = billed(await sender.sendRequest(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), redirect: "manual", signal }, proxyOptions)); }
     catch (error) { if (isQuotaDispatchUnavailable(error)) throw error; return { response: fail(502, error?.message || "MaxAI request failed"), url: this.buildUrl(), headers, transformedBody: body }; }

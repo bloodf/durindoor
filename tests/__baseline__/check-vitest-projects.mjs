@@ -21,6 +21,7 @@ const expected = globSync(config.test.include, { cwd: testsDir, exclude: config.
 const unit = list("unit");
 const integration = list("integration");
 const union = [...unit, ...integration].sort();
+assert.ok(unit.includes(resolve(testsDir, "translator/golden-request.test.js")), "golden request must remain a unit test");
 for (const file of ["unit/oauth-callback-cleanup.test.js", "unit/oauth-fixed-port-flow.test.js"]) {
   assert.ok(integration.includes(resolve(testsDir, file)), `${file} must be integration`);
 }

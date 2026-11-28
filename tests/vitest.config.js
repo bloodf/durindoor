@@ -27,38 +27,60 @@ const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json"
 // projects extend this config (vitest concatenates include/exclude arrays), so
 // each keeps the root include/exclude and excludes the other's files. The scan
 // covers every *.test.js the root include can match, so the split is disjoint.
-const INTEGRATION_SOURCE = /DATA_DIR|mkdtemp|child_process|\bWorker\b|createServer|\.listen\s*\(|sqlite|pglite|sql\.js|sqljs/i;
+// Match operations rather than incidental prose. Overrides document test-level
+// knowledge when static transitive imports overapproximate runtime behavior.
+const PROJECT_OVERRIDES = {
+  unit: ["translator/golden-request.test.js"],
+  integration: ["unit/oauth-callback-cleanup.test.js", "unit/oauth-fixed-port-flow.test.js"],
+};
+const INTEGRATION_SOURCE = /\b(?:process\.env\.DATA_DIR|mkdtemp(?:Sync)?|new\s+Worker|createServer|\.listen)\s*(?:\(|\b)|(?:from\s*|import\s*\(|require\s*\()["'](?:node:)?(?:child_process|worker_threads|better-sqlite3|sql\.js|@electric-sql\/pglite)["']/;
 const scanned = globSync("**/*.test.js", { cwd: __dirname, exclude: ["**/node_modules/**", "**/.omc/**", "**/.claude/**"] }).sort();
-// Follow local helper imports as well as the test itself: socket or database
-// creation can be hidden several modules away from the test entry point.
 const repoRoot = resolve(__dirname, "..");
 const importPattern = /(?:\bfrom\s*|\bimport\s*\(|\bimportActual\s*\(|\bimport\s*)["']((?:\.{1,2}\/|@\/|open-sse\/)[^"']+)["']/g;
 const sourceCache = new Map();
+const resultCache = new Map();
+// Preserve quoted text (including URLs) while removing actual comments.
+function stripComments(source) {
+  return source.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\/\*[\s\S]*?\*\/|\/\/[^\n\r]*)/g,
+    (match, quoted) => quoted || " ".repeat(match.length));
+}
 function isIntegration(entry) {
+  if (PROJECT_OVERRIDES.unit.includes(entry)) return false;
+  if (PROJECT_OVERRIDES.integration.includes(entry)) return true;
   const seen = new Set();
   const pending = [resolve(__dirname, entry)];
   while (pending.length) {
     const file = pending.pop();
     if (seen.has(file)) continue;
     seen.add(file);
-    let source = sourceCache.get(file);
-    if (source === undefined) {
-      try { source = readFileSync(file, "utf8"); } catch { continue; }
-      sourceCache.set(file, source);
+    if (resultCache.has(file)) {
+      if (resultCache.get(file)) { resultCache.set(resolve(__dirname, entry), true); return true; }
+      continue;
     }
-    if (INTEGRATION_SOURCE.test(source)) return true;
-    for (const match of source.matchAll(importPattern)) {
-      const specifier = match[1];
-      const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
-        : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
-        : resolve(dirname(file), specifier);
-      if (target.startsWith(repoRoot + "/") && !target.includes("/node_modules/")) {
-        for (const candidate of [target, target + ".js", target + ".mjs", resolve(target, "index.js")]) {
-          if (existsSync(candidate)) { pending.push(candidate); break; }
+    let record = sourceCache.get(file);
+    if (!record) {
+      let source;
+      try { source = stripComments(readFileSync(file, "utf8")); } catch { continue; }
+      const dependencies = [];
+      for (const match of source.matchAll(importPattern)) {
+        const specifier = match[1];
+        const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
+          : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
+          : resolve(dirname(file), specifier);
+        if (target.startsWith(repoRoot + "/") && !target.includes("/node_modules/")) {
+          for (const candidate of [target, target + ".js", target + ".mjs", resolve(target, "index.js")]) {
+            if (existsSync(candidate)) { dependencies.push(candidate); break; }
+          }
         }
       }
+      record = { matches: INTEGRATION_SOURCE.test(source), dependencies };
+      sourceCache.set(file, record);
     }
+    if (record.matches) { resultCache.set(resolve(__dirname, entry), true); return true; }
+    pending.push(...record.dependencies);
   }
+  // The entire reachable graph was traversed without finding a resource.
+  for (const file of seen) resultCache.set(file, false);
   return false;
 }
 const integrationFiles = scanned.filter(isIntegration);

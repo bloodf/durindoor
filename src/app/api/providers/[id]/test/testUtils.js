@@ -1327,10 +1327,11 @@ export async function testSingleConnection(id) {
   null :
   sanitizeErrorMessage(result.error || "Connection validation failed");
 
-  // Neither an unverified probe nor a provider outage says anything about the stored credential or prior status.
+  // An unverified probe (no request reached a verdict) says nothing about the stored credential either.
   if (result.unverified === true && !result.newTokens) {
     return { valid: false, skipped: true, unverified: true, error: resultError, refreshed: false, latencyMs, testedAt: new Date().toISOString() };
   }
+  // A provider outage says nothing about the stored credential or prior status.
   if (result.unavailable === true && !result.newTokens) {
     return { valid: false, unavailable: true, error: resultError, refreshed: !!result.refreshed, latencyMs, testedAt: new Date().toISOString() };
   }

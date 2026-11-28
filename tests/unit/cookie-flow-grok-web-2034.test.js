@@ -12,8 +12,9 @@
  * Nothing here shows that grok.com accepts these requests; there is no browser or live sign-in.
  *
  * Gap 1 is repaired by register-cookie-repairs-2034: `sso` stays required and the paired `sso-rw`
- * is now an optional cookie of the import profile and the extension table, so it is kept when the
- * browser has it. Cloudflare cookies (`cf_clearance`, `__cf_bm`) are still refused.
+ * is an optional cookie of the import profile and the extension table. The browser below holds no
+ * `sso-rw` unless a case adds one, so the older cases show that its absence stays valid; the cases
+ * marked "gap 1 repaired" show both values kept when present. Cloudflare cookies are still refused.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -98,13 +99,9 @@ const importCall = (pairing, body) => routes.import.POST(new NextRequest(IMPORT_
 }));
 const sso = (value, extra = {}) => ({ name: "sso", value, domain: ".grok.com", secure: true, ...extra });
 const ssoRw = (value, extra = {}) => sso(value, { name: "sso-rw", ...extra });
-/** Each account's own write cookie. It contains the account's sso value, so the leak checks cover it. */
-const rwOf = (value) => `${value}-rw`;
-/** The stored header: required `sso` first, then the optional `sso-rw`. */
-const stored = (value, rw = rwOf(value)) => `sso=${value}; sso-rw=${rw}`;
 
 /** A signed-in browser: the tab's cookie store plus a second profile and unrelated cookies. */
-function browser({ tabUrl = `${ORIGIN}/`, session = sso(SSO_A), rw = ssoRw(SSO_RW) } = {}) {
+function browser({ tabUrl = `${ORIGIN}/`, session = sso(SSO_A), rw = null } = {}) {
   const jars = {
     "other-profile": { sso: sso(OTHER_STORE_SSO) },
     [TAB_STORE]: {
@@ -155,13 +152,10 @@ async function captureWithExtension(pairing, harness = browser()) {
   return { ...harness, prepared, result, sent, answers };
 }
 
-/** A captured account holding its own sso and sso-rw pair. */
 async function importedAccount(name, value) {
-  const captured = await captureWithExtension(await mintPairing({ action: "create", name }), browser({ session: sso(value), rw: ssoRw(rwOf(value)) }));
-  expect(captured.result).toMatchObject({ ok: true, action: "create", cookieCount: 2, connection: { name } });
-  const saved = await row(captured.result.connection.id);
-  expect(saved.apiKey).toBe(stored(value));
-  return saved;
+  const captured = await captureWithExtension(await mintPairing({ action: "create", name }), browser({ session: sso(value) }));
+  expect(captured.result).toMatchObject({ ok: true, action: "create", cookieCount: 1, connection: { name } });
+  return row(captured.result.connection.id);
 }
 
 /** Bind one account to its own strict proxy pool through the dashboard routes. */
@@ -249,10 +243,10 @@ afterEach(async () => {
 }, 60_000);
 
 describe("Grok Web extension capture against the real descriptor", () => {
-  it("captures only the tab profile's sso and sso-rw and stores them as one redacted cookie account", async () => {
+  it("captures only the tab profile's sso and stores it as one redacted cookie account", async () => {
     const pairing = await mintPairing({ action: "create", name: "grok-captured" });
-    // Gap 1 repaired: sso required, sso-rw optional. Exact: no chunk prefixes, Cloudflare cookies,
-    // localStorage keys or accounts.x.ai widening.
+    // Gap 1 repaired: sso required, sso-rw optional.
+    // Exact: no chunk prefixes, Cloudflare cookies, localStorage keys or accounts.x.ai widening.
     expect(pairing.contract).toEqual({ origin: ORIGIN, cookieNames: ["sso"], cookiePrefixes: [], optionalCookies: ["sso-rw"] });
     expect(registryEntry.webLogin).toMatchObject({ origin: ORIGIN, cookieNames: ["sso"] });
     expect(registryEntry.cookieImport).toEqual({ origin: ORIGIN, cookieNames: ["sso"], cookiePrefixes: [], optionalCookies: ["sso-rw"], extensionCapture: true });
@@ -263,11 +257,9 @@ describe("Grok Web extension capture against the real descriptor", () => {
     expect(captured.prepared.plan).toMatchObject({
       providerOrigin: ORIGIN, cookieNames: ["sso"], cookiePrefixes: [], optionalCookies: ["sso-rw"], localStorageKeys: [],
     });
-    // Two exact-name reads in the tab's own store; no chunk probing, enumeration or page script.
-    expect(captured.reads).toEqual([
-      { url: `${ORIGIN}/`, name: "sso", storeId: TAB_STORE },
-      { url: `${ORIGIN}/`, name: "sso-rw", storeId: TAB_STORE },
-    ]);
+    // Exact-name reads in the tab's own store; no chunk probing, enumeration or page script.
+    // This tab holds no sso-rw: the optional read finds nothing and the capture still succeeds.
+    expect(captured.reads).toEqual([{ url: `${ORIGIN}/`, name: "sso", storeId: TAB_STORE }, { url: `${ORIGIN}/`, name: "sso-rw", storeId: TAB_STORE }]);
     expect(captured.chrome.cookies.getAll).not.toHaveBeenCalled();
     expect(captured.chrome.scripting.executeScript).not.toHaveBeenCalled();
     const grant = { permissions: ["cookies"], origins: [`${ORIGIN}/*`, `${DASHBOARD}/*`] };
@@ -281,23 +273,19 @@ describe("Grok Web extension capture against the real descriptor", () => {
     expect(init).toMatchObject({ method: "POST", credentials: "omit", redirect: "error" });
     expect(init.headers).toEqual({ "content-type": "application/json", [pairing.header]: pairing.token });
     expect(JSON.parse(init.body)).toEqual({
-      provider: "grok-web", origin: ORIGIN, cookies: [
-        { name: "sso", value: SSO_A, domain: "grok.com", secure: true },
-        { name: "sso-rw", value: SSO_RW, domain: "grok.com", secure: true },
-      ],
+      provider: "grok-web", origin: ORIGIN, cookies: [{ name: "sso", value: SSO_A, domain: "grok.com", secure: true }],
     });
-    expect(init.body).not.toContain(CLEARANCE);
-    expect(captured.result).toMatchObject({ ok: true, action: "create", cookieCount: 2 });
+    expect(captured.result).toMatchObject({ ok: true, action: "create", cookieCount: 1 });
 
-    const saved = await rows();
-    expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({ id: captured.result.connection.id, name: "grok-captured", authType: "cookie", apiKey: stored(SSO_A, SSO_RW) });
+    const stored = await rows();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: captured.result.connection.id, name: "grok-captured", authType: "cookie", apiKey: `sso=${SSO_A}` });
 
     // The route's own answer, the popup's result and both dashboard reads carry no credential.
     expectNoSecrets(captured.answers[0], [pairing.token]);
     expectNoSecrets(captured.result, [pairing.token]);
     const list = await (await routes.providers.GET(request(`${DASHBOARD}/api/providers`, null, { method: "GET" }))).text();
-    const one = await (await routes.provider.GET(request(`${DASHBOARD}/api/providers/${saved[0].id}`, null, { method: "GET" }), params(saved[0].id))).text();
+    const one = await (await routes.provider.GET(request(`${DASHBOARD}/api/providers/${stored[0].id}`, null, { method: "GET" }), params(stored[0].id))).text();
     for (const body of [list, one]) {
       expect(body).toContain("grok-captured");
       expectNoSecrets(body, [pairing.token]);
@@ -331,23 +319,45 @@ describe("Grok Web extension capture against the real descriptor", () => {
   });
 
   it.each([
-    ["signed out with only sso-rw and clearance left", null],
+    ["signed out with only clearance left", null],
     ["an sso scoped to accounts.x.ai", sso(XAI_SSO, { domain: ".x.ai" })],
     ["an insecure sso", sso(SSO_A, { secure: false })],
     ["an empty sso", sso("")],
-  ])("stores nothing for %s", async (_label, session) => {
-    // Without a usable sso and without sso-rw, the extension sends nothing.
-    const bare = await mintPairing({ action: "create", name: "grok-no-session" });
-    const nothing = await captureWithExtension(bare, browser({ session, rw: null }));
-    expect(nothing.result).toMatchObject({ ok: false, code: "no_cookies" });
-    expect(nothing.sent).toEqual([]);
-    expect(nothing.removed).toEqual(nothing.granted);
-    expectNoSecrets(nothing.result, [bare.token]);
-
-    // With sso-rw still in the jar, the extension (capture.js, not changed here) sends the optional
-    // cookie alone to the paired import URL. The server refuses it, stores nothing and spends the pairing.
+  ])("sends nothing for %s", async (_label, session) => {
     const pairing = await mintPairing({ action: "create", name: "grok-no-session" });
     const captured = await captureWithExtension(pairing, browser({ session }));
+    expect(captured.result).toMatchObject({ ok: false, code: "no_cookies" });
+    expect(captured.sent).toEqual([]);
+    expect(captured.removed).toEqual(captured.granted);
+    expectNoSecrets(captured.result, [pairing.token]);
+    expect(await rows()).toEqual([]);
+  });
+
+  it("gap 1 repaired: captures sso-rw beside sso and stores both on one account", async () => {
+    const pairing = await mintPairing({ action: "create", name: "grok-both" });
+    const captured = await captureWithExtension(pairing, browser({ rw: ssoRw(SSO_RW) }));
+    expect(captured.reads.map((read) => read.name)).toEqual(["sso", "sso-rw"]);
+    expect(JSON.parse(captured.sent[0].init.body).cookies).toEqual([
+      { name: "sso", value: SSO_A, domain: "grok.com", secure: true },
+      { name: "sso-rw", value: SSO_RW, domain: "grok.com", secure: true },
+    ]);
+    expect(captured.sent[0].init.body).not.toContain(CLEARANCE);
+    expect(captured.result).toMatchObject({ ok: true, action: "create", cookieCount: 2 });
+    expect((await rows()).map((saved) => saved.apiKey)).toEqual([`sso=${SSO_A}; sso-rw=${SSO_RW}`]);
+    expectNoSecrets(captured.answers[0], [pairing.token]);
+    expectNoSecrets(captured.result, [pairing.token]);
+
+    network.mockImplementation(async (_url, init) => { network.lastCookie = init.headers.Cookie; return reply("ok"); });
+    expect((await chat()).status).toBe(200);
+    expect(network.lastCookie).toBe(`sso=${SSO_A}; sso-rw=${SSO_RW}`);
+    expectCleanLogs([pairing.token]);
+  });
+
+  it("stores nothing when a signed-out tab still holds sso-rw", async () => {
+    // capture.js (not changed here) sends the optional cookie alone to the paired import URL;
+    // the server refuses it with fixed text, stores nothing and spends the pairing.
+    const pairing = await mintPairing({ action: "create", name: "grok-rw-only" });
+    const captured = await captureWithExtension(pairing, browser({ session: null, rw: ssoRw(SSO_RW) }));
     expect(captured.sent).toHaveLength(1);
     expect(captured.sent[0].url).toBe(IMPORT_URL);
     expect(JSON.parse(captured.sent[0].init.body).cookies.map((cookie) => cookie.name)).toEqual(["sso-rw"]);
@@ -355,7 +365,6 @@ describe("Grok Web extension capture against the real descriptor", () => {
     expect(JSON.parse(captured.answers[0])).toEqual({ error: "Required session cookie is missing or incomplete" });
     expect(captured.removed).toEqual(captured.granted);
     expectNoSecrets(captured.result, [pairing.token]);
-    expectNoSecrets(captured.answers[0], [pairing.token]);
     expect((await importCall(pairing, JSON.parse(captured.sent[0].init.body))).status).toBe(401);
     expect(await rows()).toEqual([]);
   });
@@ -372,7 +381,7 @@ describe("Grok Web extension capture against the real descriptor", () => {
     const unexpired = await mintPairing({ action: "update", connectionId: account.id });
     const accepted = await captureWithExtension(unexpired, browser({ session: sso(SSO_NEW, { expirationDate: Math.floor(Date.now() / 1000) + 3600 }) }));
     expect(accepted.result).toMatchObject({ ok: true, action: "update" });
-    expect((await row(account.id)).apiKey).toBe(stored(SSO_NEW, SSO_RW));
+    expect((await row(account.id)).apiKey).toBe(`sso=${SSO_NEW}`);
     expectNoSecrets(accepted.answers[0], [unexpired.token]);
     expectCleanLogs([expired.token, unexpired.token]);
   });
@@ -412,7 +421,7 @@ describe("Grok Web captured credentials at the upstream boundary", () => {
       expect(init.dispatcher).toBe(proxy.dispatcher);
       expect(init.method).toBe("POST");
       expect(init.redirect).toBe("error");
-      expect(init.headers.Cookie).toBe(stored(value));
+      expect(init.headers.Cookie).toBe(`sso=${value}`);
       expect(init.headers.Origin).toBe(ORIGIN);
       expect(JSON.parse(init.body)).toMatchObject({ modelName: "grok-4", modelMode: "MODEL_MODE_GROK_4", message: "synthetic prompt", temporary: true });
       // The credential travels in the Cookie header alone.
@@ -428,8 +437,8 @@ describe("Grok Web captured credentials at the upstream boundary", () => {
     const a = await importedAccount("grok-a", SSO_A);
     const b = await importedAccount("grok-b", SSO_B);
     const own = new Map([
-      [stored(SSO_A), (await bindProxy(a.id, "a")).dispatcher],
-      [stored(SSO_B), (await bindProxy(b.id, "b")).dispatcher],
+      [`sso=${SSO_A}`, (await bindProxy(a.id, "a")).dispatcher],
+      [`sso=${SSO_B}`, (await bindProxy(b.id, "b")).dispatcher],
     ]);
     const attempts = [];
     network.mockImplementation(async (_url, init) => {
@@ -455,7 +464,7 @@ describe("Grok Web captured credentials at the upstream boundary", () => {
     expect(response.status).toBe(401);
     const body = await response.text();
     expect(body).toMatch(/SSO cookie may be expired/i);
-    expect(calls.map(({ init }) => init.headers.Cookie)).toEqual([stored(SSO_A)]);
+    expect(calls.map(({ init }) => init.headers.Cookie)).toEqual([`sso=${SSO_A}`]);
     expectNoSecrets(body);
     expectCleanLogs();
   });
@@ -476,7 +485,7 @@ describe("Grok Web captured credentials at the upstream boundary", () => {
     expect(captured.result).toMatchObject({ ok: true, action: "update", connection: { id: a.id, name: "grok-a" } });
     expect(JSON.parse(captured.sent[0].init.body)).toMatchObject({ connectionId: a.id });
     const afterA = await row(a.id);
-    expect(afterA).toMatchObject({ id: a.id, name: "grok-a", priority: beforeA.priority, authType: "cookie", apiKey: stored(SSO_NEW, SSO_RW), testStatus: "active" });
+    expect(afterA).toMatchObject({ id: a.id, name: "grok-a", priority: beforeA.priority, authType: "cookie", apiKey: `sso=${SSO_NEW}`, testStatus: "active" });
     expect(afterA["modelLock_grok-4"] ?? null).toBeNull();
     expect(afterA.providerSpecificData).toEqual(beforeA.providerSpecificData);
     expect(afterA.providerSpecificData.proxyPoolId).toBe(proxyA.proxyPoolId);
@@ -488,7 +497,7 @@ describe("Grok Web captured credentials at the upstream boundary", () => {
     const calls = record();
     expect((await chat()).status).toBe(200);
     expect(calls).toHaveLength(1);
-    expect(calls[0].init.headers.Cookie).toBe(stored(SSO_NEW, SSO_RW));
+    expect(calls[0].init.headers.Cookie).toBe(`sso=${SSO_NEW}`);
     expect(calls[0].init.dispatcher).toBe(proxyA.dispatcher);
     expectCleanLogs([pairing.token]);
   });
@@ -541,7 +550,7 @@ describe("Grok Web pairing authority and update ownership", () => {
     ["an origin with a trailing slash", { origin: `${ORIGIN}/` }, "Origin is not approved for this provider"],
     ["an xAI cookie domain", { cookies: [sso(SSO_NEW, { domain: ".x.ai" })] }, "Cookie domain does not match the provider origin"],
     ["sso-rw without sso", { cookies: [ssoRw(SSO_RW)] }, "Required session cookie is missing or incomplete"],
-    ["two sso-rw cookies", { cookies: [sso(SSO_NEW), ssoRw(SSO_RW), ssoRw(rwOf(SSO_NEW))] }, "Duplicate cookie name"],
+    ["two sso-rw cookies", { cookies: [sso(SSO_NEW), ssoRw(SSO_RW), ssoRw(SSO_B)] }, "Duplicate cookie name"],
     ["an insecure sso-rw", { cookies: [sso(SSO_NEW), ssoRw(SSO_RW, { secure: false })] }, "Cookie must be a secure cookie"],
     ["an __cf_bm cookie beside sso", { cookies: [sso(SSO_NEW), sso(CLEARANCE, { name: "__cf_bm" })] }, "Cookie name is not approved for this provider"],
     ["a clearance cookie beside sso", { cookies: [sso(SSO_NEW), sso(CLEARANCE, { name: "cf_clearance" })] }, "Cookie name is not approved for this provider"],
@@ -561,8 +570,8 @@ describe("Grok Web pairing authority and update ownership", () => {
     expectCleanLogs([pairing.token]);
   });
 
-  // Was the "sso-rw beside sso" refusal row (gap 1); the repaired profile keeps both values.
-  it("accepts sso-rw beside sso and stores both on the paired account only", async () => {
+  // Gap 1 repaired: this was the "sso-rw beside sso" refusal row.
+  it("accepts sso-rw beside sso on the paired account only", async () => {
     const account = await importedAccount("grok-guarded", SSO_A);
     const sibling = await importedAccount("grok-sibling", SSO_B);
     const before = await row(sibling.id);
@@ -570,16 +579,16 @@ describe("Grok Web pairing authority and update ownership", () => {
     const response = await importCall(pairing, { provider: "grok-web", connectionId: account.id, origin: ORIGIN, cookies: [sso(SSO_NEW), ssoRw(SSO_RW)] });
     expect(response.status).toBe(200);
     expectNoSecrets(await response.text(), [pairing.token]);
-    expect((await row(account.id)).apiKey).toBe(stored(SSO_NEW, SSO_RW));
+    expect((await row(account.id)).apiKey).toBe(`sso=${SSO_NEW}; sso-rw=${SSO_RW}`);
     expect(await row(sibling.id)).toEqual(before);
     expectCleanLogs([pairing.token]);
   });
 });
 
 describe("Grok Web dashboard import inputs", () => {
-  // Gap 1 repaired: sso is required and sso-rw is kept when the input carries it. Cloudflare cookies
-  // and unrelated names are still dropped here and refused by the import route.
-  const cookieHeader = (value) => `x-anonuserid=synthetic-anon; sso=${value}; sso-rw=${SSO_RW}; cf_clearance=${CLEARANCE}`;
+  // Gap 1 repaired: sso-rw is kept when present (case "gap 1 repaired" below). These inputs carry
+  // none, so sso stays alone; unrelated and Cloudflare cookies are dropped and refused by the route.
+  const cookieHeader = (value, rw = "") => `x-anonuserid=synthetic-anon; sso=${value}; ${rw ? `sso-rw=${rw}; ` : ""}cf_clearance=${CLEARANCE}`;
   const curl = (url, value) => `curl '${url}' \\\n  -H 'accept: */*' \\\n  -H 'Cookie: ${cookieHeader(value)}' \\\n  --data-raw '{}'`;
   const harEntry = (url, value) => ({ request: { url, headers: [{ name: "Cookie", value: cookieHeader(value) }], cookies: [] } });
   const har = (...entries) => JSON.stringify({ log: { entries } });
@@ -604,30 +613,49 @@ describe("Grok Web dashboard import inputs", () => {
     ["a Cookie header", "header", () => `Cookie: ${cookieHeader(SSO_A)}`],
     ["a cURL command", "curl", () => curl(CHAT_URL, SSO_A)],
     ["a HAR file", "har", () => har(harEntry("https://accounts.x.ai/sign-in", XAI_SSO), harEntry(CHAT_URL, SSO_A))],
-  ])("creates, updates and dispatches from %s, keeping sso and sso-rw only", async (_label, kind, input) => {
+  ])("creates, updates and dispatches from %s, keeping sso alone", async (_label, kind, input) => {
     const built = read(kind, input());
     expect(built.ok, built.error).toBe(true);
     expect(built.candidates).toHaveLength(1);
     const [candidate] = built.candidates;
-    expect(candidate).toMatchObject({ origin: ORIGIN, originKnown: kind !== "header", cookies: [{ name: "sso", value: SSO_A }, { name: "sso-rw", value: SSO_RW }] });
-    expect(candidate.cookies).toHaveLength(2);
+    expect(candidate).toMatchObject({ origin: ORIGIN, originKnown: kind !== "header", cookies: [{ name: "sso", value: SSO_A }] });
     expect(candidate.dropped).toEqual(["x-anonuserid", "cf_clearance"]);
 
     const created = await submit(candidate, { action: "create", name: `grok-${kind}` });
     expect(created.status).toBe(201);
     const { id } = created.body.connection;
-    expect((await row(id)).apiKey).toBe(stored(SSO_A, SSO_RW));
+    expect((await row(id)).apiKey).toBe(`sso=${SSO_A}`);
 
     const renewed = read(kind, input().replaceAll(SSO_A, SSO_NEW));
     expect((await submit(renewed.candidates[0], { action: "update", connectionId: id })).status).toBe(200);
-    expect((await row(id)).apiKey).toBe(stored(SSO_NEW, SSO_RW));
+    expect((await row(id)).apiKey).toBe(`sso=${SSO_NEW}`);
     expect(await rows()).toHaveLength(1);
 
     const sent = [];
     network.mockImplementation(async (url, init) => { sent.push([String(url), init.headers.Cookie]); return reply("ok"); });
     expect((await chat()).status).toBe(200);
-    // sso-rw is sent beside sso; cf_clearance was dropped at import, so it is not sent.
-    expect(sent).toEqual([[CHAT_URL, stored(SSO_NEW, SSO_RW)]]);
+    // cf_clearance from the input was dropped at import, so it is not sent.
+    expect(sent).toEqual([[CHAT_URL, `sso=${SSO_NEW}`]]);
+    expectCleanLogs();
+  });
+
+  it.each([
+    ["a Cookie header", "header", () => `Cookie: ${cookieHeader(SSO_A, SSO_RW)}`],
+    ["a cURL command", "curl", () => `curl '${CHAT_URL}' -H 'Cookie: ${cookieHeader(SSO_A, SSO_RW)}'`],
+    ["a HAR file", "har", () => har({ request: { url: CHAT_URL, headers: [{ name: "Cookie", value: cookieHeader(SSO_A, SSO_RW) }], cookies: [] } })],
+  ])("gap 1 repaired: keeps sso-rw beside sso from %s and sends both", async (_label, kind, input) => {
+    const built = read(kind, input());
+    expect(built.ok, built.error).toBe(true);
+    const [candidate] = built.candidates;
+    expect(candidate.cookies).toEqual([{ name: "sso", value: SSO_A }, { name: "sso-rw", value: SSO_RW }]);
+    expect(candidate.dropped).toEqual(["x-anonuserid", "cf_clearance"]);
+    const created = await submit(candidate, { action: "create", name: `grok-rw-${kind}` });
+    expect(created.status).toBe(201);
+    expect((await row(created.body.connection.id)).apiKey).toBe(`sso=${SSO_A}; sso-rw=${SSO_RW}`);
+    const sent = [];
+    network.mockImplementation(async (url, init) => { sent.push([String(url), init.headers.Cookie]); return reply("ok"); });
+    expect((await chat()).status).toBe(200);
+    expect(sent).toEqual([[CHAT_URL, `sso=${SSO_A}; sso-rw=${SSO_RW}`]]);
     expectCleanLogs();
   });
 
@@ -636,7 +664,7 @@ describe("Grok Web dashboard import inputs", () => {
     expect(built.candidates).toHaveLength(2);
     expect(parser.candidatesAreAmbiguous(built.candidates)).toBe(true);
     expect((await submit(built.candidates[1], { action: "create", name: "grok-picked" })).status).toBe(201);
-    expect((await rows()).map((saved) => saved.apiKey)).toEqual([stored(SSO_B, SSO_RW)]);
+    expect((await rows()).map((saved) => saved.apiKey)).toEqual([`sso=${SSO_B}`]);
   });
 
   it.each([

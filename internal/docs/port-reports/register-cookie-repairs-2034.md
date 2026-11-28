@@ -96,10 +96,10 @@ Wiring it in `src/lib/providerProbe.js` (which also serves the health monitor) m
 - ChatGPT: import update for both providers, then the browser and HTTP transports use the imported cookie through the row's proxy. Also: sibling unchanged, same-cookie re-import kept, Edit cases, another provider untouched, the CAS refusal on real SQLite and a stale rotation refused.
 - ChatPlayground: neither Bearer lookup receives the connection; an API-key provider (`deepinfra`) still does. The live-catalog functions are recording stubs, so nothing is sent.
 
-Changed source-flow suites. Only cases that asserted a proven gap now assert the repaired behaviour; every case is kept.
+Changed source-flow suites. Only cases that asserted a proven gap now assert the repaired behaviour; every case is kept. The older cases run with the optional cookie absent, which stays valid, so their assertions are unchanged. New cases marked "gap 1 repaired" cover the cookie when present.
 
-- `cookie-flow-grok-web-2034.test.js` (47 → 51 tests): `sso-rw` is now expected in the contract, reads, bodies, stored headers and chat Cookie headers. Each account gets its own `sso-rw`. The "sends nothing" table now also covers a jar with `sso-rw` (see residual). The "sso-rw beside sso" refusal row is now an acceptance test, plus refusal rows for `sso-rw` without `sso`, a duplicate, an insecure value and `__cf_bm`.
-- `cookie-flow-claude-web-2034.test.js` (43 → 46 tests): contract, capture and parser cases expect `lastActiveOrg`. The "organization cookie" refusal row is now an acceptance test, plus refusal rows for no session, an insecure value and an injected `;`. The `LIMITATION` case now expects unverified with the row unchanged, and the `lastActiveOrg` `NOT PARITY` case expects the manual organization. A narrowing check for an older pairing is added.
+- `cookie-flow-grok-web-2034.test.js` (47 → 56 tests, 16 lines removed): the contract, plan and read assertions now expect `sso-rw`. The "sso-rw beside sso" refusal row is now an acceptance test. Refusal rows are added for `sso-rw` without `sso`, a duplicate, an insecure value and `__cf_bm`. The browser fixture holds `sso-rw` only when a case adds it. The dashboard inputs no longer carry `sso-rw`; new cases import it from a header, cURL and HAR and send both values. A new case shows a signed-out tab holding `sso-rw` (see residual). The removed lines are the gap assertions, the gap comment, the fixture's unconditional `sso-rw` and one table label.
+- `cookie-flow-claude-web-2034.test.js` (43 → 48 tests, 19 lines removed): the descriptor and pairing assertions expect `lastActiveOrg`. The capture case's organization cookie now sits in another profile's store. The "organization cookie" refusal row is now an acceptance test. Refusal rows are added for no session, an insecure value and an injected `;`. The `LIMITATION` case expects unverified with the row unchanged. The `lastActiveOrg` `NOT PARITY` case expects the manual organization. New cases show capture with the cookie present and with only that cookie.
 - `cookie-flow-chatgpt-web-2034.test.js` and `cookie-flow-lmarena-2034.test.js` had no gap assertion to replace and are unchanged.
 
 ### Fault injection
@@ -128,13 +128,19 @@ node node_modules/vitest/vitest.mjs run unit/register-cookie-repairs-2034.test.j
   unit/cookie-flow-claude-web-2034.test.js unit/cookie-flow-chatgpt-web-2034.test.js unit/cookie-flow-lmarena-2034.test.js --maxWorkers=2
 ```
 
-Result: 5 files, 159 tests passed.
+Result: 5 files, 166 tests passed. With `unit/qoder-quota-112-disable.test.js`: 6 files, 182 tests passed.
 
 Related suites, one run with `--maxWorkers=2`: `api/provider-cookie-import-local-storage`, `api/provider-cookie-import`, `chatgpt-cookie-rotation-race`, `chatplayground-provider`, `claude-web-provider`, `cookie-flow-chatgpt-web-codex-2034`, `cookie-flow-chatplayground-2034`, `fix-chatplayground-session-contract-2034`, `grok-web-empty-sso`, `grok-web-signin-parity`, `lmarena-provider`, `port-omni-20375-chatplayground-unified-api`, `port-omniroute-claude-web-chat-org`, `provider-cookie-capture-extension`, `provider-cookie-import-contracts`, `provider-cookie-import-dashboard`, `provider-cookie-import-validation-review`, the six `provider-cookie-lifecycle-*` suites, `provider-registration-apikey-batch-b-routes`, `provider-registration-apikey-batch-b` and `review-x-chatplayground`. Result: 26 files, 673 tests passed.
 
 From the root: `eslint src` reported 0 errors and 348 warnings, and none of the warnings is in a changed file. The anti-slop gate reported 0 diagnostics across 3702 files. `scripts/check-docs.mjs` passed, and `gen-registry-index.mjs --check` reported the index up to date (no registry file was added, so it was not regenerated).
 
+The `checks.sh unit` selection for this unit's actual changed files (`scripts/checks-select.mjs` over the 17 changed paths) was run in batches of 40 with `--maxWorkers=2` and a 295 second ceiling each. It selected 784 files with 12715 tests, and 2 failed. Both are in `omniroute-provider-audit.test.js`, which expects `git rev-parse --show-toplevel` to name the checkout. The private copy has no `.git`, so it returns an empty string. That is environmental and unrelated to this change.
+
 Not run: the full `test:ci` inventory, build, any browser, Docker or live provider.
+
+### Gate correction
+
+The first gate run failed `unit/qoder-quota-112-disable.test.js`. The PUT route passed a third `undefined` argument to `updateProviderConnection`, and that test checks the exact arguments. The route now calls it with two arguments unless browser state is being invalidated. The gate also flagged removed lines. In `testUtils.js`, the original outage comment is restored verbatim. Both source-flow suites were rebuilt from the base with the minimal diff described above.
 
 ## Docs
 

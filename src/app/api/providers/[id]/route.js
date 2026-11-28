@@ -594,8 +594,9 @@ export async function PUT(request, { params }) {
     if (invalidation) {
       updateData.providerSpecificData = { ...(updateData.providerSpecificData || {}), ...invalidation.providerSpecificData };
     }
-    const written = await updateProviderConnection(id, updateData,
-      invalidation ? { shouldCommitConnection: invalidation.shouldCommitConnection, returnCommitResult: true } : undefined);
+    const written = invalidation ?
+      await updateProviderConnection(id, updateData, { shouldCommitConnection: invalidation.shouldCommitConnection, returnCommitResult: true }) :
+      await updateProviderConnection(id, updateData);
     if (invalidation && written && !written.applied) {
       return NextResponse.json({ error: "Connection changed during update; reload and try again" }, { status: 409 });
     }

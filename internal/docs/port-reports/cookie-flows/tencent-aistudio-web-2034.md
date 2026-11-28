@@ -1,6 +1,6 @@
 # Tencent AI Studio Web cookie flow (#2034)
 
-**Public-route positive flow and the no-replay repair proved offline; one strict Anthropic framing case stays red pending a shared-formatter repair outside this unit.** All responses below are synthetic network fixtures. This is not evidence of live sign-in or the vendor protocol.
+**Public-route positive flow, the no-replay repair and Anthropic error framing proved offline; the focused suite is green (33/33).** All responses below are synthetic network fixtures. This is not evidence of live sign-in or the vendor protocol.
 
 The original three cases are preserved inside a describe block. They cover extension capture, the parser contract, and import refusal/update behavior, but their direct `runSession` call is not gateway evidence. The added vertical slice unloads their legacy DB/localDb mocks and uses `tests/unit/helpers/cookiePublicFlow2034.js`: real file-backed SQLite initialization/migrations, repositories, management pairing/import handlers, registry-selected executor, account selection and public route handlers. The helper contains no vendor response fixtures or provider protocol mapping. Only operator permission checks and the final external fetch boundary are replaced. Operator checks require a synthetic operator header; imports use the issued single-use pairing capability without an operator session. No global configuration or gate changed. The helper is unchanged from checkpoint `3b97d39f164`; this run carries that checkpoint's 32 cases and adds one MaxAI case (33).
 
@@ -13,7 +13,7 @@ The original three cases are preserved inside a describe block. They cover exten
 - Public response, connection listing and captured logs do not expose either synthetic account credential. Import responses do not echo the pairing token.
 - Explicit 401 refusal permits unpinned fallback to the other imported account/proxy. Pinned 401 and 429 do not rotate. Caller abort and a broken stream after a text frame do not replay or produce the asserted success terminators.
 - No billable POST is replayed once the vendor may have accepted it. A vendor 502, a post-send connection reset, a 200 with malformed JSON, a 200 HTML sign-in-looking page, and a 200 whose body stalls past the body deadline each produce exactly one POST, on the selected account and its own strict proxy, and an error answer without a success terminal. No source-backed protocol says a 200 HTML page means the vendor did no billable work, so it is treated as an unusable accepted answer, not a refusal.
-- A vendor SSE error envelope is not turned into success on either route, with one POST. OpenAI emits no `[DONE]` and no `finish_reason: "stop"`. Anthropic emits `event: error` carrying the vendor message, with no `message_delta`, `end_turn` or `message_stop`, but it is still followed by an OpenAI `data: [DONE]` line. That line has no place in the Anthropic protocol, so the strict case asserts its absence and is the one remaining failure (below).
+- A vendor SSE error envelope is not turned into success on either route, with one POST. OpenAI emits no `[DONE]` and no `finish_reason: "stop"`. Anthropic emits `event: error` carrying the vendor message, with no `message_delta`, `end_turn` or `message_stop`, and no `[DONE]`: that OpenAI sentinel has no place in the Anthropic protocol, and the strict case asserts its absence.
 - MaxAI regression on the same real public route: two MaxAI accounts imported through pairing/import (saved signing constants keep setup page loads off the network), each on its own strict proxy. A connection reset after the chat POST yields one POST on one account/proxy and an error; the sibling account is never dispatched. Before the repair the same case sent two POSTs, one per account.
 
 The descriptor supports Cookie header/cURL/HAR inputs with `sessionid`, not `sessionid.0`, optional cookies or localStorage. Unsupported fields receive actionable refusal rather than being accepted. Its origin is `https://aistudio.tencent.ai`. The registry's provenance note says the pinned source forwards the Cookie header without naming the cookie or validation path: neither `sessionid` sufficiency nor `/api/user/info` validity is established here. No upstream source was acquired or read after the freeze.
@@ -34,16 +34,14 @@ Dispatch and unknown-cost evidence: the repair adds no usage or dispatch event. 
 ## Strengthened cases restored
 
 - **200 HTML sign-in page:** now requires exactly one POST (previously "at most three") and the HTML error page error, on account A's cookie over proxy A. It passes after the repair.
-- **Anthropic SSE error framing:** the conditional "`[DONE]` may trail the error" allowance was removed. Both routes now forbid `[DONE]`; Anthropic still requires `event: error` and forbids `message_delta`, `end_turn` and `message_stop`.
+- **Anthropic SSE error framing:** the conditional "`[DONE]` may trail the error" allowance was removed. Both routes now forbid `[DONE]`; Anthropic still requires `event: error` and forbids `message_delta`, `end_turn` and `message_stop`. It passes after the `stream.js` repair below.
 - **New MaxAI two-account mid-send reset** on the real public route (see positive evidence). Red before the repair (two POSTs), green after.
 
 No assertion was weakened, skipped or marked as an expected failure. Case count: 33 (32 checkpoint cases + 1).
 
-## Remaining failure and repair handoff
+## Anthropic error framing repair
 
-`does not turn a vendor SSE error into success anthropic=true` fails: the Anthropic stream is `event: error` + `data: {"type":"error",...}` + `data: [DONE]`. The trailing line comes from the shared translated-stream formatter, `formatTranslatedStreamError` in `open-sse/utils/stream.js` line 197 (`return formatClaudeSseError(claudeError) + "data: [DONE]\n\n";`). The repository's format-aware helper `buildStreamErrorBytes` in `open-sse/utils/streamHelpers.js` already emits Claude errors without `[DONE]`.
-
-Minimal repair (not applied, because the file is outside this unit's allowed paths and is shared by every provider): make that Claude branch return `formatClaudeSseError(claudeError)` without the `[DONE]` suffix. Bounded probe: the one-line change was applied temporarily, then this suite and the 14 other unit files containing both `event: error` and `[DONE]` were run (15 files, 595 tests, all passing), and the change was reverted (`git diff open-sse/utils/stream.js` is empty). The probe does not cover the whole inventory. It needs owner approval for the shared path and full CI before it counts.
+After the previous gate rejection named this case, the orchestrator directed the fix ("Fix it"). It was taken as approval of the shared path this report had named. The Anthropic stream had been `event: error` + `data: {"type":"error",...}` + `data: [DONE]`. The trailing line came from the shared translated-stream formatter, `formatTranslatedStreamError` in `open-sse/utils/stream.js`. Its Claude branch now returns `formatClaudeSseError(claudeError)` without the `[DONE]` suffix. That is the same framing the existing format-aware `buildStreamErrorBytes` in `open-sse/utils/streamHelpers.js` already uses. The OpenAI and Responses branches are unchanged. The change applies to every provider whose OpenAI-shaped stream is translated for a Claude client. No assertion was changed to accommodate it.
 
 ## Validation
 
@@ -59,8 +57,10 @@ timeout 300 env -i PATH=/home/stormtrooper/.local/bin:/usr/bin:/bin LANG=C.UTF-8
 ```
 
 - Before the repair (checkpoint, 32 cases): 28 passed, 4 failed (the four replay cases).
-- After the repair and test strengthening: **33 collected, 32 passed, 1 failed** (the Anthropic `[DONE]` case above), exit 1.
-- Related unit files: every file in `tests/unit` that references `tencent-aistudio`, `executors/maxai`, `singleModel/postProcess`, `nonStreamingHandler`, `minimax-code` or `"maxai"` (99 files), in four batches with the same command: 98 files pass. The only failure is the Anthropic case in this suite (27+26+23+23 files; 408+459+209+819 passed).
-- Root lint (`eslint src` plus the anti-slop gate) exit 0: 0 errors, and 12 warnings in unrelated dashboard files. The anti-slop step regenerates `tools/oxlint/anti-slop/index.bundle.js`; that regenerated file was restored, not committed. `git diff --check` passes.
+- After the replay repair (previous run): 33 collected, 32 passed; the Anthropic `[DONE]` case failed.
+- After the `stream.js` repair: **33 collected, 33 passed.**
+- Related unit files touching the replay change: the 99 `tests/unit` files that reference `tencent-aistudio`, `executors/maxai`, `singleModel/postProcess`, `nonStreamingHandler`, `minimax-code` or `"maxai"`, in four batches: all pass (27+26+23+23 files; 409+459+209+819 tests).
+- Stream-formatter blast radius: the 171 `tests/unit` files that reference `utils/stream.js`, `handleStreamingResponse`, `streamingHandler`, `createSSEStream`, `event: error` or `formatClaudeSseError`, in six batches: all pass (31+32+26+26+27+29 files; 295+562+274+470+279+549 tests).
+- Lint: in the previous run, root lint (`eslint src` plus the anti-slop gate) exited 0, with 0 errors and 12 warnings in unrelated dashboard files. In this run `eslint src` again reported 0 errors. The anti-slop bundle step and a direct ESLint run on the changed `open-sse` files could not start: the borrowed read-only dependency tree was changing under another worktree (`esbuild` and `eslint/bin` disappeared mid-run), and it was not repaired. The native gate must provide that lint evidence. The regenerated `tools/oxlint/anti-slop/index.bundle.js` was restored, not committed. `git diff --check` passes.
 
-Full CI was not run. The evidence gate stays red until the shared formatter repair above is approved and lands. This must not be reported as a passing gate or as merge eligibility.
+Full CI was not run. Focused and related unit evidence is green; this is not a claim of full-CI or merge eligibility.

@@ -26,7 +26,7 @@
   "credentialModes": {
     "apiKey": "supported: bearer only, SigV4 identity refused",
     "static": "supported: SigV4 only, session token from encrypted top-level field, bearer identity refused",
-    "profile": "supported locally (not in source): SDK fromIni via shared helper, SigV4 only"
+    "profile": "supported locally (not in source) only when the selected Bedrock action route is direct: SDK fromIni via shared helper, SigV4 only; credential resolution is separate from the action handler and its proxy, body-cap and cancellation controls"
   },
   "test": "tests/unit/bedrock-sigv4-discovery-2034.test.js"
 }

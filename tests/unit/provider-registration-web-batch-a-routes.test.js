@@ -135,8 +135,13 @@ const PROVIDERS = [
   {
     id: "zai-web", model: "glm-5.3", answer: "pong from zai web",
     credential: `token=${jwt("synthetic-user")}`, origin: "https://chat.z.ai",
+    // Synthetic opaque CAPTCHA proof stored on the connection (a source location): it proves forwarding only.
+    providerSpecificData: { captchaVerifyParam: "synthetic-proof-batch-a" },
     handle: (url, init, answer) => {
+      // The proof must reach the completion JSON body only, never the URL or the setup call.
+      if (url.includes("synthetic-proof-batch-a") || (url.endsWith("/chats/new") && String(init.body).includes("synthetic-proof-batch-a"))) return undefined;
       if (url === "https://chat.z.ai/api/v1/chats/new") return jsonResponse({ id: "chat-synthetic" });
+      if (url.startsWith("https://chat.z.ai/api/v2/chat/completions?") && JSON.parse(init.body).captcha_verify_param !== "synthetic-proof-batch-a") return undefined;
       if (url.startsWith("https://chat.z.ai/api/v2/chat/completions?")) {
         return eventStream(`data: ${JSON.stringify({ data: { phase: "answer", delta_content: answer } })}\n\ndata: [DONE]\n\n`);
       }

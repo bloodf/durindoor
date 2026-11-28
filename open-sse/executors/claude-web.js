@@ -1,11 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { WebSessionExecutor } from "./webSessionBase.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
-import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { PROVIDERS } from "../config/providers.js";
-import { buildErrorBody } from "../utils/error.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { getProviderValidationGuard, guardedProbeFetch, OutboundUrlGuardError } from "../utils/outboundUrlGuard.js";
 
@@ -20,27 +17,18 @@ export function normalizeClaudeWebCookie(raw) {
   return /(?:^|;\s*)sessionKey=([^;\s]+)/.test(cookie) ? cookie : "";
 }
 
-function cookieValue(cookie, name) {
-  const pair = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
-  return pair ? pair.slice(name.length + 1) : "";
-}
-
 // `/organizations` can list an API-only (Console) organization first, and posting a
 // conversation there answers 403 for every model. Prefer the organization claude.ai
 // itself last used, then one that can chat, then the first usable record.
-function pickChatOrganizationId(organizations, cookie) {
+function pickChatOrganizationId(organizations, lastActive) {
   if (!Array.isArray(organizations)) return null;
   const usable = organizations.filter(isRecord)
     .map((org) => ({ id: org.uuid || org.id, canChat: Array.isArray(org.capabilities) && org.capabilities.includes("chat") }))
     .filter((org) => isString(org.id) && org.id);
-  const lastActive = cookieValue(cookie, "lastActiveOrg");
   const chosen = usable.find((org) => org.id === lastActive) || usable.find((org) => org.canChat) || usable[0];
   return chosen?.id || null;
 }
 
-function responseError(status, message) {
-  return new Response(JSON.stringify(buildErrorBody(status, message, undefined, { type: "upstream_error", code: `HTTP_${status}` })), { status, headers: { "content-type": "application/json" } });
-}
 function headers(cookie, referer = "https://claude.ai/new") {
   return { Accept: "text/event-stream", "Content-Type": "application/json", Origin: "https://claude.ai", Referer: referer, "User-Agent": UA, "anthropic-client-platform": "web_claude_ai", Cookie: cookie };
 }
@@ -110,7 +98,7 @@ export async function validateClaudeWebSession({ apiKey, fetcher = fetch }) {
 }
 
 export class ClaudeWebExecutor extends WebSessionExecutor {
-  constructor() { super("claude-web", { id: "claude-web", baseUrl: BASE }); }
+  constructor() { super("claude-web", { id: "claude-web", baseUrl: BASE }, { observePatchedFetch: false }); }
   async testConnection(credentials) {
     const cookie = normalizeClaudeWebCookie(credentials?.apiKey || credentials?.cookie);
     if (!cookie) return false;
@@ -119,36 +107,30 @@ export class ClaudeWebExecutor extends WebSessionExecutor {
       return response.status === 200 && Array.isArray(await response.json());
     } catch { return false; }
   }
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+  async runSession(input, transport) {
     const cookie = normalizeClaudeWebCookie(input.credentials?.apiKey || input.credentials?.cookie);
-    if (!cookie) return { response: responseError(401, "Missing or invalid sessionKey cookie"), url: BASE, headers: {}, transformedBody: input.body };
+    if (!cookie) return { response: this.errorReply(401, "Missing or invalid sessionKey cookie"), url: BASE, headers: {}, transformedBody: input.body };
     const common = headers(cookie);
     // `input.fetcher` replaces the HTTP transport in tests.
-    const fetcher = (target, init, quotaBearing = false) => sender.sendRequest(target, init, input.proxyOptions, {
-      quotaBearing,
-      ...(input.fetcher ? { transport: (options) => input.fetcher(target, options, input.proxyOptions) } : null)
-    });
-    let upstream = null;
-    // Every result returned after the completion send carries its quota ticket.
-    const carry = (result) => {
-      transferProviderAttemptDispatch(upstream, result.response);
-      return { ...result, attemptStartedAt: sender.attemptStartedAt };
-    };
+    const fetcher = (target, init, quotaBearing = false) =>
+      (quotaBearing ? transport.sendBillable : transport.send)(target, init, {
+        ...(input.fetcher ? { transport: (options) => input.fetcher(target, options, input.proxyOptions) } : null),
+      });
+    let upstream;
+    const carry = (result) => result;
     try {
       const organizations = await fetcher(`${BASE}/organizations`, { method: "GET", headers: common, redirect: "manual", signal: input.signal });
-      if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: responseError(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
-      if (!organizations.ok) return { response: responseError(organizations.status, "Claude Web organization lookup failed"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
+      if ((organizations.status >= 300 && organizations.status < 400) || organizations.status === 401 || organizations.status === 403) return { response: this.errorReply(401, "Claude Web session expired or invalid"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
+      if (!organizations.ok) return { response: this.errorReply(organizations.status, "Claude Web organization lookup failed"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       const orgs = await organizations.json();
-      const orgId = pickChatOrganizationId(orgs, cookie);
-      if (!orgId) return { response: responseError(502, "No Claude Web organization found"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
+      const orgId = pickChatOrganizationId(orgs, this.cookieValue(cookie, "lastActiveOrg"));
+      if (!orgId) return { response: this.errorReply(502, "No Claude Web organization found"), url: `${BASE}/organizations`, headers: common, transformedBody: input.body };
       if (input.body?.stream === false) {
         // Claude Web's API still emits SSE; OpenAI JSON is assembled below.
       }
       const messages = Array.isArray(input.body?.messages) ? input.body.messages.filter(isRecord) : [];
       const prompt = messages.filter((m) => m.role === "user").map((m) => isString(m.content) ? m.content : Array.isArray(m.content) ? m.content.filter(isRecord).map((p) => isString(p.text) ? p.text : "").join("\n") : "").join("\n\n");
-      if (!prompt.trim()) return { response: responseError(400, "No user message found in request"), url: BASE, headers: common, transformedBody: input.body };
+      if (!prompt.trim()) return { response: this.errorReply(400, "No user message found in request"), url: BASE, headers: common, transformedBody: input.body };
       const model = input.model || "claude-sonnet-4-6";
       const apiKeyId = input.apiKeyId;
       const connectionId = input.connectionId || input.credentials?.connectionId;
@@ -164,15 +146,15 @@ export class ClaudeWebExecutor extends WebSessionExecutor {
       if (!conversationId) conversationId = randomUUID();
       const url = `${BASE}/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(conversationId)}/completion`;
       upstream = await fetcher(url, { method: "POST", headers: headers(cookie, `https://claude.ai/${sessions.has(scope) ? `chat/${conversationId}` : "new"}`), body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, true);
-      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return carry({ response: responseError(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body });
-      if (upstream.status === 429) return carry({ response: responseError(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body });
-      if (!upstream.ok || !upstream.body) return carry({ response: responseError(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body });
+      if ((upstream.status >= 300 && upstream.status < 400) || upstream.status === 401 || upstream.status === 403) return carry({ response: this.errorReply(401, "Claude Web session expired or invalid"), url, headers: common, transformedBody: input.body });
+      if (upstream.status === 429) return carry({ response: this.errorReply(429, "Claude Web quota or rate limit reached"), url, headers: common, transformedBody: input.body });
+      if (!upstream.ok || !upstream.body) return carry({ response: this.errorReply(upstream.status || 502, `Claude Web request failed (HTTP ${upstream.status || 502})`), url, headers: common, transformedBody: input.body });
       const response = await readSse(upstream, model, input.stream === true || input.body?.stream === true);
       if (scope) sessions.set(scope, conversationId);
       return carry({ response, url, headers: common, transformedBody: input.body });
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
-      return carry({ response: responseError(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body });
+      return carry({ response: this.errorReply(error?.status || 502, error?.message || (error?.name === "AbortError" ? "Claude Web request timed out" : "Claude Web connection failed")), url: BASE, headers: {}, transformedBody: input.body });
     }
   }
   buildUrl(model, stream) { return PROVIDERS["claude-web"]?.baseUrl || BASE; }

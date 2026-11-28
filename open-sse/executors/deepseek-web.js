@@ -1,6 +1,4 @@
 import { WebSessionExecutor } from "./webSessionBase.js";
-import { createExecutorSender } from "./sendRequest.js";
-import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { PROVIDERS } from "../config/providers.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
@@ -105,9 +103,8 @@ export function resolveDeepSeekWebModelOptions(model, body) {
 export class DeepSeekWebExecutor extends WebSessionExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
-  async execute(input) {
-    const { model, body, stream, credentials, signal, proxyOptions = null } = input;
-    const sender = createExecutorSender(this, input);
+  async runSession(input, transport) {
+    const { model, body, stream, credentials, signal } = input;
     const token = userToken(credentials);
     if (!token) return { response: json({ error: { message: "DeepSeek Web requires a web userToken from local storage", type: "authentication_error", code: "HTTP_401" } }, 401), url: `${BASE}/v0/chat/completion`, headers: {}, transformedBody: body };
     const prompt = promptFrom(body?.messages);
@@ -115,15 +112,10 @@ export class DeepSeekWebExecutor extends WebSessionExecutor {
     const common = { ...HEADERS, Authorization: `Bearer ${token}` };
     const sessionRejected = (url, headers) => ({ response: json({ error: { message: "DeepSeek web session was rejected", type: "authentication_error", code: "HTTP_401" } }, 401), url, headers, transformedBody: body });
     // The user and session requests are setup; only the completion is quota-bearing.
-    // This executor sends through the patched global fetch, which routes `proxyOptions`.
-    const send = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false, globalFetch: true });
-    const post = (url, payload, headers) => sender.sendRequest(url, { method: "POST", headers, body: JSON.stringify(payload), redirect: "manual", signal }, proxyOptions, { globalFetch: true });
+    const send = (url, init) => transport.send(url, init, { globalFetch: true });
+    const post = (url, payload, headers) => transport.sendBillable(url, { method: "POST", headers, body: JSON.stringify(payload) }, { globalFetch: true });
     let completion;
-    // Every result after the completion send carries its quota ticket.
-    const carry = (result) => {
-      transferProviderAttemptDispatch(completion, result.response);
-      return { ...result, attemptStartedAt: sender.attemptStartedAt };
-    };
+    const carry = (result) => result;
     try {
       const current = await send(`${BASE}/v0/users/current`, { headers: common, redirect: "manual", signal });
       if (current.status >= 300 && current.status < 400) return sessionRejected(`${BASE}/v0/users/current`, common);

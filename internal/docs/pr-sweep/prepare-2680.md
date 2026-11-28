@@ -1,4 +1,4 @@
-Verdict: BLOCKED
+Verdict: READY
 PR: #2680
 Old head: c9be0660eb3ea88bf770bea245101340256b089c
 Side branch: sweep/2680, 4c10d39bc50f1f1b1bd4856b597315b7def76e5a
@@ -12,5 +12,7 @@ Commands: all tests used fresh private HOME, DATA_DIR, TMPDIR, XDG_CACHE_HOME, e
 - Changed src ESLint via node node_modules/eslint/bin/eslint.js: exit 0, 0 errors, 8 warnings.
 - Vitest run unit/none-only-effort-review.test.js unit/none-only-gemini-native-level.test.js unit/review-2635-efforts.test.js translator/openai-responses-family-thinking.test.js --maxWorkers=2: exit 0, 4 files, 78 passed, 0 failed.
 - Vitest related --run --config tests/vitest.config.js --maxWorkers=2 on git diff --name-only origin/main...sweep/2680: initial attempt exit 123, root vitest binary absent; corrected to tests/node_modules/vitest/vitest.mjs, exit 124 at 295 seconds, 137 passing file lines, 0 failed file lines, no final summary; log /var/tmp/dd2680-related.log.
+- Recreated side worktree and dependency symlinks: exit 0. Discovery via node scripts/run-related-tests.mjs --discover from repository root: exit 1 (JSX parse without tests config); rerun from tests/: exit 0, 2,341 selected files.
+- Vitest run --maxWorkers=2 --reporter=dot on exact discovered files in 47 sequential batches of 50 (last 41), each private and timeout-limited: all 47 exit 0; 2,334 files passed, 7 skipped; 29,811 tests passed, 20 skipped, 0 failed. Logs /var/tmp/dd2680-batch-{01..47}.log.
 - Final git merge-base --is-ancestor and git diff --check: exit 0; git worktree remove: exit 0.
-Finding: required related-test run timed out with no final result; scoped checks are not green. Reproduce with the related command above on the listed changed paths. Full reduced gate and cross-family review remain with orchestrator. No push made.
+Finding: initial related command timed out; the exact discovered selection subsequently passed in bounded batches. Full reduced gate and cross-family review remain with orchestrator. No push made.

@@ -1,9 +1,11 @@
 // Ported from OmniRoute 9671192011beb2d7f83979f40be488c5da8772b9,
 // open-sse/executors/poe-web.ts (MIT). The upstream response is JSON.
 import { WebSessionExecutor } from './web-session-executor.js';
-import { isRefusedRedirect } from './sendRequest.js';
+import { cancelDiscardedResponse, isRefusedRedirect } from './sendRequest.js';
 import { isQuotaDispatchUnavailable } from '../services/quota/dispatch.js';
 import { errorResponse } from '../utils/error.js';
+import { readBodyWithTimeout } from '../utils/bodyTimeout.js';
+import { MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from '../config/runtimeConfig.js';
 import { isString } from '../../src/shared/utils/typeChecks.js';
 import { POE_WEB_MODELS } from '../providers/registry/poe-web.js';
 
@@ -37,6 +39,9 @@ export class PoeWebExecutor extends WebSessionExecutor {
     const body = input.body || {};
     const reply = (response, transformedBody = body) => ({ response, url: POE_WEB_URL, headers: { cookie: '[REDACTED]' }, transformedBody });
     const fail = (status, message, code) => reply(errorResponse(status, message, { type: status === 401 ? 'authentication_error' : 'upstream_error', code }));
+    // The existing request-scoped consumer stops both account fallback and outer
+    // retries. After a send, an unusable answer cannot prove work was refused.
+    const unknown = () => ({ ...fail(502, 'Poe request outcome is unknown. Do not replay the request.', 'upstream_outcome_unknown'), claudeRequestScoped: true });
     const token = parsePoeCookie(input.credentials?.apiKey);
     if (!token) return fail(401, 'A valid Poe p-b cookie is required.', 'missing_cookie');
     const model = input.model || body.model || 'poe-default';
@@ -48,16 +53,26 @@ export class PoeWebExecutor extends WebSessionExecutor {
     try {
       upstream = await sendBillable(POE_WEB_URL, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36', origin: ORIGIN, referer: `${ORIGIN}/`, cookie: `p-b=${token}` }, body: JSON.stringify(payload) });
     } catch (error) {
-      if (error?.name === 'AbortError' || isQuotaDispatchUnavailable(error)) throw error;
+      if (input.signal?.aborted || isQuotaDispatchUnavailable(error)) throw error;
       if (isRefusedRedirect(error)) return fail(401, 'Poe session expired or was rejected. Re-import the cookie.', 'session_expired');
-      return fail(502, 'Poe request failed.', 'network_error');
+      return unknown();
     }
+    if (!upstream.ok) cancelDiscardedResponse(upstream);
+    if (upstream.status >= 500) return unknown();
     if (upstream.status === 401 || upstream.status === 403 || (upstream.status >= 300 && upstream.status < 400)) return fail(401, 'Poe session expired or was rejected. Re-import the cookie.', 'session_expired');
     if (!upstream.ok) return fail(upstream.status, `Poe request failed (HTTP ${upstream.status}).`, `HTTP_${upstream.status}`);
     let data;
-    try { data = await upstream.json(); } catch { return fail(502, 'Poe returned invalid JSON.', 'invalid_response'); }
+    try {
+      data = JSON.parse(await readBodyWithTimeout(upstream, {
+        signal: input.signal, maxBytes: MAX_PROVIDER_BODY_BYTES, timeoutMs: RESPONSE_BODY_TIMEOUT_MS,
+      }));
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      return unknown();
+    }
     const result = data?.data?.chatWithBot;
-    if (data?.errors?.length || !isString(result?.text) || (result.state && !['complete', 'completed'].includes(result.state.toLowerCase()))) return fail(502, 'Poe returned an error or incomplete response.', 'invalid_response');
+    if (data?.errors?.length || !isString(result?.text) || !result.text.trim() ||
+      (result.state && (!isString(result.state) || !['complete', 'completed'].includes(result.state.toLowerCase())))) return unknown();
     const base = { id: `chatcmpl-poe-${Date.now()}`, created: Math.floor(Date.now() / 1000), model };
     if (!(input.stream === true || body.stream === true)) return reply(Response.json({ ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: result.text }, finish_reason: 'stop' }] }), payload);
     const chunk = (delta, finish_reason) => ({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason }] });

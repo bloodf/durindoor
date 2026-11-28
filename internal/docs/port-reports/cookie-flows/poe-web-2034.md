@@ -1,86 +1,69 @@
 # Poe Web cookie flow (#2034)
 
-Status: **NOT PARITY — verification incomplete**. The focused test is present but has not been executed in this checkout because root, CLI and test dependencies are absent. The native gate must run it with isolated dependencies before treating its assertions as evidence. In particular, the test has not established a chosen proxy route, and the parser cases do not yet carry each parsed candidate through persistence. No live sign-in, real account, browser, or provider network was exercised.
+Status: **offline public-route evidence and narrow never-replay repair — 101 focused cases pass**. All success claims use synthetic credentials and mocked external network responses. No live Poe sign-in, account, browser or provider behavior was exercised. Full local CI and independent review remain later PR qualification.
 
-The actual registry entry specifies `https://www.poe.com` and the single required cookie `p-b`; it specifies no chunk prefixes, optional cookies, localStorage keys or web-login profile. The extension is intended to read only that name in the active tab's cookie store. The executor parses the stored header and sends `p-b` to `/api/gql_POST`. These are local implementation contracts, not evidence of the current live Poe protocol or successful sign-in. The provider is active, not staged.
+## Contract and retained evidence
 
-Existing `provider-cookie-import-contracts.test.js` checks the descriptor, `provider-cookie-capture-extension.test.js` exercises generic extension behavior, `api/provider-cookie-import.test.js` uses synthetic registry entries and SQLite, and `poe-web-provider.test.js` tests the executor with directly supplied credentials. The new test joins the real descriptor, pairing, extension selection, import and encrypted repository to the executor using synthetic values and mocked browser/network boundaries. It also covers update selection, rejection of a mismatched target, origin, expired cookie and invented chunk, and parser filtering for Cookie, cURL and HAR. The dashboard Cookie-header format cannot independently establish an origin; cURL and HAR include request origins. Cookie chunks and localStorage are not supported by this descriptor; the test asserts no localStorage read and rejects a fabricated chunk. Pairing authority is mocked, so the test does not prove the guard implementation itself.
+The actual `poe-web` descriptor declares origin `https://www.poe.com` and only the `p-b` cookie, with no chunk prefixes, localStorage keys or web-login profile. The actual executor posts the stored cookie to `/api/gql_POST`. This is the frozen local implementation contract, not a claim that the current live GraphQL operation works. No upstream source was fetched; historical Git reads used `GIT_NO_LAZY_FETCH=1 GIT_OPTIONAL_LOCKS=0`.
 
-The intended evidence command, from `tests/` with isolated, pre-provisioned dependencies and a private environment, is:
+The original report first recorded missing dependencies, then a 31-case passing suite with public-route positives and seven excluded unsafe reproductions. This revision retains all 31 cases byte-for-byte and restores the seven cases from `841ed303ea6` as ordinary assertions: pinned HTTP 502; accepted malformed JSON, HTML and incomplete state; post-send reset; broken partial body; and stalled body deadline. There are no skips, expected failures, deleted cases or relaxed unsafe assertions. The report's earlier proposal to change shared post-processing is superseded by the existing request-scoped consumer described below.
 
-```sh
-timeout 300s node node_modules/vitest/vitest.mjs run unit/cookie-flow-poe-web-2034.test.js --maxWorkers=2
-```
+`tests/unit/helpers/cookiePublicFlow2034.js` is used unchanged. It supplies real isolated SQLite, authenticated operator pairing/import, encrypted persistence, registry/executor lookup, account selection and the actual public OpenAI/Anthropic-compatible route handlers. Each imported account has its own strict proxy dispatcher. Only external network/browser boundaries and narrow operator authority are replaced. Vendor frames live in this suite and are synthetic GraphQL responses, not copies of production protocol/model fixtures. No parallel gateway harness or shared-helper extension was needed.
 
-Local result: **not run** (no `node_modules` in root, `cli/`, or `tests/`). No upstream source was consulted for this report; no upstream protocol claim is made. Remaining work: execute and repair the focused test if necessary, verify a chosen proxy through the actual dispatch boundary, and carry each supported parser result through the authenticated import path. These gaps are verification work, not a demonstrated product defect.
+Preserved positive coverage includes both stored accounts pinned through OpenAI and Anthropic routes in buffered and streamed modes; exact selected cookie, origin, proxy, redirect policy, bot and request text snapshots; and connection-list, response and log redaction. Cookie header, cURL and HAR inputs each pass the real parser and issued contract, actual import endpoint, persistence and subsequent public dispatch. A raw Cookie header derives origin from pairing; it cannot independently prove origin. The descriptor does not support localStorage/chunks, and those imports are safely refused. Wrong origin, expired metadata and mismatched update targets leave stored connections unchanged. Updates affect only the paired row. HAR expiry/chunk behavior and public cookie batch work remain separate.
 
-## Public-route follow-up
+## Repair and stronger runtime evidence
 
-Status: **NOT PARITY: positive flows proved offline, never-replay defects reproduced.** The section above describes the original test and its original execution state. The three original cases are unchanged. A new `describe` block uses `tests/unit/helpers/cookiePublicFlow2034.js` (real SQLite, pairing, import, encrypted storage, registry, account selection, the public `/api/v1/chat/completions` and `/api/v1/messages` handlers, and a distinct strict proxy dispatcher per account). Only operator authority and the external network are replaced. Vendor frames are synthetic Poe GraphQL JSON. These are mocked results, not live Poe evidence.
+The only product file changed is `open-sse/executors/poe-web.js`:
 
-Proved by the committed test (31 cases, all passing):
+- Read JSON via existing `readBodyWithTimeout`, with `MAX_PROVIDER_BODY_BYTES`, `RESPONSE_BODY_TIMEOUT_MS` and caller cancellation. The existing reader cancels timed-out, oversized and aborted bodies; discarded non-success response bodies are cancelled without waiting on vendor-controlled cancellation latency.
+- Return generic redacted `upstream_outcome_unknown` errors with trusted executor result metadata `claudeRequestScoped: true` for ambiguous server errors, post-send transport failures, unreadable/malformed/HTML bodies, GraphQL errors, incomplete states and empty/unusable 2xx answers. A transport AbortError without caller cancellation is ambiguous too.
+- Preserve explicit 401/403/429 and refused-redirect behavior, quota admission errors, local invalid-credential refusal and caller aborts. Successful completions still use the original JSON/SSE construction.
 
-- Two imported accounts, each pinned with `x-connection-id`, in OpenAI and Anthropic shapes, buffered and streamed. Each request makes exactly one vendor call to `https://www.poe.com/api/gql_POST` with only the chosen `p-b` cookie, the chosen account's proxy dispatcher, `redirect: "error"` and the expected bot/query variables. The other account's secret is absent from the response, the connection list and captured logs.
-- Each supported input format (Cookie header, cURL, HAR) is parsed with the issued pairing's real contract, submitted through the authenticated import endpoint, persisted, read back, bound to a proxy and dispatched through the public route, with mixed modes. The descriptor declares no localStorage or chunk family; both are refused.
-- An update changes only the paired connection. A mismatched target (409) and a foreign operator token (403) leave both rows byte-identical. Wrong origin, expired metadata, an invented `p-b.0` chunk and a localStorage-only payload are refused with 400, no write, no vendor call and no secret in the response.
-- Pinned HTTP 401 and 429 refusals in all four route modes: one call, no rotation, no success terminal (`[DONE]`, `finish_reason: stop`, `message_stop`, `end_turn`), no fixture text.
-- Unpinned selection falls back to the second account (and its proxy) only after an explicit 401, for both route shapes.
-- A caller abort during dispatch makes one call and no success terminal.
+The frozen consumer in `chatCore.js` propagates that executor metadata; `src/sse/handlers/chat/singleModel/postProcess.js` checks it before account fallback, and the existing outer retry consumer honors the response metadata. This is an existing request-scoped terminal contract, not a new universal terminal convention. No shared base, handler, registry, import path or `src/` file was changed.
 
-### Reproduced defect (not committed as failing tests)
+Additive real client-key coverage creates and stores a separate connection-scoped API key for each imported account, enables `requireApiKey`, and sends actual authorization headers through all four public modes. Each key dispatches only its permitted account/proxy and usage records identify its stored key ID. A foreign connection's valid key, an invalid key and an absent key are refused without network calls or connection writes. Operator pairing authority remains narrowly mocked; these client-key checks exercise actual stored authorization, not the dashboard guard itself.
 
-The committed suite must exit 0, and `skip`, `it.fails` and asserting the unsafe call counts are all ruled out. So the failing cases are kept here as a bounded reproduction instead. They were run in this checkout against the current product code by appending this block to the new `describe` (it uses the same `accounts`/`dispatch` helpers):
+Further cases cover explicit 403/429 fallback in all four modes (original explicit 401 fallback retained); locally proven unsent credential refusal; ambiguous 503 cancellation without replay; malformed JSON, HTML, GraphQL errors, incomplete/empty/invalid-state JSON, post-send reset, transport abort and partial-body failure in all four modes; stalled-body deadline cancellation; caller cancellation while a body is pending; and oversized-body cancellation. Errors must have no OpenAI or Anthropic success terminals, and no partial text or credentials escape. Unpinned snapshot cases assign explicit stored priorities, because equal-priority selection does not promise insertion order.
 
-```js
-it.each([502])("does not rotate a pinned account on HTTP %s", async (status) => {
-  const { a } = await accounts();
-  flow.network.mockImplementation(() => Response.json({ error: "synthetic refusal" }, { status }));
-  await (await dispatch({ stream: true, id: a.id })).text();
-  expect(flow.network).toHaveBeenCalledTimes(1);
-});
-it.each([["malformed", "{broken"], ["HTML", "<html>sign in</html>"], ["incomplete", JSON.stringify({ data: { chatWithBot: { text: "partial fixture", state: "pending" } } })]])("does not replay an accepted %s response", async (_label, payload) => {
-  await accounts();
-  flow.network.mockImplementation(() => new Response(payload, { headers: { "content-type": "application/json" } }));
-  await (await dispatch({ stream: true })).text();
-  expect(flow.network).toHaveBeenCalledTimes(1);
-});
-it.each(["reset", "partial body", "deadline"])("does not replay after %s", async (kind) => {
-  await accounts();
-  flow.network.mockImplementation(async () => {
-    if (kind === "reset") throw new TypeError("synthetic reset after dispatch");
-    let sent = false;
-    return new Response(new ReadableStream({ pull(stream) {
-      if (kind === "deadline") return new Promise(() => {});
-      if (!sent) { sent = true; stream.enqueue(new TextEncoder().encode('{"data":{"chatWithBot":{"text":"partial')); }
-      else stream.error(new TypeError("synthetic body failure"));
-    } }), { headers: { "content-type": "application/json" } });
-  });
-  await (await dispatch({ stream: true })).text();
-  expect(flow.network).toHaveBeenCalledTimes(1);
-});
-```
+## Validation
 
-Observed: pinned HTTP 502 makes **3** vendor calls (outer transient retry). With unpinned selection, a 200 carrying malformed JSON, HTML, an incomplete `state`, a post-send network reset, or a body that breaks mid-read each make **2** calls (one per account). The returned errors carried no success terminal. A 200 body that never finishes did not settle within Vitest's 30 s timeout, although the fixture sets `RESPONSE_BODY_TIMEOUT_MS` and `PROVIDER_BODY_TIMEOUT_MS` to 100 ms. The fixture cannot know whether Poe accepted the work, so each of these is an uncertain outcome, and the gateway replays it against another account.
+Private environment: `/var/tmp/poe-repair-2034.SfJoEWSv/{home,data,tmp,cache,store}`. The root dependency install initially used the separately owned `/var/tmp/poe-repair-2034-private` directories; CLI/tests installs and all test/lint commands used the unique directory above. Dependencies are real installs in this checkout, not borrowed symlinks. Installs used `--frozen-lockfile` and a private pnpm store. Commands ran with `timeout 300 env -i`, explicit PATH, LANG=C.UTF-8, CI=1, HOME, DATA_DIR, TMPDIR and XDG_CACHE_HOME, with no inherited provider/publisher credentials. Tests used at most two workers. No full inventory, browser, Docker, live network provider test or remote mutation ran.
 
-Minimal repair path for the orchestrator (product files outside this unit):
-
-1. `open-sse/executors/poe-web.js`: read the vendor body with `readBodyWithTimeout(upstream, { signal, maxBytes: MAX_PROVIDER_BODY_BYTES, timeoutMs: RESPONSE_BODY_TIMEOUT_MS })` from `open-sse/utils/bodyTimeout.js` (as `t3-chat-web.js` does) and `JSON.parse` the text, rethrowing caller aborts. Return an error with code `upstream_outcome_unknown` for: a post-send non-abort network error, HTTP 5xx, a body read failure or deadline, and an unparsable or incomplete 2xx body. Keep 401/403/3xx as `session_expired` and 429/other 4xx as explicit refusals so the passing fallback case stays green.
-2. `src/sse/handlers/chat/singleModel/postProcess.js`: add `"poe-web"` to `OUTCOME_UNKNOWN_CODE_PROVIDERS`, so that code is terminal (no sibling account, no outer transient retry, no cooldown), as it already is for `tencent-aistudio-web` and `maxai`.
-3. Then add the block above to this test file as ordinary assertions (one call, no success terminal, status >= 400). It should pass without other changes.
-
-This is a repair direction based on the executor's observed generic 502 errors and the existing outcome-unknown handling, not a tested fix. No shared-helper extension was needed.
-
-### Commands and results
-
-Every command ran under `env -i` with an explicit PATH, `LANG=C.UTF-8`, `CI=1`, and a private HOME, DATA_DIR, TMPDIR and cache under `/var/tmp/poe2034-a3l2.*`, wrapped in `timeout 300`. Root, `cli/` and `tests/` dependencies were installed into this checkout with `pnpm install --frozen-lockfile` and a private store. From `tests/`:
+From `tests/`, the before command was:
 
 ```sh
 node node_modules/vitest/vitest.mjs run unit/cookie-flow-poe-web-2034.test.js --maxWorkers=2
+```
+
+Before repair: **31 passed, 7 failed**, exit 1, 85.78 s. Pinned 502 sent three times; malformed/HTML/incomplete/reset/partial-body each sent twice; the deadline case hit the 30 s test ceiling. Raw evidence: `/var/tmp/poe-repair-2034.SfJoEWSv/before.log`.
+
+Base checkout: `046795ee95f3ab93e18c6c48da846568bce57c0a`. Final focused command (from `tests/`, same command as the before run): **101 passed**, exit 0, 72.63 s. Raw evidence: `/var/tmp/poe-repair-2034.SfJoEWSv/focused-final.log`. This includes the original 31, all seven restored regressions and 63 additive cases. The original source prefix was compared with HEAD and is byte-identical.
+
+The combined scoped command also passed: **336 tests across five files**, exit 0, 99.90 s, before the final additive proven-unsent fallback case was added. It used:
+
+```sh
+node node_modules/vitest/vitest.mjs run unit/cookie-flow-poe-web-2034.test.js unit/provider-cookie-import-contracts.test.js unit/provider-cookie-capture-extension.test.js unit/api/provider-cookie-import.test.js unit/poe-web-provider.test.js --maxWorkers=2
+```
+
+Raw evidence: `/var/tmp/poe-repair-2034.SfJoEWSv/final-scoped.log`. The final focused run covers that extra case. Product code did not change between those two passing runs.
+
+Intermediate runs proved the restored seven passing, but stronger added snapshot cases initially failed due to assuming equal-priority account order; those assertions were retained and stored priorities made explicit. An overlapping run loaded the earlier test version before that correction. These were not counted as final green evidence.
+
+Related command (exit 0, **236 passed**, 9.21 s):
+
+```sh
 node node_modules/vitest/vitest.mjs run unit/provider-cookie-import-contracts.test.js unit/provider-cookie-capture-extension.test.js unit/api/provider-cookie-import.test.js unit/poe-web-provider.test.js --maxWorkers=2
 ```
 
-From the repository root: `node node_modules/eslint/bin/eslint.js src`, `node scripts/build-anti-slop-plugin.mjs`, `node scripts/check-anti-slop.mjs`.
+Root lint commands, each independently invoked with the private environment and 300 s ceiling:
 
-Results: focused file **31 passed**; related files **236 passed**; ESLint exit 0 (0 errors, 348 warnings); anti-slop build and check exit 0 (0 diagnostics). The reproduction block above failed 7 cases as described when run with the same command. The generated anti-slop bundle was unchanged.
+```sh
+node node_modules/eslint/bin/eslint.js src
+node scripts/build-anti-slop-plugin.mjs
+node scripts/check-anti-slop.mjs
+```
 
-Remaining uncertainty: the permission guard itself is mocked by the shared fixture. A Cookie header alone cannot prove origin (origin comes from the pairing). Nothing shows how live Poe behaves, whether it accepts work after a 5xx or broken body, or whether the GraphQL operation is current. Full CI and independent review are later qualification work.
+ESLint exit 0: 0 errors, 348 warnings. Anti-slop build/check exit 0: 0 diagnostics. The generated bundle is unchanged. The failure baseline is untouched. The commit message passes pinned commitlint 18.6.1 with config-conventional 18.6.3 and the unchanged repository config (0 problems, 0 warnings). Behavior documentation is the executor's adjacent comment plus this report.
+
+Remaining uncertainty: mocked fixtures cannot prove live Poe protocol, acceptance, quota charging or account access. Management authority itself is mocked, and pairing is a one-use bearer capability rather than a second browser-owner authentication step. Cost receipts for uncertain accepted work are the separate shared receipt batch. Full local CI and independent review have not been claimed or run here.

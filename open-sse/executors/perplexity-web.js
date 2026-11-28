@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { PROVIDERS } from "../config/providers.js";
 import { SSE_DONE, SSE_HEADERS_NO_BUFFER } from "../utils/sseConstants.js";
 import { sseChunk } from "../utils/sse.js";
@@ -564,18 +563,13 @@ async function buildNonStreamingResponse(eventStream, model, cid, created, histo
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-export class PerplexityWebExecutor extends BaseExecutor {
+export class PerplexityWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("perplexity-web", PROVIDERS["perplexity-web"]);
+    super("perplexity-web", PROVIDERS["perplexity-web"], { observePatchedFetch: false });
   }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat({ model, body, stream, credentials, signal, log, proxyOptions = null }, sender, billed) {
+  // Shared session transport owns cancellation, proxy routing and quota dispatch.
+  async runSession({ model, body, stream, credentials, signal, log }, transport) {
     const messages = body?.messages;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       const errResp = new Response(JSON.stringify({
@@ -637,11 +631,10 @@ export class PerplexityWebExecutor extends BaseExecutor {
     log?.info?.("PPLX-WEB", `Query to ${model} (pref=${modelPref}, mode=${pplxMode}), len=${query.length}`);
 
     const fetchOptions = { method: "POST", headers, body: JSON.stringify(pplxBody) };
-    if (signal) fetchOptions.signal = signal;
 
     let response;
     try {
-      response = billed(await sender.sendRequest(PPLX_SSE_ENDPOINT(), fetchOptions, proxyOptions));
+      response = await transport.sendBillable(PPLX_SSE_ENDPOINT(), fetchOptions);
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("PPLX-WEB", `Fetch failed: ${err.message || String(err)}`);

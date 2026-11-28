@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
+import { existsSync, globSync } from "fs";
+import { createFileClassifier } from "./__baseline__/vitest-projects.mjs";
 import { createRequire } from "module";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -21,7 +22,17 @@ const hasCloud = existsSync(resolve(__dirname, "../cloud"));
 // vi.mock("playwright") in a test hits the module open-sse actually imports.
 const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json")).resolve("playwright/package.json"));
 
+// Each project excludes the other project's files; classification is shared
+// with the partition checker and fails closed when a source cannot be parsed.
+const scanned = globSync("**/*.test.js", { cwd: __dirname, exclude: ["**/node_modules/**", "**/.omc/**", "**/.claude/**"] }).sort();
+const isIntegration = createFileClassifier(__dirname);
+const integrationFiles = scanned.filter(isIntegration);
+isIntegration.saveCache();
+const integrationSet = new Set(integrationFiles);
+const unitFiles = scanned.filter(file => !integrationSet.has(file));
+
 export default defineConfig({
+  root: __dirname,
   oxc: {
     include: /(?:src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/EditCompatibleNodeModal\.js|\.jsx)$/,
     exclude: [],
@@ -76,6 +87,10 @@ export default defineConfig({
     hookTimeout: 30_000,
     // Suppress noisy console output from handlers under test
     silent: false,
+    projects: [
+      { extends: true, test: { name: "unit", exclude: integrationFiles.map(file => resolve(__dirname, file)) } },
+      { extends: true, test: { name: "integration", exclude: unitFiles.map(file => resolve(__dirname, file)) } },
+    ],
   },
   plugins: [{
     name: "dashboard-jsx",

@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 
 const runner = fileURLToPath(new URL("../../scripts/run-related-tests.mjs", import.meta.url));
 
-function runFixture({ testCount, failFirstBatch = false }) {
+function runFixture({ testCount, failFirstBatch = false, changedFile = "open-sse/utils/sseFrames.js" }) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "related-runner-test-")));
   try {
     const scripts = join(root, "scripts");
@@ -18,7 +18,7 @@ function runFixture({ testCount, failFirstBatch = false }) {
     mkdirSync(scripts);
     mkdirSync(join(pkg, "dist"), { recursive: true });
     copyFileSync(runner, join(scripts, "run-related-tests.mjs"));
-    writeFileSync(changed, "open-sse/utils/sseFrames.js\n");
+    writeFileSync(changed, `${changedFile}\n`);
     writeFileSync(join(pkg, "dist/node.js"), `
       import { appendFileSync } from "node:fs";
       export async function createVitest(_mode, options) {
@@ -86,4 +86,13 @@ it("fails an empty related-file selection", () => {
   expect(status).toBe(1);
   expect(stderr).toContain("Vitest selected zero related test files");
   expect(calls).toHaveLength(1);
+});
+
+it("runs the coverage guard when a V5 evidence registry file changes", () => {
+  const { root, status, calls } = runFixture({
+    testCount: 0,
+    changedFile: "tests/e2e/v5-evidence/d10-dialog-reset-credits-modal.json",
+  });
+  expect(status).toBe(0);
+  expect(calls[1]).toEqual([join(root, "tests/unit/v5-int-25-coverage.test.js")]);
 });

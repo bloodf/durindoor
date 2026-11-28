@@ -1,0 +1,18 @@
+{
+  "issue": 2034,
+  "sourceFreeze": "2026-11-27T23:49:25.752045Z",
+  "owner": "register-auth03",
+  "module": "open-sse/executors/chatplaygroundSession.js",
+  "export": "inspectChatPlaygroundConnection",
+  "arguments": ["selected connection credentials", "fetcher bound exclusively to selected connection proxy", "{ signal, timeoutMs <= 10000, discovery: boolean }"],
+  "success": "ok:true, valid:true, status:200; discovery additionally returns catalog for chatPlaygroundCatalog",
+  "failure": "ok:false, status, reason; map valid:false, never treat HTTP 200 alone as readiness",
+  "activation": [
+    "Exclude chatplayground from both generic Bearer model resolvers before activation; never relabel stored Cookie as Bearer.",
+    "Route test and validate through this helper with discovery:false and selected proxy transport.",
+    "Route dashboard and live model discovery through discovery:true, then chatPlaygroundCatalog(result.catalog).",
+    "Do not use legacy discoverChatPlaygroundModels as the activation entry point."
+  ],
+  "protocol": "Existing fixed web API and Clerk mint only. /me requires nonempty string id; unknown shape returns unsupported_me_identity_shape. Catalog is credential-free as in current chat. No live protocol verification.",
+  "scope": "No src, registry or generic resolver changes in this unit; legacy public mismatches remain until registration owner activates wiring."
+}

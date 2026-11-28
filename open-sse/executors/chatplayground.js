@@ -1,3 +1,5 @@
+import { acquireChatPlaygroundSession as resolveChatPlaygroundHeaders, chatPlaygroundCredential as cookieOrJwt } from "./chatplaygroundSession.js";
+export { inspectChatPlaygroundConnection } from "./chatplaygroundSession.js";
 import { BaseExecutor } from "./base.js";
 import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
@@ -8,52 +10,8 @@ import { buildUnifiedPayload, createUnifiedChatStream, parseUnifiedReply, unifie
 const API = "https://web.chatplayground.ai/api";
 const WEB = "https://web.chatplayground.ai";
 const CHAT = `${API}/chat`;
-const CLERK = "https://clerk.chatplayground.ai";
-const CLERK_QUERY = "?__clerk_api_version=2026-08-20&_clerk_js_version=6.43.0";
-
 function makeErrorResult(status, message, body, url) {
   return { response: errorResponse(status, message), url, headers: {}, transformedBody: body };
-}
-
-function cookieOrJwt(credentials = {}) {
-  return credentials.apiKey || credentials.cookie || credentials.accessToken ||
-    credentials.providerSpecificData?.cookie || credentials.providerSpecificData?.jwt || "";
-}
-
-function parseCookie(raw) {
-  const input = String(raw || "").replace(/^Cookie:\s*/i, "").replace(/^Bearer\s+/i, "").trim();
-  if (input.split(".").length === 3 && input.startsWith("eyJ")) return { jwt: input };
-  const cookies = Object.fromEntries(input.split(";").map((part) => {
-    const i = part.indexOf("=");
-    return i < 0 ? ["", ""] : [part.slice(0, i).trim(), part.slice(i + 1).trim()];
-  }).filter(([name]) => name));
-  return cookies;
-}
-
-function tokenPayload(token) {
-  try { return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")); }
-  catch { return null; }
-}
-
-async function resolveChatPlaygroundHeaders(raw, fetcher) {
-  const parsed = parseCookie(raw);
-  if (parsed.jwt) return { ok: true, headers: { Authorization: `Bearer ${parsed.jwt}` } };
-  const session = parsed.__session || "";
-  const sid = tokenPayload(session)?.sid;
-  if (!parsed.__client || !sid) return { ok: false, status: 401 };
-  const url = `${CLERK}/v1/client/sessions/${encodeURIComponent(sid)}/tokens${CLERK_QUERY}`;
-  let minted;
-  try {
-    minted = await fetcher(url, {
-      method: "POST", redirect: "manual",
-      headers: { accept: "*/*", "content-type": "application/x-www-form-urlencoded", origin: WEB, referer: `${WEB}/`, cookie: `__client=${parsed.__client}` },
-      body: "organization_id=&tab_state=visible&token=",
-    });
-  } catch { return { ok: false, status: 502 }; }
-  if (!minted.ok) return { ok: false, status: minted.status };
-  const data = await minted.json().catch(() => ({}));
-  if (!isString(data.jwt) || !data.jwt) return { ok: false, status: 502 };
-  return { ok: true, headers: { Authorization: `Bearer ${data.jwt}` } };
 }
 
 export async function validateChatPlaygroundCookie(raw, fetcher = fetch) {
@@ -123,7 +81,7 @@ export class ChatPlaygroundExecutor extends BaseExecutor {
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const unsupported = unifiedRequestError(messages);
     if (unsupported) return makeErrorResult(400, unsupported, body, CHAT);
-    const auth = await resolveChatPlaygroundHeaders(cookieOrJwt(credentials), send);
+    const auth = await resolveChatPlaygroundHeaders(cookieOrJwt(credentials), send, { signal });
     if (signal?.aborted) throw requestAbortError(signal.reason);
     if (!auth.ok) return makeErrorResult(auth.status === 403 ? 403 : auth.status === 429 ? 429 : 401,
       "ChatPlayground session is missing or expired", body, `${API}/me`);

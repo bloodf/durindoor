@@ -1,8 +1,8 @@
 // The orchestrator can reuse one Vitest dependency scan across bounded test runs.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(import.meta.url);
@@ -27,6 +27,46 @@ function limitDependencyConcurrency(vitest) {
       waiting.shift()?.();
     }
   };
+}
+
+// Playwright specs and their helpers live under website/tests/ and are run by
+// the browser suite, not Vitest. A change made only of those files can
+// legitimately select zero related unit tests. The exemption fails closed:
+// every entry must be a canonical repo-relative POSIX path that names an
+// existing regular file whose real path stays inside the real website/tests
+// directory. Anything else (absolute, backslash, surrounding whitespace,
+// control characters, empty/./.. segments, case variants, symlink escapes,
+// deleted files, resolution errors) keeps the empty-selection failure.
+const browserTestPrefix = "website/tests/";
+
+function realBrowserTestDir() {
+  try {
+    const expected = join(realpathSync(root), "website", "tests");
+    // website/tests itself must be a real directory, not a symlink elsewhere.
+    if (!lstatSync(expected).isDirectory() || realpathSync(expected) !== expected) return null;
+    return expected;
+  } catch {
+    return null;
+  }
+}
+
+function isBrowserTestFile(file, realDir) {
+  if (!realDir || !file.startsWith(browserTestPrefix)) return false;
+  if (file !== file.trim() || /[\\\u0000-\u001f\u007f]/.test(file)) return false;
+  if (file.split("/").some((segment) => !segment || segment === "." || segment === "..")) return false;
+  try {
+    const real = realpathSync(join(root, file));
+    const path = relative(realDir, real);
+    if (!path || isAbsolute(path) || path.split(sep)[0] === "..") return false;
+    return statSync(real).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isBrowserOnlyChange(changed) {
+  const realDir = realBrowserTestDir();
+  return changed.length > 0 && changed.every((file) => isBrowserTestFile(file, realDir));
 }
 
 function run(label, args, env) {
@@ -55,9 +95,13 @@ async function discover(changedList, output) {
     limitDependencyConcurrency(vitest);
     const specs = await vitest.getRelevantTestSpecifications();
     const files = [...new Set(specs.map(({ moduleId }) => relative(testDir, moduleId)))].sort();
-    if (!files.length) throw new Error("Vitest selected zero related test files");
+    if (!files.length && !isBrowserOnlyChange(changed)) {
+      throw new Error("Vitest selected zero related test files");
+    }
     writeFileSync(output, JSON.stringify(files));
-    console.log(`Vitest selected ${files.length} related test files`);
+    console.log(files.length
+      ? `Vitest selected ${files.length} related test files`
+      : `Vitest selected zero related test files; every changed file is a browser test under website/tests/, which the browser suite covers`);
   } finally {
     await vitest.close();
   }

@@ -81,7 +81,8 @@ const fetchProviders = [
     ["/v0/chat/completion"],
   ] },
   { id: "doubao-web", Executor: DoubaoWebExecutor, apiKey: "sessionid=fixture; ttwid=fixture; s_v_web_id=fixture", chat: [["/chat/"]] },
-  { id: "zai-web", Executor: ZaiWebExecutor, apiKey: `token=${jwt({ id: "fixture" })}`, chat: [
+  // Synthetic opaque CAPTCHA proof so the executor dispatches; without one it refuses before any POST.
+  { id: "zai-web", Executor: ZaiWebExecutor, apiKey: `token=${jwt({ id: "fixture" })}`, providerSpecificData: { captchaVerifyParam: "synthetic-proof-redirect" }, chat: [
     ["/api/v1/chats/new", { id: "fixture" }], ["/completions"],
   ] },
   { id: "notion-web", Executor: NotionWebExecutor, apiKey: "token_v2=fixture", validate: "getSpaces", chat: [

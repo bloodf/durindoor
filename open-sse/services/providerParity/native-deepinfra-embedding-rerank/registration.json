@@ -1,0 +1,93 @@
+{
+  "registered": false,
+  "canonicalId": "deepinfra",
+  "aliases": [
+    "deepinfra"
+  ],
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts",
+      "open-sse/config/rerankRegistry.ts",
+      "open-sse/handlers/rerank.ts",
+      "src/app/api/providers/[id]/models/discovery/providerSets.ts",
+      "src/app/api/providers/[id]/models/discovery/helpers.ts"
+    ]
+  },
+  "exports": {
+    "config.js": [
+      "DEEPINFRA_ID",
+      "DEEPINFRA_ALIASES",
+      "DEEPINFRA_ORIGIN",
+      "DEEPINFRA_MODELS_URL",
+      "embeddingModels",
+      "rerankModels",
+      "embeddingConfig",
+      "rerankConfig",
+      "deepinfraMediaMetadata"
+    ],
+    "adapter.js": [
+      "deepinfraEmbeddingAdapter",
+      "deepinfraRerankAdapter",
+      "buildEmbeddingBody",
+      "buildRerankBody",
+      "normalizeEmbedding",
+      "normalizeRerank"
+    ],
+    "service.js": [
+      "handleDeepinfraNative",
+      "discoverDeepinfraModels"
+    ],
+    "index.js": "public staging exports"
+  },
+  "serviceKinds": [
+    "embedding",
+    "rerank"
+  ],
+  "models": {
+    "embedding": [
+      "Qwen/Qwen3-Embedding-8B",
+      "Qwen/Qwen3-Embedding-4B",
+      "Qwen/Qwen3-Embedding-0.6B",
+      "BAAI/bge-large-en-v1.5",
+      "BAAI/bge-base-en-v1.5",
+      "BAAI/bge-m3",
+      "intfloat/e5-large-v2",
+      "thenlper/gte-large"
+    ],
+    "rerank": [
+      "Qwen/Qwen3-Reranker-8B",
+      "Qwen/Qwen3-Reranker-4B",
+      "Qwen/Qwen3-Reranker-0.6B"
+    ]
+  },
+  "auth": {
+    "authType": "apikey",
+    "authHeader": "bearer",
+    "credentialPrecedence": [
+      "apiKey",
+      "accessToken"
+    ],
+    "identity": "selected connection only; no credential mutation, cache, refresh, replay or failover"
+  },
+  "endpoints": {
+    "embedding": "https://api.deepinfra.com/v1/openai/embeddings",
+    "rerank": "https://api.deepinfra.com/v1/inference/<organization>/<model>",
+    "discovery": "https://api.deepinfra.com/v1/openai/models"
+  },
+  "integration": {
+    "embedding": "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and embeddingsCore.js: register adapter and route through bounded native service; adapter normalize requires (raw, model, body), unlike generic core normalize(raw)",
+    "rerank": "open-sse/handlers/rerankCore.js: dispatch native service before generic deriveRerankUrl/passthrough; generic /v1/openai/rerank is NOT equivalent",
+    "provider": "existing open-sse/providers/registry/deepinfra.js; later add media metadata/catalog without replacing auth/transport or discovery",
+    "discovery": "existing DeepInfra modelsFetcher already equivalent; staged discovery adds bounded safe ID normalization, no replacement required"
+  },
+  "restrictions": [
+    "unregistered pending serial registration after four additions",
+    "text input only; float embeddings only; no media, token arrays, streaming, base64 or arbitrary extra fields",
+    "safe custom organization/model IDs allowed; unknown dynamic IDs have no serviceKinds claim",
+    "30s default/60s maximum total deadline, 8MiB success and 16KiB error response bounds",
+    "no async jobs, polling, artifact URL fetching, browser or WebSocket protocol"
+  ]
+}

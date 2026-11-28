@@ -1,0 +1,130 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/executors/fishAudioTts.ts",
+      "src/app/api/v1/_shared/fishAudioProxy.ts",
+      "src/app/api/v1/providers/[provider]/voices/route.ts",
+      "tests/unit/audio-speech-fishaudio.test.ts"
+    ],
+    "registryFields": {
+      "tts": { "id": "fishaudio", "baseUrl": "https://api.fish.audio/v1/tts", "authType": "apikey", "authHeader": "bearer", "format": "fishaudio", "models": ["s2.1-pro-free", "s2.1-pro", "s2-pro", "s1", "speech-1.6", "speech-1.5"] }
+    },
+    "handler": "handleFishAudioSpeech: POST JSON { text, format, reference_id?, provider_options.fishaudio fields, prosody? } with Content-Type application/json, Authorization Bearer and a `model` header; raw audio streamed back",
+    "sttRow": "the inventory STT row is not backed by the pinned source: AUDIO_TRANSCRIPTION_PROVIDERS (audioRegistry.ts line 55) has no fishaudio entry, audioTranscription.ts never names it, and the only fishaudio row (line 601) sits in AUDIO_SPEECH_PROVIDERS (line 396). Nothing is staged for STT."
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/fish-audio.js (id fish-audio, alias fish, authType apikey, serviceKinds [tts], ttsConfig baseUrl https://api.fish.audio/v1/tts, authHeader bearer, format fish-audio, models s2.1-pro-free, s2.1-pro, s2-pro, s1)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS[\"fish-audio\"] (same endpoint, Bearer auth and `model` header; body only { text, format: \"mp3\", reference_id? }; always mp3; drops provider_options, speed and response_format silently; accepts any model id; no deadline; proxyAwareFetch follows redirects; throwUpstreamError quotes the upstream body; no accepted-job outcome; no audio validation)",
+      "open-sse/handlers/ttsProviders/index.js synthesizeViaConfig (reaches the handler above through ttsConfig.format; model/voice suffix parsed by parseModelVoice)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no fish-audio, fish or fishaudio entry)",
+      "src/shared/constants/ttsProviders.js fish-audio (model selector, manual voice id input, no browse button, voiceSource config)",
+      "no local Fish voice listing route (rg fish src/app finds none)"
+    ],
+    "result": "the provider, connection, endpoint and auth already exist and are reachable; this module is the remaining delta: format selection, provider_options, prosody, reference_id arrays, legacy model rows, the fishaudio alias, voice discovery and the native adapter contract (deadline, abort, redirect refusal, acceptedJob, unquoted errors)"
+  },
+  "module": "open-sse/services/providerParity/native-fishaudio-tts/index.js",
+  "exports": {
+    "fishAudioTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createFishAudioTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "listFishAudioVoices": "default voice lister; (credentials, query, { signal }) -> { success, total, voices, dropped } or an error result",
+    "createFishAudioVoiceLister": "factory; options { fetchImpl, timeoutMs, maxBytes }",
+    "buildFishAudioSpeechRequest": "(model, text, options, queryFormat) -> { modelId, container, payload }; throws status 400 for anything refused or dropped",
+    "resolveFishAudioModel": "(model) -> { modelId, suffixVoice }",
+    "resolveFishAudioContainer": "(options, queryFormat) -> mp3 | wav | pcm | opus",
+    "buildFishAudioVoicesUrl": "(query) -> URL on https://api.fish.audio/model with validated parameters",
+    "normalizeFishAudioVoices": "(data) -> { total, voices, dropped } or null",
+    "fishAudioAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "isMp3": "mp3 magic-byte check",
+    "matchesContainer": "(bytes, container) magic-byte check per Fish container",
+    "isSafeFishAudioId": "source voice-id pattern ^[A-Za-z0-9_-]+$, at most 128 characters",
+    "FISH_AUDIO_SAFE_ID": "the pattern above",
+    "FISH_AUDIO_OPTION_KEYS": "accepted provider_options.fishaudio keys",
+    "FISH_AUDIO_VOICE_QUERY_KEYS": "accepted listing parameters",
+    "FISH_AUDIO_TTS_PROVIDER_ADDITIONS": "staged additions to the existing fish-audio registry entry",
+    "FISH_AUDIO_TTS_CONFIG": "ttsConfig block { baseUrl, authType, authHeader, format, models }",
+    "FISH_AUDIO_TTS_MODELS": "all six speech models",
+    "FISH_AUDIO_ADDED_TTS_MODELS": "speech-1.6, speech-1.5 (legacy rows missing locally)",
+    "FISH_AUDIO_PROVIDER_ID": "fish-audio",
+    "FISH_AUDIO_ALIASES": "[\"fish\"]",
+    "FISH_AUDIO_SOURCE_ID": "fishaudio",
+    "FISH_AUDIO_TTS_FORMAT": "fish-audio",
+    "FISH_AUDIO_ORIGIN": "https://api.fish.audio",
+    "FISH_AUDIO_TTS_URL": "https://api.fish.audio/v1/tts",
+    "FISH_AUDIO_VOICES_URL": "https://api.fish.audio/model",
+    "FISH_AUDIO_OPTIONS_KEY": "fishaudio",
+    "FISH_AUDIO_FORMATS": "[\"wav\", \"pcm\", \"mp3\", \"opus\"]",
+    "FISH_AUDIO_LATENCY": "[\"low\", \"normal\", \"balanced\"]",
+    "FISH_AUDIO_SAMPLE_RATES": "[8000, 16000, 24000, 32000, 44100, 48000]",
+    "FISH_AUDIO_MP3_BITRATES": "[64, 128, 192]",
+    "FISH_AUDIO_OPUS_BITRATES": "[-1000, 24000, 32000, 48000, 64000]",
+    "FISH_AUDIO_DEFAULT_TTS_MODEL": "s2.1-pro-free",
+    "FISH_AUDIO_TTS_TIMEOUT_MS": "120000",
+    "FISH_AUDIO_VOICES_TIMEOUT_MS": "30000",
+    "FISH_AUDIO_MAX_AUDIO_BYTES": "26214400",
+    "FISH_AUDIO_MAX_TTS_REQUEST_BYTES": "262144",
+    "FISH_AUDIO_MAX_VOICES_BYTES": "2097152",
+    "FISH_AUDIO_MAX_REFERENCE_IDS": "16",
+    "FISH_AUDIO_MAX_REFERENCE_ID_LENGTH": "128",
+    "fishAudioTtsModel": "(id) -> model row or null"
+  },
+  "provider": {
+    "canonicalId": "fish-audio",
+    "aliases": ["fish"],
+    "addAliases": ["fishaudio"],
+    "existingRegistryEntry": "open-sse/providers/registry/fish-audio.js",
+    "existingServiceKinds": ["tts"],
+    "addServiceKinds": [],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "fish-audio"
+  },
+  "models": {
+    "tts": ["s2.1-pro-free", "s2.1-pro", "s2-pro", "s1", "speech-1.6", "speech-1.5"],
+    "add": ["speech-1.6", "speech-1.5"],
+    "voiceSuffix": "<model>/<reference_id> selects a voice, as parseModelVoice does today; must agree with `voice` when both are given",
+    "dynamicDiscovery": "voice models (reference ids) via GET https://api.fish.audio/model; speech models stay static, as in the source"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://api.fish.audio/v1/tts", "headers": ["Content-Type: application/json", "Authorization: Bearer <key>", "model: <model id>"], "body": "{ text, format, reference_id?, temperature?, top_p?, chunk_length?, normalize?, sample_rate?, mp3_bitrate?, opus_bitrate?, latency?, max_new_tokens?, repetition_penalty?, min_chunk_length?, condition_on_previous_chunks?, early_stop_threshold?, features?, prosody? }", "answer": "raw audio bytes in the requested container" },
+    "voices": { "method": "GET", "url": "https://api.fish.audio/model", "headers": ["Accept: application/json", "Authorization: Bearer <key>"], "query": ["page_size", "page_number", "title", "tag", "self", "author_id", "language", "title_language", "sort_by"], "answer": "application/json { total, items: [{ _id, title, type, languages, tags, visibility, state, ... }] }" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "voicesTimeoutMs": 30000,
+    "maxAudioBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "maxVoicesBytes": 2097152,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/fish-audio.js",
+      "change": "merge FISH_AUDIO_TTS_PROVIDER_ADDITIONS: add aliases [\"fishaudio\"] (keep alias fish), append the speech-1.6 and speech-1.5 rows to ttsConfig.models; keep id, display, authType, serviceKinds, baseUrl and format unchanged"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { fishAudioTtsAdapter } and add `\"fish-audio\": fishAudioTtsAdapter, fish: fishAudioTtsAdapter, fishaudio: fishAudioTtsAdapter` to TTS_ADAPTERS so handleTtsCore uses the adapter before synthesizeViaConfig; then remove FORMAT_HANDLERS[\"fish-audio\"] from genericFormats.js"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add fish-audio to NAMED_FORMAT_PROVIDERS so a query-string response_format (wav, pcm, opus, ogg) reaches the adapter as requestedResponseFormat; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "src/app/api/media-providers/tts/[provider]/voices (or the existing VOICE_FETCHERS map in open-sse/handlers/ttsProviders/index.js)",
+      "change": "serve listFishAudioVoices with the connection selected under the caller key's allowed connections (the source uses enforceApiKeyPolicyWithScope + getProviderCredentialsWithQuotaPreflight); flip hasBrowseButton for fish-audio in src/shared/constants/ttsProviders.js"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Fish Audio speech formats, options and legacy models after registration"
+    }
+  ]
+}

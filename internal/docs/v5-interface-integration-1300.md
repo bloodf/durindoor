@@ -10,6 +10,33 @@ Recent requests now include a non-secret API key identity and label; the Request
 
 The [surface manifest](../../tests/e2e/storybook-surfaces.json) records the current source and catalog reconciliation, including the inventory basis, source and reference review status, scenario mappings and runtime status. Final coverage credit requires approved classifications, mappings and evidence.
 
+## Candidate 7260640 inventory repair (2026-11-27)
+
+Rebuilt Storybook from parent `7260640b92f784b352c5e21ac2e68b16689e72a0`
+and ran `node scripts/sync-storybook-inventory.mjs --write`. The generated
+inventory adds the pending `ModelsCardContext` surface and refreshes source and
+scenario hashes for the three existing pending `ModelsCard.js` rows. The built
+catalog hash is unchanged.
+
+All 196 active source approvals and 12 active reference approvals are retained.
+The 441 historical source approvals, 252 reference records with historical
+reviews, and six historical inventory rows are unchanged. No active approval
+was invalidated by this repair, so none needed moving to history; no approval
+was created. There are now 454 pending source rows and 1,496 pending references.
+
+Validation passed: `pnpm run storybook:build`, the inventory generator's
+`--check`, the coverage checker in `--mode inventory` against the rebuilt index,
+and both `1300-v5-storybook-inventory.test.js` (3 tests) and
+`storybook-inventory-sync.test.js` (16 tests). `git diff --check` also passed.
+Builds, generators and tests used fresh disposable HOME and DATA_DIR directories
+and an environment allowlist with no inherited provider or publisher credentials.
+
+This repair establishes source inventory consistency only. No browser interaction,
+accessibility, responsive or cross-engine runtime acceptance was performed, and
+no live provider or service was used. Source/scenario review and runtime evidence
+remain pending; the new context surface's generated file association does not
+prove branch coverage. Final coverage and release acceptance remain open.
+
 ## Remaining V5 scope
 
 The five provider-detail rows in S05 (`AutoPingScheduleModal`, `InferenceStatus`, `ModelCatalogProvenance`, `NativeProviderReadiness` and `ProviderRpmControl`) record proposed scenario mappings and supporting source-story evidence. Independent source review and approval of those mappings and evidence remain pending. This guide records no new approved coverage.
@@ -17,6 +44,8 @@ The five provider-detail rows in S05 (`AutoPingScheduleModal`, `InferenceStatus`
 Reconcile the remaining review compositions against live dashboard workflows and confirm ownership with the integration owner. Visual, interaction, loading, empty, error, responsive and accessibility coverage still requires approved scenario associations. Final V5 candidate acceptance and release readiness remain open under #1067.
 
 ## Evidence and validation commands
+
+The regenerated inventory retains 197 approved rows, 452 pending rows and 1,498 pending references. Runtime status remains pending.
 
 Run the following commands from the repository root to regenerate the story catalog and check the inventory.
 

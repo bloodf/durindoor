@@ -1,0 +1,113 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/handlers/audioTranscription.ts",
+      "open-sse/utils/audioMultipart.ts",
+      "src/shared/constants/providers/apikey/specialty-media.ts",
+      "tests/unit/deapi-provider.test.ts"
+    ],
+    "registryFields": {
+      "tts": { "id": "deapi", "baseUrl": "https://oai.deapi.ai/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "openai", "supportedFormats": ["mp3"] },
+      "stt": { "id": "deapi", "baseUrl": "https://oai.deapi.ai/v1/audio/transcriptions", "authType": "apikey", "authHeader": "bearer", "format": "openai" }
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/ (no deapi.js; `git grep -i deapi` finds no provider, model, ttsConfig or sttConfig)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no deapi entry)",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS.openai (openaiCompat: same body shape, but no deadline, follows redirects, forwards every extra body field, returns the upstream error text and streams unchecked bytes)",
+      "open-sse/handlers/sttCore.js transcribeOpenAICompatible (same multipart shape, but forwards every client field, no deadline, follows redirects, quotes the upstream error, no accepted-job outcome)",
+      "src/sse/handlers/stt.js (no accepted-job recording on the STT route)"
+    ],
+    "result": "no provider and no equivalent adapter; the generic openai paths match the wire envelope but not the safety contract, so this module is the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-deapi-tts-stt/index.js",
+  "exports": {
+    "deapiTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "deapiSttAdapter": "default STT adapter instance; transcribe({ model, formData, credentials, kind, signal })",
+    "createDeapiTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "createDeapiSttAdapter": "factory; options { fetchImpl, timeoutMs, maxTranscriptBytes } for tests",
+    "buildDeapiSpeechRequest": "(model, text, options) -> source speech body; throws status 400",
+    "buildDeapiTranscriptionRequest": "async (model, formData, { kind }) -> { body: FormData, responseFormat } or a 400 error result with local: true",
+    "deapiAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "deapiUploadFileName": "source upload file name rule",
+    "isMp3": "mp3 magic-byte check",
+    "DEAPI_PROVIDER_DEFINITION": "staged provider definition (display, apikey auth, serviceKinds, ttsConfig, sttConfig)",
+    "DEAPI_TTS_MODELS": "speech models",
+    "DEAPI_STT_MODELS": "transcription models",
+    "DEAPI_SPEECH_RESPONSE_FORMATS": "[\"mp3\", \"json\"] (or none named)",
+    "DEAPI_TRANSCRIPTION_RESPONSE_FORMATS": "[\"json\", \"text\", \"verbose_json\", \"diarized_json\"]"
+  },
+  "provider": {
+    "canonicalId": "deapi",
+    "aliases": ["deapi"],
+    "existingRegistryEntry": null,
+    "existingServiceKinds": [],
+    "addServiceKinds": ["tts", "stt"],
+    "otherSourceKinds": "the source deapi entry also serves image, video and embeddings; those are separate #2034 rows and must merge into the same new registry entry",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "openai"
+  },
+  "models": {
+    "tts": [
+      { "id": "Kokoro", "name": "Kokoro (deAPI)" },
+      { "id": "Chatterbox", "name": "Chatterbox (deAPI)" },
+      { "id": "Qwen3_TTS_12Hz_1_7B_CustomVoice", "name": "Qwen3 TTS 1.7B (deAPI)" },
+      { "id": "Qwen3_TTS_12Hz_1_7B_VoiceDesign", "name": "Qwen3 TTS Voice Design (deAPI)", "requiresInstructions": true }
+    ],
+    "stt": [
+      { "id": "WhisperLargeV3Ct2", "name": "Whisper Large v3 CT2 (deAPI)", "wordTimestamps": true, "diarizedJson": true },
+      { "id": "WhisperLargeV3", "name": "Whisper Large v3 (deAPI)", "wordTimestamps": false, "diarizedJson": false }
+    ],
+    "voiceSuffix": "tts model/voice accepted; default voice alloy",
+    "dynamicDiscovery": "none: the source lists deAPI audio models statically and has no deAPI model fetcher or validateUrl"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://oai.deapi.ai/v1/audio/speech", "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"], "body": "{ model, input, voice, response_format: \"mp3\", speed, instructions? }", "answer": "mp3 bytes" },
+    "transcription": { "method": "POST", "url": "https://oai.deapi.ai/v1/audio/transcriptions", "headers": ["Authorization: Bearer <key>", "Content-Type: multipart/form-data"], "body": "model, language?, prompt?, response_format?, temperature?, timestamp_granularities[]*, file", "answer": "json / verbose_json / diarized_json object with text, or text/plain" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "sttTimeoutMs": 300000,
+    "maxAudioBytes": 52428800,
+    "maxTranscriptBytes": 8388608,
+    "maxSttFileBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/deapi.js",
+      "change": "new entry from DEAPI_PROVIDER_DEFINITION: id/alias deapi, category and authType apikey, serviceKinds [\"tts\", \"stt\"] (plus kinds from the other deapi rows), model rows from DEAPI_TTS_MODELS / DEAPI_STT_MODELS with kind, sttConfig with translationModels [] so supportsSttTranslation stays false; no ttsConfig (the adapter is registered in TTS_ADAPTERS)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { deapiTtsAdapter } and add `deapi: deapiTtsAdapter` to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage adds input characters"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "pass `requestedResponseFormat` for deapi so a query-string response_format other than mp3/json is refused before submit; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "open-sse/handlers/sttCore.js",
+      "change": "before the format switch, `if (provider === \"deapi\") return await deapiSttAdapter.transcribe({ model, formData, credentials, kind, signal })` so the generic openai branch never serves deapi"
+    },
+    {
+      "file": "src/sse/handlers/stt.js",
+      "change": "record `result.acceptedJob` once on the selected connection (modality stt, endpoint /v1/audio/transcriptions) and stop account fallback for it; today the STT route has no accepted-job path"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list deAPI tts and stt kinds after registration"
+    }
+  ]
+}

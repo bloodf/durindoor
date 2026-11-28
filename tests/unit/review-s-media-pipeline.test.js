@@ -166,7 +166,8 @@ it("cancels an edit without marking the account or attempting failover", async (
   expect(mocks.markUnavailable).not.toHaveBeenCalled();
 });
 
-it.each([200, 429])("cancels an edit while reading an upstream %s body", async (status) => {
+// #2669: a cancel mid body read is a cancel on both the error and success path.
+it.each([200, 429])("cancels an edit while reading an upstream %s body without touching account health", async (status) => {
   const controller = new AbortController();
   const req = request("edits", { signal: controller.signal });
   mocks.fetch.mockResolvedValueOnce({

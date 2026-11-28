@@ -1,3 +1,4 @@
+import { observeClaudeUsageHeaders } from "../services/usage/claude.js";
 import { claudeRequestedBetas, isClaudeFastRequest, isClaudeRequestScopedError } from "../utils/claudeProtocol.js";
 import { HTTP_STATUS, RETRY_CONFIG, DEFAULT_RETRY_CONFIG, resolveRetryEntry, matchSkipRule, resolveRequestRetryPolicy } from "../config/runtimeConfig.js";
 import { shouldRefreshCredentials } from "../services/oauthCredentialManager.js";
@@ -93,6 +94,39 @@ export function waitForRetryDelay(delayMs, signal = null) {
     const onAbort = () => finish(reject, requestAbortError(signal?.reason));
     const timer = setTimeout(() => finish(resolve), Math.max(0, delayMs));
     signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Race a caller wait against `signal` without cancelling the underlying
+ * operation (so an already-started refresh can finish and persist safely).
+ * Removes the abort listener synchronously before settling and absorbs late
+ * rejections from detached operations.
+ */
+export function raceCallerAbort(pending, signal = null) {
+  if (!signal) return pending;
+  const operation = Promise.resolve(pending);
+  if (signal.aborted) {
+    operation.catch(() => {});
+    return Promise.reject(requestAbortError(signal.reason));
+  }
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener?.("abort", onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, requestAbortError(signal.reason));
+    signal.addEventListener?.("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        if (signal.aborted) finish(reject, requestAbortError(signal.reason));
+        else finish(resolve, value);
+      },
+      (error) => finish(reject, error)
+    );
   });
 }
 
@@ -487,14 +521,16 @@ export class BaseExecutor {
         let bodyStr = serialize(requestBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | model=${model} | body=${fmtBytes(bodyStr.length)} | connectTimeout=${headerTimeoutMs}ms`);
-        const send = (serializedBody) => {
+        const send = async (serializedBody) => {
           chargeDispatch(urlIndex);
-          return sender.sendRequest(url, {
+          const response = await sender.sendRequest(url, {
             method: "POST", headers, body: serializedBody, signal,
             // Credentials never follow a redirect unless the registry entry says why it must.
             ...(!this.config?.quirks?.allowRedirects && carriesCredential(url, headers, credentials) ? { redirect: "error" } : null),
             ...(directFetch ? { directFetch } : null)
           }, proxyOptions);
+          if (claudeOAuth) observeClaudeUsageHeaders(credentials.accessToken, response.headers);
+          return response;
         };
         let response = await send(bodyStr);
         let responseFormat;
@@ -672,12 +708,13 @@ export class BaseExecutor {
         lastError = error;
         // Classify: our header-timeout vs a caller-initiated abort vs a generic network error.
         const errorKind = isConnectTimeout ? "connect_timeout" : "network";
-        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error.name}: ${error.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
+        dbg("FETCH", `${this.provider.toUpperCase()} ✖ ${error?.name}: ${error?.message}${isConnectTimeout ? " (connect timeout)" : ""}`);
         // A caller-initiated abort (signal aborted but NOT our connect timer) must propagate.
-        if (!isConnectTimeout && (error.name === "AbortError" || signal?.aborted)) {
-          error.errorKind = "aborted";
-          error.providerAttemptStartedAt = sender.attemptStartedAt;
-          throw error;
+        if (!isConnectTimeout && (error?.name === "AbortError" || signal?.aborted)) {
+          const abortError = error?.name === "AbortError" ? error : requestAbortError(signal?.reason);
+          abortError.errorKind = "aborted";
+          abortError.providerAttemptStartedAt = sender.attemptStartedAt;
+          throw abortError;
         }
 
         if (claudeFast) {

@@ -1,0 +1,98 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts",
+      "src/shared/constants/providers/apikey/specialty-media.ts",
+      "tests/unit/mixedbread-embedding-provider-6660.test.ts"
+    ],
+    "registryFields": { "id": "mixedbread", "baseUrl": "https://api.mixedbread.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and OPENAI_COMPAT_PROVIDERS (no mixedbread or mxbai key; getEmbeddingAdapter('mixedbread') and getEmbeddingAdapter('mxbai') are null)",
+      "open-sse/handlers/embeddingProviders/openai.js (generic OpenAI-compatible factory; reads PROVIDER_MEDIA[id].embeddingConfig, which does not exist for mixedbread)",
+      "open-sse/handlers/embeddingProviders/openaiCompatNode.js (user-configured openai-compatible-*/custom-embedding-* nodes; a node pointed at Mixedbread is a user base URL, not a fork provider, and has none of the checks below)",
+      "open-sse/providers/registry/ (no mixedbread.js or mxbai.js; no entry lists a mixedbread-ai/* or mxbai-* model)",
+      "checkout-wide rg -i 'mixedbread|mxbai' over tracked code: only the website lockfile (@mixedbread/sdk, an optional peer dependency of a docs package), port-report inventory rows, and open-sse/services/ollamaCatalog.js (an embedding-name heuristic for local Ollama tags such as mxbai-embed-large, which never calls api.mixedbread.com)"
+    ],
+    "result": "no provider, alias, endpoint, adapter or model row exists; the provider definition, model rows and embeddings adapter are the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-mixedbread-embedding/index.js",
+  "exports": {
+    "mixedbreadEmbeddingAdapter": "default adapter instance; embed({ model, body, credentials, signal, log }) plus buildUrl/buildHeaders/buildBody for introspection",
+    "createMixedbreadEmbeddingAdapter": "factory; options { timeoutMs, now, fetch } for tests",
+    "buildMixedbreadEmbeddingRequest": "(model, body) -> { upstream, items, encodingFormat, model, dimensions }; throws status 400",
+    "normalizeMixedbreadEmbeddings": "(answer, { items, dimensions, encodingFormat }) -> { data, usage }; throws on unusable answers",
+    "packFloat32Base64": "little-endian float32 base64 pack (source packEmbeddingAsBase64)",
+    "mixedbreadAcceptedJob": "(jobState) accepted-work accounting with unknown cost",
+    "mixedbreadToken": "selected connection key: apiKey, then accessToken; null when missing or containing CR/LF",
+    "MIXEDBREAD_PROVIDER": "provider facts from the source constants (id, alias, name, website, authType, authHint, hasFree, freeNote, serviceKinds)",
+    "MIXEDBREAD_PROVIDER_DEFINITION": "staged registry entry to copy into open-sse/providers/registry/mixedbread.js",
+    "MIXEDBREAD_EMBEDDING_MODELS": "[{ mixedbread-ai/mxbai-embed-large-v1, 1024 }, { mixedbread-ai/mxbai-embed-2d-large-v1, 1024 }], kind embedding",
+    "MIXEDBREAD_EMBEDDINGS_URL": "https://api.mixedbread.com/v1/embeddings",
+    "MIXEDBREAD_EMBEDDING_TIMEOUT_MS": "60000, one deadline for send and body read"
+  },
+  "provider": {
+    "canonicalId": "mixedbread",
+    "aliases": ["mxbai"],
+    "aliasNote": "mxbai is the source provider-constants alias (dashboard/uiAlias). The source embeddings route resolves only the mixedbread/ prefix; the staged definition keeps alias = mixedbread and uiAlias = mxbai so no new model prefix is claimed without a registration decision",
+    "existingRegistryEntry": null,
+    "existingServiceKinds": [],
+    "addServiceKinds": ["embedding"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "tokenRefresh": "none (API key); a 401/403 is final for the call",
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "embedding": [
+      { "id": "mixedbread-ai/mxbai-embed-large-v1", "name": "Mixedbread Embed Large v1", "dimensions": 1024 },
+      { "id": "mixedbread-ai/mxbai-embed-2d-large-v1", "name": "Mixedbread Embed 2D Large v1", "dimensions": 1024 }
+    ],
+    "addressing": "mixedbread/mixedbread-ai/mxbai-embed-large-v1 and mixedbread/mixedbread-ai/mxbai-embed-2d-large-v1 (source test pins these). The bare upstream ids start with mixedbread-ai/, which the source parses as an unknown provider, so they do not route; the adapter receives the upstream id after the mixedbread/ prefix is removed",
+    "dynamicDiscovery": "none: the source lists both models statically and never calls a Mixedbread models endpoint; none is added"
+  },
+  "endpoints": {
+    "embeddings": {
+      "method": "POST",
+      "url": "https://api.mixedbread.com/v1/embeddings",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ model, input } plus encoding_format: \"float\" only when the client sent it",
+      "redirect": "manual (refused)"
+    }
+  },
+  "supportedInput": {
+    "input": "string or 1..100 non-empty strings, each at most 20000 characters",
+    "encoding_format": ["float", "base64 (packed locally, not forwarded)"],
+    "dimensions": "absent or 1024 (not forwarded)",
+    "ignored": ["user"],
+    "refused": ["token arrays", "structured or multimodal items", "prompt, normalized, truncation_strategy and any other field", "reduced Matryoshka dimensions", "any other model"]
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/mixedbread.js",
+      "change": "new file exporting MIXEDBREAD_PROVIDER_DEFINITION as the default (plain object); add it wherever the registry index enumerates entries"
+    },
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import { mixedbreadEmbeddingAdapter } and add `mixedbread: mixedbreadEmbeddingAdapter` to EMBEDDING_ADAPTERS (not to OPENAI_COMPAT_PROVIDERS)"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "after getEmbeddingAdapter, `if (isFunction(adapter.embed)) return adapter.embed({ model, body, credentials, signal, log })` and call onRequestSuccess only on success; the shared fetch, refresh retry and upstream error relay must not run for mixedbread (same hook the deapi, nanogpt and upstage registrations add)"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "it already selects the connection and enforces quota before handleEmbeddingsCore. Record result.acceptedJob as unknown-cost usage on the selected connection and do not fall through to another account for a result that carries acceptedJob, so uncertain work is never replayed"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "add a Mixedbread AI row (API key, embedding) after registration"
+    }
+  ]
+}

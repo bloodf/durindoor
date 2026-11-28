@@ -3,7 +3,7 @@ title: Provider catalog
 description: Registry providers with id, auth type, model count, and site link.
 ---
 
-Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 407 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
+Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the 408 modules in `open-sse/providers/registry/` except `index.js`. Model counts are `PROVIDER_MODELS` lengths from `open-sse/config/providerModels.js`. Auth is `authType` when set, otherwise `authModes`, `oauth`, `noAuth`, or `category`. Site links use `display.website`. Run `npm run gen:provider-catalog` after a registry change.
 
 | Name | Id | Auth | Models | Docs |
 | --- | --- | --- | --- | --- |
@@ -13,7 +13,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Adobe Firefly Services API | `adobe-firefly-api` | apikey | 4 | [site](https://developer.adobe.com/firefly-services/docs/firefly-api/) |
 | Adobe Firefly (experimental browser) | `adobe-firefly-web` | none | 0 | [site](https://firefly.adobe.com) |
 | AgentRouter | `agentrouter` | apikey | 4 | [site](https://agentrouter.org) |
-| Agnes | `agnes` | apikey | 4 |  |
+| Agnes | `agnes` | apikey | 10 |  |
 | Agnes (China) | `agnes-cn` | apikey | 3 |  |
 | Antigravity CLI | `agy` | oauth | 52 | [site](https://antigravity.google) |
 | AI21 Labs | `ai21` | apikey | 2 | [site](https://www.ai21.com) |
@@ -227,7 +227,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Lemonade Server | `lemonade` | apikey | 0 | [site](https://lemonade-server.ai) |
 | Leonardo.Ai | `leonardo` | apikey | 2 | [site](https://leonardo.ai) |
 | Linkup | `linkup` | apikey | 0 | [site](https://linkup.so) |
-| Liquid AI | `liquid` | apikey | 1 | [site](https://www.liquid.ai) |
+| Liquid AI | `liquid` | apikey | 6 | [site](https://www.liquid.ai) |
 | LiteRouter | `literouter` | apikey | 0 |  |
 | llama.cpp | `llama-cpp` | apikey | 0 | [site](https://github.com/ggml-org/llama.cpp) |
 | Llamafile | `llamafile` | apikey | 0 | [site](https://github.com/Mozilla-Ocho/llamafile) |
@@ -379,6 +379,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Tortoise TTS | `tortoise` | none | 1 | [site](https://github.com/neonbjb/tortoise-tts) |
 | Trae | `trae` | oauth | 9 | [site](https://trae.ai) |
 | NVIDIA Triton | `triton` | apikey | 0 | [site](https://developer.nvidia.com/triton-inference-server) |
+| TrustedRouter | `trustedrouter` | apikey | 21 | [site](https://trustedrouter.com) |
 | TwinMind | `twinmind` | apikey | 13 | [site](https://twinmind.com) |
 | TypeSafe (Jev) | `typesafe` | apikey | 3 | [site](https://typesafe.ai) |
 | Typhoon | `typhoon` | apikey | 1 | [site](https://docs.opentyphoon.ai) |
@@ -395,7 +396,7 @@ Every row is one registry provider. `scripts/gen-provider-catalog.mjs` reads the
 | Venice Web | `venice-web` | cookie | 5 | [site](https://venice.ai) |
 | Veo AI Free Web | `veoaifree-web` | none | 2 | [site](https://veoaifree.com) |
 | Vercel AI Gateway | `vercel-ai-gateway` | apikey | 0 | [site](https://vercel.com/ai-gateway) |
-| Vertex AI | `vertex` | freeTier | 5 | [site](https://cloud.google.com/vertex-ai) |
+| Vertex AI | `vertex` | freeTier | 15 | [site](https://cloud.google.com/vertex-ai) |
 | Vertex Partner | `vertex-partner` | apikey | 4 | [site](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-partner-models) |
 | vLLM | `vllm` | apikey | 0 | [site](https://github.com/vllm-project/vllm) |
 | Void AI | `void-ai` | apikey | 0 |  |

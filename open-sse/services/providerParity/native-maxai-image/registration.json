@@ -1,0 +1,96 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/imageRegistryData.ts (maxai: alias mx, baseUrl https://api.maxai.me/gpt/get_image_generate_response, authType apikey, authHeader bearer, format maxai-image, six models, supportedSizes)",
+      "open-sse/handlers/imageGeneration.ts (format maxai-image -> handleMaxaiImageGeneration)",
+      "open-sse/handlers/imageGeneration/providers/maxaiImage.ts (request body, size rules, aliases, response extraction, 401/418 handling)",
+      "open-sse/executors/maxai/signing.ts, credentials.ts, protocol.ts (X-Authorization signer, credential triple, static headers)"
+    ]
+  },
+  "localEvidence": {
+    "existingEquivalent": "none: no local image route for maxai. IMAGE_ADAPTERS (open-sse/handlers/imageProviders/index.js) has no maxai/mx entry, open-sse/providers/registry/maxai.js declares serviceKinds [\"llm\"] only, and the only MaxAI transport is the chat executor (open-sse/executors/maxai.js, POST /gpt/cwc/chat).",
+    "sharedPieces": "open-sse/executors/maxai.js already implements the same signer, cookie credential precedence and bundle discovery for chat, but keeps them module-private; this staging carries its own copy."
+  },
+  "module": "open-sse/services/providerParity/native-maxai-image/index.js",
+  "exports": {
+    "maxaiImageAdapter": "default instance; generate({ model, body, credentials, signal, log }) -> { success, response, accounting } | error result (+ acceptedJob | quotaExhausted)",
+    "createMaxaiImageAdapter": "factory; options { fetchImpl, constants, constantsSource, discover, submitTimeoutMs, timeoutMs, now, random, salt } for tests",
+    "buildMaxaiImageRequest": "(model, body) -> { prompt, style, size, n, model_name } in source order; throws status 400 before any network call",
+    "resolveMaxaiImageModel": "strip maxai/ or mx/ and resolve source aliases; null for unknown models",
+    "extractMaxaiImageUrls": "source png_url > webp_url > url, public https only -> { urls, unsafe }",
+    "resolveMaxaiImageCredential": "local cookie-connection precedence -> { token, deviceId, userId } | null",
+    "buildMaxaiSignedHeaders": "source signer: X-Authorization + X-App-* + X-Browser-*",
+    "maxaiStaticHeaders": "source Firefox-150 identity headers",
+    "discoverMaxaiConstants": "bounded public-bundle discovery on https://www.maxai.co (no credentials, manual redirects)",
+    "createMaxaiConstantsSource": "saved connection constants > injected > in-process memo > discovery",
+    "maxaiAcceptedJob": "accepted-job accounting for an uncertain submit"
+  },
+  "provider": {
+    "canonicalId": "maxai",
+    "aliases": ["mx"],
+    "serviceKinds": ["image"],
+    "authModes": ["cookie"],
+    "auth": {
+      "header": "Authorization",
+      "scheme": "Bearer",
+      "signedHeader": "X-Authorization",
+      "credentialFields": [
+        "providerSpecificData.maxaiAccessToken | providerSpecificData.accessToken | cookie/apiKey jar access_token | accessToken",
+        "providerSpecificData.maxaiDeviceId | providerSpecificData.deviceId | jar device_id",
+        "providerSpecificData.maxaiUserId | providerSpecificData.userId | jar user_id | access JWT subject.user_id / sub",
+        "providerSpecificData.maxaiSigningConstants (optional, same field the chat executor honors)"
+      ],
+      "sentTo": ["https://api.maxai.me"],
+      "note": "source registry says authType apikey; the local maxai connection is webCookie and is kept as is"
+    },
+    "connectionBaseUrlHonored": false,
+    "connectionProxy": "resolveCredentialProxyOptions(credentials), passed as fetch proxyOptions for discovery and submit"
+  },
+  "models": [
+    { "id": "gpt-image-1", "sizes": ["1024x1024", "1024x1536", "1536x1024", "auto"] },
+    { "id": "dall-e-3", "sizes": ["1024x1024", "1024x1792", "1792x1024"] },
+    { "id": "flux-1-schnell", "sizes": "WxH, sides 256..2048" },
+    { "id": "flux-1-dev", "sizes": "WxH, sides 256..2048" },
+    { "id": "flux-1-pro", "sizes": "WxH, sides 256..2048" },
+    { "id": "sd3-medium", "sizes": "WxH, sides 256..2048", "aliases": ["stable-diffusion-v3", "stable-diffusion-3-medium"] }
+  ],
+  "modelAliases": { "stable-diffusion-v3": "sd3-medium", "stable-diffusion-3-medium": "sd3-medium", "flux-1-schneil": "flux-1-schnell" },
+  "request": {
+    "accepted": ["model", "prompt", "size", "n (1..4)", "style (default vivid)", "response_format url", "user (not sent)", "stream false"],
+    "refused": ["unknown model", "size outside the strict bucket (source snapped it)", "n > 4 or non-integer (source clamped)", "mask", "image / input images", "quality and other OpenAI output options", "streaming", "response_format b64_json"],
+    "responseFormats": ["url"]
+  },
+  "endpoints": {
+    "generate": { "method": "POST", "url": "https://api.maxai.me/gpt/get_image_generate_response", "body": "{ prompt, style, size, n, model_name }", "answer": "{ status: \"OK\", data: [{ png_url, webp_url }] }", "billable": true, "redirect": "manual (refused)" },
+    "constantsDiscovery": { "method": "GET", "urls": ["https://www.maxai.co/app/", "https://www.maxai.co/_next/static/chunks/*.js (at most 81)"], "credentials": false, "billable": false }
+  },
+  "bounds": { "submitTimeoutMs": 120000, "totalTimeoutMs": 180000, "discoveryRequestTimeoutMs": 8000, "discoveryTotalTimeoutMs": 30000, "responseMaxBytes": 262144, "maxResultUrls": 16 },
+  "accounting": {
+    "success": "nativeUnits.images = returned public URLs; cost unknown",
+    "acceptedJob": "submit-unknown: timeout, abort or disconnect after send, 5xx, foreign-origin answer; accepted: a 2xx that is unreadable, not status OK, or without a usable URL. Never resent.",
+    "quota": "402 -> quotaExhausted on this connection; 429 -> rate limit with Retry-After",
+    "auth": "401/403 passed; 418 and 3xx -> 401 session rejected; no acceptedJob"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/imageProviders/index.js",
+      "change": "add maxai: maxaiImageAdapter and mx: maxaiImageAdapter to IMAGE_ADAPTERS (guarded generate adapter; imageGenerationCore calls adapter.generate and records success)"
+    },
+    {
+      "file": "open-sse/providers/registry/maxai.js",
+      "change": "serviceKinds [\"llm\", \"image\"] and an imageConfig/image model list for the six models; keep authType cookie, cookieImport and the chat transport unchanged"
+    },
+    {
+      "file": "open-sse/executors/maxai.js",
+      "change": "optional dedupe: export one signer/constants loader and have this adapter use it (constantsSource option), so chat and image share the memo"
+    },
+    {
+      "file": "tests/unit/native-maxai-image.test.js",
+      "change": "replace the isolated 'staging state' block with positive registry identity checks"
+    }
+  ]
+}

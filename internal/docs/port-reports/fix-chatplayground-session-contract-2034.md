@@ -112,3 +112,44 @@ setup was modified. Required file-presence, test syntax and whitespace checks
 passed. Dependencies remain absent in this checkout, so no Vitest run or duplicate
 install was attempted; the native gate must supply its isolated setup and run the
 exact named evidence. No result is claimed for gate-2.
+
+## Carried forward and verified (attempt 3)
+
+The three prior commits (`06ebd179f68`, `2ca1af0ee55`, `56eff9497c8`) were
+cherry-picked onto this branch unchanged. Helper and executor code were not
+reimplemented.
+
+Review found no product defect in the helper. It did find one handoff gap: the
+helper accepts `/me` only with a nonempty string `id`. No source proves that
+claim, and the repository's own mocks (`cookie-flow-chatplayground-2034`,
+`port-omni-20375`) answer `/me` with `{ user: {} }`. Once registration wires
+the helper, those flows will fail closed with `unsupported_me_identity_shape`.
+This is intended: the identity is unknown, so the probe fails closed. The
+handoff JSON now states this under `protocolCaveat`, and lists the three
+reproductions with file, case, observed and required behavior.
+
+New cases in the evidence test (no existing case changed or removed):
+
+- session ids `../x`, `a/b`, `a?b` and empty are refused with 401 and no request sent;
+- a `/me` 302 is refused without following it. Only the fixed Clerk and web
+  URLs are requested, and the result carries no location, cookie or token;
+- with no selected-connection transport, the helper returns
+  `selected_connection_transport_required` and global `fetch` is never called.
+
+### Vitest results
+
+Dependencies were borrowed read-only from the main checkout. A private
+`/var/tmp` copy of `HEAD` got its own `node_modules` directory of links. The
+borrowed root has stale links into a deleted worktree. Those were not touched.
+The private links point straight to the same versions in its `.pnpm` store.
+The runs used `env -i` with explicit PATH, LANG and CI. HOME, DATA_DIR, TMPDIR
+and XDG_CACHE_HOME were unique private `/var/tmp` paths. Each run had a
+300 second ceiling and `--maxWorkers=2`.
+
+- `unit/fix-chatplayground-session-contract-2034.test.js`: 18/18 passed.
+- With `cookie-flow-chatplayground-2034` (38), `chatplayground-provider`,
+  `port-omni-20375-chatplayground-unified-api`, `review-x-chatplayground`,
+  `web-session-redirects`, `review-x-executor-send-3` and `arch-c2309`, the
+  8 files passed: 179/179 including the new cases (173/173 before them).
+
+The full `test:ci` run was not performed in this unit.

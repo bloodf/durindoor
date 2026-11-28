@@ -78,6 +78,31 @@ describe("selected ChatPlayground sessions #2034", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetcher).not.toHaveBeenCalled();
   });
+  it.each(["../x", "a/b", "a?b", ""])("refuses session id %j before any dispatch", async (sid) => {
+    const fetcher = vi.fn();
+    const raw = `__client=client-a; __session=${jwt({ sid })}`;
+    expect(await inspectChatPlaygroundConnection({ apiKey: raw }, fetcher)).toMatchObject({ ok: false, status: 401 });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("refuses a /me redirect without following it or reaching another origin", async () => {
+    const fetcher = vi.fn(async (url) => url.includes("clerk.")
+      ? json({ jwt: "opaque-token" })
+      : new Response(null, { status: 302, headers: { location: "https://evil.invalid/collect" } }));
+    const result = await inspectChatPlaygroundConnection({ apiKey: cookie("a") }, fetcher, { discovery: true });
+    expect(result).toMatchObject({ ok: false, status: 302 });
+    expect(JSON.stringify(result)).not.toMatch(/evil|client-a|opaque-token/);
+    expect(fetcher.mock.calls.map(([url]) => url.split("?")[0])).toEqual([
+      "https://clerk.chatplayground.ai/v1/client/sessions/sid-a/tokens", "https://web.chatplayground.ai/api/me",
+    ]);
+  });
+  it("requires a selected-connection transport instead of ambient fetch", async () => {
+    const ambient = vi.fn();
+    vi.stubGlobal("fetch", ambient);
+    try {
+      expect(await inspectChatPlaygroundConnection({ apiKey: cookie("a") })).toMatchObject({ ok: false, reason: "selected_connection_transport_required" });
+      expect(ambient).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("does not redispatch chat after unknown work", async () => {
     const fetcher = vi.fn(async (url) => {
       if (url.includes("clerk.")) return json({ jwt: "opaque-token" });

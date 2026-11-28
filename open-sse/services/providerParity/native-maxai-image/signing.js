@@ -6,12 +6,9 @@
 // signedHeaders) uses; that helper is module-private, so registration should
 // export one shared signer instead of keeping both (see registration.json).
 //
-// Credentials keep the local webCookie precedence (executors/maxai.js
-// cookieValues): providerSpecificData maxai* fields, then the plain fields,
-// then the cookie jar in `cookie` / `apiKey`, then `accessToken`; user id last
-// falls back to the access JWT subject. The source's quote stripping of a raw
-// LocalStorage device id (credentials.ts firstString) is kept.
+// Credential selection delegates to the existing account-tuple resolver.
 import { createCipheriv, createHash, createHmac, randomBytes, randomInt } from "node:crypto";
+import { resolveMaxaiCredential } from "../../../executors/maxaiCredentials.js";
 import { isRecord, isString } from "../../../../src/shared/utils/typeChecks.js";
 import { MAXAI_WEBAPP_PAGE } from "./config.js";
 
@@ -47,51 +44,22 @@ export function maxaiStaticHeaders() {
   };
 }
 
-const headerSafe = (value) => isString(value) && value.length > 0 && value.length <= 8192 && !/[\r\n\0]/.test(value);
-
-function first(...values) {
-  for (const value of values) {
-    if (!isString(value)) continue;
-    const trimmed = value.trim().replace(/^"|"$/g, "");
-    if (trimmed) return trimmed;
-  }
-  return "";
-}
-
-function parseCookieJar(source) {
-  if (!isString(source) || !source.includes("=")) return {};
-  const jar = {};
-  for (const part of source.split(";")) {
-    const index = part.indexOf("=");
-    if (index <= 0) continue;
-    const key = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-    if (key && value && !(key in jar)) jar[key] = value;
-  }
-  return jar;
-}
-
-function userIdFromJwt(token) {
-  try {
-    const claims = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
-    return first(claims?.subject?.user_id, claims?.sub);
-  } catch {
-    return "";
-  }
-}
-
 /**
- * The selected connection's MaxAI triple, or null when any part is missing or
- * unusable as a header value. Never cached: each call reads only its own credentials.
+ * Resolve one complete account tuple with the chat/session resolver; never fill
+ * missing cookie members from saved fields. Keep the image adapter's legacy
+ * LocalStorage device-ID quote stripping without mutating stored credentials.
+ * No credentials or signing state are cached here.
  */
 export function resolveMaxaiImageCredential(credentials) {
-  const data = isRecord(credentials?.providerSpecificData) ? credentials.providerSpecificData : {};
-  const jar = parseCookieJar(credentials?.cookie || credentials?.apiKey);
-  const token = first(data.maxaiAccessToken, data.accessToken, jar.access_token, credentials?.accessToken);
-  const deviceId = first(data.maxaiDeviceId, data.deviceId, jar.device_id);
-  const userId = first(data.maxaiUserId, data.userId, jar.user_id) || (token ? userIdFromJwt(token) : "");
-  if (!headerSafe(token) || !headerSafe(deviceId) || !headerSafe(userId)) return null;
-  return { token, deviceId, userId };
+  const data = credentials?.providerSpecificData;
+  const normalized = isRecord(data) ? { ...data } : null;
+  if (normalized) {
+    for (const key of ["maxaiDeviceId", "deviceId"]) {
+      if (isString(normalized[key])) normalized[key] = normalized[key].trim().replace(/^"|"$/g, "");
+    }
+  }
+  const auth = resolveMaxaiCredential(normalized ? { ...credentials, providerSpecificData: normalized } : credentials);
+  return auth.ok ? { token: auth.token, deviceId: auth.deviceId, userId: auth.userId } : null;
 }
 
 /** Whether a constants record is complete and well formed (source isValidConstantsShape, minus docIdKey). */

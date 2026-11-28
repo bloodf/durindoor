@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import { globSync, readFileSync } from "fs";
 import { createRequire } from "module";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -20,6 +21,17 @@ const hasCloud = existsSync(resolve(__dirname, "../cloud"));
 // Pin every "playwright" import to the root copy that production code resolves, so
 // vi.mock("playwright") in a test hits the module open-sse actually imports.
 const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json")).resolve("playwright/package.json"));
+
+// Project split (#2300): a test is `integration` when its source opens a real
+// database, a temp data dir, a process/worker, or a socket; else `unit`. Both
+// projects extend this config (vitest concatenates include/exclude arrays), so
+// each keeps the root include/exclude and excludes the other's files. The scan
+// covers every *.test.js the root include can match, so the split is disjoint.
+const INTEGRATION_SOURCE = /DATA_DIR|mkdtemp|child_process|\bWorker\b|createServer|\.listen\s*\(|sqlite|pglite|sql\.js|sqljs/i;
+const scanned = globSync("**/*.test.js", { cwd: __dirname, exclude: ["**/node_modules/**", "**/.omc/**", "**/.claude/**"] }).sort();
+const integrationFiles = scanned.filter(file => INTEGRATION_SOURCE.test(readFileSync(resolve(__dirname, file), "utf8")));
+const integrationSet = new Set(integrationFiles);
+const unitFiles = scanned.filter(file => !integrationSet.has(file));
 
 export default defineConfig({
   oxc: {
@@ -76,6 +88,10 @@ export default defineConfig({
     hookTimeout: 30_000,
     // Suppress noisy console output from handlers under test
     silent: false,
+    projects: [
+      { extends: true, test: { name: "unit", exclude: integrationFiles } },
+      { extends: true, test: { name: "integration", exclude: unitFiles } },
+    ],
   },
   plugins: [{
     name: "dashboard-jsx",

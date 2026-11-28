@@ -8,6 +8,20 @@
  * Nothing here reaches a provider, a browser or the network; a request to any host outside the
  * provider's own origin fails the test.
  */
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
+const deepSeekCalls = [];
+const sourceChallenge = { algorithm: "DeepSeekHashV1", salt: "fixture-2034", expire_at: 1900000000,
+  difficulty: 8, signature: "synthetic-signature", challenge: deepSeekHashV1("fixture-2034_1900000000_3") };
+const assertSourceProof = (calls) => {
+  expect(calls.map(([url]) => new URL(url).pathname)).toEqual([
+    "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
+  ]);
+  expect(JSON.parse(calls[2][1].body)).toEqual({ target_path: "/api/v0/chat/completion" });
+  expect(JSON.parse(Buffer.from(calls[3][1].headers["X-Ds-Pow-Response"], "base64"))).toEqual({
+    algorithm: sourceChallenge.algorithm, challenge: sourceChallenge.challenge, salt: sourceChallenge.salt,
+    answer: 3, signature: sourceChallenge.signature, target_path: "/api/v0/chat/completion",
+  });
+};
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -96,9 +110,16 @@ const PROVIDERS = [
     id: "deepseek-web", model: "deepseek-chat", answer: "pong from deepseek web",
     credential: "synthetic-deepseek-usertoken", origin: "https://chat.deepseek.com",
     handle: (url, init, answer) => {
+      if (url.endsWith("/v0/users/current")) deepSeekCalls.length = 0;
+      deepSeekCalls.push([url, init]);
       if (url.endsWith("/v0/users/current")) return jsonResponse({ data: { biz_data: { token: "synthetic-access-token" } } });
       if (url.endsWith("/v0/chat_session/create")) return jsonResponse({ data: { biz_data: { chat_session: { id: "session-synthetic" } } } });
-      if (url.endsWith("/v0/chat/completion")) return eventStream(`data: ${JSON.stringify({ choices: [{ delta: { content: answer } }] })}\n\n`);
+      if (url.endsWith("/v0/chat/create_pow_challenge")) return jsonResponse({ data: { biz_data: { challenge: sourceChallenge } } });
+      if (url.endsWith("/v0/chat/completion")) {
+        assertSourceProof(deepSeekCalls);
+        expect(JSON.parse(Buffer.from(init.headers["X-Ds-Pow-Response"], "base64"))).toMatchObject({ answer: 3, challenge: sourceChallenge.challenge });
+        return eventStream(sse({ choices: [{ delta: { content: answer }, finish_reason: "stop" }] }));
+      }
       return undefined;
     },
   },

@@ -68,8 +68,8 @@ function installFetch() {
 }
 beforeEach(() => {
   vi.clearAllMocks(); routeResults = [];
-  // Proof of work is an operator opt-in; this suite exercises the enabled source path.
-  vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "source");
+  // Default source proof is exercised without an operator switch.
+  vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", undefined);
   completion = () => new Response(sse(), { headers: { "content-type": "text/event-stream" } });
   challengeReply = null;
   installFetch();
@@ -88,22 +88,18 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-it("keeps the three-request contract and sends no proof unless the operator opts in", async () => {
-  expect(deepSeekWebProofOfWorkEnabled({})).toBe(false);
-  for (const value of ["", "off", "1", "true", "worker"]) expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: value })).toBe(false);
-  expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: " Source " })).toBe(true);
-  vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "");
-  mocks.fetch.mockReset()
-    .mockResolvedValueOnce(json({ data: { biz_data: { token: "access-synthetic-A" } } }))
-    .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "session-synthetic-A" } } } }))
-    .mockResolvedValueOnce(new Response(sse(), { headers: { "content-type": "text/event-stream" } }));
-  const { response } = await new Executor().execute(input());
-  expect(response.status).toBe(200);
-  expect((await response.json()).choices[0].message).toMatchObject({ content: "回答 answer", reasoning_content: "consider this" });
-  expect(mocks.fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
-    "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/completion",
-  ]);
-  expect(Object.keys(mocks.fetch.mock.calls[2][1].headers).map(h => h.toLowerCase())).not.toContain("x-ds-pow-response");
+it("requires source proof regardless of legacy bypass flags", async () => {
+  for (const value of [undefined, "", "false", "off", "source"]) {
+    expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: value })).toBe(true);
+    vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", value);
+    mocks.fetch.mockClear();
+    const { response } = await new Executor().execute(input());
+    expect(response.status).toBe(200);
+    expect((await response.json()).choices[0].message.content).toBe("回答 answer");
+    expect(mocks.fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+      "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
+    ]);
+  }
 });
 
 it("checks the pinned permutation against FIPS control and independent reference", () => {
@@ -200,7 +196,7 @@ for (const stream of [false, true]) {
       expect(result.response.status).toBe(200); expect(await result.response.text()).toContain("回答 answer");
     });
     it("retains complete legacy envelopes", async () => {
-      completion = () => new Response(sse([{ data: { biz_data: { response: "legacy answer" } } }]));
+      completion = () => new Response(sse([{ data: { biz_data: { response: "legacy answer" } } }]) + "data: [DONE]\n\n");
       const result = await new Executor().execute(input({ stream }));
       expect(result.response.status).toBe(200); expect(await result.response.text()).toContain("legacy answer");
     });
@@ -346,12 +342,11 @@ it("retains legacy OpenAI SSE bodies but refuses malformed, empty or mixed-trunc
   const deltas = [{ choices: [{ delta: { content: "legacy answer" }, finish_reason: null }] }];
   completion = () => new Response(sse([...deltas, { choices: [{ delta: {}, finish_reason: "stop" }] }]));
   expect((await new Executor().execute(input())).response.status).toBe(200);
-  // Pre-repair contract, also pinned by provider-registration-web-batch-a-routes: this legacy
-  // shape has no DeepSeek terminal, so a fully valid body that ends cleanly is accepted.
+  // Keep the original lone delta as a negative regression: EOF is not a terminal.
   completion = () => new Response(sse(deltas));
   const legacy = (await new Executor().execute(input())).response;
-  expect(legacy.status).toBe(200);
-  expect((await legacy.json()).choices[0].message.content).toBe("legacy answer");
+  expect(legacy.status).toBe(502);
+  expect(await legacy.text()).not.toMatch(/legacy answer|finish_reason|usage/);
   for (const body of [sse(deltas) + "data: {\"choices\":[{\"delta\"\n\n", sse([{ choices: [{ delta: {} }] }]),
     sse([...deltas, { p: "response/fragments", v: [{ type: "RESPONSE", content: "native" }] }])]) {
     completion = () => new Response(body);
@@ -369,3 +364,35 @@ it("resolves the source worker when the caller is outside the runtime root", asy
     expect(JSON.parse(Buffer.from(await solveChallenge(challenge()), "base64")).answer).toBe(3);
   } finally { process.chdir(cwd); fs.rmSync(unrelated, { recursive: true, force: true }); }
 });
+
+for (const stream of [false, true]) {
+  for (const [name, values, trailer = ""] of [
+    ["original biz_data EOF", [{ data: { biz_data: { response: "ok" } } }]],
+    ["original batch-a delta EOF", [{ choices: [{ delta: { content: "pong from deepseek web" } }] }]],
+    ["unknown finish", [{ choices: [{ delta: { content: "answer" }, finish_reason: "invalid" }] }]],
+    ["malformed delta", [{ choices: [{ delta: { content: {} }, finish_reason: "stop" }] }]],
+    ["mixed complete dialects", [...frames, { choices: [{ delta: { content: "legacy" }, finish_reason: "stop" }] }]],
+    ["unknown trailing object", [...frames, {}]],
+    ["error after terminal", [...frames, { error: { message: "synthetic-secret" } }]],
+    ["error path", [...frames.slice(0, -1), { p: "response/error", v: "synthetic-secret" }, frames.at(-1)]],
+    ["unterminated terminal record", frames.slice(0, -1), 'data: {"p":"response/status","v":"FINISHED"}'],
+    ["truncated after terminal", frames, 'data: {"broken"'],
+  ]) {
+    it(`refuses ${name} stream=${stream} without publishing success`, async () => {
+      completion = () => new Response(sse(values) + trailer);
+      const result = await new Executor().execute(input({ stream }));
+      expect(result.response.status).toBe(502);
+      expect(result.claudeRequestScoped).toBe(true);
+      expect(await result.response.text()).not.toMatch(/finish_reason|usage|synthetic-secret/);
+      expect(mocks.fetch).toHaveBeenCalledTimes(4);
+    });
+  }
+  it(`accepts legacy DONE and source comments/search metadata stream=${stream}`, async () => {
+    for (const text of [sse([{ choices: [{ delta: { content: "answer" } }] }]) + "data: [DONE]\n\n",
+      ": keepalive\n\n" + sse([...frames, { p: "response/search_status", v: "FINISHED" }])]) {
+      mocks.fetch.mockClear(); completion = () => new Response(text);
+      expect((await new Executor().execute(input({ stream }))).response.status).toBe(200);
+      expect(mocks.fetch).toHaveBeenCalledTimes(4);
+    }
+  });
+}

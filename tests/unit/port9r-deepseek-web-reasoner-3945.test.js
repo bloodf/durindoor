@@ -1,3 +1,16 @@
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
+const sourceChallenge = { algorithm: "DeepSeekHashV1", salt: "fixture-2034", expire_at: 1900000000,
+  difficulty: 8, signature: "synthetic-signature", challenge: deepSeekHashV1("fixture-2034_1900000000_3") };
+const assertSourceProof = (calls) => {
+  expect(calls.map(([url]) => new URL(url).pathname)).toEqual([
+    "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
+  ]);
+  expect(JSON.parse(calls[2][1].body)).toEqual({ target_path: "/api/v0/chat/completion" });
+  expect(JSON.parse(Buffer.from(calls[3][1].headers["X-Ds-Pow-Response"], "base64"))).toEqual({
+    algorithm: sourceChallenge.algorithm, challenge: sourceChallenge.challenge, salt: sourceChallenge.salt,
+    answer: 3, signature: sourceChallenge.signature, target_path: "/api/v0/chat/completion",
+  });
+};
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const upstreamFetch = vi.hoisted(() => vi.fn());
@@ -11,7 +24,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
   status,
   headers: { "Content-Type": "application/json" },
 });
-const completionEvent = (content) => `data: ${JSON.stringify({ data: { biz_data: { response: content } } })}\n\n`;
+const completionEvent = (content) => `data: ${JSON.stringify({ data: { biz_data: { response: content } } })}\n\ndata: [DONE]\n\n`;
 
 describe("9router #3945 DeepSeek Web reasoner and R1 expert mode routing", () => {
   afterEach(() => vi.clearAllMocks());
@@ -44,6 +57,7 @@ describe("9router #3945 DeepSeek Web reasoner and R1 expert mode routing", () =>
       upstreamFetch
         .mockResolvedValueOnce(json({ data: { biz_data: { token: "synthetic-access" } } }))
         .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "synthetic-session" } } } }))
+        .mockResolvedValueOnce(json({ data: { biz_data: { challenge: sourceChallenge } } }))
         .mockResolvedValueOnce(new Response(completionEvent("ok")));
 
       const output = await executor.execute({
@@ -54,6 +68,7 @@ describe("9router #3945 DeepSeek Web reasoner and R1 expert mode routing", () =>
       });
 
       expect(output.response.status).toBe(200);
+      assertSourceProof(upstreamFetch.mock.calls.slice(-4));
       const sent = JSON.parse(upstreamFetch.mock.calls.at(-1)[1].body);
       expect(sent.model_type).toBe(expectedType);
       expect(sent.thinking_enabled).toBe(expectedThinking);

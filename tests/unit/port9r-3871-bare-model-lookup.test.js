@@ -17,7 +17,7 @@ vi.mock("@/sse/services/modelAccess.js", () => ({
 const catalog = vi.hoisted(() => ({ buildModelsList: vi.fn() }));
 vi.mock("../../src/app/api/v1/models/buildModelsList.js", () => ({ LLM_KIND: "llm", ...catalog }));
 
-const { GET } = await import("../../src/app/api/v1/models/[...model]/route.js");
+const { GET, HEAD } = await import("../../src/app/api/v1/models/[...model]/route.js");
 const get = async (id) => {
   const response = await GET(new Request(`http://x/v1/models/${id}`), { params: Promise.resolve({ model: [id] }) });
   return { status: response.status, body: await response.json() };
@@ -25,6 +25,7 @@ const get = async (id) => {
 
 describe("9router #3871 - bare model ids and concurrent model tests", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     catalog.buildModelsList.mockReset();
     catalog.buildModelsList.mockResolvedValue([
       { id: "openrouter/anthropic/claude-sonnet-4-6", object: "model" },
@@ -34,6 +35,16 @@ describe("9router #3871 - bare model ids and concurrent model tests", () => {
 
   it("resolves a bare registry id to the provider-prefixed model", async () => {
     expect(await get("claude-sonnet-4-6")).toMatchObject({ status: 200, body: { id: "cc/claude-sonnet-4-6" } });
+  });
+
+  it("recognizes a bare registry id on HEAD without consulting the catalog or database", async () => {
+    const response = await HEAD(new Request("http://x/v1/models/claude-sonnet-4-6", { method: "HEAD" }), {
+      params: Promise.resolve({ model: ["claude-sonnet-4-6"] }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("");
+    expect(catalog.buildModelsList).not.toHaveBeenCalled();
+    for (const mock of Object.values(db)) expect(mock).not.toHaveBeenCalled();
   });
 
   it("answers model_not_found for a registry id no provider serves", async () => {

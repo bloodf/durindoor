@@ -12,7 +12,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
 import { translateRequest } from "../translator/index.js";
 import { parseTimeMs } from "../services/oauthCredentialManager.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
-import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, catalogEffortIntent, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache, dropClaudeCodeIdentitySystem } from "../translator/formats/claude.js";
 import { normalizeClaudeAssistantTail } from "../translator/concerns/claudeAssistantTail.js";
@@ -559,7 +559,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
-  body = applyProviderThinkingOverride(body, providerThinking, { passthrough });
+  body = applyProviderThinkingOverride(body, providerThinking, {
+    passthrough, modelCapabilities: effectiveModelCapabilities, provider, model: cleanModel,
+  });
   // Suffix intent, then body effort/budget (including the provider-level
   // override injected above), select `<model>-<tier>` catalog rows (upstream
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
@@ -569,7 +571,11 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
   const thinkingControlled = requestedModelTier || body.thinking ||
   providerThinking?.mode === "none" || providerThinking?.mode === "off";
-  const thinkingIntent = modelThinkingIntent ||
+  // A `-<effort>` ID resolved against a synced Claude base (OmniRoute #21347)
+  // only fills in when neither the client nor the provider setting chose one.
+  // Provider `none` has already stripped the body, so pass the setting itself.
+  const resolvedEffortIntent = catalogEffortIntent(body, modelInfo.resolvedThinkingEffort, providerThinking);
+  const thinkingIntent = modelThinkingIntent || resolvedEffortIntent ||
   (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
@@ -813,7 +819,14 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    try {
+      applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    } catch (error) {
+      // An effort the model's declared tiers cannot carry is the client's 400, as in translateRequest below.
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -1657,7 +1670,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       log.errorLine(reqTag, "✗", `ERROR ${failureStatus} · ${provider}/${cleanModel} · ${Date.now() - requestStartTime}ms\n    ${errMsg}`);
     }
     finishTimeline("error", "error", errMsg);
-    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, claudeRequestScoped: error?.claudeRequestScoped === true, attemptStartedAt: latestProviderAttemptStartedAt };
+    return { ...createErrorResult(failureStatus, errMsg), antigravityPreResponseTimeout, transportFailure, localProgrammingError: error?.localProgrammingError === true && !transportFailure, claudeRequestScoped: error?.claudeRequestScoped === true, attemptStartedAt: latestProviderAttemptStartedAt };
   }
 
   const parseAndRestateError = async (response) => {

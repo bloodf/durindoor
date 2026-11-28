@@ -9,6 +9,7 @@ vi.mock("../../src/sse/services/admission.js", () => ({
 }));
 
 import { decodeAnthropicRequest } from "../../src/sse/utils/inboundGzip.js";
+import { readBoundedRequest } from "../../src/sse/utils/readBoundedRequest.js";
 import { keepAbortChain } from "../../src/shared/utils/abortChain.js";
 
 v8.setFlagsFromString("--expose-gc");
@@ -69,10 +70,18 @@ describe("OmniRoute #21275: a rebuilt request keeps the client abort after GC", 
     expect(copy.signal.aborted).toBe(true);
   });
 
+  it("retains the source abort chain through the shared bounded reader", async () => {
+    const client = new AbortController();
+    const signal = await readBoundedRequest(inboundRequest(client), 100).then((request) => request.signal);
+    await collect();
+    client.abort();
+    expect(signal.aborted).toBe(true);
+  });
+
   // These rebuilds sit in private helpers, so the call sites are pinned by source.
   it.each([
     "src/sse/handlers/stt.js",
-    "src/sse/handlers/imageEdit.js",
+    "src/sse/utils/readBoundedRequest.js",
     "src/sse/handlers/completions.js",
     "src/app/api/v1beta/interactions/route.js",
     "src/app/api/v1beta/models/[...path]/route.js",

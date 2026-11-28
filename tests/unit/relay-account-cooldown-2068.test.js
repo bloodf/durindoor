@@ -452,6 +452,7 @@ describe("#2068 — where the relay provenance comes from", () => {
     // The account layer receives the proven relay provenance next to the 502.
     expect(result.status).toBe(502);
     expect(result.transportFailure).toBe("network");
+    expect(result.localProgrammingError).toBe(false);
     expect(isRelayGatewayFailure(result.status, { transportFailure: result.transportFailure })).toBe(true);
   });
 });

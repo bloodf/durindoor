@@ -1,5 +1,4 @@
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import {
   errorJson,
@@ -151,23 +150,18 @@ async function collectYuanbaoResponse(upstream, signal) {
   return { content, reasoning };
 }
 
-export class YuanbaoWebExecutor extends BaseExecutor {
+export class YuanbaoWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("yuanbao-web", { id: "yuanbao-web", baseUrl: CHAT_URL, timeoutMs: WEBSESSION_FETCH_TIMEOUT_MS });
+    super("yuanbao-web", { id: "yuanbao-web", baseUrl: CHAT_URL, timeoutMs: WEBSESSION_FETCH_TIMEOUT_MS }, { observePatchedFetch: false });
   }
 
   // Generic translation must not expose this session credential.
   buildHeaders() { throw new Error("Yuanbao requires its specialized executor"); }
   buildUrl() { throw new Error("Yuanbao requires its specialized executor"); }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat(input, sender, billed) {
-    const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders, proxyOptions = null } = input;
+  // Session transport owns cancellation, deadlines and quota dispatch.
+  async runSession(input, transport) {
+    const { model, body, stream, credentials = {}, signal, log, upstreamExtraHeaders } = input;
     const messages = body?.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       return { response: errorJson(400, "Missing or empty messages array", "invalid_request"), url: CHAT_URL, headers: {}, transformedBody: body };
@@ -192,7 +186,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
     let conversationId;
     try {
       // Creating the conversation is not charged; only the message send is quota-bearing.
-      const createRes = await sender.sendRequest(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal, redirect: "error" }, proxyOptions, { quotaBearing: false });
+      const createRes = await transport.send(CREATE_URL, { method: "POST", headers: { ...baseHeaders, "Content-Type": "application/json" }, body: JSON.stringify({ agentId: DEFAULT_AGENT_ID }), signal, redirect: "error" });
       if (!createRes.ok) {
         const upstreamError = await readUpstreamErrorDetails(createRes);
         let message = createRes.status === 401 || createRes.status === 403 ? "Yuanbao auth failed; hy_user/hy_token may be expired." : createRes.status === 429 ? "Yuanbao rate limited. Wait and retry." : `Yuanbao conversation creation failed (HTTP ${createRes.status})`;
@@ -230,7 +224,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
 
     let upstreamResponse;
     try {
-      upstreamResponse = billed(await sender.sendRequest(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal, redirect: "error" }, proxyOptions));
+      upstreamResponse = await transport.sendBillable(messageUrl, { method: "POST", headers: chatHeaders, body: JSON.stringify(chatBody), signal, redirect: "error" });
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       log?.error?.("YUANBAO-WEB", `Message send failed: ${err?.message || err}`);

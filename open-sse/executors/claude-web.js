@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { createExecutorSender, requestAbortError } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -109,7 +109,7 @@ export async function validateClaudeWebSession({ apiKey, fetcher = fetch }) {
   return { valid: false, status, error: "Session accepted but no Claude organization was returned - sign in again at claude.ai" };
 }
 
-export class ClaudeWebExecutor extends BaseExecutor {
+export class ClaudeWebExecutor extends WebSessionExecutor {
   constructor() { super("claude-web", { id: "claude-web", baseUrl: BASE }); }
   async testConnection(credentials) {
     const cookie = normalizeClaudeWebCookie(credentials?.apiKey || credentials?.cookie);

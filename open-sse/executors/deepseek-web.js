@@ -1,4 +1,4 @@
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { createExecutorSender } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
@@ -102,7 +102,7 @@ export function resolveDeepSeekWebModelOptions(model, body) {
   };
 }
 
-export class DeepSeekWebExecutor extends BaseExecutor {
+export class DeepSeekWebExecutor extends WebSessionExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
   async execute(input) {

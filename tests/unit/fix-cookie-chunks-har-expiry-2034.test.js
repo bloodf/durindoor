@@ -98,6 +98,8 @@ afterEach(async () => {
 });
 
 it.each([
+  [cookie(`${base}.0`), cookie(`${base}.2`)],
+  Array.from({ length: 17 }, (_, i) => cookie(`${base}.${i}`)),
   [cookie(`${base}.00`)], [cookie(`${base}.-1`)], [cookie(`${base}.16`)],
   [cookie(`${base}.9007199254740993`)], [cookie(`${base}.0`, "x".repeat(8193))],
   [cookie(`${base}.0`, "bad;value")],
@@ -110,15 +112,14 @@ it.each([
   expect(await db.getProviderConnections({ provider: pairing.provider })).toHaveLength(0);
 });
 
-it("documents the exact-name limit: a chunk after a gap is never read, so only the contiguous prefix travels", async () => {
+it("refuses a chunk after a gap when the whole cookie is missing, reading exact names only", async () => {
   // Reproduction from cookie-flow-chatgpt-web-codex-2034.md: `.0` + `.2` without `.1`.
-  // The shared capture contract forbids jar enumeration for chunked families, so `.2` is
-  // invisible to the extension. Rejecting this hole needs a server-side contract change.
+  // Exact-name reads continue past the hole up to `.15` plus the `.16` sentinel; no jar enumeration.
   const pairing = await mint("chatgpt-web-codex", { action: "create", name: "prefix" });
   const { result, fetch } = await capture(pairing, [cookie(`${base}.0`, "head"), cookie(`${base}.2`, "hidden")]);
-  expect(result.ok).toBe(true);
-  expect(JSON.parse(fetch.mock.calls[0][1].body).cookies.map((c) => c.name)).toEqual([`${base}.0`]);
-  expect(fetch.mock.calls[0][1].body).not.toContain("hidden");
+  expect(result).toMatchObject({ ok: false, code: "incomplete_cookies" });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await db.getProviderConnections({ provider: pairing.provider })).toHaveLength(0);
 });
 
 it("imports whole and canonical contiguous chunks without crossing account updates", async () => {
@@ -134,6 +135,9 @@ it("imports whole and canonical contiguous chunks without crossing account updat
   expect((await db.getProviderConnectionById(second.result.connection.id)).apiKey).toBe(`${base}=synthetic-second`);
   const refused = await capture(await mint("chatgpt-web-codex", { action: "update", connectionId: id }), [cookie(`${base}.0`, "x".repeat(8193))]);
   expect(refused.fetch).not.toHaveBeenCalled();
+  expect((await db.getProviderConnectionById(id)).apiKey).toBe(`${base}.0=head; ${base}.1=tail`);
+  const holed = await capture(await mint("chatgpt-web-codex", { action: "update", connectionId: id }), [cookie(`${base}.0`), cookie(`${base}.2`)]);
+  expect(holed.fetch).not.toHaveBeenCalled();
   expect((await db.getProviderConnectionById(id)).apiKey).toBe(`${base}.0=head; ${base}.1=tail`);
 });
 

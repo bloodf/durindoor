@@ -24,7 +24,9 @@ describe("retained iFlow behavior after upstream removal", () => {
     });
     vi.stubGlobal("fetch", fetch);
     // register-auth-02: exchange failures report a fixed message, never the upstream body.
-    const error = await exchangeTokens("iflow", "fake-code", "http://localhost:1234/callback").catch((caught) => caught);
+    const promise = exchangeTokens("iflow", "fake-code", "http://localhost:1234/callback");
+    await expect(promise).rejects.toThrow("iFlow token exchange failed");
+    const error = await promise.catch((caught) => caught);
     expect(error.message).toBe("iFlow token exchange failed");
     expect(error.message).not.toContain("denied");
     expect(fetch).toHaveBeenCalledTimes(1);

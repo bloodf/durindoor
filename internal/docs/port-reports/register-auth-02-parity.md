@@ -118,6 +118,10 @@ blocked checkpoint `969c75c2b4` and completes its remaining items.
 
 ## Coverage
 
+These three cases assert rejection with the fixed message on the same promise
+whose rejection is inspected for upstream text. This preserves the no-leak
+contract while ensuring a resolved error-shaped value cannot satisfy the test.
+
 - `tests/unit/ghe-copilot-public-parity-2034.test.js`. Real SQLite, real
   public routes, a fake network observed through per-proxy dispatchers. Two
   hosts: GitHub Enterprise Server (`ghe-a.example.test`, with a subdomain API)

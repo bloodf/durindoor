@@ -42,8 +42,8 @@ describe("sql.js save has a maximum wait", () => {
     const SQL = await initSqlJs();
     adapter = await createSqlJsAdapter(file);
     adapter.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)");
-    // Let the schema save (real timer) settle before the sustained-write window.
-    await new Promise((r) => setTimeout(r, 150));
+    // Wait for the schema to reach disk before the sustained-write window.
+    await vi.waitFor(() => expect(diskRowCount(SQL)).toBe(0));
 
     vi.useFakeTimers();
     // 30 writes, one every 50 ms (half the 100 ms debounce) => 1500 ms of

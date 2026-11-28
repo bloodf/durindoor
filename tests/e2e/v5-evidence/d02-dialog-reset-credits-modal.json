@@ -1,0 +1,10 @@
+{
+  "route": "dialog/ResetCreditsModal",
+  "stories": [
+    "production-usage-resetcreditsmodal--open",
+    "production-usage-resetcreditsmodal--claude-grants",
+    "production-usage-resetcreditsmodal--loading",
+    "production-usage-resetcreditsmodal--error",
+    "production-usage-resetcreditsmodal--empty"
+  ]
+}

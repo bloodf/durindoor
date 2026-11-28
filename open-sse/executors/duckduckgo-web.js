@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
-import { errorJson, extractTextFromContent, jsonResponse, readTextStream, withTimeoutSignal } from "./websession-utils.js";
+import { errorJson, extractTextFromContent, jsonResponse, readTextStream } from "./websession-utils.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
 const DUCKDUCKGO_BASE = "https://duckduckgo.com";
@@ -89,19 +88,16 @@ async function collectDuckText(response, signal) {
   return content;
 }
 
-export class DuckDuckGoWebExecutor extends BaseExecutor {
+export class DuckDuckGoWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("duckduckgo-web", { id: "duckduckgo-web", baseUrl: DUCKDUCKGO_BASE, noAuth: true });
+    super("duckduckgo-web", { id: "duckduckgo-web", baseUrl: DUCKDUCKGO_BASE, noAuth: true }, { observePatchedFetch: false });
     this.noAuth = true;
   }
 
-  async execute(input) {
-    const { model, body, stream, signal, proxyOptions } = input;
-    if (signal?.aborted) throw requestAbortError(signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+  async runSession(input, transport) {
+    const { model, body, stream, signal } = input;
     const messages = normalizeMessages(body?.messages || []);
     if (messages.length === 0) return { response: errorJson(400, "No messages provided", "invalid_request"), url: CHAT_URL, headers: {}, transformedBody: body };
-    const setupSignal = withTimeoutSignal(signal);
     const headers = {
       Accept: "*/*",
       "Content-Type": "application/json",
@@ -111,10 +107,10 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       "x-vqd-accept": "1"
     };
     // Fetching the VQD token is setup; only the chat send is quota-bearing.
-    const status = await sender.sendRequest(STATUS_URL, { method: "GET", headers, signal: setupSignal }, proxyOptions, { quotaBearing: false });
+    const status = await transport.send(STATUS_URL, { method: "GET", headers, signal });
     const vqd4 = status.headers.get("x-vqd-4");
     const vqdHash = status.headers.get("x-vqd-hash-1");
-    if (!status.ok || !vqd4 && !vqdHash) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body, attemptStartedAt: sender.attemptStartedAt };
+    if (!status.ok || !vqd4 && !vqdHash) return { response: errorJson(503, "Failed to acquire DuckDuckGo VQD token"), url: STATUS_URL, headers, transformedBody: body };
 
     const transformedBody = {
       model: normalizeModel(model),
@@ -129,10 +125,10 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       ...(vqd4 ? { "x-vqd-4": vqd4 } : null),
       ...(vqdHash ? { "x-vqd-hash-1": vqdHash } : null)
     };
-    const response = await sender.sendRequest(CHAT_URL, { method: "POST", headers: chatHeaders, body: JSON.stringify(transformedBody), signal }, proxyOptions);
+    const response = await transport.sendBillable(CHAT_URL, { method: "POST", headers: chatHeaders, body: JSON.stringify(transformedBody), signal });
     const result = (reply) => {
       transferProviderAttemptDispatch(response, reply);
-      return { response: reply, url: CHAT_URL, headers: chatHeaders, transformedBody, attemptStartedAt: sender.attemptStartedAt };
+      return { response: reply, url: CHAT_URL, headers: chatHeaders, transformedBody };
     };
     if (!response.ok) {
       const text = await response.text().catch(() => "");

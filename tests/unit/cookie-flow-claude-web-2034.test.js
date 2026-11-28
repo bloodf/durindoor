@@ -12,6 +12,10 @@
  * The claude-web transport under test is ported from OmniRoute (MIT),
  * open-sse/executors/claude-web.ts. Report:
  * internal/docs/port-reports/cookie-flows/claude-web-2034.md
+ *
+ * Gaps 1 and 3 are repaired by register-cookie-repairs-2034: the import profile and extension table
+ * keep the optional `lastActiveOrg` beside the required `sessionKey`, and Test reports the guarded
+ * probe's proxy refusal as unverified without writing the row. Gap 2 (HAR expiry) is not.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -292,34 +296,38 @@ const harDocument = (...requests) => JSON.stringify({ log: { entries: requests.m
 })) } });
 
 describe("claude-web: shipped descriptor and extension capture", () => {
-  it("resolves one required cookie on one exact origin, with nothing optional, chunked or in localStorage", async () => {
+  it("resolves one required cookie and the optional lastActiveOrg on one exact origin, with nothing chunked or in localStorage", async () => {
     const { default: REGISTRY } = await import("open-sse/providers/registry/index.js");
     const { default: descriptor } = await import("open-sse/providers/registry/claude-web.js");
     const { getCookieImportContract } = await import("@/lib/providers/cookieImport/contract");
     const { ClaudeWebExecutor, getExecutor } = await import("open-sse/executors/index.js");
 
     expect(REGISTRY.find((entry) => entry.id === "claude-web")).toBe(descriptor);
-    expect(descriptor).not.toHaveProperty("cookieImport"); // the webLogin block is the import profile
+    // A narrow import profile; in-page sign-in keeps its own block, which still names sessionKey only.
+    expect(descriptor.cookieImport).toEqual({
+      origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [], optionalCookies: ["lastActiveOrg"], extensionCapture: true,
+    });
+    expect(descriptor.webLogin).toMatchObject({ origin: ORIGIN, cookieNames: ["sessionKey"] });
     const contract = getCookieImportContract("claude-web");
-    expect(contract.config).toBe(descriptor.webLogin);
+    expect(contract.config).toBe(descriptor.cookieImport);
     expect(contract).toMatchObject({
       authType: "cookie", origin: ORIGIN, host: "claude.ai", extensionCapture: true,
-      cookieNames: ["sessionKey"], cookiePrefixes: [],
+      cookieNames: ["sessionKey"], cookiePrefixes: [], optionalCookies: ["lastActiveOrg"],
     });
-    for (const absent of ["optionalCookies", "hashedCookiePrefixes", "localStorageKeys", "accountEmail"]) {
+    for (const absent of ["hashedCookiePrefixes", "localStorageKeys", "accountEmail"]) {
       expect(contract, absent).not.toHaveProperty(absent);
     }
     expect(EXTENSION_PROVIDERS["claude-web"]).toEqual({
-      label: "Claude Web", origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [],
+      label: "Claude Web", origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [], optionalCookies: ["lastActiveOrg"],
     });
     // claude-web is an active provider: both its id and alias dispatch to the real executor.
     expect(getExecutor("claude-web")).toBeInstanceOf(ClaudeWebExecutor);
     expect(getExecutor("cw")).toBe(getExecutor("claude-web"));
   });
 
-  it("captures only the tab store's sessionKey, stores it encrypted and sends it through that account's proxy", async () => {
+  it("captures only the tab store's sessionKey and lastActiveOrg, stores them encrypted and sends them through that account's proxy", async () => {
     const pairing = await mint({ action: "create", name: "Claude A" });
-    expect(pairing.contract).toEqual({ origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [] });
+    expect(pairing.contract).toEqual({ origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [], optionalCookies: ["lastActiveOrg"] });
     const capture = await extensionCapture(pairing, { jar: [
       browserCookie("sessionKey", SECRET.otherStore, { storeId: "other-store" }),
       browserCookie("sessionKey", SECRET.a, { expirationDate: Math.floor(Date.now() / 1000) + 3600 }),
@@ -327,8 +335,11 @@ describe("claude-web: shipped descriptor and extension capture", () => {
       browserCookie("cf_clearance", SECRET.noise),
     ] });
 
-    expect(capture.result).toMatchObject({ ok: true, action: "create", cookieCount: 1, connection: { name: "Claude A" } });
-    expect(capture.calls.gets).toEqual([{ url: `${ORIGIN}/`, name: "sessionKey", storeId: "tab-store" }]);
+    expect(capture.result).toMatchObject({ ok: true, action: "create", cookieCount: 2, connection: { name: "Claude A" } });
+    expect(capture.calls.gets).toEqual([
+      { url: `${ORIGIN}/`, name: "sessionKey", storeId: "tab-store" },
+      { url: `${ORIGIN}/`, name: "lastActiveOrg", storeId: "tab-store" },
+    ]);
     expect(capture.calls.requested).toEqual([{ permissions: ["cookies"], origins: [`${ORIGIN}/*`, `${DASHBOARD}/*`] }]);
     expect(capture.calls.removed).toEqual(capture.calls.requested);
     expect(capture.post).toHaveBeenCalledOnce();
@@ -338,7 +349,10 @@ describe("claude-web: shipped descriptor and extension capture", () => {
     expect(init.headers).toEqual({ "content-type": "application/json", [PAIRING_HEADER]: pairing.token });
     const body = JSON.parse(init.body);
     expect(Object.keys(body).sort()).toEqual(["cookies", "origin", "provider"]);
-    expect(body.cookies.map((cookie) => [cookie.name, cookie.value, cookie.domain])).toEqual([["sessionKey", SECRET.a, "claude.ai"]]);
+    expect(body.cookies.map((cookie) => [cookie.name, cookie.value, cookie.domain])).toEqual([
+      ["sessionKey", SECRET.a, "claude.ai"], ["lastActiveOrg", "org-a", "claude.ai"],
+    ]);
+    expect(init.body).not.toContain(SECRET.noise);
 
     // One send per pairing, on both ends.
     expect(await capture.send()).toMatchObject({ ok: false, code: "already_used" });
@@ -349,7 +363,7 @@ describe("claude-web: shipped descriptor and extension capture", () => {
 
     const [a, ...rest] = await stored();
     expect(rest).toEqual([]);
-    expect(a).toMatchObject({ provider: "claude-web", authType: "cookie", name: "Claude A", apiKey: `sessionKey=${SECRET.a}` });
+    expect(a).toMatchObject({ provider: "claude-web", authType: "cookie", name: "Claude A", apiKey: `sessionKey=${SECRET.a}; lastActiveOrg=org-a` });
     expectNoSecret(await rawDatabase());
 
     const listed = await (await routes.providers.GET(jsonRequest("/api/providers", null, "GET"))).json();
@@ -377,7 +391,7 @@ describe("claude-web: shipped descriptor and extension capture", () => {
     expect(streamed).toContain("[DONE]");
 
     expect(sent.map((call) => [call.method, call.egress, call.cookie])).toEqual(
-      ["GET", "POST", "GET", "POST"].map((method) => [method, "proxy-a", `sessionKey=${SECRET.a}`]),
+      ["GET", "POST", "GET", "POST"].map((method) => [method, "proxy-a", `sessionKey=${SECRET.a}; lastActiveOrg=org-a`]),
     );
     expect(sent[0]).toMatchObject({ url: ORGS_URL, redirect: "manual", body: null });
     const [first] = completions();
@@ -520,12 +534,37 @@ describe("claude-web: authenticated and bounded import", () => {
       optionalCookies: ["lastActiveOrg"], localStorageKeys: ["synthetic-item"],
     } }, { jar: [browserCookie("sessionKey", SECRET.a), browserCookie("cf_clearance", SECRET.noise)] });
     expect(widened.result).toMatchObject({ ok: true });
-    expect(widened.calls.gets.map((call) => call.name)).toEqual(["sessionKey"]);
+    // Only the compiled names: the required sessionKey and the built-in optional lastActiveOrg.
+    expect(widened.calls.gets.map((call) => call.name)).toEqual(["sessionKey", "lastActiveOrg"]);
     expect(widened.calls.requested[0].permissions).toEqual(["cookies"]);
+
+    // A pairing without the optional name (an older dashboard) narrows it away.
+    const narrowed = await extensionCapture({ ...(await mint({ action: "create", name: "Narrowed" })), contract: {
+      origin: ORIGIN, cookieNames: ["sessionKey"], cookiePrefixes: [],
+    } }, { jar: [browserCookie("sessionKey", SECRET.b), browserCookie("lastActiveOrg", "org-b")] });
+    expect(narrowed.result).toMatchObject({ ok: true, cookieCount: 1 });
+    expect(narrowed.calls.gets.map((call) => call.name)).toEqual(["sessionKey"]);
+  });
+
+  it("stores nothing when the tab has no session cookie, only the organization cookie", async () => {
+    // capture.js (not changed here) sends an optional cookie even without the required one. The
+    // server refuses that body with fixed text, stores nothing and spends the pairing.
+    const pairing = await mint({ action: "create", name: "Empty" });
+    const capture = await extensionCapture(pairing, { jar: [browserCookie("lastActiveOrg", "org-a")] });
+    expect(capture.result).toEqual({ ok: false, code: "rejected", message: MESSAGES.rejected });
+    expect(capture.post).toHaveBeenCalledOnce();
+    const [url, init] = capture.post.mock.calls[0];
+    expect(url).toBe(IMPORT_URL);
+    expect(JSON.parse(init.body).cookies.map((cookie) => cookie.name)).toEqual(["lastActiveOrg"]);
+    const reply = await capture.post.mock.results[0].value;
+    expect(reply.status).toBe(400);
+    expect(await reply.json()).toEqual({ error: "Required session cookie is missing or incomplete" });
+    expect((await deliver(url, init)).status).toBe(401);
+    expect(capture.calls.removed).toEqual(capture.calls.requested);
+    expect(await stored()).toEqual([]);
   });
 
   it.each([
-    ["no session cookie", [browserCookie("lastActiveOrg", "org-a")]],
     ["an empty value", [browserCookie("sessionKey", "")]],
     ["an insecure cookie", [browserCookie("sessionKey", SECRET.a, { secure: false })]],
     ["only another profile's session", [browserCookie("sessionKey", SECRET.otherStore, { storeId: "other-store" })]],
@@ -558,7 +597,9 @@ describe("claude-web: authenticated and bounded import", () => {
     ["an insecure cookie", { cookies: [{ ...good, secure: false }] }, "Cookie must be a secure cookie"],
     ["a chunked name", { cookies: [{ ...good, name: "sessionKey.0" }] }, "Cookie name is not approved for this provider"],
     ["an extra browser cookie", { cookies: [good, { name: "cf_clearance", value: SECRET.noise }] }, "Cookie name is not approved for this provider"],
-    ["the organization cookie", { cookies: [good, { name: "lastActiveOrg", value: "org-a" }] }, "Cookie name is not approved for this provider"],
+    ["an organization cookie without a session", { cookies: [{ name: "lastActiveOrg", value: "org-a" }] }, "Required session cookie is missing or incomplete"],
+    ["an insecure organization cookie", { cookies: [good, { name: "lastActiveOrg", value: "org-a", secure: false }] }, "Cookie must be a secure cookie"],
+    ["a header-injecting organization cookie", { cookies: [good, { name: "lastActiveOrg", value: "org-a; admin=1" }] }, "Cookie value is not acceptable"],
     ["a duplicate session", { cookies: [good, { ...good, value: SECRET.b }] }, "Duplicate cookie name"],
     ["a header-injecting value", { cookies: [{ ...good, value: `${SECRET.a}; admin=1` }] }, "Cookie value is not acceptable"],
     ["a localStorage item", { localStorage: { sessionKey: SECRET.a } }, "This provider takes no localStorage value"],
@@ -569,6 +610,16 @@ describe("claude-web: authenticated and bounded import", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await res.json()).toEqual({ error });
     expect(await stored()).toEqual([]);
+    expectNoSecret(logged());
+  });
+
+  // Was the "the organization cookie" refusal row (gap 1): the repaired profile stores it.
+  it("accepts the organization cookie beside the session and stores both", async () => {
+    const pairing = await mint({ action: "create", name: "Accepted" });
+    const res = await postImport(pairing.token, { provider: "claude-web", origin: ORIGIN, cookies: [good, { name: "lastActiveOrg", value: "org-a" }] });
+    expect(res.status).toBe(201);
+    expectNoSecret(await res.text());
+    expect((await stored()).map((row) => row.apiKey)).toEqual([`sessionKey=${SECRET.a}; lastActiveOrg=org-a`]);
     expectNoSecret(logged());
   });
 });
@@ -586,7 +637,7 @@ describe("claude-web: dashboard header, cURL and HAR input", () => {
     return (await stored()).find((row) => row.name === name);
   }
 
-  it("keeps only sessionKey, padding included, from a header and both cURL cookie forms", async () => {
+  it("keeps only sessionKey and lastActiveOrg, padding included, from a header and both cURL cookie forms", async () => {
     const header = `Cookie: cf_clearance=${SECRET.noise}; sessionKey=${SECRET.a}; lastActiveOrg=org-a`;
     const inputs = [
       ["header", parseCookieHeaderValue(header)],
@@ -596,10 +647,11 @@ describe("claude-web: dashboard header, cURL and HAR input", () => {
     for (const [index, [kind, parsed]] of inputs.entries()) {
       const built = buildImportCandidates({ kind, parsed }, await contract());
       expect(built.candidates).toHaveLength(1);
-      expect(built.candidates[0]).toMatchObject({ origin: ORIGIN, cookies: [{ name: "sessionKey", value: SECRET.a }] });
-      expect(built.candidates[0].dropped).toEqual(["cf_clearance", "lastActiveOrg"]);
+      expect(built.candidates[0]).toMatchObject({ origin: ORIGIN, cookies: [{ name: "sessionKey", value: SECRET.a }, { name: "lastActiveOrg", value: "org-a" }] });
+      expect(built.candidates[0].cookies).toHaveLength(2);
+      expect(built.candidates[0].dropped).toEqual(["cf_clearance"]);
       const row = await importCandidate(built.candidates[0], `Input ${index}`);
-      expect(row.apiKey).toBe(`sessionKey=${SECRET.a}`);
+      expect(row.apiKey).toBe(`sessionKey=${SECRET.a}; lastActiveOrg=org-a`);
     }
     expect(outbound).not.toHaveBeenCalled();
     expectNoSecret(logged() + await rawDatabase());
@@ -654,20 +706,23 @@ describe("claude-web: stored session checks", () => {
     expectNoSecret(JSON.stringify([validated, tested]) + logged());
   });
 
-  it("LIMITATION: Test refuses a proxied connection and sends the cookie nowhere", async () => {
+  it("reports a proxied connection's Test as unverified, sends the cookie nowhere and leaves the row unchanged", async () => {
     const a = await addManual("Claude A", `sessionKey=${SECRET.a}`, 1);
     await setProxy(a.id, PROXY_A);
     fakeClaude(new Map([[SECRET.a, [chatOrg("org-a")]]]));
+    const before = await db.getProviderConnectionById(a.id);
 
     const tested = await (await routes.test.POST(jsonRequest(`/api/providers/${a.id}/test`, {}), idParams(a.id))).json();
-    expect(tested).toMatchObject({ valid: false, error: "Guarded provider probe cannot use an outbound proxy" });
+    // The guard's proxy refusal stays: nothing is sent, directly or through the proxy.
+    expect(tested).toMatchObject({ valid: false, skipped: true, unavailable: false });
+    expect(tested.error).toMatch(/^Not verified/);
     expect(sent).toEqual([]);
     expect(outbound).not.toHaveBeenCalled();
-    // The refusal is recorded on the row even though the session itself was never checked.
+    // The session was never checked, so neither success nor a credential error is recorded.
     const row = await db.getProviderConnectionById(a.id);
-    expect(row).toMatchObject({
-      testStatus: "error", lastError: "Guarded provider probe cannot use an outbound proxy", apiKey: `sessionKey=${SECRET.a}`,
-    });
+    expect(row).toEqual(before);
+    expect(row.testStatus).not.toBe("error");
+    expect(row.testStatus).not.toBe("active");
 
     // Chat with the same row still uses the saved session and its proxy.
     expect((await chat()).status).toBe(200);
@@ -680,7 +735,8 @@ describe("claude-web: known gaps (NOT PARITY)", () => {
   const twoOrganizations = [chatOrg("org-first"), chatOrg("org-last-active")];
   const fullHeader = `sessionKey=${SECRET.a}; lastActiveOrg=org-last-active`;
 
-  it("NOT PARITY: import drops lastActiveOrg, so an imported account loses the executor's organization choice", async () => {
+  // Gap 1, repaired: this case used to show the import dropping lastActiveOrg.
+  it("import keeps lastActiveOrg, so an imported account makes the same organization choice as manual input", async () => {
     const { getCookieImportContract } = await import("@/lib/providers/cookieImport/contract");
     fakeClaude(new Map([[SECRET.a, twoOrganizations]]));
 
@@ -690,14 +746,14 @@ describe("claude-web: known gaps (NOT PARITY)", () => {
     expect(completionOrg(completions().at(-1))).toBe("org-last-active");
     await db.updateProviderConnection(manual.id, { isActive: false });
 
-    // Import of that same header: accepted, but the organization cookie is gone.
+    // Import of that same header keeps the organization cookie, so the executor picks the same organization.
     const built = buildImportCandidates({ kind: "header", parsed: parseCookieHeaderValue(fullHeader) }, getCookieImportContract("claude-web"));
-    expect(built.candidates[0].dropped).toEqual(["lastActiveOrg"]);
+    expect(built.candidates[0].dropped).toEqual([]);
     const pairing = await mint({ action: "create", name: "Imported" });
     expect((await postImport(pairing.token, dialogBody(built.candidates[0], { name: "Imported" }))).status).toBe(201);
-    expect((await stored()).find((row) => row.name === "Imported").apiKey).toBe(`sessionKey=${SECRET.a}`);
+    expect((await stored()).find((row) => row.name === "Imported").apiKey).toBe(fullHeader);
     expect((await chat()).status).toBe(200);
-    expect(completionOrg(completions().at(-1))).toBe("org-first");
+    expect(completionOrg(completions().at(-1))).toBe("org-last-active");
   });
 
   it("NOT PARITY: HAR parsing drops cookie expiry, so the server cannot apply its expiry refusal", async () => {

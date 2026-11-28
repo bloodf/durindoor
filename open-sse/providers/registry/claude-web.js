@@ -14,6 +14,15 @@ export default {
   category: "webCookie",
   authType: "cookie",
   authHint: "Paste the sessionKey cookie or a Cookie header from claude.ai.",
+  // Import and capture keep `sessionKey` required and also keep `lastActiveOrg` when present:
+  // the executor's organization choice reads it (pickChatOrganizationId), as with a manual paste.
+  cookieImport: {
+    origin: "https://claude.ai",
+    cookieNames: ["sessionKey"],
+    cookiePrefixes: [],
+    optionalCookies: ["lastActiveOrg"],
+    extensionCapture: true,
+  },
   webLogin: {
     startUrl: "https://claude.ai/",
     origin: "https://claude.ai",

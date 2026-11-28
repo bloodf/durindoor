@@ -678,7 +678,10 @@ async function buildModelsListImpl(kindFilter, guard, options = {}) {
         // catalog > default. Compatible catalogs merge live and saved IDs.
         const providerLiveResolver = isCompatibleProvider ? LIVE_MODEL_RESOLVERS.compatible : LIVE_MODEL_RESOLVERS[providerId];
         const registryFetcher = AI_PROVIDERS[providerId]?.modelsFetcher;
-        const genericFetcher = registryFetcher && OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) ?
+        // resolveLiveOpenAIModels sends the stored credential as a Bearer token, so a session-cookie
+        // provider (ChatPlayground) is never routed there: its Cookie header must not become Bearer (#2034).
+        const genericFetcher = registryFetcher && OPENAI_MODELS_FETCHER_TYPES.has(registryFetcher.type) &&
+        AI_PROVIDERS[providerId]?.authType !== "cookie" ?
         registryFetcher :
         null;
         const isKimiLiveProvider = KIMI_LIVE_MODEL_PROVIDERS.has(providerId);

@@ -1,0 +1,33 @@
+# Recurring and retired catalog dispositions
+
+Compared with `1072-1073-nov27-post-2686-provider-refresh.md`; #2690 and its review lane are outside this work.
+
+- [OmniRoute #21412](https://github.com/cheaper-inference/OmniRoute/pull/21412), pinned `69316eceb73f4192d237e8c323ba1277ceeb57bf`: its seven providers are outside this task; no rows ported. Its current PR head differs from the pin.
+- [OmniRoute #21426](https://github.com/cheaper-inference/OmniRoute/pull/21426), pinned `0e9de9d529554344f3c1dfd6083e8115355476e0`: ported the four requested recurring pools to the existing catalog. Its current PR head differs from the pin. [MegaNova](https://docs.meganova.ai/tiers/tier-1.md) publishes 50 requests per day per listed model; the catalog conservatively counts one pool. [Free.ai](https://free.ai/api/) publishes 30,000 tokens daily and 1,000 API requests monthly; its 800,000 figure estimates 800 tokens per request. [Kenari](https://kenari.id/api/public/pricing) publishes 50 daily requests; its 1,200,000 figure uses the same estimate. These request estimates are not token grants. [Aion](https://www.aionlabs.ai/docs/rate-limits/) publishes 20,000 tokens daily and requires card verification; its 600,000 monthly figure uses 30 days. Public model endpoints were checked on 2026-11-27. Shared pool keys preserve conservative aggregation; no one-time credits were changed.
+- [OmniRoute #21425](https://github.com/cheaper-inference/OmniRoute/pull/21425), pinned `dddd4064620e452c1bcee4dc681fcf37a4cebd5a`: ported one historical row. The pinned source records a historical 100,000 tokens per day (3,000,000 per 30 days) from `https://docs.llm7.io/limits` on 2026-11-18, with that page returning 404 on 2026-11-23. The ledger records the last evidenced quota once in the `llm7-free` pool; the authorized retired-catalog test checks the single historical row and its allowance. LLM7 remains discontinued and contributes no active capacity. No historical metadata was removed.
+
+## Reviewed metadata and naming limits
+
+The recurring allowance test records Aion's card requirement in `gates` metadata.
+The classifier and UI do not enforce that metadata. No classifier or UI changes
+belong to this correction.
+
+For each recurring provider, the test checks the allowance on every row, then
+checks exactly one distinct expected pool key and the total after grouping by
+that key. Summing identical model-row allowances would not prove deduplication.
+The LLM7 historical test checks its single ledger row and last listed allowance;
+it does not establish multi-row deduplication.
+
+Read-only inspection of OmniRoute pin `0e9de9d529554344f3c1dfd6083e8115355476e0`
+found the Free.ai aliases and display names in
+`open-sse/config/freeModelCatalog.data.ts`. Its comments cite the public models
+endpoint and the `qwen-coder` and `qwen3-coder` model pages. The registry file
+`open-sse/config/providers/registry/free-ai/index.ts` has an empty static model
+list and enables passthrough. These are upstream naming assertions, not
+independent confirmation of what model each alias serves. The alias-to-display
+name mappings remain unverified in this correction. Catalog IDs and names are
+unchanged.
+
+The reviewed correction passed both catalog files alongside nine usage suites,
+311 tests across 11 files. Anti-slop lint passed; root ESLint was blocked by
+the installed graph missing `next/dist/compiled/babel/eslint-parser`.

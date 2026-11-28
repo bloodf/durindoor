@@ -1,3 +1,4 @@
+import { isolateZaiRequestProof } from "../services/zaiRequestProof.js";
 import { estimateCompressionTokens } from "../services/compression/stats.js";
 import { githubRateLimit } from "./chatCore/githubRateLimit.js";
 import { updateProviderConnection } from "@/lib/localDb.js";
@@ -12,7 +13,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
 import { translateRequest } from "../translator/index.js";
 import { parseTimeMs } from "../services/oauthCredentialManager.js";
 import { validateCursorImages } from "../translator/request/openai-to-cursor.js";
-import { applyThinking, applyTransportRequestDefaults, parseSuffix } from "../translator/concerns/thinkingUnified.js";
+import { applyThinking, applyTransportRequestDefaults, catalogEffortIntent, parseSuffix } from "../translator/concerns/thinkingUnified.js";
 import { FORMATS } from "../translator/formats.js";
 import { normalizeClaudePassthrough, anchorClaudeCache, dropClaudeCodeIdentitySystem } from "../translator/formats/claude.js";
 import { normalizeClaudeAssistantTail } from "../translator/concerns/claudeAssistantTail.js";
@@ -46,6 +47,7 @@ import { resolveConnectionTimeoutMs } from "@/lib/providers/requestTimeout";
 import { resolveProviderPrefix } from "@/shared/utils/providerPrefix.js";
 
 import { getExecutor } from "../executors/index.js";
+import { raceCallerAbort } from "../executors/base.js";
 import { buildRequestDetail, extractRequestConfig } from "./chatCore/requestDetail.js";
 import { handleForcedSSEToJson } from "./chatCore/sseToJsonHandler.js";
 import { handleNonStreamingResponse } from "./chatCore/nonStreamingHandler.js";
@@ -416,6 +418,7 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   if (credentials && (apiKeyId || apiKey)) credentials._cachePrincipalId = apiKeyId || apiKey;
   if (abortSignal?.aborted) return createErrorResult(499, "Request aborted");
   const { provider, model: requestedModel } = modelInfo;
+  body = isolateZaiRequestProof(body, provider);
   if (provider === "adobe-firefly-web") return createErrorResult(400, "Adobe Firefly browser supports image and synchronous video generation only");
   if (isCursorProvider(provider)) {
     try {
@@ -559,7 +562,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
-  body = applyProviderThinkingOverride(body, providerThinking, { passthrough });
+  body = applyProviderThinkingOverride(body, providerThinking, {
+    passthrough, modelCapabilities: effectiveModelCapabilities, provider, model: cleanModel,
+  });
   // Suffix intent, then body effort/budget (including the provider-level
   // override injected above), select `<model>-<tier>` catalog rows (upstream
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when
@@ -569,7 +574,11 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const cleanUpstreamModel = getModelUpstreamId(alias, cleanModel, requestedModelTier); // provider-facing model id
   const thinkingControlled = requestedModelTier || body.thinking ||
   providerThinking?.mode === "none" || providerThinking?.mode === "off";
-  const thinkingIntent = modelThinkingIntent ||
+  // A `-<effort>` ID resolved against a synced Claude base (OmniRoute #21347)
+  // only fills in when neither the client nor the provider setting chose one.
+  // Provider `none` has already stripped the body, so pass the setting itself.
+  const resolvedEffortIntent = catalogEffortIntent(body, modelInfo.resolvedThinkingEffort, providerThinking);
+  const thinkingIntent = modelThinkingIntent || resolvedEffortIntent ||
   (thinkingControlled ? null : getModelUpstreamThinkingIntent(alias, cleanModel));
   const timelineTraceId = startTrace({
     provider,
@@ -813,7 +822,14 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   if (passthrough) {
     log?.debug?.("PASSTHROUGH", `${clientTool} → ${provider} | native lossless`);
     translatedBody = { ...structuredClone(translationBody), model: cleanUpstreamModel };
-    applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    try {
+      applyThinking(targetFormat, cleanModel, translatedBody, provider, thinkingIntent, modelCapabilities);
+    } catch (error) {
+      // An effort the model's declared tiers cannot carry is the client's 400, as in translateRequest below.
+      if (error?.statusCode !== HTTP_STATUS.BAD_REQUEST) throw error;
+      finishTimeline("error", "error", error.message);
+      return createErrorResult(HTTP_STATUS.BAD_REQUEST, error.message);
+    }
     // Per-transport registry defaults (e.g. MiniMax openai transport → reasoning_split).
     applyTransportRequestDefaults(targetFormat, translatedBody, provider);
     /**
@@ -1736,15 +1752,25 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
       // request. The application injects its CAS-backed coordinator; standalone
       // open-sse callers retain one legacy refresh attempt without persistence.
       // In particular, strict-pool may never fall back to direct.
-      const newCredentials = isFunction(refreshCredentials) ?
-      await refreshCredentials({ signal: providerSignal, force: true }) :
-      await executor.refreshCredentials(credentials, log, proxyOptions);
+      // Only the caller wait races against `providerSignal` so an already-started
+      // refresh and any persistence callback still finish if the caller detaches.
+      const refreshOperation = isFunction(refreshCredentials)
+        ? refreshCredentials({ signal: providerSignal, force: true })
+        : (async () => {
+          const refreshed = await executor.refreshCredentials(credentials, log, proxyOptions);
+          if (refreshed?.accessToken || refreshed?.copilotToken) {
+            if (!providerSignal?.aborted) Object.assign(credentials, refreshed);
+            if (onCredentialsRefreshed) {
+              try { await onCredentialsRefreshed(refreshed); } catch (e) { log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`); }
+            }
+          }
+          return refreshed;
+        })();
+      const newCredentials = await raceCallerAbort(refreshOperation, providerSignal);
+      if (providerSignal?.aborted) throw requestAbortError(providerSignal.reason);
       if (newCredentials?.accessToken || newCredentials?.copilotToken) {
         if (log?.line) log.line(reqTag, "🔑", `TOKEN REFRESHED · ${provider}/${cleanModel}`);
         Object.assign(credentials, newCredentials);
-        if (!refreshCredentials && onCredentialsRefreshed) {
-          try {await onCredentialsRefreshed(newCredentials);} catch (e) {log?.warn?.("TOKEN", `onCredentialsRefreshed failed: ${e.message}`);}
-        }
         try {
           const retryResult = await executeProvider();
           providerResponse = retryResult.response;
@@ -1777,8 +1803,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
         finishTimeline("error", "error", "quota capacity unavailable after refresh");
         return { ...quotaUnavailable(error.reason), attemptStartedAt: latestProviderAttemptStartedAt };
       }
-      if (error?.name === "AbortError") {
-        streamController.handleError(error);
+      if (error?.name === "AbortError" || providerSignal?.aborted) {
+        const abortError = error?.name === "AbortError" ? error : requestAbortError(providerSignal?.reason);
+        streamController.handleError(abortError);
         finishTimeline("aborted", "abort", "token refresh aborted");
         return { ...createErrorResult(499, "Request aborted"), attemptStartedAt: latestProviderAttemptStartedAt };
       }

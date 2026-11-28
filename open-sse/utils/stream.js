@@ -1,10 +1,11 @@
+import { applyStreamQuirks } from "./streamQuirks.js";
 import { antigravityGeminiResponse } from "./antigravityGeminiNative.js";
 import { hasResponsesSnapshotOutput } from "./emptyStreamTerminal.js";
 import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateInputTokens, estimateOutputTokens, formatUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, refreshProvisionalOutput, resolveProvisionalOutput, hasValidUsage, estimateInputTokens, estimateOutputTokens, formatUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -546,6 +547,21 @@ export function createSSEStream(options = {}) {
   let hadToolCalls = false;
   // Claude output seen so far; refreshes a provisional message_start count.
   let claudeOutputChars = 0;
+  // Translators rebuild state.usage, so retain output receipt state separately.
+  // Only project output back; translated input/cache accounting is a separate issue.
+  let claudeUsage = null;
+  const projectClaudeOutput = (currentUsage, final = false) => {
+    if (!claudeUsage) return currentUsage;
+    const outputUsage = final ? resolveProvisionalOutput(claudeUsage, claudeOutputChars) :
+      refreshProvisionalOutput(claudeUsage, claudeOutputChars);
+    if (final) claudeUsage = outputUsage;
+    return {
+      ...currentUsage,
+      completion_tokens: outputUsage.completion_tokens,
+      ...(currentUsage?.output_tokens !== undefined ? { output_tokens: outputUsage.completion_tokens } : null),
+      ...(currentUsage?.total_tokens !== undefined ? { total_tokens: (currentUsage.prompt_tokens || 0) + outputUsage.completion_tokens } : null)
+    };
+  };
   // Names only, for a readable log label — a turn that only calls tools accumulates
   // no content and would otherwise log as "[Empty streaming response]", indistinguishable
   // from a truncated stream. Dedup keeps a chatty multi-call turn's label short.
@@ -584,6 +600,7 @@ export function createSSEStream(options = {}) {
     }
     if (claudeToolUseStart && isString(parsed.content_block?.name) && parsed.content_block.name) {
       toolCallNames.add(parsed.content_block.name);
+      if (summary) claudeOutputChars += parsed.content_block.name.length;
     }
     if (responsesToolCall && isString(parsed.item?.name) && parsed.item.name) {
       toolCallNames.add(parsed.item.name);
@@ -604,6 +621,9 @@ export function createSSEStream(options = {}) {
       if (piece) claudeOutputChars += piece.length;
     }
     const extracted = extractUsage(parsed);
+    if (summary && mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.CLAUDE && extracted) {
+      claudeUsage = mergeUsage(claudeUsage, extracted);
+    }
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
     if (!content) return extracted;
 
@@ -834,7 +854,8 @@ export function createSSEStream(options = {}) {
    */
   // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
-    const currentUsage = refreshProvisionalOutput(mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage, claudeOutputChars);
+    const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? refreshProvisionalOutput(usage, claudeOutputChars) :
+      projectClaudeOutput(state?.usage);
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
     provider !== "replicate" && totalContentLength > 0 ?
     estimateStreamUsage(totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
@@ -865,6 +886,7 @@ export function createSSEStream(options = {}) {
     clearCompletionFlushTimer();
     if (translatedStreamFinalized) return;
     translatedStreamFinalized = true;
+    state.usage = projectClaudeOutput(state?.usage, true);
     if (provider !== "replicate" && !hasValidUsage(state?.usage) && totalContentLength > 0) {
       state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
     }
@@ -1107,74 +1129,7 @@ export function createSSEStream(options = {}) {
               }
               if (restoreOpenAIToolNames(parsed, toolNameMap)) toolNameDecloaked = true;
 
-              // Some Anthropic-compatible providers (MiniMax) omit `signature`
-              // from the thinking block start. Strict Messages clients deserialize
-              // that field before the later signature_delta arrives, so inject an
-              // empty placeholder when the provider quirk requests it (#2706).
-              let fieldsInjected = gatewayError !== null;
-              if (
-              PROVIDERS[provider]?.quirks?.ensureThinkingSignature &&
-              parsed.type === "content_block_start" &&
-              parsed.content_block?.type === CLAUDE_BLOCK.THINKING &&
-              parsed.content_block.signature === undefined)
-              {
-                parsed.content_block.signature = "";
-                fieldsInjected = true;
-              }
-              if (parsed.choices !== undefined) {
-                if (!parsed.object) {parsed.object = "chat.completion.chunk";fieldsInjected = true;}
-                if (!parsed.created) {parsed.created = Math.floor(Date.now() / 1000);fieldsInjected = true;}
-              }
-
-              if (omitBuyerCost(parsed)) fieldsInjected = true;
-
-              // Strip Azure-specific non-standard fields from streaming chunks
-              if (parsed.prompt_filter_results !== undefined) {
-                delete parsed.prompt_filter_results;
-                fieldsInjected = true;
-              }
-              if (parsed?.choices) {
-                for (const choice of parsed.choices) {
-                  if (choice.content_filter_results !== undefined) {
-                    delete choice.content_filter_results;
-                    fieldsInjected = true;
-                  }
-                  // Claude stop_reason literals (end_turn, tool_use, ...) are not OpenAI values.
-                  const finishReason = normalizeOpenAIFinish(choice.finish_reason);
-                  if (finishReason !== choice.finish_reason) {
-                    choice.finish_reason = finishReason;
-                    fieldsInjected = true;
-                  }
-                }
-              }
-
-              // Strip empty tool_calls arrays that break AI SDK reasoning tracking.
-              // Some providers (e.g. CodeBuddy CN) include `"tool_calls": []` in
-              // every streaming delta. @ai-sdk/openai-compatible checks
-              // `delta.tool_calls != null` — an empty array passes this check,
-              // causing premature `reasoning-end` on every chunk.
-              if (parsed?.choices) {
-                for (const choice of parsed.choices) {
-                  if (choice.delta?.tool_calls && Array.isArray(choice.delta.tool_calls) && choice.delta.tool_calls.length === 0) {
-                    delete choice.delta.tool_calls;
-                    fieldsInjected = true;
-                  }
-                }
-              }
-
-              // Peel leaked MiniMax thinking markers out of delta.content into
-              // reasoning_content before the inline-thinking extractor and content
-              // accounting see them (upstream PR #2525).
-              if (sanitizeMinimaxThinking && parsed?.choices?.[0]?.delta) {
-                if (sanitizeMinimaxDelta(parsed.choices[0].delta, minimaxThinkingState)) {
-                  fieldsInjected = true;
-                }
-              }
-
-              // Provider-specific stream normalization (e.g. SenseNova maps
-              // delta.reasoning -> delta.reasoning_content) runs before the
-              // hasValuableContent gate so reasoning-only chunks survive.
-              fieldsInjected = PROVIDERS[provider]?.normalizeStreamChunk?.(parsed) || fieldsInjected;
+              let fieldsInjected = applyStreamQuirks(parsed, { provider, format: targetFormat, omitBuyerCost, sanitizeMinimaxThinking, minimaxThinkingState }) || gatewayError !== null;
 
               // Same-format OpenAI passthrough uses reasoning_content on the
               // client wire and terminates each choice once. Provider-specific
@@ -1943,7 +1898,7 @@ export function createSSEStream(options = {}) {
           }
 
           emitPendingUsageEstimate(controller);
-          usage = refreshProvisionalOutput(usage, claudeOutputChars);
+          usage = resolveProvisionalOutput(usage, claudeOutputChars);
           if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.OPENAI));
           }
@@ -2034,6 +1989,7 @@ export function createSSEStream(options = {}) {
         }
 
         const finalizeFailedStream = () => {
+          state.usage = projectClaudeOutput(state?.usage, true);
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
           // Close the request-detail row as an error; without this call it kept
           // the "[Streaming in progress...]" placeholder with status "success".
@@ -2126,6 +2082,7 @@ export function createSSEStream(options = {}) {
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           // The partial output was still generated, so account for it.
+          state.usage = projectClaudeOutput(state?.usage, true);
           if (!hasValidUsage(state.usage) && totalContentLength > 0) {
             state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
           }

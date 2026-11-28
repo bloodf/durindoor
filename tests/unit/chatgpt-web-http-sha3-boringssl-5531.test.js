@@ -71,7 +71,7 @@ test("sha3_512Hex uses the native digest where available (parity with fallback)"
 
 test("chatgpt-web PoW routes SHA3-512 through the portable helper, not inline createHash (#5531 guard)", async () => {
   const execPath = fileURLToPath(
-    new URL("../../open-sse/executors/chatgpt-web-http.js", import.meta.url)
+    new URL("../../open-sse/executors/chatgpt-web/session.js", import.meta.url)
   );
   const src = await readFile(execPath, "utf8");
   assert.ok(

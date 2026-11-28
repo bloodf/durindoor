@@ -1,3 +1,4 @@
+import { isLiquidDecisionModel } from "../config/liquid.js";
 import { applyOpenRouterRouting } from "../services/openrouterRouting.js";
 import crypto from "node:crypto";
 import { resolveLayaHost } from "../config/laya.js";
@@ -49,6 +50,9 @@ export async function handleSystemoneCore({
   proxyOptions = null
 }) {
   const { provider, model } = modelInfo;
+  if (provider === "liquid" && !isLiquidDecisionModel(model)) {
+    return createErrorResult(HTTP_STATUS.BAD_REQUEST, "Invalid Liquid decision model ID");
+  }
   const isCustom = provider.startsWith(SYSTEMONE_COMPATIBLE_PREFIX);
   const cfg = PROVIDER_MEDIA[provider]?.systemoneConfig;
   if (!isCustom && (!isRecord(cfg) || !cfg.baseUrl)) {
@@ -98,14 +102,17 @@ export async function handleSystemoneCore({
 
   log?.debug?.("SYSTEMONE", `${provider} | ${model} | ${baseUrl}`);
 
+  const requestInit = {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+    signal: signal || undefined
+  };
+  // Never let a redirect carry Liquid credentials to a different endpoint.
+  if (provider === "liquid") requestInit.redirect = "error";
   let res;
   try {
-    res = await send(baseUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: signal || undefined
-    });
+    res = await send(baseUrl, requestInit);
   } catch (err) {
     if (signal?.aborted || err?.name === "AbortError") {
       return createErrorResult(499, "System One request aborted");

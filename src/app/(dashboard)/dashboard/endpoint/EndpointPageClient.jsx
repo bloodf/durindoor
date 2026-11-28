@@ -205,17 +205,20 @@ export default function EndpointPageClient({ localPort = 20128 }) {
     }
     const probeBoth = async () => {
       if (document.hidden) return;
-      const tsGen = tsProbeGenRef.current;
-      if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
-        const gen = tunnelProbeGenRef.current;
-        const ok = await clientPingAny(tunnelPublicUrl, tunnelUrl);
-        if (gen === tunnelProbeGenRef.current) {
+      // Snapshot both generations with their targets before either request can yield.
+      // Tailscale may be retired while the Cloudflare probe is still in flight.
+      const tunnelProbe = { gen: tunnelProbeGenRef.current, enabled: tunnelEnabled, url: tunnelUrl, publicUrl: tunnelPublicUrl };
+      const tsProbe = { gen: tsProbeGenRef.current, enabled: tsEnabled, url: tsUrl };
+      if (tunnelProbe.enabled && (tunnelProbe.url || tunnelProbe.publicUrl)) {
+        const ok = await clientPingAny(tunnelProbe.publicUrl, tunnelProbe.url);
+        if (tunnelProbe.gen === tunnelProbeGenRef.current) {
           recordProbeResult(ok, tunnelMissRef, setTunnelReachable, tunnelEverReachableRef, setTunnelEverReachable);
         }
       }
-      if (tsEnabled && tsUrl && tsGen === tsProbeGenRef.current) {
-        const ok = await clientPingUrl(tsUrl);
-        if (tsGen === tsProbeGenRef.current) {
+      if (tsProbe.gen !== tsProbeGenRef.current) return;
+      if (tsProbe.enabled && tsProbe.url) {
+        const ok = await clientPingUrl(tsProbe.url);
+        if (tsProbe.gen === tsProbeGenRef.current) {
           recordProbeResult(ok, tsMissRef, setTsReachable, tsEverReachableRef, setTsEverReachable);
         }
       }

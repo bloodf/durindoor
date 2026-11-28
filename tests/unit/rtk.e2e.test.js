@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 
-const PORT = process.env.RTK_E2E_PORT || "20128";
+const PORT = process.env.RTK_E2E_PORT;
 const BASE = `http://localhost:${PORT}`;
 const API_KEY = process.env.RTK_E2E_KEY || "";
 const LOG_FILE = process.env.RTK_E2E_LOG || "";
@@ -66,6 +66,7 @@ function makeBigDiff(fileCount = 3, linesPerFile = 80) {
 
 maybe("RTK end-to-end", () => {
   it("server is reachable", async () => {
+    expect(PORT, "Set RTK_E2E_PORT to the running server port").toBeTruthy();
     const res = await fetch(`${BASE}/api/health`);
     expect(res.ok).toBe(true);
   });
@@ -95,7 +96,8 @@ maybe("RTK end-to-end", () => {
     expect([200, 400, 401, 402, 500]).toContain(res.status);
 
     if (!LOG_FILE) return;
-    await new Promise(r => setTimeout(r, 500));
+    await expect.poll(() => [...readLogSince(offset).text.matchAll(/\[RTK\] saved (\d+)B \/ (\d+)B \([\d.]+%\) via \[([\w,-]+)\] hits=(\d+)/g)]
+      .some(m => Number(m[2]) >= diff.length && m[3].includes("git-diff")), { timeout: 5000 }).toBe(true);
     const { text } = readLogSince(offset);
     const matches = [...text.matchAll(/\[RTK\] saved (\d+)B \/ (\d+)B \([\d.]+%\) via \[([\w,-]+)\] hits=(\d+)/g)];
     // Find the log line that corresponds to OUR request (total ≥ diff.length and contains git-diff)
@@ -127,7 +129,8 @@ maybe("RTK end-to-end", () => {
     expect([200, 400, 401, 402, 500]).toContain(res.status);
 
     if (!LOG_FILE) return;
-    await new Promise(r => setTimeout(r, 500));
+    await expect.poll(() => [...readLogSince(offset).text.matchAll(/\[RTK\] saved (\d+)B \/ (\d+)B \([\d.]+%\) via \[([\w,-]+)\] hits=(\d+)/g)]
+      .some(m => Number(m[2]) >= grepOut.length && m[3].includes("grep")), { timeout: 5000 }).toBe(true);
     const { text } = readLogSince(offset);
     const matches = [...text.matchAll(/\[RTK\] saved (\d+)B \/ (\d+)B \([\d.]+%\) via \[([\w,-]+)\] hits=(\d+)/g)];
     const mine = matches.find(m => Number(m[2]) >= grepOut.length && m[3].includes("grep"));

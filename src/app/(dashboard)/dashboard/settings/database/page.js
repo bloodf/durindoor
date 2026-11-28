@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { isString } from "@/shared/utils/typeChecks.js";
+import api from "@/shared/utils/api.js";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Card, CardContent, CardHeader } from "@/shared/ui/components/Card.jsx";
 import PageHeader from "@/shared/ui/components/PageHeader.jsx";
@@ -44,28 +45,24 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
     refreshBusy.current = true; setRefreshing(true);
     const request = ++refreshRequest.current;
     try {
-      const res = await fetch("/api/settings/database/engine", {
+      const snapshot = await api.get("/api/settings/database/engine", {
         headers: { "x-9r-password": password },
         signal: controller.signal,
       });
-      if (request !== refreshRequest.current) return;
-      if (res.status === 401) {
-        setPassword("");
-        setPasswordError("Password rejected — try again.");
-        return;
-      }
-      if (!res.ok) {
-        setError(`Failed to load (${res.status})`);
-        return;
-      }
-      const snapshot = await res.json();
       if (request !== refreshRequest.current) return;
       if (!snapshot || !isString(snapshot.activeEngine)) throw new Error("Database status response is incomplete.");
       setStatus(snapshot);
       setLastRefresh(new Date());
       setError(null);
     } catch (err) {
-      if (request === refreshRequest.current) setError(err.message);
+      if (request !== refreshRequest.current) return;
+      if (err?.status === 401) {
+        setPassword("");
+        setPasswordError("Password rejected — try again.");
+        return;
+      }
+      // Keep the status-load message independent of the server response body.
+      setError(err?.status ? `Failed to load (${err.status})` : err.message);
     } finally {
       if (request === refreshRequest.current) { refreshBusy.current = false; setLoading(false); setRefreshing(false); }
     }
@@ -77,25 +74,32 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
     return () => { clearInterval(t); refreshRequest.current++; refreshBusy.current = false; refreshController.current?.abort(); };
   }, [refresh]);
 
-
-  async function handleCutover() {
-    setCutoverBusy(true);
+  async function postDatabaseAction(url, payload, label) {
     try {
-      const res = await fetch("/api/settings/database/cutover", {
-        method: "POST",
+      const body = await api.post(url, payload, {
         headers: {
           "content-type": "application/json",
           "x-9r-password": password,
         },
-        body: JSON.stringify({}),
       });
-      const body = await res.json();
-      if (!res.ok || !body.ok) {
-        setError(body.error || `Cutover failed (${res.status})`);
+      if (!body?.ok) {
+        setError(body?.error || `${label} failed.`);
       } else {
         await refresh({ force: true });
       }
-    } catch (caught) { setError(caught.message || "Cutover failed.");
+    } catch (caught) {
+      setError(
+        caught?.body?.error
+        || (caught?.status ? `${label} failed (${caught.status})` : caught.message)
+        || `${label} failed.`,
+      );
+    }
+  }
+
+  async function handleCutover() {
+    setCutoverBusy(true);
+    try {
+      await postDatabaseAction("/api/settings/database/cutover", {}, "Cutover");
     } finally {
       setCutoverBusy(false);
       setShowCutoverConfirm(false);
@@ -104,21 +108,7 @@ export default function DatabaseSettingsPage({ initialPassword = "" } = {}) {
 
   async function handleRollback() {
     try {
-      const res = await fetch("/api/settings/database/rollback", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-9r-password": password,
-        },
-        body: JSON.stringify({ force: true }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.ok) {
-        setError(body.error || `Rollback failed (${res.status})`);
-      } else {
-        await refresh({ force: true });
-      }
-    } catch (caught) { setError(caught.message || "Rollback failed.");
+      await postDatabaseAction("/api/settings/database/rollback", { force: true }, "Rollback");
     } finally {
       setShowRollbackConfirm(false);
     }

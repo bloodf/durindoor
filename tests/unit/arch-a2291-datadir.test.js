@@ -105,7 +105,7 @@ posix("consumers share resolution but keep their own directory policy", () => {
   let root;
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-datadir-shared-"));
+    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "durindoor-datadir-shared-")));
     fs.mkdirSync(path.join(root, "home"));
     fs.mkdirSync(path.join(root, "cwd"));
   });

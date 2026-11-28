@@ -1,0 +1,28 @@
+{
+  "scope": "DurinDoor v5 upstream freeze",
+  "captureStartedAt": "2026-11-27T23:49:23.818472+00:00",
+  "repositories": {
+    "decolua/9router": {
+      "defaultBranch": "master",
+      "sha": "5ae63d22847e07042e235b40e1d926b65e509013",
+      "observedAt": "2026-11-27T23:49:24.688458+00:00",
+      "tracker": 1072,
+      "freezeCommentUrl": "https://github.com/bloodf/durindoor/issues/1072#issuecomment-7230442320",
+      "openPrSnapshot": ".orq/orders/freeze-inputs/9router-open-pr-freeze.json",
+      "openPrCount": 1375,
+      "openPrSnapshotSha256": "b69a288048a9467df5df26eb80b197fac0d4fc1e9fec3d046b68a2986315027a"
+    },
+    "cheaper-inference/OmniRoute": {
+      "defaultBranch": "release/v3.8.55",
+      "sha": "3e23a8afe026a4980926c2fcab5b1fcfabb995c4",
+      "observedAt": "2026-11-27T23:49:25.752013+00:00",
+      "tracker": 1073,
+      "freezeCommentUrl": "https://github.com/bloodf/durindoor/issues/1073#issuecomment-7230442456",
+      "openPrSnapshot": ".orq/orders/freeze-inputs/omniroute-open-pr-freeze.json",
+      "openPrCount": 628,
+      "openPrSnapshotSha256": "1fd027b16e1a944d0e3d7a3ab90f608e0ec4671fa07d0fb44bce2e51eb559734"
+    }
+  },
+  "frozenAt": "2026-11-27T23:49:25.752045+00:00",
+  "policy": "Only commits reachable through frozen default heads and PR states/heads in the freeze census; later upstream work is post-v5 backlog only. Review lane owns OmniRoute parity; sync owns 9router parity."
+}

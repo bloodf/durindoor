@@ -3,9 +3,25 @@ import { isChatProvider, isNativeOnlyModel } from "open-sse/providers/chatCapabi
 import REGISTRY from "open-sse/providers/registry/index.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { errorResponse } from "open-sse/utils/error.js";
+import { enforceApiKeyModelPolicy } from "../../../services/apiKeyPolicy.js";
+import { LOCAL_REQUEST_ERROR, comboPolicyRejection } from "open-sse/services/combo.js";
 import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { terminal, proceed } from "./context.js";
+
+/**
+ * Local HTTP 404 `model_not_found` for an unresolvable bare model on chat,
+ * messages, and responses inference routes (OmniRoute #21349 / KEA-9627).
+ * Marked `LOCAL_REQUEST_ERROR` so combo fallback advances without cooling
+ * accounts or penalizing health scores.
+ */
+export function unknownBareModelResponse(modelStr, message = null) {
+  const text = message || `Model '${modelStr}' could not be resolved to a known provider.`;
+  log.warn("CHAT", text, { model: modelStr });
+  const response = errorResponse(HTTP_STATUS.NOT_FOUND, text);
+  response[LOCAL_REQUEST_ERROR] = true;
+  return response;
+}
 
 /**
  * #6457 / OmniRoute#6525: resolved registry model kind === "image" means the
@@ -35,15 +51,38 @@ export function isNonChatModel(provider, model) {
 /**
  * Stage 1: resolve the requested model string to a provider/model pair.
  * A string that names no provider is a nested combo, handed back to the caller
- * through ctx.dispatchNestedCombo. Image-only and non-chat models are rejected
- * before credentials or dispatch so the upstream is never called.
+ * through ctx.dispatchNestedCombo. Unresolvable bare models on inference routes
+ * return HTTP 404 `model_not_found` before credential lookup or upstream
+ * dispatch (OmniRoute #21349 / KEA-9627). Model policy precedes unresolved
+ * and ambiguous details. Policy-allowed ambiguity, malformed, image-only,
+ * and non-chat models keep their HTTP 400 rejections.
  */
 export async function resolveModel(ctx) {
   const { request, requestSignal, modelStr } = ctx;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
-  const modelInfo = await getModelInfo(modelStr);
+  const resolveInfo = ctx.resolveModelInfo || getModelInfo;
+  const modelInfo = await resolveInfo(modelStr, { rejectUnknownBare: true });
 
-  if (!modelInfo.provider) {
+  // Unresolved identities reveal no routing details until model policy allows
+  // the raw name. Resolved identities still use canonical admission below.
+  if (modelInfo?.errorType === "ambiguous_model" || modelInfo?.errorType === "model_not_found") {
+    const policyError = await enforceApiKeyModelPolicy(request, modelStr, ctx.apiKey, { limits: false });
+    if (policyError) {
+      return terminal(ctx.reportComboPolicyRejections && policyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError);
+    }
+  }
+
+  if (modelInfo?.errorType === "ambiguous_model") {
+    const message = modelInfo.errorMessage || `Model '${modelStr}' is ambiguous. Use provider/model prefix.`;
+    log.warn("CHAT", message, { model: modelStr });
+    return terminal(errorResponse(HTTP_STATUS.BAD_REQUEST, message));
+  }
+
+  if (modelInfo?.errorType === "model_not_found") {
+    return terminal(unknownBareModelResponse(modelStr, modelInfo.errorMessage));
+  }
+
+  if (!modelInfo?.provider) {
     return terminal(await ctx.dispatchNestedCombo({
       body: ctx.body,
       modelStr,
@@ -64,6 +103,11 @@ export async function resolveModel(ctx) {
   }
 
   const { provider, model } = modelInfo;
+  if (!model) {
+    log.warn("CHAT", "Invalid model format", { model: modelStr });
+    return terminal(errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid model format"));
+  }
+
   ctx.modelInfo = modelInfo;
   ctx.provider = provider;
   ctx.model = model;

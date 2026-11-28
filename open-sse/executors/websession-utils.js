@@ -129,21 +129,65 @@ export function sanitizeErrorMessage(value = "") {
   slice(0, 2000);
 }
 
+function abortError(signal) {
+  return signal?.reason ?? new DOMException("Aborted", "AbortError");
+}
+
+/** Read UTF-8 text, cancelling pending reads when the signal aborts. */
 export async function readTextStream(body, signal) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  const onAbort = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+      if (signal?.aborted) throw abortError(signal);
       const { value, done } = await reader.read();
+      if (signal?.aborted) throw abortError(signal);
       if (done) break;
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
     return text;
   } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (signal?.aborted) await reader.cancel().catch(() => {});
     reader.releaseLock();
+  }
+}
+
+/**
+ * Each line of a streamed body, decoded as UTF-8 across chunk boundaries. A
+ * final line without a newline is yielded unless `tail` is false. A consumer
+ * that stops early cancels the body; a body read to the end is released.
+ */
+export async function* readStreamLines(body, { signal, tail = true } = {}) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let finished = false;
+  // Cancel pending reads too: checking only before read() leaves idle bodies stuck.
+  const onAbort = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      if (signal?.aborted) throw abortError(signal);
+      const { value, done } = await reader.read();
+      if (signal?.aborted) throw abortError(signal);
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      yield* lines;
+    }
+    pending += decoder.decode();
+    finished = true;
+    if (tail && pending) yield pending;
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+    if (finished) reader.releaseLock();
+    else await reader.cancel().catch(() => {});
   }
 }
 

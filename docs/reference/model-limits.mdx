@@ -83,8 +83,24 @@ The listed OpenAI models also declare a `922000`-token input ceiling. Codex capa
 
 Input modalities, native output modalities, and server-tool capabilities are separate facts. A text model using an image-generation tool remains a text-output model. Structured-output support does not guarantee prompt-cache behavior. A custom media model sharing a chat model's ID does not inherit chat capabilities or token limits.
 
+An `openai/` GPT-5.6+ or GPT-6+ chat ID that the catalog does not list routes through Responses with reasoning on and its effort list unknown. Requested efforts pass through, including `max`; `ultra` becomes `max`; `none` omits `reasoning`, so OpenAI applies its default effort. Declaring thinking efforts on a custom model replaces this fallback: unlisted efforts move to the nearest declared tier, and `none` is sent only when declared, otherwise it becomes the lowest declared tier.
+
+A reasoning request never moves to `none`. If a model's declared efforts cannot turn reasoning on (only `none`, or nothing once `none` is removed because the model cannot disable thinking), any other effort, including `auto` and unrecognized values, fails locally with HTTP 400 and is not sent upstream. This applies to every thinking format, including DeepSeek, Claude adaptive and budget thinking, Gemini, and Qwen, and to reasoning budgets and effort suffixes. On native Gemini requests this includes an unrecognized or non-string `thinkingLevel` at any `thinkingConfig` / `generationConfig` / `request` path, which other Gemini models still forward upstream unchanged. Send `none` (when declared) or omit the effort. Requests without a reasoning effort, or with a blank or `none` level, are unchanged.
+
 Canonical aliases use the target model's provider-scoped capabilities and limits. Retired models leave selectable catalogs. Inventory-only IDs with `routingAvailable: false` are not callable routes. Restricted, media, and unpublished ceilings remain unknown.
 
 Context values are exact integers. `1050000`, `1048576`, and `1000000` describe different windows. Account entitlement can impose a smaller usable window, such as a plan-specific Kimi Coding limit. Catalog availability alone does not prove inference access.
+
+## Provider thinking setting
+
+Each provider's page has a thinking setting. It changes a request before translation:
+
+- `auto` leaves the request unchanged.
+- `none` removes every thinking and effort control, so no reasoning field reaches the provider and the provider applies its own default. That covers Claude `thinking` and `output_config.effort`, `reasoning_effort`, `reasoningEffort`, the Responses `reasoning` object, Ollama `think`, Qwen `enable_thinking` and `thinking_budget`, `thinkingLevel`/`thinking_level`, and Gemini `thinkingConfig`/`thinking_config`, including inside `generationConfig` and a Gemini CLI `request` envelope. Other fields, such as `output_config.format` or `generationConfig.temperature`, are kept. Use `none` for providers that reject any reasoning field. To ask for thinking to be turned off explicitly, use `off`.
+- `off` sends `thinking: { type: "disabled" }` when the request has no `thinking` field, and also removes `output_config.effort`, which would otherwise turn adaptive thinking back on. Other `output_config` fields are kept. A request that sets `thinking` itself is sent unchanged.
+- `on` sends a 10000-token thinking budget when the request has no `thinking` field.
+- An effort level sets `reasoning_effort` when the request has none, and replaces a request that asks for thinking without a level.
+
+Under `none` and `off`, an effort taken from a model ID suffix is never applied. A `model(level)` suffix is a request override and keeps its own precedence. See [Request a Claude effort as a model ID suffix](../features/model-auto-sync.mdx#request-a-claude-effort-as-a-model-id-suffix).
 
 See [API](./api.mdx) for request fields and [Troubleshooting](../troubleshooting.mdx#input-exceeds-context-window) for recovery.

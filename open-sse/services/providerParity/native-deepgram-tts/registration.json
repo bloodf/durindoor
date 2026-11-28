@@ -1,0 +1,100 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "open-sse/config/registryUtils.ts"
+    ],
+    "registryFields": {
+      "tts": { "id": "deepgram", "baseUrl": "https://api.deepgram.com/v1/speak", "authType": "apikey", "authHeader": "token", "format": "deepgram" },
+      "stt": { "id": "deepgram", "baseUrl": "https://api.deepgram.com/v1/listen", "authType": "apikey", "authHeader": "token", "format": "deepgram" }
+    },
+    "inventoryNote": "the #2034 delta is the TTS row only; the STT entry (/v1/listen) already exists locally as sttConfig on open-sse/providers/registry/deepgram.js and is served by open-sse/handlers/deepgramStt.js, so nothing is staged for it"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/deepgram.js (exists: id/alias deepgram, aliases [\"dg\"], apikey, serviceKinds [\"stt\"], sttConfig only, no ttsConfig, no tts model rows)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no deepgram entry); synthesizeViaConfig needs ttsConfig, which deepgram lacks",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS.deepgram (same wire envelope: model query, Token auth, { text } body; but unreachable without ttsConfig, plain fetch without the connection egress policy, no deadline, follows redirects, quotes upstream error text, no accepted-job outcome, no pre-submit validation)",
+      "src/shared/constants/ttsProviders.js deepgram (dashboard UI metadata only: voiceSource api-language)",
+      "src/app/api/media-providers/tts/deepgram/voices/route.js (dashboard voice listing via GET https://api.deepgram.com/v1/models; unbounded, follows redirects, quotes upstream text)"
+    ],
+    "result": "no /v1/audio/speech path reaches Deepgram today; this module is the whole TTS delta. The generic FORMAT_HANDLERS.deepgram is a same-name config, not an equivalent, and stays untouched"
+  },
+  "module": "open-sse/services/providerParity/native-deepgram-tts/index.js",
+  "exports": {
+    "deepgramTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createDeepgramTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "buildDeepgramSpeechRequest": "(model, text, options) -> { url, body }; throws status 400",
+    "resolveDeepgramContainer": "(...namedFormats) -> \"mp3\"; throws status 400 for anything but mp3/json",
+    "isMp3": "(bytes) leading-byte check: ID3 tag or MPEG layer III frame sync",
+    "listDeepgramTtsModels": "async (credentials, { fetchImpl, signal, timeoutMs, maxBytes }) -> { models } or an error result; bounded GET /v1/models",
+    "parseDeepgramTtsModels": "(payload) -> Aura speech model rows from a /v1/models answer",
+    "groupDeepgramVoices": "(models) -> { languages, byLang }, the dashboard voices route shape",
+    "deepgramAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "isDeepgramTtsModel": "(id) Aura id shape check",
+    "DEEPGRAM_TTS_DEFINITION": "speech fields to merge into the existing deepgram registry entry (addServiceKinds, ttsConfig)",
+    "DEEPGRAM_TTS_MODELS": "source speech models",
+    "DEEPGRAM_TTS_MODEL_PATTERN": "^aura(?:-2)?-[a-z]+-[a-z]{2}$",
+    "DEEPGRAM_SPEECH_RESPONSE_FORMATS": "[\"mp3\", \"json\"]"
+  },
+  "provider": {
+    "canonicalId": "deepgram",
+    "aliases": ["deepgram", "dg"],
+    "existingRegistryEntry": "open-sse/providers/registry/deepgram.js",
+    "existingServiceKinds": ["stt"],
+    "addServiceKinds": ["tts"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Token", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "deepgram"
+  },
+  "models": {
+    "tts": [
+      { "id": "aura-asteria-en", "name": "Aura Asteria (EN)" },
+      { "id": "aura-luna-en", "name": "Aura Luna (EN)" },
+      { "id": "aura-stella-en", "name": "Aura Stella (EN)" }
+    ],
+    "acceptedIds": "the three rows plus any id matching DEEPGRAM_TTS_MODEL_PATTERN (Aura-1 and Aura-2 voices from discovery); the model is the voice",
+    "dynamicDiscovery": "the source has none; listDeepgramTtsModels is a bounded version of the existing dashboard voices route (GET https://api.deepgram.com/v1/models, tts[].canonical_name)"
+  },
+  "endpoints": {
+    "speech": { "method": "POST", "url": "https://api.deepgram.com/v1/speak?model=<aura id>", "headers": ["Content-Type: application/json", "Authorization: Token <key>"], "body": "{ text }", "answer": "audio/mpeg bytes; dg-char-count and dg-request-id headers read when present" },
+    "discovery": { "method": "GET", "url": "https://api.deepgram.com/v1/models", "headers": ["Authorization: Token <key>"], "answer": "{ stt: [...], tts: [{ name, canonical_name, languages, metadata.tags }] }" }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "discoveryTimeoutMs": 15000,
+    "maxTextChars": 2000,
+    "maxAudioBytes": 52428800,
+    "maxDiscoveryBytes": 2097152,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/deepgram.js",
+      "change": "keep every existing field; set serviceKinds to [\"stt\", \"tts\"]; append DEEPGRAM_TTS_MODELS rows with kind \"tts\"; no ttsConfig (the adapter is registered in TTS_ADAPTERS, so FORMAT_HANDLERS.deepgram stays unreachable)"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { deepgramTtsAdapter } and add `deepgram: deepgramTtsAdapter` (and `dg` if alias routing reaches TTS_ADAPTERS unresolved) to TTS_ADAPTERS; handleTtsCore calls synthesize and withTtsUsage keeps the adapter's dg-char-count nativeUnits (cost stays unknown)"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add deepgram to NAMED_FORMAT_PROVIDERS so a query-string response_format reaches the adapter as requestedResponseFormat and is validated; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "src/app/api/media-providers/tts/deepgram/voices/route.js",
+      "change": "optional: replace the raw fetch with listDeepgramTtsModels + groupDeepgramVoices (keeping Intl.DisplayNames language names) to gain the deadline, redirect refusal and no upstream-text echo"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the Deepgram tts kind after registration"
+    }
+  ]
+}

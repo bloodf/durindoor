@@ -208,7 +208,7 @@ JSON bodies. Embeddings need `model` and `input`. Rerank needs `model`, `query`,
 
 Native pass-through for Jev-shaped decision models, with no chat translation layer. Body needs `model`, `state` (the situation to evaluate), and `questions` (an object, not an array). The provider's JSON response (typed `answers`, `usage`) is forwarded unchanged.
 
-Direct TypeSafe uses `jev/jev-latest`, `jev/jev-preview`, or `jev/jev-1.13.0` with a TypeSafe connection. Existing reseller routes remain separate: `opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, and `openrouter/typesafe/jev-1.13`. Self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) exposes `laya/auto`, `laya/english`, `laya/multilingual`, and `laya/typed-decisions`.
+Direct TypeSafe uses `jev/jev-latest`, `jev/jev-preview`, or `jev/jev-1.13.0` with a TypeSafe connection. Existing reseller routes remain separate: `opencode-zen/jev-1.13`, `opencode/jev-1.13-free`, and `openrouter/typesafe/jev-1.13` (plus any OpenRouter decision models discovered from `GET https://openrouter.ai/api/v1/models?output_modalities=decisions`). Self-hosted [Laya](../features/combos.mdx#local-laya-instead-of-jev) exposes `laya/auto`, `laya/english`, `laya/multilingual`, and `laya/typed-decisions`.
 
 Create a **Custom System One** node under **Media Providers → System One** for another compatible server. Enter an API base URL or complete `/systemone` endpoint, save a connection with an optional key, and register the server's native model ID. Use `your-prefix/native-model` in requests. Servers without `/models`, including Laya, support manual registration. Model discovery does not prove inference or authentication on a public listing endpoint.
 

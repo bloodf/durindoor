@@ -738,6 +738,9 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    // Native TrustedRouter keys only go to its fixed HTTPS origin, including when
+    // connection metadata contains a compatible-provider or runtime URL override.
+    if (this.provider === "trustedrouter") return "https://api.trustedrouter.com/v1/chat/completions";
     // Runtime transport (multi-endpoint providers): use the resolved endpoint.
     const rt = credentials?.runtimeTransport;
     if (rt?.baseUrl) {

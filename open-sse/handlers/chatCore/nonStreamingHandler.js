@@ -53,6 +53,15 @@ function isJsonRecord(value) {
   return !!value && isObject(value) && !Array.isArray(value);
 }
 
+// Normalize known Claude aliases before checking for a token limit or safety
+// filter; other provider finish reasons retain tool-call normalization.
+function normalizeToolCallFinish(choice) {
+  if (!Array.isArray(choice?.message?.tool_calls) || choice.message.tool_calls.length === 0) return;
+  const reason = normalizeOpenAIFinish(choice.finish_reason);
+  choice.finish_reason = reason === OPENAI_FINISH.LENGTH || reason === OPENAI_FINISH.CONTENT_FILTER ?
+    reason : OPENAI_FINISH.TOOL_CALLS;
+}
+
 /**
  * Upstream marker for a provider body that is an HTML/XML error page instead
  * of a JSON payload: a doctype or comment (`<!`), a tag (`<` plus a letter) or
@@ -870,15 +879,8 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
     const isOpenAIChatResponse = Array.isArray(translatedResponse?.choices);
 
     if (isOpenAIChatResponse) {
-      // Fix finish_reason for tool_calls: some providers return non-standard values (e.g. "other")
-      if (translatedResponse.choices?.[0]) {
-        const choice = translatedResponse.choices[0];
-        const msg = choice.message;
-        const hasToolCalls = Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0;
-        if (hasToolCalls && choice.finish_reason !== "tool_calls") {
-          choice.finish_reason = "tool_calls";
-        }
-      }
+      // Some providers return non-standard tool-call finish reasons (e.g. "other").
+      normalizeToolCallFinish(translatedResponse.choices[0]);
 
       // Ensure OpenAI-required fields only for OpenAI Chat-shaped responses.
       if (isOpenAIChatResponse) {
@@ -985,10 +987,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       if (!Array.isArray(openAIIntermediate?.choices)) {
         return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Unable to normalize non-streaming response for SSE");
       }
-      const intermediateChoice = openAIIntermediate.choices[0];
-      if (Array.isArray(intermediateChoice?.message?.tool_calls) && intermediateChoice.message.tool_calls.length > 0) {
-        intermediateChoice.finish_reason = "tool_calls";
-      }
+      normalizeToolCallFinish(openAIIntermediate.choices[0]);
       const sseText = openAICompletionToClientSSE(openAIIntermediate, model, sourceFormat);
 
       await markSuccess();

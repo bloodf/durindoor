@@ -33,6 +33,13 @@ Save, then send a request using one of the connection's models. A duplicate prov
 
 Bulk add accepts one key per line (`name|sk-key`, or a bare key that gets an auto name). Bulk create is create-only: a name collision never overwrites a saved key.
 
+## TrustedRouter
+
+Add a TrustedRouter API key, then refresh the connection's models. Validation uses
+the authenticated key endpoint because its catalog is public. Keep the vendor
+prefix in model IDs, such as `trustedrouter/anthropic/claude-sonnet-4.6`.
+See [TrustedRouter setup](./trustedrouter.md) for presets and embeddings.
+
 ## DemonRoute
 
 Add a DemonRoute API key in Providers, then discover models for that connection. Its `/v1/models` catalog is account-specific; the bundled model list is only an offline starting point. Use the exact, case-sensitive model ID returned by DemonRoute, including its vendor prefix. Model availability and pricing may change. See the [DemonRoute documentation](https://demonroute.com/docs).

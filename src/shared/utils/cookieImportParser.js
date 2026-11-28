@@ -13,13 +13,14 @@
  * rules again before it stores anything.
  */
 
-import { isString } from "./typeChecks.js";
+import { isString, isNumber, isBoolean } from "./typeChecks.js";
 import {
   MAX_IMPORT_COOKIES,
   isApprovedCookieName,
   isValidCookieName,
   isValidCookieValue,
   cookieChunkIndex,
+  cookieDomainAllowed,
   hashedCookiePrefixOf,
 } from "./cookieImportContract";
 
@@ -201,7 +202,10 @@ export function parseCurlCommand(raw) {
  * Read the request origins and cookies out of a HAR file.
  *
  * Only the request URL and its own header and cookie fields are read. The file
- * stays in the browser: it is never uploaded.
+ * stays in the browser: it is never uploaded. Explicit scope and expiry metadata
+ * must be applicable and fresh; a repeated header cannot erase it. Session cookies
+ * without expiry remain usable. Raw headers (including header-only HAR requests)
+ * carry no domain/path/expiry evidence beyond the request URL; no expiry is invented.
  *
  * @param {string} raw HAR file contents
  * @returns {{ ok: true, entries: { origin: string, url: string, cookies: { name: string, value: string }[] }[] } | { ok: false, error: string }}
@@ -229,19 +233,40 @@ export function parseHarDocument(raw) {
     }
     if (!/^https?:$/.test(url.protocol) || url.username || url.password) continue;
     const cookies = new Map();
+    let invalid = false;
     const requestCookies = Array.isArray(request?.cookies) ? request.cookies : [];
     for (const cookie of requestCookies) {
-      if (!isValidCookieName(cookie?.name) || !isString(cookie?.value) || !cookie.value) continue;
-      cookies.set(cookie.name, cookie.value);
+      if (!isValidCookieName(cookie?.name)) continue;
+      if (!isValidCookieValue(cookie?.value)) { invalid = true; continue; }
+      // Explicit metadata must be valid and applicable to this request. Never let a
+      // repeated raw header erase a rejected structured cookie's expiry or scope.
+      if (cookies.has(cookie.name)) invalid = true;
+      if (cookie.domain !== undefined && !cookieDomainAllowed(url.hostname, cookie.domain)) invalid = true;
+      if (cookie.path !== undefined && (!isString(cookie.path) || !cookie.path.startsWith("/") ||
+        !(url.pathname === cookie.path || (url.pathname.startsWith(cookie.path) && (cookie.path.endsWith("/") || url.pathname[cookie.path.length] === "/"))))) invalid = true;
+      if (cookie.secure !== undefined && (!isBoolean(cookie.secure) || (cookie.secure && url.protocol !== "https:"))) invalid = true;
+      const out = { name: cookie.name, value: cookie.value };
+      for (const key of ["expires", "expirationDate", "expiry"]) {
+        if (!Object.hasOwn(cookie, key)) continue;
+        const value = cookie[key];
+        const seconds = key === "expires" && isString(value) && value.trim() ? Date.parse(value) / 1000 : value;
+        if (!isNumber(seconds) || !Number.isFinite(seconds) || seconds * 1000 <= Date.now()) invalid = true;
+        else out.expirationDate = Math.min(out.expirationDate ?? Infinity, seconds);
+      }
+      cookies.set(cookie.name, out);
     }
     const headers = Array.isArray(request?.headers) ? request.headers : [];
     for (const header of headers) {
       if (String(header?.name || "").toLowerCase() !== "cookie") continue;
       const parsedHeader = parseCookieHeaderValue(String(header?.value || ""));
       if (!parsedHeader.ok) continue;
-      for (const cookie of parsedHeader.cookies) cookies.set(cookie.name, cookie.value);
+      for (const cookie of parsedHeader.cookies) {
+        const previous = cookies.get(cookie.name);
+        if (previous && previous.value !== cookie.value) invalid = true;
+        if (!previous) cookies.set(cookie.name, cookie);
+      }
     }
-    parsed.push({ origin: url.origin, url: url.href, cookies: [...cookies].map(([name, value]) => ({ name, value })) });
+    if (!invalid) parsed.push({ origin: url.origin, url: url.href, cookies: [...cookies.values()] });
   }
   if (!parsed.length) return fail("The HAR file has no usable request entries.");
   return { ok: true, entries: parsed };
@@ -271,6 +296,16 @@ function sameCookieSet(first, second) {
 export function filterCandidateCookies(candidate, contract) {
   const kept = [];
   const dropped = [];
+  const seen = new Set();
+  for (const cookie of candidate.cookies) {
+    const prefix = contract.cookiePrefixes.find((prefix) => cookie.name.startsWith(prefix));
+    if (prefix && (!/^(0|[1-9][0-9]*)$/.test(cookie.name.slice(prefix.length)) ||
+      !Number.isSafeInteger(Number(cookie.name.slice(prefix.length))) || Number(cookie.name.slice(prefix.length)) >= MAX_IMPORT_COOKIES)) return fail("The chunked cookie has an invalid index.");
+    if (!isApprovedCookieName(contract, cookie.name)) continue;
+    if (seen.has(cookie.name) || !isValidCookieValue(cookie.value)) return fail("The approved cookie is duplicated or invalid.");
+    seen.add(cookie.name);
+    if (cookie.expirationDate !== undefined && (!Number.isFinite(cookie.expirationDate) || cookie.expirationDate * 1000 <= Date.now())) return fail("The approved cookie has expired or has invalid expiry metadata.");
+  }
   for (const cookie of candidate.cookies) {
     if (!isApprovedCookieName(contract, cookie.name) || !isValidCookieValue(cookie.value)) {
       dropped.push(cookie.name);
@@ -342,7 +377,7 @@ export function buildImportCandidates(input, contract) {
   }
   if (input?.kind === "har") {
     const candidates = [];
-    for (const entry of input.parsed.entries) {
+    for (const entry of input.parsed.entries ?? []) {
       if (entry.origin !== contract.origin) continue;
       const filtered = filterCandidateCookies(entry, contract);
       if (!filtered.ok) continue;

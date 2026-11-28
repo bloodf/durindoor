@@ -131,7 +131,8 @@ through links to the completed cookie-flow checkout; no dependency files are
 part of this change. Commands used private HOME, DATA_DIR, TMPDIR and cache
 under `/var/tmp/maxai-session-2034-run`, `env -i` and `timeout 300`.
 
-Eight explicit files passed together (376 assertions): `native-maxai-session`,
+Eight explicit files passed together (376 assertions): `native-maxai-session` (now
+`stage-maxai-session-refresh-2034`),
 `fix-maxai-credential-tuple-2034`, `cookie-flow-maxai-2034`, `native-maxai-image`,
 `maxai-provider`, `web-session-redirects`, `provider-cookie-import-contracts`,
 and `provider-cookie-capture-extension`, all under `tests/unit/*.test.js`, using
@@ -153,3 +154,11 @@ before lint. This violated the intended read-only dependency constraint; those
 shared dependency side effects were not reverted or repaired. Subsequent checks
 used direct Node entrypoints without package-manager invocation. The initial
 lint found seven style issues here, which were fixed before the passing run.
+
+
+The worker evidence entrypoint is now
+`tests/unit/stage-maxai-session-refresh-2034.test.js`. The complete 38-case suite
+was renamed intact from `native-maxai-session.test.js` to match the gate command;
+no case was dropped or replaced by a file-presence check. The gate's initial
+failure was its `test -f` precondition, before Vitest collected any tests. See
+`internal/docs/port-reports/stage-maxai-session-refresh-2034.md` for the gate repair.

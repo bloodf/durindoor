@@ -5,7 +5,7 @@ import { translateResponse, initState } from "../translator/index.js";
 import { formatClaudeSseError, parseSseFrame } from "./sseFrames.js";
 import { FORMATS, GEMINI_FAMILY_FORMATS } from "../translator/formats.js";
 import { appendRequestLog } from "@/lib/usageDb.js";
-import { extractUsage, mergeUsage, refreshProvisionalOutput, hasValidUsage, estimateInputTokens, estimateOutputTokens, formatUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
+import { extractUsage, mergeUsage, refreshProvisionalOutput, resolveProvisionalOutput, hasValidUsage, estimateInputTokens, estimateOutputTokens, formatUsage, logUsage, addBufferToUsage, filterUsageForFormat, enrichUsageCost, COLORS } from "./usageTracking.js";
 import { attachTokensPerSecond } from "./generationThroughput.js";
 import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
 import { PROVIDERS } from "../config/providers.js";
@@ -547,6 +547,21 @@ export function createSSEStream(options = {}) {
   let hadToolCalls = false;
   // Claude output seen so far; refreshes a provisional message_start count.
   let claudeOutputChars = 0;
+  // Translators rebuild state.usage, so retain output receipt state separately.
+  // Only project output back; translated input/cache accounting is a separate issue.
+  let claudeUsage = null;
+  const projectClaudeOutput = (currentUsage, final = false) => {
+    if (!claudeUsage) return currentUsage;
+    const outputUsage = final ? resolveProvisionalOutput(claudeUsage, claudeOutputChars) :
+      refreshProvisionalOutput(claudeUsage, claudeOutputChars);
+    if (final) claudeUsage = outputUsage;
+    return {
+      ...currentUsage,
+      completion_tokens: outputUsage.completion_tokens,
+      ...(currentUsage?.output_tokens !== undefined ? { output_tokens: outputUsage.completion_tokens } : null),
+      ...(currentUsage?.total_tokens !== undefined ? { total_tokens: (currentUsage.prompt_tokens || 0) + outputUsage.completion_tokens } : null)
+    };
+  };
   // Names only, for a readable log label — a turn that only calls tools accumulates
   // no content and would otherwise log as "[Empty streaming response]", indistinguishable
   // from a truncated stream. Dedup keeps a chatty multi-call turn's label short.
@@ -585,6 +600,7 @@ export function createSSEStream(options = {}) {
     }
     if (claudeToolUseStart && isString(parsed.content_block?.name) && parsed.content_block.name) {
       toolCallNames.add(parsed.content_block.name);
+      if (summary) claudeOutputChars += parsed.content_block.name.length;
     }
     if (responsesToolCall && isString(parsed.item?.name) && parsed.item.name) {
       toolCallNames.add(parsed.item.name);
@@ -605,6 +621,9 @@ export function createSSEStream(options = {}) {
       if (piece) claudeOutputChars += piece.length;
     }
     const extracted = extractUsage(parsed);
+    if (summary && mode === STREAM_MODE.TRANSLATE && targetFormat === FORMATS.CLAUDE && extracted) {
+      claudeUsage = mergeUsage(claudeUsage, extracted);
+    }
     if (trackUsage && extracted) usage = mergeUsage(usage, extracted);
     if (!content) return extracted;
 
@@ -835,7 +854,8 @@ export function createSSEStream(options = {}) {
    */
   // Replicate predictions do not consistently report token counts; leave them unknown.
   const getStreamSnapshot = () => {
-    const currentUsage = refreshProvisionalOutput(mode === STREAM_MODE.PASSTHROUGH ? usage : state?.usage, claudeOutputChars);
+    const currentUsage = mode === STREAM_MODE.PASSTHROUGH ? refreshProvisionalOutput(usage, claudeOutputChars) :
+      projectClaudeOutput(state?.usage);
     const resolvedUsage = hasValidUsage(currentUsage) ? currentUsage :
     provider !== "replicate" && totalContentLength > 0 ?
     estimateStreamUsage(totalContentLength, mode === STREAM_MODE.PASSTHROUGH ? FORMATS.OPENAI : sourceFormat) :
@@ -866,6 +886,7 @@ export function createSSEStream(options = {}) {
     clearCompletionFlushTimer();
     if (translatedStreamFinalized) return;
     translatedStreamFinalized = true;
+    state.usage = projectClaudeOutput(state?.usage, true);
     if (provider !== "replicate" && !hasValidUsage(state?.usage) && totalContentLength > 0) {
       state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
     }
@@ -1877,7 +1898,7 @@ export function createSSEStream(options = {}) {
           }
 
           emitPendingUsageEstimate(controller);
-          usage = refreshProvisionalOutput(usage, claudeOutputChars);
+          usage = resolveProvisionalOutput(usage, claudeOutputChars);
           if (provider !== "replicate" && !hasValidUsage(usage) && totalContentLength > 0) {
             usage = mergeUsage(usage, estimateStreamUsage(totalContentLength, FORMATS.OPENAI));
           }
@@ -1968,6 +1989,7 @@ export function createSSEStream(options = {}) {
         }
 
         const finalizeFailedStream = () => {
+          state.usage = projectClaudeOutput(state?.usage, true);
           appendRequestLog({ model, provider, connectionId, tokens: null, status: "FAILED STREAM_ERROR" }).catch(() => {});
           // Close the request-detail row as an error; without this call it kept
           // the "[Streaming in progress...]" placeholder with status "success".
@@ -2058,6 +2080,7 @@ export function createSSEStream(options = {}) {
           reqLogger?.appendConvertedChunk?.(output);
           controller.enqueue(sharedEncoder.encode(output));
           // The partial output was still generated, so account for it.
+          state.usage = projectClaudeOutput(state?.usage, true);
           if (!hasValidUsage(state.usage) && totalContentLength > 0) {
             state.usage = mergeUsage(state.usage, estimateStreamUsage(totalContentLength, sourceFormat));
           }

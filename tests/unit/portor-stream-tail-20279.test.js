@@ -58,7 +58,9 @@ it("replaces a positive Claude message_start output with the lower final receipt
   const final = extractUsage({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } });
   expect(mergeUsage(start, final)).toMatchObject({ prompt_tokens: 10, completion_tokens: 3 });
   expect(isProvisionalOutput(mergeUsage(start, final))).toBe(false);
-  expect(isProvisionalOutput(mergeUsage(start, extractUsage({ type: "message_delta", usage: {} })))).toBe(true);
+  const withoutOutput = mergeUsage(start, extractUsage({ type: "message_delta", usage: {} }));
+  expect(isProvisionalOutput(withoutOutput)).toBe(false);
+  expect(withoutOutput.completion_tokens).toBe(5);
 });
 
 it("refreshes provisional Claude output from content in an interrupted passthrough snapshot", async () => {

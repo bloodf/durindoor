@@ -267,4 +267,200 @@ describe("Poe imported accounts through public routes", () => {
     for (const terminal of successTerminals) expect(text).not.toContain(terminal);
     expect(flow.network).toHaveBeenCalledTimes(1);
   });
+  it.each([502])("does not rotate a pinned account or emit success on HTTP %s", async (status) => {
+    const { a, da } = await accounts();
+    flow.network.mockImplementation(() => Response.json({ error: "synthetic refusal" }, { status }));
+    const response = await dispatch({ stream: true, id: a.id });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    snapshot(secret, da);
+  });
+  it.each([["malformed", "{broken"], ["HTML", "<html>sign in</html>"], ["incomplete", JSON.stringify({ data: { chatWithBot: { text: "partial fixture", state: "pending" } } })]])("does not replay an accepted %s response or emit success", async (_label, payload) => {
+    await accounts();
+    flow.network.mockImplementation(() => new Response(payload, { headers: { "content-type": "application/json" } }));
+    const response = await dispatch({ stream: true });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it.each(["reset", "partial body", "deadline"])("does not replay after %s", async (kind) => {
+    await accounts();
+    const controller = new AbortController();
+    flow.network.mockImplementation(async () => {
+      if (kind === "reset") throw new TypeError("synthetic reset after dispatch");
+      if (kind === "abort") { controller.abort(); throw controller.signal.reason; }
+      let sent = false;
+      return new Response(new ReadableStream({ pull(stream) {
+        if (kind === "deadline") return new Promise(() => {});
+        if (!sent) { sent = true; stream.enqueue(new TextEncoder().encode('{"data":{"chatWithBot":{"text":"partial')); }
+        else stream.error(new TypeError("synthetic body failure"));
+      } }), { headers: { "content-type": "application/json" } });
+    });
+    const response = await dispatch({ stream: true, signal: controller.signal });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  async function orderedAccounts() {
+    const rows = await accounts();
+    await flow.db.updateProviderConnection(rows.a.id, { priority: 1 });
+    await flow.db.updateProviderConnection(rows.b.id, { priority: 2 });
+    return rows;
+  }
+  /** Additive real client-key fixture: storage, authorization and selection stay live. */
+  it.each(modes)("enforces stored client-key ownership (anthropic=%s, stream=%s)", async (anthropic, stream) => {
+    const { a, b, da, db: secondDispatcher } = await accounts();
+    const keys = await Promise.all([a, b].map((row) => flow.db.createApiKey(row.name, "synthetic-machine", [], null, null, { providerConnectionIds: [row.id] })));
+    await flow.db.updateSettings({ requireApiKey: true });
+    flow.network.mockImplementation(vendor);
+    for (const [row, key, dispatcher, value] of [[a, keys[0], da, secret], [b, keys[1], secondDispatcher, other]]) {
+      flow.network.mockClear();
+      const response = await dispatch({ anthropic, stream, id: row.id, headers: { authorization: `Bearer ${key.key}` } });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("fixture answer");
+      snapshot(value, dispatcher);
+      expect(flow.usage.mock.calls.at(-1)[0]).toMatchObject({ apiKeyId: key.id });
+      await redacted(text);
+    }
+    const before = await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById));
+    flow.network.mockClear();
+    for (const headers of [{ authorization: `Bearer ${keys[1].key}` }, { authorization: "Bearer synthetic-invalid" }, {}]) {
+      const response = await dispatch({ anthropic, stream, id: a.id, headers });
+      const text = await response.text();
+      expect(response.status, text).toBeGreaterThanOrEqual(400);
+      for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+      await redacted(text);
+      expect(flow.network).not.toHaveBeenCalled();
+    }
+    expect(await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById))).toEqual(before);
+  });
+
+  it.each([403, 429].flatMap((status) => modes.map(([anthropic, stream]) => [status, anthropic, stream])))("allows explicit HTTP %s refusal fallback (anthropic=%s, stream=%s)", async (status, anthropic, stream) => {
+    const { a, b, da, db: dispatcher } = await accounts();
+    await flow.db.updateProviderConnection(a.id, { priority: 1 });
+    await flow.db.updateProviderConnection(b.id, { priority: 2 });
+    flow.network.mockResolvedValueOnce(Response.json({ error: "refused before work" }, { status })).mockImplementation(vendor);
+    const response = await dispatch({ anthropic, stream });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(text).toContain("fixture answer");
+    expect(flow.network.mock.calls.map(([, init]) => [init.headers.cookie, init.dispatcher])).toEqual([[`p-b=${secret}`, da], [`p-b=${other}`, dispatcher]]);
+    await redacted(text);
+  });
+  it.each(modes)("cancels an accepted stalled body without replay (anthropic=%s, stream=%s)", async (anthropic, stream) => {
+    const { da } = await orderedAccounts();
+    const cancel = vi.fn();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start() {}, cancel }), { headers: { "content-type": "application/json" } }));
+    const response = await dispatch({ anthropic, stream });
+    const text = await response.text();
+    expect(response.status, text).toBeGreaterThanOrEqual(400);
+    for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    snapshot(secret, da);
+    await redacted(text);
+  });
+  it.each(modes)("keeps ambiguous server failure terminal across public modes (anthropic=%s, stream=%s)", async (anthropic, stream) => {
+    const { da } = await orderedAccounts();
+    const cancel = vi.fn();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start() {}, cancel }), { status: 503 }));
+    const response = await dispatch({ anthropic, stream });
+    const text = await response.text();
+    expect(response.status, text).toBeGreaterThanOrEqual(400);
+    for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    snapshot(secret, da);
+    await redacted(text);
+  });
+  it("refuses a caller abort before dispatch without any vendor work", async () => {
+    await accounts();
+    const controller = new AbortController();
+    controller.abort();
+    const response = await dispatch({ signal: controller.signal });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    const text = await response.text();
+    for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+    expect(flow.network).not.toHaveBeenCalled();
+  });
+
+  it.each(modes.flatMap(([anthropic, stream]) => ["reset", "transport abort", "malformed", "HTML", "partial body", "incomplete", "empty", "invalid state", "GraphQL error"].map((kind) => [anthropic, stream, kind])))("never replays uncertain work (anthropic=%s, stream=%s, kind=%s)", async (anthropic, stream, kind) => {
+    const { da } = await orderedAccounts();
+    flow.network.mockImplementation(() => {
+      if (kind === "reset") throw new TypeError("synthetic post-send reset");
+      if (kind === "transport abort") throw new DOMException("synthetic post-send transport abort", "AbortError");
+      if (kind === "partial body") {
+        let sent = false;
+        return new Response(new ReadableStream({ pull(controller) {
+          if (!sent) { sent = true; controller.enqueue(new TextEncoder().encode('{"data":{"chatWithBot":{"text":"partial')); }
+          else controller.error(new TypeError("synthetic read failure"));
+        } }));
+      }
+      if (kind === "malformed") return new Response("{broken");
+      if (kind === "HTML") return new Response("<html>synthetic sign in</html>", { headers: { "content-type": "text/html" } });
+      if (kind === "GraphQL error") return Response.json({ errors: [{ message: secret }] });
+      return Response.json({ data: { chatWithBot: { text: kind === "empty" ? "" : "partial fixture", state: kind === "invalid state" ? {} : kind === "incomplete" ? "pending" : "complete" } } });
+    });
+    const response = await dispatch({ anthropic, stream });
+    const text = await response.text();
+    expect(response.status, text).toBeGreaterThanOrEqual(400);
+    for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+    expect(text).not.toContain("partial fixture");
+    snapshot(secret, da);
+    await redacted(text);
+  });
+  it.each(modes)("cancels a pending body on caller abort (anthropic=%s, stream=%s)", async (anthropic, stream) => {
+    const { da } = await orderedAccounts();
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    let timer;
+    flow.network.mockImplementation(() => new Response(new ReadableStream({
+      pull() { timer = setTimeout(() => controller.abort(), 20); return new Promise(() => {}); }, cancel,
+    })));
+    try {
+      const response = await dispatch({ anthropic, stream, signal: controller.signal });
+      const text = await response.text();
+      expect(response.status, text).toBeGreaterThanOrEqual(400);
+      for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      snapshot(secret, da);
+      await redacted(text);
+    } finally { clearTimeout(timer); }
+  });
+  it("cancels an oversized accepted body without replay", async () => {
+    const { da } = await orderedAccounts();
+    const { MAX_PROVIDER_BODY_BYTES } = await import("../../open-sse/config/runtimeConfig.js");
+    const cancel = vi.fn();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start(controller) {
+      controller.enqueue(new Uint8Array(MAX_PROVIDER_BODY_BYTES + 1));
+    }, cancel })));
+    const response = await dispatch({ stream: true });
+    const text = await response.text();
+    expect(response.status, text).toBeGreaterThanOrEqual(400);
+    for (const terminal of successTerminals) expect(text).not.toContain(terminal);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    snapshot(secret, da);
+    await redacted(text);
+  });
+
+  it("retains fallback after a locally proven unsent credential refusal", async () => {
+    const { a, b, db: dispatcher } = await orderedAccounts();
+    // Simulate a stored credential being cleared after the authenticated import.
+    await flow.db.updateProviderConnection(a.id, { apiKey: "p-b=" });
+    expect((await flow.db.getProviderConnectionById(a.id)).apiKey).toBe("p-b=");
+    flow.network.mockImplementation(vendor);
+    const response = await dispatch();
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(text).toContain("fixture answer");
+    expect((await flow.db.getProviderConnectionById(b.id)).apiKey).toBe(`p-b=${other}`);
+    snapshot(other, dispatcher);
+    await redacted(text);
+  });
+
 });

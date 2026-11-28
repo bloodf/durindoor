@@ -165,6 +165,7 @@ Vertex rejects malformed JSON-like credentials before dispatch or dashboard prob
 - [upstream-1072-provider-intake.md](./upstream-1072-provider-intake.md)
 - [windsurf-2034.md](./windsurf-2034.md)
 - [workbuddy-2034.md](./workbuddy-2034.md)
+- [zai-request-proof-provider-isolation-2034.md](./zai-request-proof-provider-isolation-2034.md)
 - [zed-hosted-2034.md](./zed-hosted-2034.md)
 - [zed-hosted-contract.md](./zed-hosted-contract.md)
 

@@ -4,6 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 
+// Share the executor’s isolated-home validation with automatic routing readiness.
+export function isolatedHome({ env = process.env, fs: fsApi = fs } = {}) {
+  const configured = env.DEVIN_AGENTIC_HOME;
+  if (!configured || !path.isAbsolute(configured)) return null;
+  try {
+    const home = fsApi.realpathSync(configured);
+    const protectedPaths = [fsApi.realpathSync(os.homedir()), fsApi.realpathSync(process.cwd())];
+    if (protectedPaths.some((entry) => entry === home || entry.startsWith(home + path.sep) || home.startsWith(entry + path.sep))) return null;
+    return fsApi.statSync(home).isDirectory() ? home : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveDevinBin({ platform = process.platform, env = process.env, fs: fsApi = fs, homedir = os.homedir } = {}) {
   const envBin = env.CLI_DEVIN_BIN?.trim();
   if (envBin) return envBin;
@@ -88,12 +102,13 @@ function windowsCommandCandidates(bin, env) {
  * POSIX requires an executable regular file (X_OK). Windows has no execute bit,
  * so it mirrors cmd.exe resolution (the credentialed CLI spawns with a shell
  * there): PATH plus PATHEXT, case-insensitive extensions. The agentic provider
- * stays unsupported on Windows and requires an absolute CLI_DEVIN_BIN.
+ * stays unsupported on Windows and requires an absolute CLI_DEVIN_BIN plus a
+ * valid isolated DEVIN_AGENTIC_HOME.
  * `platform`, `env` and `fs` are injectable for tests.
  */
 export function isDevinBinAvailable({ agentic = false, platform = process.platform, env = process.env, fs: fsApi = fs } = {}) {
   const bin = agentic ? env.CLI_DEVIN_BIN?.trim() : resolveDevinBin({ platform, env, fs: fsApi });
-  if (!bin || (agentic && (!path.isAbsolute(bin) || platform === "win32"))) return false;
+  if (!bin || (agentic && (!path.isAbsolute(bin) || platform === "win32" || !isolatedHome({ env, fs: fsApi })))) return false;
   if (platform === "win32") {
     return windowsCommandCandidates(bin, env).some((candidate) => {
       try {

@@ -16,8 +16,9 @@ function fakeFs(entries, { win = true } = {}) {
   };
   return {
     constants: { X_OK: 1 },
+    realpathSync: (p) => p,
     existsSync: (p) => table.has(norm(p)),
-    statSync: (p) => ({ isFile: () => lookup(p) !== "dir" }),
+    statSync: (p) => ({ isFile: () => lookup(p) !== "dir", isDirectory: () => lookup(p) === "dir" }),
     accessSync: (p) => { if (lookup(p) !== "exec") throw Object.assign(new Error("EACCES"), { code: "EACCES" }); }
   };
 }
@@ -166,7 +167,8 @@ describe("isDevinBinAvailable on POSIX (injected)", () => {
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin" }, { "/opt/bin/devin": "exec" })).toBe(true);
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin" }, { "/opt/bin/devin": "file" })).toBe(false);
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin", PATHEXT: ".EXE" }, { "/opt/bin/devin.exe": "exec" })).toBe(false);
-    expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin", PATH: "" }, { "/opt/bin/devin": "exec" }, { agentic: true })).toBe(true);
+    expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin", PATH: "" }, { "/opt/bin/devin": "exec" }, { agentic: true })).toBe(false);
+    expect(posix({ CLI_DEVIN_BIN: "/opt/bin/devin", DEVIN_AGENTIC_HOME: "/isolated-devin", PATH: "" }, { "/opt/bin/devin": "exec", "/isolated-devin": "dir" }, { agentic: true })).toBe(true);
     expect(posix({ CLI_DEVIN_BIN: "devin", PATH: "/opt/bin" }, { "/opt/bin/devin": "exec" }, { agentic: true })).toBe(false);
   });
 

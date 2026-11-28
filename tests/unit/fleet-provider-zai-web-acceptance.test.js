@@ -99,7 +99,8 @@ describe("zai-web acceptance (offline)", () => {
     const token = `header.${Buffer.from(JSON.stringify({ id: "fixture-user" })).toString("base64url")}.signature`;
     await getExecutor("zai-web").execute({
       model: "glm-5.3",
-      body: { model: "glm-5.3", messages: [{ role: "user", content: "hi" }] },
+      // Synthetic opaque proof so dispatch happens; it proves routing only.
+      body: { model: "glm-5.3", captcha_verify_param: "synthetic-proof-origin", messages: [{ role: "user", content: "hi" }] },
       stream: false,
       credentials: { apiKey: `token=${token}` },
       log: null,

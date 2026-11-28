@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { statSync, realpathSync } from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { BaseExecutor } from "./base.js";
 import { bindsConnectionRoute, createExecutorSender } from "./sendRequest.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
-import { extractChunkText, rpc, spawnDevinAcp } from "./devin-acp-stdio.js";
+import { extractChunkText, isolatedHome, rpc, spawnDevinAcp } from "./devin-acp-stdio.js";
 import registry from "../providers/registry/devin-cli-agentic.js";
 import { FORMATS } from "../translator/formats.js";
 import { CLAUDE_BLOCK, OPENAI_FINISH, ROLE } from "../translator/schema/index.js";
@@ -25,19 +23,6 @@ const STOP_REASONS = {
   max_turn_requests: OPENAI_FINISH.LENGTH,
   refusal: OPENAI_FINISH.CONTENT_FILTER,
 };
-
-function isolatedHome() {
-  const configured = process.env.DEVIN_AGENTIC_HOME;
-  if (!configured || !path.isAbsolute(configured)) return null;
-  try {
-    const home = realpathSync(configured);
-    const protectedPaths = [realpathSync(os.homedir()), realpathSync(process.cwd())];
-    if (protectedPaths.some((entry) => entry === home || entry.startsWith(home + path.sep) || home.startsWith(entry + path.sep))) return null;
-    return statSync(home).isDirectory() ? home : null;
-  } catch {
-    return null;
-  }
-}
 
 function promptFor(body) {
   if (body?.tools?.length || !Array.isArray(body?.messages)) return null;

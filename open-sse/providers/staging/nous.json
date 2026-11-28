@@ -1,0 +1,53 @@
+{
+  "$comment": "Data-only staged metadata for decolua/9router #3363 (Nous Research). Not imported by production code and not a registry entry. DurinDoor already registers Nous Research as nous-research (alias nous) in open-sse/providers/registry/nous-research.js; this file records the source-backed additions for that existing provider. Runtime contracts: open-sse/services/nous.js. Public promotion is owned by auth register-auth-06. Real-provider behaviour is unverified.",
+  "status": {
+    "staged": true,
+    "registered": false,
+    "promotionOwner": "register-auth-06",
+    "realProviderValidation": "unverified"
+  },
+  "source": {
+    "repository": "decolua/9router",
+    "pullRequest": 3363,
+    "commit": "b08f006324ebc5e355a871fb46f8f5bd34f1acce",
+    "providerId": "nous",
+    "aliases": ["nous-portal", "nous-research"],
+    "category": "freeTier"
+  },
+  "provider": {
+    "id": "nous-research",
+    "alias": "nous",
+    "registryModule": "open-sse/providers/registry/nous-research.js",
+    "authType": "apikey",
+    "authModes": ["apikey"],
+    "serviceKinds": ["llm"],
+    "transport": {
+      "baseUrl": "https://inference-api.nousresearch.com/v1/chat/completions",
+      "format": "openai"
+    },
+    "modelsFetcher": {
+      "url": "https://inference-api.nousresearch.com/v1/models",
+      "type": "nous-free",
+      "authenticated": false
+    },
+    "apiKeyUrl": "https://portal.nousresearch.com/api-keys",
+    "passthroughModels": true,
+    "modelPrefix": "nous/"
+  },
+  "models": {
+    "seeds": [
+      { "id": "nousresearch/hermes-4-70b", "name": "Nous: Hermes 4 70B", "contextLength": 131072 },
+      { "id": "nousresearch/hermes-4-405b", "name": "Nous: Hermes 4 405B", "contextLength": 131072 }
+    ],
+    "registeredModels": ["Hermes-4-405B", "Hermes-4-70B"],
+    "capabilities": {
+      "nousresearch/hermes-4-70b": { "tools": false, "reasoning": true, "thinkingFormat": "nous", "contextWindow": 131072, "maxOutput": 32000 },
+      "nousresearch/hermes-4-405b": { "tools": false, "reasoning": true, "thinkingFormat": "nous", "contextWindow": 131072, "maxOutput": 32000 }
+    },
+    "thinkingLevels": ["none", "low", "medium", "high"]
+  },
+  "keyVerification": {
+    "supported": false,
+    "status": "saved-unverified"
+  }
+}

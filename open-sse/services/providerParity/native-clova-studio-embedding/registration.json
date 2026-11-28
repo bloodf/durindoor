@@ -1,0 +1,106 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/handlers/embeddings.ts",
+      "open-sse/handlers/embeddingStructuredInput.ts"
+    ],
+    "registryFields": {
+      "id": "clova-studio",
+      "baseUrl": "https://clovastudio.stream.ntruss.com/v1/api-tools/embedding/v2",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "singleTextProtocol": "clova-v2"
+    }
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/handlers/embeddingProviders/index.js EMBEDDING_ADAPTERS and OPENAI_COMPAT_PROVIDERS (no clova-studio or clova key; getEmbeddingAdapter('clova-studio') and getEmbeddingAdapter('clova') are null; lookupMediaAdapter does no alias resolution)",
+      "open-sse/handlers/embeddingProviders/openai.js (generic OpenAI-compatible factory: one POST of { model, input } to PROVIDER_MEDIA[id].embeddingConfig.baseUrl; clova-studio has no embeddingConfig, and the v2 wire is one { text } per request with a { status, result } envelope, so the generic path is not equivalent even if configured)",
+      "open-sse/providers/registry/clova-studio.js (chat-only entry, alias clova: transport https://clovastudio.stream.ntruss.com/v1/openai/chat/completions format openai, serviceKinds [\"llm\"], three HCX chat models, no media.embeddingConfig, no embedding rows)",
+      "rg -i clova over the checkout: no embedding endpoint (api-tools/embedding), no singleTextProtocol and no v2 envelope normalizer"
+    ],
+    "result": "same provider id, alias and API key mode exist for chat, but no embeddings route, endpoint, envelope or adapter; the embeddings adapter and its one model row are the whole delta"
+  },
+  "module": "open-sse/services/providerParity/native-clova-studio-embedding/index.js",
+  "exports": {
+    "clovaEmbeddingAdapter": "default adapter instance; embed({ model, body, credentials, signal, log }) plus buildUrl/buildHeaders/buildBody (first per-call body) for introspection",
+    "createClovaEmbeddingAdapter": "factory; options { callTimeoutMs, totalTimeoutMs, now, fetch } for tests",
+    "buildClovaEmbeddingRequest": "(model, body) -> { texts, bodies: [{ text }], items, encodingFormat, model, dimensions: 1024 }; throws status 400",
+    "normalizeClovaEmbedding": "(answer, { dimensions }) -> { vector, inputTokens|null }; throws on a non-20000 status or unusable vector",
+    "packFloat32Base64": "little-endian float32 base64 pack (source packEmbeddingAsBase64)",
+    "clovaAcceptedJob": "(jobState, { completedInputs, requestedInputs, usage }) accepted-work accounting with unknown cost",
+    "clovaToken": "selected connection key: apiKey, then accessToken; null when missing or containing CR/LF",
+    "CLOVA_PROVIDER": "provider facts (id, alias, name, website, authType, authHint, existingServiceKinds, serviceKinds to add)",
+    "CLOVA_EMBEDDING_MODELS": "[{ clova-embedding-v2, 1024 }], kind embedding",
+    "CLOVA_EMBEDDINGS_URL": "https://clovastudio.stream.ntruss.com/v1/api-tools/embedding/v2",
+    "CLOVA_CALL_TIMEOUT_MS": "30000, per call (send and body read)",
+    "CLOVA_TOTAL_TIMEOUT_MS": "120000, whole fan-out"
+  },
+  "provider": {
+    "canonicalId": "clova-studio",
+    "aliases": ["clova"],
+    "existingRegistryEntry": "open-sse/providers/registry/clova-studio.js",
+    "existingServiceKinds": ["llm"],
+    "addServiceKinds": ["embedding"],
+    "serviceKindsNote": "keep llm, its OpenAI-compatible chat transport and its HCX models untouched; add embedding only",
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "tokenRefresh": "none (API key); a 401/403 is final for the call",
+    "connectionBaseUrlHonored": false
+  },
+  "models": {
+    "embedding": [
+      { "id": "clova-embedding-v2", "name": "CLOVA Embedding v2", "dimensions": 1024 }
+    ],
+    "addressing": "clova-studio/clova-embedding-v2, and clova/clova-embedding-v2 once the registry alias resolves for embeddings. In the source the bare id clova-embedding-v2 resolves to clova-studio by registry search; registration may keep that, since no other provider lists the id",
+    "dynamicDiscovery": "none for embeddings in the source: its clova-studio live discovery (src/app/api/providers/[id]/models/discovery/providerSets.ts, <baseUrl>/models) reads the chat catalog and does not feed EMBEDDING_PROVIDERS. The embedding list is static"
+  },
+  "endpoints": {
+    "embeddings": {
+      "method": "POST",
+      "url": "https://clovastudio.stream.ntruss.com/v1/api-tools/embedding/v2",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ text } (exactly one input per call; a batch is fanned out sequentially in input order)",
+      "response": "{ status: { code: \"20000\", message }, result: { embedding: number[1024], inputTokens } }; any other status code is a failure even on HTTP 200",
+      "redirect": "manual (refused)"
+    }
+  },
+  "supportedInput": {
+    "input": "string or 1..64 non-empty strings, each at most 20000 characters",
+    "encoding_format": ["float", "base64"],
+    "dimensions": "absent, null or the number 1024 (never forwarded)",
+    "ignored": ["user"],
+    "refused": ["token arrays", "structured or multimodal items", "any other dimensions value", "any other field", "any other model"]
+  },
+  "accounting": {
+    "success": "mediaAccounting over the summed inputTokens; cost unknown; nativeUnits { inputs, calls }; meta.usageMissing when any call omitted inputTokens",
+    "acceptedJob": "jobState submit-unknown (timeout, abort after send, 5xx, foreign redirect), completed-unusable (2xx with non-20000 status or bad vector), accepted (abort during body read) or partial (a definite failure after earlier calls succeeded); meta carries completedInputs and requestedInputs"
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import { clovaEmbeddingAdapter } and add `\"clova-studio\": clovaEmbeddingAdapter` to EMBEDDING_ADAPTERS (not to OPENAI_COMPAT_PROVIDERS)"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "after getEmbeddingAdapter, `if (isFunction(adapter.embed)) return adapter.embed({ model, body, credentials, signal, log })` and call onRequestSuccess only on success; the shared single-request fetch, refresh retry and upstream error relay must not run for clova-studio (same hook the deapi and nanogpt registrations add)"
+    },
+    {
+      "file": "open-sse/providers/registry/clova-studio.js",
+      "change": "add \"embedding\" to serviceKinds and CLOVA_EMBEDDING_MODELS as kind embedding rows; keep the chat transport and HCX models as they are"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "it already selects the connection and enforces quota before handleEmbeddingsCore. Record result.acceptedJob as unknown-cost usage on the selected connection and do not fall through to another account for a result that carries acceptedJob, so uncertain or partially billed work is never replayed"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the embedding kind on the Naver CLOVA Studio row after registration"
+    }
+  ]
+}

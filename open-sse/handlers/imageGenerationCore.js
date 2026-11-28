@@ -116,7 +116,7 @@ export async function handleImageGenerationCore({
 }) {
   const { provider, model } = modelInfo;
   const refreshAfterAuthFailure = (executor) => refreshMediaCredentials({
-    provider, executor, credentials, refreshCredentials, log, proxyOptions
+    provider, executor, credentials, refreshCredentials, log, proxyOptions, signal, onCredentialsRefreshed
   });
   const proxyOptions = resolveCredentialProxyOptions(credentials);
   // Client disconnects are not provider failures: callers must not cool down the account.
@@ -214,6 +214,7 @@ export async function handleImageGenerationCore({
         // Only an injected (leased) refresher may recover executor adapters.
         if (isAbort(error) || !isFunction(refreshCredentials) || ![401, 403].includes(Number(error?.status))) throw error;
         const refreshed = await refreshAfterAuthFailure(getExecutor(provider));
+        if (signal?.aborted) return abortedResult();
         if (!refreshed) throw error;
         log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
         Object.assign(credentials, refreshed);
@@ -423,13 +424,18 @@ export async function handleImageGenerationCore({
   providerResponse.status === HTTP_STATUS.UNAUTHORIZED ||
   providerResponse.status === HTTP_STATUS.FORBIDDEN))
   {
-    const newCredentials = await refreshAfterAuthFailure(executor);
+    let newCredentials;
+    try {
+      newCredentials = await refreshAfterAuthFailure(executor);
+    } catch (error) {
+      if (isAbort(error)) return abortedResult();
+      throw error;
+    }
+    if (signal?.aborted) return abortedResult();
 
     if (newCredentials?.accessToken || newCredentials?.apiKey) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed for image generation`);
       Object.assign(credentials, newCredentials);
-      // An injected refresher has already committed what it returns.
-      if (!isFunction(refreshCredentials) && onCredentialsRefreshed) await onCredentialsRefreshed(newCredentials);
 
       try {
         requestBody = await adapter.buildBody(model, body, adapterOptions);

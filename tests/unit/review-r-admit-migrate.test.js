@@ -49,6 +49,7 @@ const admitted = {
   codexAlphaSearch: [400, "Invalid search request"],
   "gemini native": [503, "No active credentials for provider: gemini"],
 };
+// Chat must resolve a concrete model before the mocked missing-credentials check.
 const cases = [
   ["embeddings", (key) => embeddings.handleEmbeddings(request(key))],
   ["tts", (key) => tts.handleTts(request(key))],
@@ -66,8 +67,10 @@ const cases = [
   ["video create", (key) => video.handleVideoCreate(request(key), "generations")],
   ["video poll", (key) => video.handleVideoGet(request(key, {}, "GET"), "job")],
   ["nativeProvider", (key) => native.handleNativeProvider(request(key, {}, "GET"), "anthropic", "/v1/files")],
-  ["chat", (key) => chat.handleChat(request(key, { model: "invalid", messages: [{ role: "user", content: "hello" }] }))],
-  ["chat messages", (key) => chat.handleChat(request(key, { model: "invalid", messages: [{ role: "user", content: "hello" }] }, "POST", "/v1/messages"))],
+  // A supported registry model reaches credential admission; an unknown bare
+  // placeholder now correctly stops earlier with model_not_found.
+  ["chat", (key) => chat.handleChat(request(key, { model: "openai/gpt-4o", messages: [{ role: "user", content: "hello" }] }))],
+  ["chat messages", (key) => chat.handleChat(request(key, { model: "openai/gpt-4o", messages: [{ role: "user", content: "hello" }] }, "POST", "/v1/messages"))],
   ["codexAlphaSearch", (key) => codex.handleCodexAlphaSearch(request(key))],
   ["gemini native", (key) => gemini.POST(request(key, { generationConfig: { responseModalities: ["AUDIO"] } }), { params: Promise.resolve({ path: ["gemini-2.5-flash-preview-tts:generateContent"] }) })],
 ];

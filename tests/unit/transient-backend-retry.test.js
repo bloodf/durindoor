@@ -35,6 +35,34 @@ describe("transientBackendRetry", () => {
     expect(sleeps).toBe(1);
   });
 
+  it.each([
+    ["upstreamPartialOutput", { upstreamPartialOutput: true }],
+    ["localProgrammingError", { localProgrammingError: true }],
+    ["both partial-output and local-programming-error", { upstreamPartialOutput: true, localProgrammingError: true }],
+  ])("never replays a retryable status flagged %s", async (_label, flags) => {
+    for (const status of [502, 503, 504]) {
+      const flagged = Object.assign(new Response("terminal", { status }), flags);
+      let calls = 0;
+      let sleeps = 0;
+      const result = await runWithTransientBackendRetry(async () => { calls++; return flagged; }, { sleep: async () => { sleeps++; } });
+      expect(result).toBe(flagged);
+      expect(calls).toBe(1);
+      expect(sleeps).toBe(0);
+    }
+  });
+
+  it("still retries when the guard flags are present but not strictly true", async () => {
+    let calls = 0;
+    const result = await runWithTransientBackendRetry(async () => {
+      calls++;
+      return calls === 1
+        ? Object.assign(new Response("upstream", { status: 503 }), { upstreamPartialOutput: "true", localProgrammingError: 1 })
+        : new Response("ok", { status: 200 });
+    }, { sleep: sleepImpl });
+    expect(result.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
   it("returns the first success without retrying", async () => {
     let calls = 0;
     const result = await runWithTransientBackendRetry(async () => {

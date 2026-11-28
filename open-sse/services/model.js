@@ -1,4 +1,5 @@
 import { stripRecognizedContextSuffix } from "./contextSuffix.js";
+import { MODEL_LIFECYCLE_RECORDS } from "./modelLifecycle.js";
 import REGISTRY from "../providers/registry/index.js";
 import { detectRequiredCapabilities, detectToolOutputCapabilities } from "./combo.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
@@ -154,8 +155,10 @@ export function resolveModelAliasFromMap(alias, aliases) {
  * Get full model info (parse or resolve)
  * @param {string} modelStr - Model string
  * @param {object|function} aliasesOrGetter - Aliases object or async function to get aliases
+ * @param {object} [options] - Inference routes reject unknown bare ids; other callers retain passthrough.
+ * @param {boolean} [options.rejectUnknownBare=false] - Return model_not_found instead of the OpenAI default.
  */
-export async function getModelInfoCore(modelStr, aliasesOrGetter) {
+export async function getModelInfoCore(modelStr, aliasesOrGetter, { rejectUnknownBare = false } = {}) {
   const parsed = parseModel(modelStr);
 
   if (!parsed.isAlias) {
@@ -183,10 +186,11 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
   }
 
   // Fallback: infer provider from model name prefix
-  return {
-    provider: inferProviderFromModelName(parsed.model),
-    model: parsed.model
-  };
+  const inferred = inferProviderFromModelName(parsed.model);
+  if (rejectUnknownBare && !inferred) {
+    return { provider: null, model: parsed.model, errorType: "model_not_found" };
+  }
+  return { provider: inferred || "openai", model: parsed.model };
 }
 
 // Config-driven prefix → provider inference (first match wins, fallback "openai").
@@ -207,9 +211,22 @@ const MODEL_PREFIX_PROVIDERS = [
  * Used as fallback when no provider prefix or alias is given
  */
 function inferProviderFromModelName(modelName) {
-  if (!modelName) return "openai";
+  if (!modelName) return null;
   const m = modelName.toLowerCase();
-  return MODEL_PREFIX_PROVIDERS.find(([re]) => re.test(m))?.[1] || "openai";
+  const inferred = MODEL_PREFIX_PROVIDERS.find(([re]) => re.test(m))?.[1];
+  if (inferred) return inferred;
+  // Fine-tunes keep their full wire identity; infer only from their base model.
+  if (m.startsWith("ft:")) {
+    const parts = modelName.split(":");
+    return parts.length === 5 && parts[2] && parts[4] &&
+      inferProviderFromModelName(parts[1]) === "openai" ? "openai" : null;
+  }
+  // Legacy OpenAI wire ids absent from the current curated catalog.
+  if (["chatgpt-4o-latest", "codex-mini-latest"].includes(modelName)) return "openai";
+  if (REGISTRY.find((entry) => entry.id === "openai")?.models?.some((entry) =>
+    entry.id === modelName || entry.aliases?.includes(modelName))) return "openai";
+  if (MODEL_LIFECYCLE_RECORDS.some((entry) => entry.provider === "openai" && entry.model === modelName)) return "openai";
+  return null;
 }
 
 /**

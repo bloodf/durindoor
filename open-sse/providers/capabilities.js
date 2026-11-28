@@ -27,6 +27,7 @@ import { COMMANDCODE_MAX_TOKENS } from "../config/commandcode.js";
 import REGISTRY from "./registry/index.js";
 import { AUDITED_PROVIDER_CAPABILITIES } from "./vendorModelCapabilities.js";
 import { stripThinkingSuffix } from "../translator/concerns/thinkingSuffix.js";
+import { OPENAI_RESPONSES_FAMILY } from "../config/openaiResponsesFamily.js";
 
 
 /**
@@ -1518,6 +1519,13 @@ export function getCapabilitiesForModel(provider, model, kind = undefined) {
       if (hasUnpublishedOutput(provider, baseModel)) merged.maxOutput = undefined;
       return finalize(merged);
     }
+  }
+  // The OpenAI Responses routing fallback also implies reasoning support for
+  // unlisted chat IDs. Keep effort levels unknown until metadata declares them;
+  // explicit capabilities, catalog service kinds and family patterns win above,
+  // and a custom or synced `thinkingEfforts` merged over this row wins as well.
+  if (provider === "openai" && !registryModel && OPENAI_RESPONSES_FAMILY.test(normalizedModel)) {
+    return finalize({ ...DEFAULT_CAPABILITIES, reasoning: true, thinkingFormat: "openai", thinkingLevelsUnknown: true });
   }
   return finalize({ ...DEFAULT_CAPABILITIES });
 }

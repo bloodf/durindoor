@@ -40,7 +40,7 @@ export function validateExecutorResult(result) {
     return { response: result, url: "", headers: {}, transformedBody: null };
   }
   if (!result || !isResponseLike(result.response)) {
-    throw new TypeError("Executor result must contain a Response");
+    throw Object.assign(new TypeError("Executor result must contain a Response"), { localProgrammingError: true });
   }
   return {
     ...result,

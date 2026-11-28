@@ -1,7 +1,7 @@
 # ChatPlayground session handoff (#2034)
 
 Source freeze: 2026-11-27T23:49:25.752045Z. Read the sourceflow report
-`chatplayground-2034.md`; no post-freeze upstream adoption or live calls.
+`cookie-flows/chatplayground-2034.md`; no post-freeze upstream adoption or live calls.
 
 ## Implemented boundary
 
@@ -56,7 +56,7 @@ Run only with mocked network, isolated environment, and at most two workers:
 
 ## Validation and limits
 
-Added `tests/unit/chatplayground-session-2034.test.js`: real helper/executor with
+Added `tests/unit/fix-chatplayground-session-contract-2034.test.js`: real helper/executor with
 network mocks, account/proxy closure snapshots, repeated acquisition, explicit
 expiry, cookie echo rejection, denial/redirect/HTML/oversize/unknown shape,
 abort/stalled body, fixed origins, and one chat dispatch after unknown work.
@@ -93,3 +93,22 @@ active abort, stalled-body timeout and normal mint/readiness checks. The run use
 cache and `timeout 60s`. Syntax and diff-whitespace checks passed. Vitest/full CI
 remain unavailable locally because dependency directories are absent; the exact
 external evidence gate has not been rerun or claimed passing.
+
+## Required evidence path correction
+
+Read the orchestrator's `gate-1.json` at the explicit path supplied by the owner.
+It records successful setup and evidence exit 1 on head
+`06ebd179f68f4cfb44cc0571440eeecad2b6d7d5`, with an outside-paths flag for
+this unit's original test and report locations. The owner confirmed the silent
+`test -f unit/fix-chatplayground-session-contract-2034.test.js` guard failed
+before Vitest. This was a path mismatch, not a product-test failure. The prior
+pre-abort correction fixes a separately reproduced defect; it does not explain
+the gate-1 rejection.
+
+Renamed the entire test to the exact required filename, preserving every case,
+and moved this report to its required location. The exported helper and JSON
+handoff are unchanged. No evidence command, runner, dependency graph or shared
+setup was modified. Required file-presence, test syntax and whitespace checks
+passed. Dependencies remain absent in this checkout, so no Vitest run or duplicate
+install was attempted; the native gate must supply its isolated setup and run the
+exact named evidence. No result is claimed for gate-2.

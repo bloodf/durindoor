@@ -1,4 +1,4 @@
-Verdict: BLOCKED
+Verdict: READY
 PR: #2633
 Old head: 11de5827d1ebc79b31707da39df86e3294d86480
 Side branch: sweep/2633, f2ced2b0c44c6e13ed8bc877cc4e557735ed87f8
@@ -12,4 +12,7 @@ Commands: scripts and tests used fresh private HOME, DATA_DIR, TMPDIR, XDG_CACHE
 - cd tests && node node_modules/vitest/vitest.mjs run unit/operational-metrics-http-boundary.test.js unit/port-omniroute-21275-abort-chain.test.js unit/review-s-media-pipeline.test.js --maxWorkers=2: exit 0, 3 files, 37 tests passed, 0 failed.
 - cd tests && node node_modules/vitest/vitest.mjs run unit/endpoint-stale-probe-2627.test.js unit/model-probe-error-context.test.js unit/models-card-probe-context.test.js unit/port-omniroute-21275-abort-chain.test.js unit/port9r-3860-anthropic-incomplete-terminal.test.js --maxWorkers=2: exit 0, 5 files, 53 tests passed, 0 failed.
 - git diff --check origin/main...sweep/2633: exit 0; git merge-base --is-ancestor origin/review/client-cancellation-2624 sweep/2633: exit 0; git worktree remove: exit 0.
-Finding: scoped related tests did not finish within the required ceiling; no complete related-test pass is available. Reproduce with the related command above; no merge-related failure identified. Reduced gate and independent review remain for orchestrator. No push made.
+- Re-added side worktree and dependency symlinks: exit 0. `node ../scripts/run-related-tests.mjs --discover /var/tmp/dd2633-changed-files /var/tmp/dd2633-related.json` from tests/: exit 0, 549 files selected.
+- The same selection ran in 11 sequential batches of at most 50 via `node node_modules/vitest/vitest.mjs run --maxWorkers=2 <batch files>`, each with a fresh private environment and 295-second timeout: all exit 0; 542 files passed, 7 skipped; 10329 tests passed, 18 skipped, 0 failed.
+- Rechecked `git merge-base --is-ancestor origin/review/client-cancellation-2624 sweep/2633` and removed the side worktree: both exit 0.
+Finding: direct related command exceeded its limit; equivalent dependency discovery and bounded runs passed. No merge-related failures found. Reduced gate and independent review remain for orchestrator. No push made.

@@ -18,12 +18,13 @@ export function createClientFrameFramer({ format, onFrame }) {
   if (format !== "sse" && format !== "sse-lines" && format !== "ndjson") {
     throw new Error(`Unsupported client frame format: ${format}`);
   }
-  const decoder = new TextDecoder();
+  let decoder;
   let buffer = "";
   let pendingLines = [];
 
   function decodeChunk(chunk, final) {
     if (isString(chunk)) return chunk;
+    decoder ??= new TextDecoder();
     return decoder.decode(chunk, { stream: !final });
   }
 
@@ -80,7 +81,7 @@ export function createClientFrameFramer({ format, onFrame }) {
   }
 
   function flush() {
-    buffer += decodeChunk(new Uint8Array(0), true);
+    if (decoder) buffer += decoder.decode();
     consumeLines(true);
     emitPending();
   }

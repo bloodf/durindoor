@@ -1,6 +1,9 @@
 # Z.ai Web (`zai-web`) cookie flow, #2034
 
-**Historical reproduction below; see “Executor repair after acaef33ca45” for the current private change and pending validation.**
+**Current repair:** the executor forwards supplied CAPTCHA proof, accepts explicit
+`providerSpecificData.token`, rejects conflicting credentials, and refuses
+unsupported browser dispatch before POST. Full parity and regression execution
+remain unproved; the repair evidence and limits follow the original report below.
 
 ## Verdict: NOT PARITY
 
@@ -259,7 +262,7 @@ dependency mutation or live provider request occurred.
 - PASS: Node syntax checks for the executor, both helpers and the new regression
   file; `git diff --check`.
 - NOT RUN: new real-executor/actual-transport-boundary and OpenAI/Anthropic
-  client-format regressions in `tests/unit/zai-web-source-contract-2034.test.js`.
+  client-format regressions in `tests/unit/fix-zai-source-token-proof-2034.test.js`.
   Focused Vitest collection failed before execution with `MODULE_NOT_FOUND`
   for `tests/node_modules/vitest/vitest.mjs`. The native gate must provide its
   isolated dependency setup and run this file with `--maxWorkers=2`, then
@@ -275,3 +278,10 @@ redirect refusal, redaction, cancellation/deadline and one completion send per
 turn. The real handler matrix covers buffered/streamed OpenAI and Anthropic
 failure terminals, no success usage and no credential refresh. They still need
 execution before any readiness claim.
+
+### Evidence gate filename correction
+
+The evidence gate requires `unit/fix-zai-source-token-proof-2034.test.js`. The
+complete regression suite was renamed to that exact path; its assertions were
+retained. The previous name prevented the gate from collecting the required
+file. This correction does not establish that Vitest assertions have passed.

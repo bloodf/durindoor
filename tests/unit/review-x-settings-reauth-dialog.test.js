@@ -82,18 +82,30 @@ describe("#2579: re-auth dialog and retry", () => {
   });
 
   it.each([
-    ["profile/page.js", ["outboundProxyUrl: proxyForm.outboundProxyUrl", "JSON.stringify({ outboundProxyEnabled })", "JSON.stringify({ logToolSources: enabled })", "JSON.stringify({ enableObservability: enabled })"]],
-    ["token-saver/TokenSaverClient.jsx", ["body: JSON.stringify(patch)"]],
-    ["headroom/HeadroomClient.js", ["body: JSON.stringify(patchValue)"]],
+    ["profile/page.js", [
+      ["profile/NetworkSettingsSection.jsx", "outboundProxyUrl: proxyForm.outboundProxyUrl"],
+      ["profile/NetworkSettingsSection.jsx", "JSON.stringify({ outboundProxyEnabled })"],
+      ["profile/SystemSettingsSection.jsx", "JSON.stringify({ logToolSources: enabled })"],
+      ["profile/SystemSettingsSection.jsx", "JSON.stringify({ enableObservability: enabled })"],
+    ]],
+    ["token-saver/TokenSaverClient.jsx", [[null, "body: JSON.stringify(patch)"]]],
+    ["headroom/HeadroomClient.js", [[null, "body: JSON.stringify(patchValue)"]]],
   ])("%s offers the prompt on its gated writes", (page, writes) => {
-    const source = readFileSync(path.resolve(import.meta.dirname, "../../src/app/(dashboard)/dashboard", page), "utf8");
+    const read = (file) => readFileSync(path.resolve(import.meta.dirname, "../../src/app/(dashboard)/dashboard", file), "utf8");
+    const source = read(page);
 
     expect(source).toContain("<ReauthDialog prompt={reauth} />");
-    for (const write of writes) {
-      const from = source.indexOf(write);
+    if (page === "profile/page.js") {
+      for (const section of ["NetworkSettingsSection", "SystemSettingsSection"]) {
+        expect(source).toMatch(new RegExp(`<${section}\\b[^>]*\\bconfirmPassword=\\{confirmPassword\\}`));
+      }
+    }
+    for (const [file, write] of writes) {
+      const handlerSource = file ? read(file) : source;
+      const from = handlerSource.indexOf(write);
       expect(from).toBeGreaterThan(-1);
       // The request statement ends at the next semicolon.
-      expect(source.slice(from).split(";")[0]).toContain("confirmPassword");
+      expect(handlerSource.slice(from).split(";")[0]).toContain("confirmPassword");
     }
   });
 });

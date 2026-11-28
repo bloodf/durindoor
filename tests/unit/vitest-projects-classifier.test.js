@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFileClassifier, isIntegrationSource } from "../__baseline__/vitest-projects.mjs";
 
@@ -65,6 +65,38 @@ describe("Vitest project resource classification", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+  function classify(files) {
+    const root = mkdtempSync(join(tmpdir(), "vitest-classifier-"));
+    try {
+      const tests = join(root, "tests");
+      mkdirSync(tests);
+      for (const [name, source] of Object.entries(files)) {
+        mkdirSync(dirname(join(tests, name)), { recursive: true });
+        writeFileSync(join(tests, name), source);
+      }
+      return createFileClassifier(tests, root)("x.test.js");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+  const helperPaths = [".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"]
+    .flatMap((extension) => [`helper${extension}`, `helper/index${extension}`]);
+  it.each(helperPaths)("detects a listener in an extensionless import of %s", (helper) => {
+    expect(classify({ "x.test.js": 'import "./helper";', [helper]: "server.listen(0);" })).toBe(true);
+  });
+  // Without this control, failing closed would hide an extension that never resolves.
+  it.each(helperPaths)("resolves a resource-free %s instead of failing closed", (helper) => {
+    expect(classify({ "x.test.js": 'import "./helper";', [helper]: "export const value = 1;" })).toBe(false);
+  });
+  it.each(["./missing", "../missing.js", "@/missing", "open-sse/missing.js"])(
+    "classifies the unresolved local import %s as integration",
+    (specifier) => {
+      expect(classify({ "x.test.js": `import "${specifier}";` })).toBe(true);
+    },
+  );
+  it("classifies an unresolved import in a helper as integration", () => {
+    expect(classify({ "x.test.js": 'import "./helper";', "helper.js": 'import "./missing";' })).toBe(true);
   });
   it("detects a listener after a regex literal containing comment delimiters", () => {
     expect(isIntegrationSource("const slash = /[//]/; server.listen(0);" )).toBe(true);

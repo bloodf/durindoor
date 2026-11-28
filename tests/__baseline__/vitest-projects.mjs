@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,9 @@ const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const require = createRequire(resolve(root, "package.json"));
 const { transformSync } = require("esbuild");
 const { parse: parseJavaScript } = require("@babel/parser");
-const CACHE_VERSION = 1;
+// Hashing this file retires cached records whenever the classification rules change.
+const CACHE_VERSION = createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex");
+const resolutionExtensions = ["", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"];
 const overrides = {
   unit: new Set(["translator/golden-request.test.js"]),
   integration: new Set(["unit/oauth-callback-cleanup.test.js", "unit/oauth-fixed-port-flow.test.js"]),
@@ -33,6 +36,15 @@ function containsResource(code) {
     }
   }
   return resourceOperation.test(chars.join(""));
+}
+function isFile(path) {
+  try { return statSync(path).isFile(); } catch { return false; }
+}
+function resolveLocalImport(target) {
+  return [
+    ...resolutionExtensions.map((extension) => target + extension),
+    ...resolutionExtensions.slice(1).map((extension) => resolve(target, `index${extension}`)),
+  ].find(isFile);
 }
 /** Conservatively classify malformed source as integration. */
 export function isIntegrationSource(source) {
@@ -97,11 +109,10 @@ export function createFileClassifier(testsDir, repoRoot = root) {
         const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
           : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
           : resolve(dirname(file), specifier);
-        if (target.startsWith(repoRoot + "/") && !target.includes("/node_modules/")) {
-          for (const candidate of [target, target + ".js", target + ".mjs", resolve(target, "index.js")]) {
-            if (existsSync(candidate)) { pending.push(candidate); break; }
-          }
-        }
+        const resolved = resolveLocalImport(target);
+        // Fail closed: an unresolved local import may hide resource use.
+        if (!resolved) { results.set(entryPath, true); return true; }
+        if (resolved.startsWith(repoRoot + "/") && !resolved.includes("/node_modules/")) pending.push(resolved);
       }
     }
     for (const file of seen) results.set(file, false);

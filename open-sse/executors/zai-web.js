@@ -82,7 +82,7 @@ export class ZaiWebExecutor extends BaseExecutor {
     input.signal?.throwIfAborted();
     const token = resolveZaiWebSession(input.credentials, extractZaiWebToken);
     const userId = token && userIdFromToken(token);
-    if (!token || !userId) return { response: errorResponse(401, "Invalid or expired Z.ai session. Re-import the chat.z.ai session token.", { type: "authentication_error", code: "invalid_session" }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
+    if (!token || !userId) return { response: errorResponse(401, "Invalid or expired Z.ai session. Re-import the chat.z.ai token cookie or the stored Local Storage token.", { type: "authentication_error", code: "invalid_session" }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
     const messages = Array.isArray(input.body?.messages) ? input.body.messages : [];
     const proof = resolveZaiCaptchaVerifyParam(input.credentials ?? {}, input.body);
     const hasImages = messages.some((message) => Array.isArray(message.content) && message.content.some((part) => ["image_url", "input_image", "image"].includes(part?.type)));

@@ -5,19 +5,21 @@
  * Proof is opaque: the source defines neither a TTL nor a challenge verifier.
  * Never cache, synthesize, refresh, or retry a supplied proof here.
  */
-const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : null;
+import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
+
+const record = (value) => (isRecord(value) ? value : null);
 function json(value) {
-  try { return typeof value === "string" && value.trim().startsWith("{") ? record(JSON.parse(value)) : null; }
+  try { return isString(value) && value.trim().startsWith("{") ? record(JSON.parse(value)) : null; }
   catch { return null; }
 }
 export function extractZaiCaptchaVerifyParam(value) {
   const obj = record(value);
   if (obj) {
     const direct = obj.captcha_verify_param ?? obj.captchaVerifyParam ?? obj.zaiCaptchaVerifyParam;
-    if (typeof direct === "string" && direct.trim()) return direct.trim();
+    if (isString(direct) && direct.trim()) return direct.trim();
     return obj.providerSpecificData ? extractZaiCaptchaVerifyParam(obj.providerSpecificData) : "";
   }
-  if (typeof value !== "string") return "";
+  if (!isString(value)) return "";
   const parsed = json(value);
   if (parsed) return extractZaiCaptchaVerifyParam(parsed);
   return value.match(/(?:^|;\s*)captcha_verify_param=([^;]+)/)?.[1]?.trim() ?? "";
@@ -39,7 +41,7 @@ export function resolveZaiWebSession(credentials = {}, extract) {
   const psd = record(credentials.providerSpecificData);
   const values = [];
   if (psd && Object.hasOwn(psd, "token")) {
-    if (typeof psd.token !== "string" || !psd.token.trim() || /[\s;=]/.test(psd.token.trim())) return "";
+    if (!isString(psd.token) || !psd.token.trim() || /[\s;=]/.test(psd.token.trim())) return "";
     values.push(psd.token.trim());
   }
   for (const value of [credentials.apiKey, credentials.accessToken]) {

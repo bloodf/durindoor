@@ -29,11 +29,44 @@ const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json"
 // covers every *.test.js the root include can match, so the split is disjoint.
 const INTEGRATION_SOURCE = /DATA_DIR|mkdtemp|child_process|\bWorker\b|createServer|\.listen\s*\(|sqlite|pglite|sql\.js|sqljs/i;
 const scanned = globSync("**/*.test.js", { cwd: __dirname, exclude: ["**/node_modules/**", "**/.omc/**", "**/.claude/**"] }).sort();
-const integrationFiles = scanned.filter(file => INTEGRATION_SOURCE.test(readFileSync(resolve(__dirname, file), "utf8")));
+// Follow local helper imports as well as the test itself: socket or database
+// creation can be hidden several modules away from the test entry point.
+const repoRoot = resolve(__dirname, "..");
+const importPattern = /(?:\bfrom\s*|\bimport\s*\(|\bimportActual\s*\(|\bimport\s*)["']((?:\.{1,2}\/|@\/|open-sse\/)[^"']+)["']/g;
+const sourceCache = new Map();
+function isIntegration(entry) {
+  const seen = new Set();
+  const pending = [resolve(__dirname, entry)];
+  while (pending.length) {
+    const file = pending.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    let source = sourceCache.get(file);
+    if (source === undefined) {
+      try { source = readFileSync(file, "utf8"); } catch { continue; }
+      sourceCache.set(file, source);
+    }
+    if (INTEGRATION_SOURCE.test(source)) return true;
+    for (const match of source.matchAll(importPattern)) {
+      const specifier = match[1];
+      const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
+        : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
+        : resolve(dirname(file), specifier);
+      if (target.startsWith(repoRoot + "/") && !target.includes("/node_modules/")) {
+        for (const candidate of [target, target + ".js", target + ".mjs", resolve(target, "index.js")]) {
+          if (existsSync(candidate)) { pending.push(candidate); break; }
+        }
+      }
+    }
+  }
+  return false;
+}
+const integrationFiles = scanned.filter(isIntegration);
 const integrationSet = new Set(integrationFiles);
 const unitFiles = scanned.filter(file => !integrationSet.has(file));
 
 export default defineConfig({
+  root: __dirname,
   oxc: {
     include: /(?:src\/app\/\(dashboard\)\/dashboard\/providers\/\[id\]\/EditCompatibleNodeModal\.js|\.jsx)$/,
     exclude: [],
@@ -89,8 +122,8 @@ export default defineConfig({
     // Suppress noisy console output from handlers under test
     silent: false,
     projects: [
-      { extends: true, test: { name: "unit", exclude: integrationFiles } },
-      { extends: true, test: { name: "integration", exclude: unitFiles } },
+      { extends: true, test: { name: "unit", exclude: integrationFiles.map(file => resolve(__dirname, file)) } },
+      { extends: true, test: { name: "integration", exclude: unitFiles.map(file => resolve(__dirname, file)) } },
     ],
   },
   plugins: [{

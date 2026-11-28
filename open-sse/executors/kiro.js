@@ -33,6 +33,13 @@ import {
 "../services/providerAttemptContext.js";
 import { MAX_PROVIDER_BODY_BYTES } from "../config/runtimeConfig.js";
 import { OPENAI_BLOCK } from "../translator/schema/index.js";
+import {
+  isKiroMalformedStop,
+  kiroExceptionStatus,
+  kiroFinishReason,
+  kiroStreamFailure,
+  normalizeKiroStopReason } from
+"./kiroTerminal.js";
 
 // Confirmed monthly-credit exhaustion signal from CodeWhisperer's 402
 // (AWS ServiceQuotaExceededException / MONTHLY_REQUEST_COUNT). Some surfaces
@@ -42,8 +49,6 @@ import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 const KIRO_QUOTA_EXCEEDED_EXCEPTION = "ServiceQuotaExceededException";
 const KIRO_QUOTA_EXCEEDED_REASON = "MONTHLY_REQUEST_COUNT";
 const KIRO_RESET_LOOKUP_TIMEOUT_MS = 8000;
-
-const KIRO_TRUNCATION_STOP_REASONS = new Set(["model_context_window_exceeded", "max_tokens"]);
 
 const KIRO_TOOL_CALL_WRAPPER = OPENAI_BLOCK.TOOL_CALL;
 
@@ -769,6 +774,16 @@ export class KiroExecutor extends BaseExecutor {
         `data: ${JSON.stringify({ error: { message: "Kiro returned an invalid EventStream frame", type: "stream_error" } })}\n\n`
       ));
     };
+    // Exception frames and malformed stops end the turn: emit one in-band error with
+    // a mapped status, then terminate so the upstream body is cancelled and released
+    // instead of waiting for an EOF that may never come. No finish chunk, no usage.
+    const failStream = (controller, status, code, message) => {
+      if (state.failureSeen) return;
+      state.failureSeen = true;
+      buffer = new Uint8Array(0);
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(kiroStreamFailure(status, code, message))}\n\n`));
+      controller.terminate();
+    };
     const rejectToolCall = (controller, message) => {
       if (state.failureSeen) return;
       state.failureSeen = true;
@@ -916,11 +931,9 @@ export class KiroExecutor extends BaseExecutor {
           const eventType = event.headers[":event-type"] || "";
           const messageType = event.headers[":message-type"] || "";
           if (messageType === "error" || messageType === "exception" || /(?:Error|Exception)$/.test(eventType)) {
-            state.failureSeen = true;
-            controller.enqueue(new TextEncoder().encode(
-              `data: ${JSON.stringify({ error: { message: "Kiro upstream stream failed", type: "provider_error" } })}\n\n`
-            ));
-            continue;
+            const name = event.headers[":exception-type"] || event.headers[":error-code"] || eventType;
+            failStream(controller, kiroExceptionStatus(name), "kiro_stream_exception", "Kiro upstream stream failed");
+            return;
           }
           if (state.rawTerminalSeen && !KIRO_POST_STOP_EVENT_TYPES.has(eventType)) {
             rejectFraming(controller);
@@ -1168,9 +1181,17 @@ export class KiroExecutor extends BaseExecutor {
 
           // A terminal event is the completion boundary for nested wrapper fragments.
           if (eventType === "messageStopEvent") {
-            if (!flushPendingWrappers(controller) || !flushObjectToolArgs(controller)) return;
+            const stopReason = normalizeKiroStopReason(event.payload?.stopReason ?? event.payload?.stop_reason);
+            // Wrapper validation runs first so an invalid wrapper keeps its one-shot repair.
+            if (!flushPendingWrappers(controller)) return;
+            // A malformed stop is a failed turn: no buffered object arguments, finish or usage.
+            if (isKiroMalformedStop(stopReason)) {
+              failStream(controller, 502, "kiro_malformed_stop", "Kiro stopped with a malformed response");
+              return;
+            }
+            if (!flushObjectToolArgs(controller)) return;
             state.rawTerminalSeen = true;
-            state.stopReason = event.payload?.stopReason || event.payload?.stop_reason || null;
+            state.stopReason = stopReason;
           }
 
           // Handle contextUsageEvent to extract contextUsagePercentage
@@ -1266,7 +1287,7 @@ export class KiroExecutor extends BaseExecutor {
               choices: [{
                 index: 0,
                 delta: {},
-                finish_reason: state.hasToolCalls ? "tool_calls" : KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason) && chunkIndex > 0 ? "length" : "stop"
+                finish_reason: kiroFinishReason(state.stopReason, { hasToolCalls: state.hasToolCalls, emittedOutput: chunkIndex > 0 })
               }]
             };
 
@@ -1332,7 +1353,7 @@ export class KiroExecutor extends BaseExecutor {
             choices: [{
               index: 0,
               delta: {},
-              finish_reason: state.hasToolCalls ? "tool_calls" : KIRO_TRUNCATION_STOP_REASONS.has(state.stopReason) && chunkIndex > 0 ? "length" : "stop"
+              finish_reason: kiroFinishReason(state.stopReason, { hasToolCalls: state.hasToolCalls, emittedOutput: chunkIndex > 0 })
             }]
           };
           if (state.usage) finishChunk.usage = state.usage;

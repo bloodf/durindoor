@@ -20,7 +20,8 @@ vi.mock("@/lib/localDb", async () => ({
   ...(await import("../../src/lib/db/repos/connectionsRepo.js")),
   getProviderNodeById: vi.fn(), getProviderNodes: vi.fn(), getProxyPoolById: vi.fn(),
 }));
-vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({ ...(await importOriginal()), proxyAwareFetch: state.fetch }));
+// Importing the real proxy module patches global fetch and bypasses this boundary stub.
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: state.fetch, evictResponseDispatcher: vi.fn() }));
 
 import { POST as pair } from "../../src/app/api/providers/cookie-import/pairing/route.js";
 import { POST as importCookies } from "../../src/app/api/providers/cookie-import/route.js";

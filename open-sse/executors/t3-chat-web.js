@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { readBodyWithTimeout } from "../utils/bodyTimeout.js";
@@ -145,9 +144,9 @@ function completionResponse(completion, stream, requestBody) {
   });
 }
 
-export class T3ChatWebExecutor extends BaseExecutor {
+export class T3ChatWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("t3-web", { baseUrl: CHAT_URL });
+    super("t3-web", { baseUrl: CHAT_URL }, { observePatchedFetch: false });
   }
 
   // The translator preview and chat telemetry use these public headers.
@@ -159,13 +158,8 @@ export class T3ChatWebExecutor extends BaseExecutor {
     return CHAT_URL;
   }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat({ model, body, stream = true, credentials, signal, proxyOptions }, sender, billed) {
+  async runSession(input, transport) {
+    const { model, body, stream = true, credentials, signal, proxyOptions } = input;
     const headers = this.buildHeaders();
     const payload = { model, messages: body?.messages, stream };
     const result = { url: CHAT_URL, headers, transformedBody: payload };
@@ -179,13 +173,13 @@ export class T3ChatWebExecutor extends BaseExecutor {
     if (proxyOptions?.vercelRelayUrl) return fail(400, "T3 Chat sessions require a route without an HTTP relay.");
 
     try {
-      const upstream = billed(await sender.sendRequest(CHAT_URL, {
+      const upstream = await transport.sendBillable(CHAT_URL, {
         method: "POST",
         headers: { ...headers, Cookie: cookie, Accept: stream ? "text/event-stream, application/x-ndjson, application/json" : "application/json" },
         body: JSON.stringify(payload),
         redirect: "error",
         signal,
-      }, proxyOptions));
+      });
       if (!upstream.ok) {
         void upstream.body?.cancel().catch(() => {});
         if (upstream.status >= 300 && upstream.status < 400) {
@@ -231,7 +225,7 @@ export class T3ChatWebExecutor extends BaseExecutor {
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (signal?.aborted) return fail(499, "T3 Chat request canceled.");
-      if (sender.timeoutReason) return fail(504, "T3 Chat request timed out.");
+      if (error?.name === "TimeoutError") return fail(504, "T3 Chat request timed out.");
       return fail(502, "T3 Chat request failed.");
     }
   }

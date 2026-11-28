@@ -69,12 +69,16 @@ unchanged. The `buildHeaders` `Bearer ***` placeholder was not touched.
     ["sigv4"]`). The bearer identity is replaced by a refusing provider, so the
     action client cannot switch to `AWS_BEARER_TOKEN_BEDROCK`. A named profile
     still uses its configured credential chain; this is not a restriction on that chain. The secret access key is never sent.
+    Static IAM credentials do not use the ambient default credential chain, SSO,
+    or instance metadata (IMDS).
   - *Session token:* the token comes only from the encrypted top-level
     `sessionToken`. A session token without an access key id is refused as a
     configuration error. It is never treated as a key pair.
   - *Profile:* the shared helper uses `fromIni`. The source has no profile mode,
     so this is a local extension. Discovery now refuses effective proxy, relay and
-    strict routes before constructing the provider; effective direct remains supported.
+    strict routes before constructing the provider; a direct selected Bedrock action
+    route remains supported. This route check evaluates the action origin, not every
+    host that the separate profile credential chain may contact.
 - **Origin.** The endpoint is pinned to
   `https://bedrock.<region>.amazonaws.com`. The region comes from
   `resolveBedrockRegion`, which accepts only a valid region and ignores arbitrary

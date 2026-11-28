@@ -129,6 +129,10 @@ beforeEach(() => {
   network.calls = [];
   profiles.fromIni = null;
   vi.mocked(fromIni).mockClear();
+  // Keep profile cases independent of the host's selected proxy route.
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"]) {
+    vi.stubEnv(name, "");
+  }
   // Ambient AWS configuration a server might carry. Discovery must ignore all of it.
   vi.stubEnv("AWS_EC2_METADATA_DISABLED", "true");
   vi.stubEnv("AWS_CONFIG_FILE", "/nonexistent/durindoor-test/aws-config");

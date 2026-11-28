@@ -88,16 +88,20 @@ it("binds replacement to one Veo connection and refuses foreign or expired input
   const ar = await (await send(a.token, body("synthetic-a"))).json();
   const br = await (await send(b.token, body("synthetic-b"))).json();
   const update = await issue({ action: "update", connectionId: ar.connection.id });
+  const beforeMismatch = db.all("SELECT id, data FROM providerConnections ORDER BY id");
   const mismatch = await send(update.token, { ...body(), connectionId: br.connection.id });
   expect(mismatch.status).toBe(409);
+  expect(db.all("SELECT id, data FROM providerConnections ORDER BY id")).toEqual(beforeMismatch);
   const valid = await issue({ action: "update", connectionId: ar.connection.id });
   expect((await send(valid.token, { ...body(), connectionId: ar.connection.id })).status).toBe(200);
   expect((await getProviderConnectionById(ar.connection.id)).apiKey).toBe(`${name}=${secret}`);
   expect((await getProviderConnectionById(br.connection.id)).apiKey).toBe(`${name}=synthetic-b`);
   for (const bad of [{ ...body(), origin: "https://www.veoaifree.com" }, { ...body(), cookies: [{ ...body().cookies[0], expirationDate: 1 }] }]) {
     const p = await issue({ action: "create", name: "Rejected" });
+    const before = db.all("SELECT id, data FROM providerConnections ORDER BY id");
     const res = await send(p.token, bad);
     expect(res.status).toBe(400);
+    expect(db.all("SELECT id, data FROM providerConnections ORDER BY id")).toEqual(before);
     expect(JSON.stringify(await res.json())).not.toContain(secret);
   }
   expect(JSON.stringify(logs.flatMap((spy) => spy.mock.calls))).not.toContain(secret);
@@ -127,12 +131,14 @@ it("imports each dashboard input and dispatches the pinned session through the p
       expect(saved.apiKey).toBe(`${name}=synthetic-${kind}`);
       accounts.push(saved);
     }
+    const client = await flow.db.createApiKey("synthetic client", "synthetic-machine");
+    await flow.db.updateSettings({ requireApiKey: true });
     const firstProxy = await flow.bind(accounts[0].id, "veo-a");
     const secondProxy = await flow.bind(accounts[1].id, "veo-b");
     const { POST } = await import("../../src/app/api/v1/video/generations/route.js");
     flow.network.mockResolvedValueOnce(new Response('nonce":"abcdef"')).mockResolvedValueOnce(new Response("rate-limit-exceed"));
     const response = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
-      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[1].id },
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[1].id, authorization: `Bearer ${client.key}` },
       body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }),
     }));
     const output = await response.text();
@@ -149,7 +155,7 @@ it("imports each dashboard input and dispatches the pinned session through the p
       .mockResolvedValueOnce(new Response("synthetic-scene"))
       .mockResolvedValueOnce(new Response("https://cdn.example.com/video.mp4"));
     const success = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
-      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[0].id },
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[0].id, authorization: `Bearer ${client.key}` },
       body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }),
     }));
     expect(success.status).toBe(200);
@@ -165,7 +171,7 @@ it("imports each dashboard input and dispatches the pinned session through the p
     flow.network.mockResolvedValueOnce(new Response('nonce":"abc123"'))
       .mockImplementationOnce(async () => { controller.abort(); throw new Error("synthetic interruption"); });
     const interrupted = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
-      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[2].id },
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[2].id, authorization: `Bearer ${client.key}` },
       body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }), signal: controller.signal,
     }));
     expect(interrupted.status).toBe(499);
@@ -179,4 +185,57 @@ it("imports each dashboard input and dispatches the pinned session through the p
     expect(list).not.toContain("synthetic-har");
     expect(JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls))).not.toContain("synthetic-curl");
   } finally { await flow.close(); }
-}, 60000);
+}, 90000);
+
+it("rejects unauthorized video requests and malformed vendor frames without a success terminal or replay", async () => {
+  const { cookiePublicFlow2034 } = await import("./helpers/cookiePublicFlow2034.js");
+  const flow = await cookiePublicFlow2034("veoaifree-web");
+  try {
+    const a = await flow.imported({ action: "create", name: "A" }, body("synthetic-private-a"));
+    const b = await flow.imported({ action: "create", name: "B" }, body("synthetic-private-b"));
+    const proxyA = await flow.bind(a.id, "failure-a");
+    await flow.bind(b.id, "failure-b");
+    const client = await flow.db.createApiKey("scoped", "machine-a", [], null, null, { providerConnectionIds: [a.id] });
+    await flow.db.updateSettings({ requireApiKey: true });
+    const { POST } = await import("../../src/app/api/v1/video/generations/route.js");
+    const dispatch = (key, id = a.id) => POST(new Request("https://dashboard.example/api/v1/video/generations", {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-connection-id": id },
+      body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }),
+    }));
+    const invalid = await dispatch("synthetic-invalid");
+    expect(invalid.status).toBe(401);
+    const foreign = await dispatch(client.key, b.id);
+    expect(foreign.status).toBeGreaterThanOrEqual(400);
+    expect(flow.network).not.toHaveBeenCalled();
+    for (const [index, frame] of ["<html>login page</html>", "0", "error synthetic-private-a"].entries()) {
+      const row = index === 0 ? a : await flow.imported({ action: "create", name: `failure ${index}` }, body("synthetic-private-a"));
+      const route = index === 0 ? proxyA : await flow.bind(row.id, `failure-${index}`);
+      const scoped = index === 0 ? client : await flow.db.createApiKey(`scoped ${index}`, `machine-${index}`, [], null, null, { providerConnectionIds: [row.id] });
+      flow.network.mockReset();
+      flow.network.mockResolvedValueOnce(new Response('nonce":"abcdef"')).mockResolvedValueOnce(new Response(frame));
+      const response = await dispatch(scoped.key, row.id);
+      const text = await response.text();
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.headers.get("x-durindoor-accepted-job")).toBe("1");
+      expect(text).not.toContain("synthetic-private-a");
+      expect(text).not.toContain('"data"');
+      expect(flow.network).toHaveBeenCalledTimes(2);
+      expect(flow.network.mock.calls.every(([, init]) => init.dispatcher === route)).toBe(true);
+      expect(flow.network.mock.calls[1][1].headers.Cookie).toBe(`${name}=synthetic-private-a`);
+    }
+    const stalled = await flow.imported({ action: "create", name: "stalled" }, body("synthetic-stalled"));
+    const stalledProxy = await flow.bind(stalled.id, "stalled");
+    const stalledKey = await flow.db.createApiKey("stalled", "machine-stalled", [], null, null, { providerConnectionIds: [stalled.id] });
+    flow.network.mockReset();
+    flow.network.mockResolvedValueOnce(new Response('nonce":"abcdef"'))
+      .mockResolvedValueOnce(new Response(new ReadableStream({ start() {} })));
+    const timedOut = await dispatch(stalledKey.key, stalled.id);
+    expect(timedOut.status).toBe(504);
+    expect(timedOut.headers.get("x-durindoor-accepted-job")).toBe("1");
+    expect(await timedOut.text()).not.toContain("synthetic-stalled");
+    expect(flow.network).toHaveBeenCalledTimes(2);
+    expect(flow.network.mock.calls.every(([, init]) => init.dispatcher === stalledProxy)).toBe(true);
+    const observable = JSON.stringify([await (await flow.list()).text(), flow.logs.flatMap((spy) => spy.mock.calls)]);
+    for (const value of [client.key, "synthetic-private-a", "synthetic-private-b"]) expect(observable).not.toContain(value);
+  } finally { await flow.close(); }
+}, 90000);

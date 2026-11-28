@@ -17,7 +17,7 @@ vi.mock("@/lib/usageDb.js", () => ({ trackPendingRequest: vi.fn(), finishActiveS
   appendRequestLog: vi.fn(async () => {}), saveRequestDetail: vi.fn(async () => {}),
   saveRequestUsage: vi.fn(async () => {}), saveUsageStats: vi.fn(async () => {}),
 }));
-import Executor from "../../open-sse/executors/deepseek-web.js";
+import Executor, { deepSeekWebProofOfWorkEnabled } from "../../open-sse/executors/deepseek-web.js";
 import { solveChallenge, POW_TARGET } from "../../open-sse/executors/deepseek-web/pow.js";
 import { deepSeekHashV1, deepSeekHashV1Reference, sha3_256Fips202Reference } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
 import { runWithProviderAttemptContext, settleProviderAttemptDispatch } from "../../open-sse/services/providerAttemptContext.js";
@@ -68,6 +68,8 @@ function installFetch() {
 }
 beforeEach(() => {
   vi.clearAllMocks(); routeResults = [];
+  // Proof of work is an operator opt-in; this suite exercises the enabled source path.
+  vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "source");
   completion = () => new Response(sse(), { headers: { "content-type": "text/event-stream" } });
   challengeReply = null;
   installFetch();
@@ -84,7 +86,25 @@ beforeEach(() => {
     return result.response;
   });
 });
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it("keeps the three-request contract and sends no proof unless the operator opts in", async () => {
+  expect(deepSeekWebProofOfWorkEnabled({})).toBe(false);
+  for (const value of ["", "off", "1", "true", "worker"]) expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: value })).toBe(false);
+  expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: " Source " })).toBe(true);
+  vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "");
+  mocks.fetch.mockReset()
+    .mockResolvedValueOnce(json({ data: { biz_data: { token: "access-synthetic-A" } } }))
+    .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "session-synthetic-A" } } } }))
+    .mockResolvedValueOnce(new Response(sse(), { headers: { "content-type": "text/event-stream" } }));
+  const { response } = await new Executor().execute(input());
+  expect(response.status).toBe(200);
+  expect((await response.json()).choices[0].message).toMatchObject({ content: "回答 answer", reasoning_content: "consider this" });
+  expect(mocks.fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+    "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/completion",
+  ]);
+  expect(Object.keys(mocks.fetch.mock.calls[2][1].headers).map(h => h.toLowerCase())).not.toContain("x-ds-pow-response");
+});
 
 it("checks the pinned permutation against FIPS control and independent reference", () => {
   // Vectors from OmniRoute tests/unit/deepseek-pow-js-only.test.ts at the same pin (MIT).
@@ -322,12 +342,23 @@ it("refuses a third solver while two bounded workers are occupied and recovers s
   expect((await settled).every(result => result.status === "rejected")).toBe(true);
   expect(JSON.parse(Buffer.from(await solveChallenge(challenge()), "base64")).answer).toBe(3);
 });
-it("retains legacy OpenAI SSE only with a valid terminal", async () => {
+it("retains legacy OpenAI SSE bodies but refuses malformed, empty or mixed-truncated ones", async () => {
   const deltas = [{ choices: [{ delta: { content: "legacy answer" }, finish_reason: null }] }];
   completion = () => new Response(sse([...deltas, { choices: [{ delta: {}, finish_reason: "stop" }] }]));
   expect((await new Executor().execute(input())).response.status).toBe(200);
+  // Pre-repair contract, also pinned by provider-registration-web-batch-a-routes: this legacy
+  // shape has no DeepSeek terminal, so a fully valid body that ends cleanly is accepted.
   completion = () => new Response(sse(deltas));
-  expect((await new Executor().execute(input())).response.status).toBe(502);
+  const legacy = (await new Executor().execute(input())).response;
+  expect(legacy.status).toBe(200);
+  expect((await legacy.json()).choices[0].message.content).toBe("legacy answer");
+  for (const body of [sse(deltas) + "data: {\"choices\":[{\"delta\"\n\n", sse([{ choices: [{ delta: {} }] }]),
+    sse([...deltas, { p: "response/fragments", v: [{ type: "RESPONSE", content: "native" }] }])]) {
+    completion = () => new Response(body);
+    const refused = (await new Executor().execute(input())).response;
+    expect(refused.status).toBe(502);
+    expect(await refused.text()).not.toMatch(/legacy answer|finish_reason|usage/);
+  }
 });
 
 it("resolves the source worker when the caller is outside the runtime root", async () => {

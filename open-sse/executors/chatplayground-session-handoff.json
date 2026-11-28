@@ -1,0 +1,47 @@
+{
+  "issue": 2034,
+  "sourceFreeze": "2026-11-27T23:49:25.752045Z",
+  "owner": "register-cookie-repairs",
+  "module": "open-sse/executors/chatplaygroundSession.js",
+  "export": "inspectChatPlaygroundConnection",
+  "arguments": [
+    "selected connection credentials",
+    "fetcher bound exclusively to selected connection proxy",
+    "{ signal, timeoutMs <= 10000, discovery: boolean }"
+  ],
+  "success": "ok:true, valid:true, status:200; discovery additionally returns catalog for chatPlaygroundCatalog",
+  "failure": "ok:false, status, reason; unsupported_me_identity_shape must map to unverified/unsupported, not invalid credentials or healthy; other failures must never treat HTTP 200 alone as readiness",
+  "activation": [
+    "Exclude chatplayground from both generic Bearer model resolvers before activation; never relabel stored Cookie as Bearer.",
+    "Route test and validate through this helper with discovery:false and selected proxy transport.",
+    "Route dashboard and live model discovery through discovery:true, then chatPlaygroundCatalog(result.catalog).",
+    "Do not use legacy discoverChatPlaygroundModels as the activation entry point."
+  ],
+  "protocol": "Existing fixed web API and Clerk mint only. /me requires nonempty string id; unknown shape returns unsupported_me_identity_shape. Catalog is credential-free as in current chat. No live protocol verification.",
+  "scope": "No src, registry or generic resolver changes in this unit; legacy public mismatches remain until registration owner activates wiring.",
+  "protocolCaveat": "The /me id requirement is this unit's fail-closed choice, not a source-proven claim. The repo's own mocks (cookie-flow-chatplayground-2034, port-omni-20375) answer /me with {user:{}}, so wiring this helper makes those flows return unsupported_me_identity_shape (valid:false) with unverified/unsupported classification until source-backed evidence establishes the shape. Do not relax it to HTTP 200 alone; change it only with evidence.",
+  "reproductions": [
+    {
+      "id": 1,
+      "file": "tests/unit/cookie-flow-chatplayground-2034.test.js",
+      "case": "chat or /v1/models case, after a 100 ms wait",
+      "observed": "GET https://web.chatplayground.ai/api/models with Authorization: Bearer __client=synthetic-client-bravo...",
+      "required": "no Authorization built from the stored Cookie; exclude chatplayground from warmRequestModelLimits and openAIStyleLiveResolver"
+    },
+    {
+      "id": 2,
+      "file": "tests/unit/cookie-flow-chatplayground-2034.test.js",
+      "case": "fails closed when connection test and validate skip the executor's Clerk mint",
+      "observed": "one GET /api/me with raw Cookie and no mint; valid:false",
+      "required": "mint via Clerk with __client only, then Bearer /me through the selected proxy via inspectChatPlaygroundConnection(..., {discovery:false})"
+    },
+    {
+      "id": 3,
+      "file": "tests/unit/cookie-flow-chatplayground-2034.test.js",
+      "case": "dispatches chat and discovery with one imported account through its own proxy",
+      "observed": "dashboard discovery request has redirect:undefined and sends the stored Cookie to /api/models",
+      "required": "redirect:manual, 3xx reported as rejected session, via inspectChatPlaygroundConnection(..., {discovery:true})"
+    }
+  ],
+  "evidence": "node node_modules/vitest/vitest.mjs run unit/fix-chatplayground-session-contract-2034.test.js --maxWorkers=2 (from tests/)"
+}

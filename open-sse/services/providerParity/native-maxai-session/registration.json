@@ -1,0 +1,20 @@
+{
+  "provider": "maxai",
+  "status": "private-unregistered",
+  "owner": "register-cookie-repairs-02",
+  "entrypoint": "./index.js",
+  "operations": ["normalizeMaxaiSession", "exportMaxaiSession", "renewMaxaiSession"],
+  "activation": false,
+  "automaticCapture": false,
+  "manualFormats": ["complete-source-credential-json", "complete-source-connection-json"],
+  "refreshTokenStorage": "existing-encrypted-top-level-refreshToken",
+  "refreshEndpoint": "https://api.maxai.me/oauth/refresh_access_token",
+  "maxSubmits": 1,
+  "maxResponseBytes": 65536,
+  "defaultDeadlineMs": 10000,
+  "maximumDeadlineMs": 30000,
+  "expiry": "access-JWT-exp-epoch-seconds-if-present",
+  "billableReplay": false,
+  "handoff": "./handoff.json",
+  "evidence": "./README.md"
+}

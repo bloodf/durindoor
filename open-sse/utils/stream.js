@@ -194,7 +194,9 @@ function formatTranslatedStreamError(error, sourceFormat, secrets = [], targetFo
           secrets,
         ).error
       : normalized;
-    return formatClaudeSseError(claudeError) + "data: [DONE]\n\n";
+    // Claude streams end on the error event; `[DONE]` is an OpenAI sentinel with no
+    // place in the Anthropic protocol (same framing as streamHelpers.buildStreamErrorBytes).
+    return formatClaudeSseError(claudeError);
   }
   return `data: ${JSON.stringify({ error: normalized })}\n\ndata: [DONE]\n\n`;
 }

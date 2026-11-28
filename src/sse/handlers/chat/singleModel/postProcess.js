@@ -11,8 +11,14 @@ import * as log from "../../../utils/logger.js";
 import { requestAborted } from "../shared.js";
 import { RETRY, terminal } from "./context.js";
 import { antigravityPreResponseTimeout, evaluateProviderFailure } from "./providerHooks.js";
-import { MINIMAX_CODE_UNKNOWN_OUTCOME_CODES } from "open-sse/executors/minimax-code.js";
+import { MINIMAX_CODE_OUTCOME_UNKNOWN, MINIMAX_CODE_UNKNOWN_OUTCOME_CODES } from "open-sse/executors/minimax-code.js";
 import { WINDSURF_OUTCOME_UNKNOWN } from "open-sse/executors/windsurf.js";
+
+/**
+ * Executors that answer a billable send the vendor may have accepted with their own
+ * `upstream_outcome_unknown` code (tencent-aistudio-web.js, maxai.js).
+ */
+const OUTCOME_UNKNOWN_CODE_PROVIDERS = new Set(["tencent-aistudio-web", "maxai"]);
 
 /** The executor-authored outcome-unknown code, or a header timeout thrown after sending. */
 function isMinimaxCodeOutcomeUnknown(result) {
@@ -127,6 +133,12 @@ export async function processAttemptResult(ctx, state, attempt, result) {
   // timeout). The same never-replay rule applies: no sibling account, no outer
   // transient retry, and no cooldown, because nothing proves the account failed.
   if (provider === "minimax-code" && isMinimaxCodeOutcomeUnknown(result)) {
+    result.response.upstreamPartialOutput = true;
+    return terminal(result.response);
+  }
+  // Tencent AI Studio and MaxAI author the same code for a send that may have been
+  // accepted; explicit 401/403/429 refusals keep their ordinary fallback.
+  if (OUTCOME_UNKNOWN_CODE_PROVIDERS.has(provider) && result.errorBody?.error?.code === MINIMAX_CODE_OUTCOME_UNKNOWN) {
     result.response.upstreamPartialOutput = true;
     return terminal(result.response);
   }

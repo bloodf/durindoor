@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
 import { MAX_PROVIDER_BODY_BYTES, RESPONSE_BODY_TIMEOUT_MS } from "../config/runtimeConfig.js";
@@ -145,7 +145,7 @@ function completionResponse(completion, stream, requestBody) {
   });
 }
 
-export class T3ChatWebExecutor extends BaseExecutor {
+export class T3ChatWebExecutor extends WebSessionExecutor {
   constructor() {
     super("t3-web", { baseUrl: CHAT_URL });
   }

@@ -446,7 +446,7 @@ describe("a selected imported account reaches the executor over its own proxy", 
     socket = vi.fn(async () => { throw new Error("unprogrammed outbound request"); });
     restoreSocket = __setOriginalFetchForTesting(socket);
     // The source challenge runs before the completion only when the operator opts in.
-    vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", "source");
+    vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", undefined);
   });
   afterEach(() => {
     vi.unstubAllEnvs();

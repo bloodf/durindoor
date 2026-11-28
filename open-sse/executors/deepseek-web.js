@@ -66,15 +66,19 @@ function promptFrom(messages = []) {
 // open-sse/executors/deepseek-web.ts at 4265bb2ad5477450a07d3a43ea33a62c6c874878.
 // A provider-private parser kept inside its executor. Malformed frames fail closed.
 function decodeEvents(text, thinking = false) {
+  if (!/(?:\r?\n){2}\s*$/.test(text)) throw new Error("Truncated DeepSeek event record");
   let content = "";
   let reasoning = "";
   let path = thinking ? "thinking" : "content";
   let source = false;
   let legacy = false;
   let nativeFinished = false;
+  let legacyFinished = false;
+  let done = false;
   const append = value => { if (path === "thinking") reasoning += value; else content += value; };
   const fragment = f => {
-    if (!f || !isObject(f)) throw new Error("Invalid DeepSeek fragment");
+    if (!f || !isObject(f) || Array.isArray(f)) throw new Error("Invalid DeepSeek fragment");
+    if (f.type !== undefined && !["THINK", "ANSWER", "RESPONSE"].includes(f.type)) throw new Error("Invalid DeepSeek fragment type");
     if (f.type === "THINK") path = "thinking";
     if (f.type === "ANSWER" || f.type === "RESPONSE") path = "content";
     if (f.content !== undefined && !isString(f.content)) throw new Error("Invalid DeepSeek content");
@@ -84,19 +88,35 @@ function decodeEvents(text, thinking = false) {
     const raw = line.trim();
     if (!raw || raw.startsWith(":")) continue;
     if (/^(event|id|retry):/.test(raw)) {
-      if (raw === "event: hint" || raw === "event: error") throw new Error("DeepSeek stream rejected");
+      if (/^event:\s*(hint|error)$/.test(raw)) throw new Error("DeepSeek stream rejected");
       continue;
     }
     const data = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
-    if (data === "[DONE]") continue;
+    if (data === "[DONE]") { done = true; continue; }
+    if (done) throw new Error("DeepSeek data after terminal");
     const event = JSON.parse(data);
     const status = envelopeStatus(event);
     if (status) throw Object.assign(new Error("DeepSeek rejection"), { status });
     if (event?.error) throw new Error("DeepSeek stream rejected");
+    if (!isObject(event) || Array.isArray(event)) throw new Error("Invalid DeepSeek frame");
     const { p, v } = event;
+    const searchMetadata = p === "response/search_status" || p === "response/search_results";
+    if ((nativeFinished || legacyFinished) && !(nativeFinished && searchMetadata)) throw new Error("DeepSeek data after finish");
+    if (searchMetadata) {
+      if (p === "response/search_status" ? !isString(v) : !Array.isArray(v)) throw new Error("Invalid DeepSeek search metadata");
+      continue;
+    }
+    if (p !== undefined && !["response/status", "response/fragments", "response"].includes(p) && !/^response\/fragments\/\d+\/content$/.test(p)) throw new Error("Invalid DeepSeek path");
     if (p !== undefined || v !== undefined) source = true;
-    if (p === "response/status") { if (v === "FINISHED") nativeFinished = true; continue; }
+    if (p === "response/status") {
+      if (!isString(v) || /error|fail|abort|cancel/i.test(v)) throw new Error("DeepSeek status rejected");
+      if (v === "FINISHED") nativeFinished = true;
+      continue;
+    }
     if (v?.response) {
+      if (!isObject(v.response) || Array.isArray(v.response) ||
+          (v.response.thinking_enabled !== undefined && ![true, false].includes(v.response.thinking_enabled)) ||
+          (v.response.fragments !== undefined && !Array.isArray(v.response.fragments))) throw new Error("Invalid DeepSeek response");
       if (v.response.thinking_enabled !== undefined) path = v.response.thinking_enabled ? "thinking" : "content";
       if (Array.isArray(v.response.fragments)) v.response.fragments.forEach(fragment);
     } else if (p === "response/fragments") {
@@ -104,25 +124,35 @@ function decodeEvents(text, thinking = false) {
     } else if (isString(v) && !p?.startsWith("response/search")) append(v);
     else if (p === "response" && Array.isArray(v)) {
       for (const entry of v) {
+        if (!isObject(entry) || (!Array.isArray(entry.v) && !isObject(entry.v))) throw new Error("Invalid DeepSeek batch");
         if (entry?.v?.thinking_enabled === true) path = "thinking";
         if (Array.isArray(entry?.v)) entry.v.forEach(fragment);
       }
     }
+    if (v !== undefined && !isString(v) && !v?.response && p !== "response/fragments" && !(p === "response" && Array.isArray(v))) throw new Error("Invalid DeepSeek source value");
     const choice = event?.choices?.[0];
     if (choice?.delta) {
+      if (!isObject(choice.delta) || Array.isArray(choice.delta) ||
+          [choice.delta.content, choice.delta.reasoning_content].some(value => value != null && !isString(value))) throw new Error("Invalid DeepSeek delta");
+      if (choice.finish_reason != null) {
+        if (!["stop", "length", "tool_calls", "content_filter"].includes(choice.finish_reason)) throw new Error("Invalid DeepSeek finish");
+        legacyFinished = true;
+      }
       legacy = true;
       content += choice.delta.content || "";
       reasoning += choice.delta.reasoning_content || "";
     }
+    if (event.choices !== undefined && (!Array.isArray(event.choices) || event.choices.length !== 1 || !choice?.delta)) throw new Error("Invalid DeepSeek choices");
     const payload = event?.data?.biz_data || event?.biz_data || event?.data;
     const value = payload?.response || payload?.content || payload?.message?.content;
     if (isString(value)) { content += value; legacy = true; }
+    if (p === undefined && v === undefined && !choice?.delta && !isString(value)) throw new Error("Unrecognized DeepSeek frame");
   }
-  // Native source streams require FINISHED; [DONE] alone is never a native DeepSeek terminal.
-  // Legacy biz_data and choices[].delta bodies keep the pre-repair contract: a clean end of a
-  // fully valid body is accepted, since those shapes carry no DeepSeek terminal to check.
-  if (source && !nativeFinished) throw new Error("DeepSeek stream ended before completion");
-  if (!source && !legacy) throw new Error("DeepSeek stream ended before completion");
+  // EOF never proves completion. Native and legacy dialects cannot share a response.
+  if (source && legacy) throw new Error("Mixed DeepSeek stream dialects");
+  if (source ? !nativeFinished : !legacy || !(legacyFinished || done)) {
+    throw new Error("DeepSeek stream ended before completion");
+  }
   if (!content && !reasoning) throw new Error("Empty DeepSeek completion");
   return { content, reasoning };
 }
@@ -145,15 +175,17 @@ export function resolveDeepSeekWebModelOptions(model, body) {
   };
 }
 
-/**
- * Whether completions first fetch and solve the source proof-of-work challenge.
- * `DURINDOOR_DEEPSEEK_WEB_POW=source` turns it on; any other value keeps it off.
- * Read per request so an operator change applies without a restart.
- */
-export function deepSeekWebProofOfWorkEnabled(env = process.env) {
-  return String(env?.DURINDOOR_DEEPSEEK_WEB_POW ?? "").trim().toLowerCase() === "source";
+/** Source proof is mandatory on every completion; legacy environment flags cannot bypass it. */
+export function deepSeekWebProofOfWorkEnabled() {
+  return true;
 }
 
+/**
+ * Every completion requires a bounded source proof on the selected account/route.
+ * Native FINISHED or a valid legacy finish/DONE is required before publishing success;
+ * uncertain billable outcomes are terminal and cannot be replayed across accounts.
+ * Verification is mocked/offline only; it does not establish live provider parity.
+ */
 export class DeepSeekWebExecutor extends BaseExecutor {
   constructor() { super("deepseek-web", PROVIDERS["deepseek-web"]); }
 
@@ -215,9 +247,8 @@ export class DeepSeekWebExecutor extends BaseExecutor {
         preempt: false,
       };
       // Challenge reads are unbilled, use the selected route, and never retry a submit.
-      // Off by default: the existing request contract is users/current, session, completion.
       const proofHeaders = {};
-      if (deepSeekWebProofOfWorkEnabled()) {
+      {
         const challengeResponse = await send(`${BASE}/v0/chat/create_pow_challenge`, {
           method: "POST", headers: authHeaders, body: JSON.stringify({ target_path: POW_TARGET }), redirect: "manual", signal,
         });

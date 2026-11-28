@@ -1,5 +1,10 @@
 # DeepSeek Web source repair (#2034)
 
+The `82d15a5a7c0` default-off completion claim is withdrawn. The source requires
+proof on every completion. The follow-up [mandatory proof report](complete-deepseek-source-default-2034.md)
+records the authorized fixture migrations, restored terminal checks and current evidence.
+All verification is mocked/offline, not live provider parity.
+
 Base: `fbf30334f2dc4899e900a215252e3e020b4cbe2f`; the repair series
 (`32727dcb0bb`, `1105fed4228`) is merged onto integration head `0e4553ee1b5`.
 It carries the cookie-flow report from `6500f95f7c6` unchanged. The cookie-flow
@@ -58,27 +63,19 @@ it does not establish whether the live service requires proof today.
   deltas and nested response fragment batches preserve answer/reasoning routing.
   Native streams require `response/status: FINISHED`; OpenAI `[DONE]` alone does
   not qualify. Malformed JSON/UTF-8, missing terminal, read exceptions and aborts
-  cannot produce successful stop or usage. Legacy `biz_data` message envelopes
-  and `choices[].delta` streams keep the pre-repair contract: a fully valid body
-  that ends cleanly with content succeeds, terminal or not, because those shapes
-  carry no DeepSeek terminal. A malformed frame, an empty body, or legacy frames
-  mixed with native frames that lack `FINISHED` still fail.
+  cannot produce successful stop or usage. Legacy envelopes and OpenAI deltas require
+  an explicit valid finish or `[DONE]`; EOF alone fails. Mixed dialects fail.
 - Streaming clients retain the executor's existing buffered-then-SSE behavior.
   This permits full validation before any successful client completion is sent;
   it does not add incremental delivery or claim full upstream feature parity.
-- Proof of work is an operator opt-in: `DURINDOOR_DEEPSEEK_WEB_POW=source`
-  (trimmed, case-insensitive, read per request). Any other value, or none, keeps
-  the pre-repair three-request contract (users/current, session, completion)
-  with no challenge and no proof header. See
-  [Integration reconciliation](#integration-reconciliation) for why it is not
-  on by default.
-- When enabled, an unbilled POST to the fixed first-party challenge endpoint sends exactly
-  `{target_path:"/api/v0/chat/completion"}`. The source proof fields
-  (`algorithm`, `challenge`, `salt`, `answer`, `signature`, `target_path`) are
-  serialized as base64 JSON in `X-Ds-Pow-Response` on the completion POST.
+- Proof is mandatory: every completion first fetches an unbilled challenge from
+  the fixed first-party endpoint with `{target_path:"/api/v0/chat/completion"}`.
+  No environment value disables it. The real bounded source solver serializes
+  `algorithm`, `challenge`, `salt`, `answer`, `signature`, `target_path` as base64
+  JSON in `X-Ds-Pow-Response` on the single completion POST.
 - All stages use the selected account and proxy, manual redirects, and no account
   cache or ambient credential fallback. Completion transport replay is disabled.
-  With proof enabled, the real proxy-router tests (in the new suite and in the
+  The real proxy-router tests (in the new suite and in the
   migrated cookie-flow fixture) verify four socket sends for each of two synthetic
   credentials/strict proxies, including account-specific proof/session binding.
 - Only DeepSeekHashV1 is supported. Challenge inputs and setup bodies are bounded;
@@ -181,72 +178,16 @@ node node_modules/vitest/vitest.mjs run \
 The paragraph above records the second commit's state. Its fixture-failure claim is
 superseded by the next section.
 
-## Integration reconciliation
+## Integration reconciliation (superseded)
 
-The first two commits merged onto integration head `0e4553ee1b5` without conflicts.
-Their always-on challenge failed more than the cookie-flow fixture. Every suite that
-answers exactly three upstream requests broke, because the challenge request took the
-completion's mocked reply:
+`82d15a5a7c0` added an opt-in flag to accommodate three-request fixtures and
+changed the legacy incomplete-delta case from HTTP502 to HTTP200. Those changes
+did not complete source parity and are withdrawn. The follow-up restores mandatory
+proof and the original `1105fed4228` strict EOF assertion, retains the additional
+malformed/empty/mixed negative cases, and migrates only authorized DeepSeek fixtures.
+The decoder remains in the allowed executor module; the architecture guard is unchanged.
 
-| Suite | Failures with always-on proof | Editable here |
-| --- | --- | --- |
-| `cookie-flow-deepseek-web-2034.test.js` | 2 | Yes: authorized narrow fixture migration |
-| `deepseek-web-provider.test.js` | 2 | No (immutable) |
-| `deepseek-web-capture.test.js` (executor case) | 1 | No (immutable) |
-| `port9r-deepseek-web-reasoner-3945.test.js` | 1 | No (existing suite) |
-| `provider-registration-web-batch-a-routes.test.js` | 4 | No (existing suite) |
-| `review-x-sse-final.test.js` | 1 | No (existing suite) |
-
-Changes in this step:
-
-1. **Proof of work is an operator opt-in** (`DURINDOOR_DEEPSEEK_WEB_POW=source`).
-   The immutable suites pin the three-request default, and they cannot be satisfied
-   without either this switch or test-only special cases. The source always sends a
-   challenge. Whether the live service requires one is still unverified, so the
-   default stays at the pre-repair contract. Turning it on by default needs an owner
-   decision plus updates to the three immutable fixtures. Envelope mapping, fragment
-   decoding, bounds, aborts, no-replay and proxy binding apply in both modes.
-2. **Cookie-flow fixture migration.** All 35 cases remain. The executor `describe`
-   turns the mode on. In the two account cases, the expected sequence is now
-   users/current, session, `create_pow_challenge`, then one completion. A
-   deterministic `DeepSeekHashV1` challenge (nonce 5, difficulty 16, per-account salt)
-   is solved by the real worker. The test asserts the exact `{target_path}` body, that
-   the challenge carries no proof header, that the challenge goes through the same
-   strict dispatcher with the access token, and the decoded proof on the single
-   completion. No earlier assertion was removed. The strict-proxy failure and
-   users/current refusal cases still make one request.
-3. **Legacy unterminated delta streams.** `provider-registration-web-batch-a-routes`
-   pins the pre-repair behavior for a `choices[].delta` body with no terminal: it must
-   succeed. The parity case now asserts that behavior. It also asserts that a
-   malformed trailing frame, an empty delta body, and legacy frames mixed with native
-   frames that lack `FINISHED` are refused. Native frames still require `FINISHED`.
-4. **Decoder location.** `decodeEvents` moved from `deepseek-web/protocol.js` back
-   into `deepseek-web.js`. `review-x-sse-final.test.js` allows provider-private SSE
-   splitting only in the executor file.
-5. A new parity case covers the default-off mode: the three requests, no proof header,
-   decoded native fragments, and the switch parser.
-
-### Evidence
-
-Private environment: `env -i` with explicit PATH, `LANG=C.UTF-8`, `CI=true`, and a
-unique `/var/tmp/ds2034-*` HOME, DATA_DIR, TMPDIR, XDG cache and pnpm store. Every
-command had a 300-second `timeout`. Root and `tests/` were installed with
-`--frozen-lockfile --ignore-scripts`, followed by a private `pnpm rebuild better-sqlite3`.
-From `tests/`, with `--maxWorkers=2`, the focused run covers both required suites and
-the 10 related suites that reference the executor:
-
-```sh
-node node_modules/vitest/vitest.mjs run unit/deepseek-web-source-parity-2034.test.js \
-  unit/cookie-flow-deepseek-web-2034.test.js unit/deepseek-web-capture.test.js \
-  unit/deepseek-web-provider.test.js unit/port9r-deepseek-web-reasoner-3945.test.js \
-  unit/provider-cookie-import-contracts.test.js unit/provider-registration-web-batch-a.test.js \
-  unit/provider-registration-web-batch-a-routes.test.js unit/review-w-websession-proxy.test.js \
-  unit/review-x-executor-send-4.test.js unit/review-x-sse-final.test.js \
-  unit/web-session-redirects.test.js --maxWorkers=2
-```
-
-Result: 12 files, 602 tests, all passed (parity 57, cookie-flow 35). `pnpm run lint:anti-slop`
-reported 0 diagnostics and `git diff --check` was clean.
-Two `run-ci.mjs` full-inventory runs were started by mistake. They are out of scope
-for this unit, one was stopped, and neither counts as evidence. Full exact-head CI
-belongs to the later orchestrator or review lane.
+The historical 602-test/root-lint result validated that earlier integration only.
+It is not evidence for mandatory default proof or terminal parity. Current scoped
+counts and exact per-file changes are recorded in the follow-up report. Full CI
+belongs to the orchestrator/review lane and was not run for this follow-up.

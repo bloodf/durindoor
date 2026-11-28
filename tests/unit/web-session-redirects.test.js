@@ -12,6 +12,7 @@ import { ChatPlaygroundExecutor, discoverChatPlaygroundModels, validateChatPlayg
 import { ClaudeWebExecutor } from "../../open-sse/executors/claude-web.js";
 import { ConolWebExecutor } from "../../open-sse/executors/conol-web.js";
 import { DeepSeekWebExecutor } from "../../open-sse/executors/deepseek-web.js";
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
 import { DoubaoWebExecutor } from "../../open-sse/executors/doubao-web.js";
 import { GeminiWebExecutor, resetGeminiBrowserLeaseForTests } from "../../open-sse/executors/gemini-web.js";
 import { validateLmarenaSession } from "../../open-sse/executors/lmarena.js";
@@ -33,6 +34,8 @@ const body = { model, messages: [{ role: "user", content: "hello" }], stream: fa
 const catalog = [{ botId: model, modelName: model }];
 const signing = { maxaiSigningConstants: { hmacKey: "a".repeat(40), aesKey: "b".repeat(40), ctxKey: "c".repeat(40), appVersion: "webpage_1.2.3" } };
 const ip = ["api64.ipify.org", { ip: "192.0.2.1" }];
+const deepSeekChallenge = { algorithm: "DeepSeekHashV1", salt: "fixture-2034", expire_at: 1900000000,
+  difficulty: 8, signature: "synthetic-signature", challenge: deepSeekHashV1("fixture-2034_1900000000_3") };
 
 function stubRequests(steps) {
   wire.mockImplementation(async () => {
@@ -78,6 +81,9 @@ const fetchProviders = [
   { id: "deepseek-web", Executor: DeepSeekWebExecutor, apiKey: "fixture", validate: "/v0/users/current", genericValidation: true, chat: [
     ["/v0/users/current", { data: { biz_data: { token: "fixture-access" } } }],
     ["/v0/chat_session/create", { data: { biz_data: { chat_session: { id: "fixture" } } } }],
+    // Mandatory source proof (#2034): a deterministic challenge the real solver answers with nonce 3.
+    // Its redirect contract (502, never followed, no completion) is pinned by deepseek-web-source-parity-2034.
+    ["/v0/chat/create_pow_challenge", { data: { biz_data: { challenge: deepSeekChallenge } } }, false],
     ["/v0/chat/completion"],
   ] },
   { id: "doubao-web", Executor: DoubaoWebExecutor, apiKey: "sessionid=fixture; ttwid=fixture; s_v_web_id=fixture", chat: [["/chat/"]] },

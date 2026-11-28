@@ -1,3 +1,16 @@
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
+const sourceChallenge = { algorithm: "DeepSeekHashV1", salt: "fixture-2034", expire_at: 1900000000,
+  difficulty: 8, signature: "synthetic-signature", challenge: deepSeekHashV1("fixture-2034_1900000000_3") };
+const assertSourceProof = (calls) => {
+  expect(calls.map(([url]) => new URL(url).pathname)).toEqual([
+    "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
+  ]);
+  expect(JSON.parse(calls[2][1].body)).toEqual({ target_path: "/api/v0/chat/completion" });
+  expect(JSON.parse(Buffer.from(calls[3][1].headers["X-Ds-Pow-Response"], "base64"))).toEqual({
+    algorithm: sourceChallenge.algorithm, challenge: sourceChallenge.challenge, salt: sourceChallenge.salt,
+    answer: 3, signature: sourceChallenge.signature, target_path: "/api/v0/chat/completion",
+  });
+};
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const upstreamFetch = vi.hoisted(() => vi.fn());
@@ -15,7 +28,7 @@ import { probeRegistryProvider } from "../../src/app/api/providers/providerProbe
 const TOKEN_A = "synthetic-user-token-alpha";
 const TOKEN_B = "synthetic-user-token-beta";
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
-const completionEvent = (content) => `data: ${JSON.stringify({ data: { biz_data: { response: content } } })}\n\n`;
+const completionEvent = (content) => `data: ${JSON.stringify({ data: { biz_data: { response: content } } })}\n\ndata: [DONE]\n\n`;
 
 describe("DeepSeek Web registration and credential contract", () => {
   it("declares the pinned model catalog and web API transport", () => {
@@ -44,6 +57,7 @@ describe("DeepSeek Web executor", () => {
     upstreamFetch
       .mockResolvedValueOnce(json({ data: { biz_data: { token: "synthetic-access" } } }))
       .mockResolvedValueOnce(json({ data: { biz_data: { chat_session: { id: "synthetic-session" } } } }))
+      .mockResolvedValueOnce(json({ data: { biz_data: { challenge: sourceChallenge } } }))
       .mockResolvedValueOnce(finalResponse);
   };
 
@@ -53,9 +67,10 @@ describe("DeepSeek Web executor", () => {
     expect(executor).toBeInstanceOf(DeepSeekWebExecutor);
     const output = await executor.execute({ model: "deepseek-chat", body: { messages: [{ role: "user", content: "hi" }] }, credentials: { apiKey: TOKEN_A }, stream: false });
     expect(output.response.status).toBe(200);
+    assertSourceProof(upstreamFetch.mock.calls);
     expect((await output.response.json()).choices[0].message.content).toBe("answer");
     expect(upstreamFetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN_A}`);
-    expect(upstreamFetch.mock.calls[2][1].headers.Authorization).toBe("Bearer synthetic-access");
+    expect(upstreamFetch.mock.calls[3][1].headers.Authorization).toBe("Bearer synthetic-access");
   });
 
   it("emits OpenAI SSE chunks and keeps two credentials isolated", async () => {
@@ -65,10 +80,12 @@ describe("DeepSeek Web executor", () => {
     const body = { messages: [{ role: "user", content: "hello" }] };
     const first = await executor.execute({ model: "deepseek-chat", body, credentials: { apiKey: TOKEN_A }, stream: true });
     const second = await executor.execute({ model: "deepseek-chat", body, credentials: { apiKey: TOKEN_B }, stream: false });
+    assertSourceProof(upstreamFetch.mock.calls.slice(0, 4));
+    assertSourceProof(upstreamFetch.mock.calls.slice(4));
     expect(await first.response.text()).toContain('"content":"first"');
     expect((await second.response.json()).choices[0].message.content).toBe("second");
     expect(upstreamFetch.mock.calls[0][1].headers.Authorization).toBe(`Bearer ${TOKEN_A}`);
-    expect(upstreamFetch.mock.calls[3][1].headers.Authorization).toBe(`Bearer ${TOKEN_B}`);
+    expect(upstreamFetch.mock.calls[4][1].headers.Authorization).toBe(`Bearer ${TOKEN_B}`);
   });
 
   it("maps expired auth and quota responses", async () => {

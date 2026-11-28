@@ -16,7 +16,9 @@ describe("retained Qwen OAuth error paths", () => {
   it("surfaces a device authorization failure", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 }));
     vi.stubGlobal("fetch", fetch);
-    const error = await requestDeviceCode("qwen", "challenge").catch((caught) => caught);
+    const promise = requestDeviceCode("qwen", "challenge");
+    await expect(promise).rejects.toThrow("Qwen device authorization failed");
+    const error = await promise.catch((caught) => caught);
     expect(error.message).toBe("Qwen device authorization failed");
     expect(error.message).not.toContain("unavailable");
     expect(fetch).toHaveBeenCalledOnce();

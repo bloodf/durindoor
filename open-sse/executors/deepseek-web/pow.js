@@ -2,6 +2,8 @@ import { isString } from "../../../src/shared/utils/typeChecks.js";
 // Adapted from cheaper-inference/OmniRoute (MIT), 4265bb2ad5477450a07d3a43ea33a62c6c874878
 // open-sse/lib/deepseek-pow.ts and executors/deepseek-web/pow.ts. See LICENSE.omniroute.
 import { Worker } from "node:worker_threads";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { MAX_DEEPSEEK_POW_DIFFICULTY } from "./deepseek-pow-hash.js";
 
@@ -25,9 +27,13 @@ export async function solveChallenge(challenge, { signal, timeoutMs = 10_000 } =
   active++;
   let worker;
   try {
-    // The packaging manifest includes the entire open-sse directory. Resolve from the
-    // runtime root: bundlers can freeze import.meta.url to a build-machine path.
-    worker = new Worker(path.join(process.cwd(), "open-sse/executors/deepseek-web/deepseek-pow-worker.mjs"), {
+    // Prefer the packaged runtime root because bundlers can freeze import.meta.url
+    // to the build-machine path. Source execution also supports callers outside
+    // that root (including the tests package) through the module's sibling asset.
+    const runtimeWorker = path.join(process.cwd(), "open-sse/executors/deepseek-web/deepseek-pow-worker.mjs");
+    const workerPath = existsSync(runtimeWorker) ? runtimeWorker :
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "deepseek-pow-worker.mjs");
+    worker = new Worker(workerPath, {
       workerData: { challenge: c.challenge.toLowerCase(), prefix: `${c.salt}_${c.expire_at}_`, difficulty: c.difficulty },
       env: {}, execArgv: [], resourceLimits: { maxOldGenerationSizeMb: 32, maxYoungGenerationSizeMb: 8, stackSizeMb: 2 },
     });

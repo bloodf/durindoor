@@ -150,3 +150,34 @@ For the final docs batch, `src/lib/providers/cookieImport/README.md` still calls
 DeepSeek Web “Manual token” and says “there is no cookie to capture”. The existing
 extension/dashboard flow imports the approved localStorage `userToken`; the row
 should describe that flow. It was not edited because `src/**` is out of scope.
+
+## Gate correction: caller working directory
+
+The first commit's root-only validation missed the documented `tests/` invocation.
+Reproducing that invocation on the first commit yields 49 failures and six passes:
+worker lookup incorrectly assumed `process.cwd()` was the application root, and
+the packaging test likewise copied source paths relative to its caller's directory.
+
+The solver now prefers the existing packaged runtime path, then resolves the
+worker beside its source module if that runtime asset is absent. It does not
+search ancestor directories. The fallback uses `fileURLToPath(import.meta.url)`
+with ordinary path operations rather than the static `new URL(worker, import.meta.url)`
+worker-detection pattern discussed in the pinned source. Production bundles retain
+the runtime-root priority that avoids frozen build-machine module paths.
+The packaging fixture resolves input files relative to the test module and checks
+that the copied worker exists before invoking it. A new regression solves from an
+unrelated temporary directory, also exercising slot recovery and cwd restoration.
+
+Verification uses a fresh private `/var/tmp/deepseek2034-cwd.*` environment with
+`env -i`, explicit PATH/LANG/CI, private HOME/DATA_DIR/TMPDIR/cache, 300-second
+command ceilings and two Vitest workers. The focused suite now has 56 passing
+tests when run from `tests/` and from the repository root. The combined run from
+`tests/` has 115 passes and the same five immutable fixture failures documented
+above. The anti-slop check passes with zero diagnostics. No frozen suite or
+out-of-scope file was changed, and no live provider request was made.
+
+```sh
+cd tests
+node node_modules/vitest/vitest.mjs run \
+  unit/deepseek-web-source-parity-2034.test.js --maxWorkers=2
+```

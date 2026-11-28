@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import "../translator/registerAll.js";
 
@@ -114,12 +115,14 @@ it("packages worker assets offline using the existing CLI copy helper and runs t
   expect(manifest).toContainEqual({ path: "open-sse", directory: true });
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ds-pack-"));
   const cwd = process.cwd();
+  const sourceRoot = fileURLToPath(new URL("../../", import.meta.url));
   try {
-    copyRecursive(path.resolve(cwd, "open-sse/executors/deepseek-web"), path.join(root, "open-sse/executors/deepseek-web"));
+    copyRecursive(path.resolve(sourceRoot, "open-sse/executors/deepseek-web"), path.join(root, "open-sse/executors/deepseek-web"));
     const typeChecks = manifest.find(entry => entry.path === "src/shared/utils/typeChecks.js");
     expect(typeChecks).toBeTruthy();
     fs.mkdirSync(path.join(root, "src/shared/utils"), { recursive: true });
-    fs.copyFileSync(path.resolve(cwd, typeChecks.path), path.join(root, typeChecks.path));
+    fs.copyFileSync(path.resolve(sourceRoot, typeChecks.path), path.join(root, typeChecks.path));
+    expect(fs.existsSync(path.join(root, "open-sse/executors/deepseek-web/deepseek-pow-worker.mjs"))).toBe(true);
     process.chdir(root);
     expect(JSON.parse(Buffer.from(await solveChallenge(challenge()), "base64")).answer).toBe(3);
   } finally { process.chdir(cwd); fs.rmSync(root, { recursive: true, force: true }); }
@@ -325,4 +328,13 @@ it("retains legacy OpenAI SSE only with a valid terminal", async () => {
   expect((await new Executor().execute(input())).response.status).toBe(200);
   completion = () => new Response(sse(deltas));
   expect((await new Executor().execute(input())).response.status).toBe(502);
+});
+
+it("resolves the source worker when the caller is outside the runtime root", async () => {
+  const cwd = process.cwd();
+  const unrelated = fs.mkdtempSync(path.join(os.tmpdir(), "ds-caller-"));
+  try {
+    process.chdir(unrelated);
+    expect(JSON.parse(Buffer.from(await solveChallenge(challenge()), "base64")).answer).toBe(3);
+  } finally { process.chdir(cwd); fs.rmSync(unrelated, { recursive: true, force: true }); }
 });

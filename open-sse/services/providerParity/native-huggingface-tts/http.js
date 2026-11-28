@@ -44,12 +44,17 @@ export const invalid = (message) => ({ ...createErrorResult(HTTP_STATUS.BAD_REQU
 
 const timeoutError = () => Object.assign(new Error("request timed out"), { name: "TimeoutError" });
 
+// The default transport. A POST whose outcome is unknown after a proxy failure
+// must never be resent directly, so the replayable JSON body is not replayed.
+// An injected fetchImpl receives the init unchanged.
+const defaultFetch = (url, init, proxyOptions) => proxyAwareFetch(url, { ...init, noTransportReplay: true }, proxyOptions);
+
 /**
  * One POST bounded by the caller's signal and a deadline. The wait ends on
  * either even when a transport ignores its signal; a late answer is discarded.
  * Throws an AbortError tagged `notSent` when the caller left before the send.
  */
-export async function boundedSend(url, init, { fetchImpl = proxyAwareFetch, credentials, signal, timeoutMs }) {
+export async function boundedSend(url, init, { fetchImpl = defaultFetch, credentials, signal, timeoutMs }) {
   if (signal?.aborted) throw Object.assign(new Error("aborted before send"), { name: "AbortError", notSent: true });
   const deadline = new AbortController();
   const fetchSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;

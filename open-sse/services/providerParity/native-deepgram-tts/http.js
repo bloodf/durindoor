@@ -82,6 +82,10 @@ export async function boundedSend(url, init, { fetchImpl = proxyAwareFetch, cred
   }
 }
 
+// The default transport for billable work: a send whose outcome is unknown is
+// never resent directly after a proxy failure. Free reads keep proxyAwareFetch.
+const billableTransport = (url, init, proxyOptions) => proxyAwareFetch(url, { ...init, noTransportReplay: true }, proxyOptions);
+
 /** Whether a failed send provably never reached Deepgram. */
 export const provenUnsent = (error) => error?.notSent === true || PRE_CONNECT_ERROR_CODES.has(error?.cause?.code ?? error?.code);
 
@@ -152,7 +156,7 @@ export async function sendOnce(url, init, { modality, label, credentials, signal
   const secrets = deepgramSecrets(credentials);
   let sent;
   try {
-    sent = await boundedSend(url, init, { fetchImpl, credentials, signal, timeoutMs });
+    sent = await boundedSend(url, init, { fetchImpl: fetchImpl ?? (billable ? billableTransport : proxyAwareFetch), credentials, signal, timeoutMs });
   } catch (error) {
     if (provenUnsent(error)) {
       return { failure: signal?.aborted

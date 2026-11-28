@@ -63,11 +63,12 @@ export async function cookiePublicFlow2034(provider) {
     return dispatcher;
   }
   return {
-    db, network, logs, issue, submit, imported, bind, pairResponse,
+    db, network, logs, usage, issue, submit, imported, bind, pairResponse,
     list: () => listing.GET(new Request("https://dashboard.example/api/providers", { headers: { "x-9r-cli-token": "synthetic-operator" } })),
-    dispatch: ({ model, anthropic = false, stream = false, id, signal } = {}) => {
+    // Additional headers and body fields are scoped to this request and pass through unchanged.
+    dispatch: ({ model, anthropic = false, stream = false, id, signal, headers = {}, body = {} } = {}) => {
       const url = anthropic ? "/api/v1/messages" : "/api/v1/chat/completions";
-      const req = request(url, { model, max_tokens: 32, stream, messages: [{ role: "user", content: "synthetic question" }] }, id ? { "x-connection-id": id } : {});
+      const req = request(url, { model, max_tokens: 32, stream, messages: [{ role: "user", content: "synthetic question" }], ...body }, { ...(id ? { "x-connection-id": id } : {}), ...headers });
       return (anthropic ? messages : chat).POST(signal ? new Request(req, { signal }) : req);
     },
     async close() {

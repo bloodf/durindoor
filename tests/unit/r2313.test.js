@@ -269,3 +269,45 @@ describe("review regressions", () => {
     expect((await stored(connection.id)).providerSpecificData).toMatchObject({ copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry });
     expect(result.providerSpecificData).toMatchObject({ copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry });
   });
+
+it("review: returns the winning Copilot token at top level", async () => {
+  const connection = await createConnection("github", { expiresAt: new Date(Date.now() + 86400000).toISOString(), providerSpecificData: { copilotToken: "C0", copilotTokenExpiresAt: nowSeconds() - 1 } });
+  mocks.refreshCopilotToken.mockImplementationOnce(async () => {
+    await repo.updateProviderConnection(connection.id, { providerSpecificData: { copilotToken: "C2", copilotTokenExpiresAt: nowSeconds() + 3600 } });
+    return { token: "C1", expiresAt: nowSeconds() + 1800 };
+  });
+  const result = await wrapper.checkAndRefreshToken("github", { ...connection, copilotToken: "C0" });
+  expect(result.copilotToken).toBe("C2");
+});
+
+it("returns the stored Copilot fields after a rejected OAuth refresh", async () => {
+  const oldExpiry = nowSeconds() - 1;
+  const winnerExpiry = nowSeconds() + 3600;
+  const connection = await createConnection("github", {
+    providerSpecificData: { copilotToken: "C0", copilotTokenExpiresAt: oldExpiry },
+  });
+  mocks.refreshProviderCredentials.mockImplementationOnce(async () => {
+    await repo.updateProviderConnection(connection.id, {
+      accessToken: "A2", providerSpecificData: { copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry },
+    });
+    return { accessToken: "A1", refreshToken: "R0", expiresIn: 3600 };
+  });
+  const result = await wrapper.checkAndRefreshToken("github", {
+    ...connection, copilotToken: "C0", copilotTokenExpiresAt: oldExpiry,
+  }, null, { force: true });
+  expect(result.copilotToken).toBe("C2");
+  expect(result.copilotTokenExpiresAt).toBe(winnerExpiry);
+});
+
+it("clears stale top-level Copilot fields when the stored winner has none", async () => {
+  const connection = await createConnection("github");
+  mocks.refreshProviderCredentials.mockImplementationOnce(async () => {
+    await repo.updateProviderConnection(connection.id, { accessToken: "A2" });
+    return { accessToken: "A1", refreshToken: "R0", expiresIn: 3600 };
+  });
+  const result = await wrapper.checkAndRefreshToken("github", {
+    ...connection, copilotToken: "C0", copilotTokenExpiresAt: 123,
+  }, null, { force: true });
+  expect(result.copilotToken).toBeUndefined();
+  expect(result.copilotTokenExpiresAt).toBeUndefined();
+});

@@ -294,6 +294,16 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
 
 // ─── Local-specific: proactive token refresh ─────────────────────────────────
 
+// A rejected refresh must return the stored winner with the same Copilot fields as auth.
+function storedWinnerCredentials(creds, stored) {
+  return {
+    ...creds,
+    ...stored,
+    copilotToken: stored?.providerSpecificData?.copilotToken,
+    copilotTokenExpiresAt: stored?.providerSpecificData?.copilotTokenExpiresAt
+  };
+}
+
 /**
  * Check whether the provider token (and, for GitHub, the Copilot token) is
  * about to expire and refresh it proactively.
@@ -380,7 +390,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
         guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken, presentedLastRefreshAt: creds.lastRefreshAt });
       // Never dispatch a Codex token whose identity the store did not accept.
-      if (!applied) return { ...creds, ...await getProviderConnectionById(creds.connectionId) };
+      if (!applied) return storedWinnerCredentials(creds, await getProviderConnectionById(creds.connectionId));
 
       creds = {
         ...creds,
@@ -439,7 +449,7 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
           shouldCommitConnection: (connection) =>
             connection.providerSpecificData?.copilotToken === expectedCopilotToken &&
             connection.providerSpecificData?.copilotTokenExpiresAt === expectedCopilotExpiry });
-        if (!applied) return { ...creds, ...await getProviderConnectionById(creds.connectionId) };
+        if (!applied) return storedWinnerCredentials(creds, await getProviderConnectionById(creds.connectionId));
 
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotTokenResult.token;

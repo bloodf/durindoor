@@ -435,7 +435,7 @@ function hasReasoningTier(levels) {
 }
 
 /** True when a reasoning model's declared efforts cannot enable reasoning (`["none"]`, or `[]` after thinkingCanDisable). */
-function declaresNoReasoningTier(caps, provider = null, model = null) {
+export function declaresNoReasoningTier(caps, provider = null, model = null) {
   if (!caps?.reasoning) return false;
   const declared = getThinkingLevelsFromCapabilities(caps, provider, model);
   return Array.isArray(declared) && !hasReasoningTier(declared);

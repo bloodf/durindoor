@@ -7,7 +7,7 @@ import { CODEX_REVIEW_SUFFIX } from "../providers/models/helpers.js";
 import { dothooshFamilyFormats } from "../providers/dothooshCatalog.js";
 import { KIRO_FAMILY_PROVIDERS } from "../providers/models/kiroVariants.js";
 import { parseSuffix } from "../translator/concerns/thinkingSuffix.js";
-import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+import { declaresNoReasoningTier, extractThinking } from "../translator/concerns/thinkingUnified.js";
 import { isRecord, isString } from "../../src/shared/utils/typeChecks.js";
 import { OPENAI_RESPONSES_FAMILY } from "./openaiResponsesFamily.js";
 
@@ -209,16 +209,18 @@ export function resolveRequestedModelTier(thinkingIntent, body = null, provider 
 /**
  * Provider-level thinking override from dashboard settings, applied only when
  * the client did not set the matching field. Returns a new body.
+ * None-only model capabilities skip enabling defaults, preserving client intent (#2713).
  * on/off -> body.thinking; none strips every thinking/effort field; levels -> reasoning_effort.
  * A level also replaces a client intent that names none (bare adaptive, `auto`),
  * except on native passthrough, which forwards the client's thinking fields as-is.
  */
-export function applyProviderThinkingOverride(body, providerThinking, { passthrough = false } = {}) {
+export function applyProviderThinkingOverride(body, providerThinking, { passthrough = false, modelCapabilities = null, provider = null, model = null } = {}) {
   const mode = providerThinking?.mode;
   if (!mode || mode === "auto") return body;
   // Upstream decolua/9router#2534: explicit "none" means strip thinking params entirely
   // (some upstreams, e.g. xAI grok-composer, 400 if reasoning fields are sent at all).
   if (mode === "none") return stripThinkingControls(body);
+  if (mode !== "off" && declaresNoReasoningTier(modelCapabilities, provider, model)) return body;
   if (mode === "on") return body.thinking ? body : { ...body, thinking: { type: "enabled", budget_tokens: 10000 } };
   // output_config.effort outranks `thinking` in extractThinking, so the injected
   // disable must drop it or adaptive thinking comes back (#2676).

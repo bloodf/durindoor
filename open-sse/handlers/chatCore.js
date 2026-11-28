@@ -559,7 +559,9 @@ async function runChatCore({ routingPolicy, body, modelInfo, credentials: rawCre
   const clientTool = detectClientTool(clientRawRequest?.headers || {}, body);
   const passthrough = isNativePassthrough(clientTool, provider);
 
-  body = applyProviderThinkingOverride(body, providerThinking, { passthrough });
+  body = applyProviderThinkingOverride(body, providerThinking, {
+    passthrough, modelCapabilities: effectiveModelCapabilities, provider, model: cleanModel,
+  });
   // Suffix intent, then body effort/budget (including the provider-level
   // override injected above), select `<model>-<tier>` catalog rows (upstream
   // 9router 82aeb907). A catalog preset such as `(high)` applies only when

@@ -6,6 +6,7 @@
  * Never cache, synthesize, refresh, or retry a supplied proof here.
  */
 import { isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
+import { redactZaiRequestProof } from "../../services/zaiRequestProof.js";
 
 const record = (value) => (isRecord(value) ? value : null);
 function json(value) {
@@ -57,11 +58,5 @@ export function resolveZaiWebSession(credentials = {}, extract) {
 
 /** Audit copies must not retain an opaque proof supplied in the request body. */
 export function redactZaiProof(value) {
-  if (!record(value)) return value;
-  const copy = { ...value };
-  for (const key of ["captcha_verify_param", "captchaVerifyParam", "zaiCaptchaVerifyParam"]) {
-    if (Object.hasOwn(copy, key)) copy[key] = "[REDACTED]";
-  }
-  if (record(copy.providerSpecificData)) copy.providerSpecificData = redactZaiProof(copy.providerSpecificData);
-  return copy;
+  return redactZaiRequestProof(value);
 }

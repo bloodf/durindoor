@@ -183,10 +183,12 @@ async function capture(pairing, chrome, send = extensionTransport()) {
 
 // ---------- gateway ----------
 
+/** Synthetic proof the next chat() sends in its body; null sends none (reset before each test). */
+let requestProof = null;
 const chat = ({ connectionId, ...extra } = {}) => api.handleChat(new Request("http://gateway.invalid/v1/chat/completions", {
   method: "POST",
   headers: { "content-type": "application/json", ...(connectionId ? { "x-connection-id": connectionId } : null) },
-  body: JSON.stringify({ model: MODEL, stream: false, messages: [{ role: "user", content: "synthetic prompt" }], ...extra }),
+  body: JSON.stringify({ model: MODEL, stream: false, messages: [{ role: "user", content: "synthetic prompt" }], ...(requestProof ? { captcha_verify_param: requestProof } : null), ...extra }),
 }));
 
 const stored = (id) => api.localDb.getProviderConnectionById(id);
@@ -260,6 +262,7 @@ beforeEach(async () => {
   wire = [];
   rejected = new Set();
   completionReply = answer;
+  requestProof = null;
   boundary.send.mockReset().mockImplementation(chatZai);
   boundary.escaped.length = 0;
   logs = ["log", "info", "warn", "error", "debug"].map((method) => vi.spyOn(console, method).mockImplementation(() => {}));
@@ -327,8 +330,8 @@ describe("zai-web extension capture through to the executor", () => {
     expect(listed).not.toContain(value);
 
     const { proxyUrl, poolId } = await bindProxy(id, "capture");
-    const captureProof = proof("capture");
-    const response = await chat({ connectionId: id, captcha_verify_param: captureProof });
+    requestProof = proof("capture");
+    const response = await chat({ connectionId: id });
     expect(response.status).toBe(200);
     const text = await response.text();
     expect(JSON.parse(text).choices[0].message).toMatchObject({ content: "synthetic answer", reasoning_content: "synthetic reasoning" });
@@ -348,7 +351,7 @@ describe("zai-web extension capture through to the executor", () => {
     expect(completion.target.searchParams.get("user_id")).toBe("synthetic-user-capture");
     expect(completion.headers.get("x-signature")).toMatch(/^[0-9a-f]{64}$/);
     expect(completion.body).toMatchObject({ chat_id: "synthetic-chat", model: "glm-5.3", signature_prompt: "synthetic prompt" });
-    expectProofInBodyOnly(captureProof);
+    expectProofInBodyOnly(requestProof);
     expect(boundary.escaped).toEqual([]);
     // Positive controls: the scan really sees the gateway's log lines and the saved row.
     const scanned = expectNoSecretLeak();
@@ -441,10 +444,10 @@ describe("zai-web dashboard import inputs", () => {
     const { connection } = JSON.parse(text);
     expect((await stored(connection.id)).apiKey).toBe(`token=${value}`);
 
-    const pasteProof = proof(`paste-${kind}`);
-    expect((await chat({ connectionId: connection.id, captcha_verify_param: pasteProof })).status).toBe(200);
+    requestProof = proof(`paste-${kind}`);
+    expect((await chat({ connectionId: connection.id })).status).toBe(200);
     expect(wire.map((call) => call.bearer)).toEqual([value, value]);
-    expectProofInBodyOnly(pasteProof);
+    expectProofInBodyOnly(requestProof);
     expectNoSecretLeak();
   });
 
@@ -505,10 +508,10 @@ describe("zai-web dashboard import inputs", () => {
     expect(text).not.toContain(value);
     const { connection } = JSON.parse(text);
     expect(connection.authType).toBe("cookie");
-    const manualProof = proof("manual");
-    expect((await chat({ connectionId: connection.id, captcha_verify_param: manualProof })).status).toBe(200);
+    requestProof = proof("manual");
+    expect((await chat({ connectionId: connection.id })).status).toBe(200);
     expect(wire.map((call) => call.bearer)).toEqual([value, value]);
-    expectProofInBodyOnly(manualProof);
+    expectProofInBodyOnly(requestProof);
     expectNoSecretLeak();
   });
 
@@ -584,12 +587,13 @@ describe("zai-web stored account consumption", () => {
       accounts.push({ id: connection.id, value, ...(await bindProxy(connection.id, label)) });
     }
     const [a, b] = accounts;
-    for (const [turn, account] of [b, a, b].entries()) {
+    let turn = 0;
+    for (const account of [b, a, b]) {
       wire = [];
-      const turnProof = proof(`iso-${turn}`);
-      expect((await chat({ connectionId: account.id, captcha_verify_param: turnProof })).status).toBe(200);
+      requestProof = proof(`iso-${turn++}`);
+      expect((await chat({ connectionId: account.id })).status).toBe(200);
       expect(routes()).toEqual([[account.value, account.proxyUrl], [account.value, account.proxyUrl]]);
-      expectProofInBodyOnly(turnProof);
+      expectProofInBodyOnly(requestProof);
     }
     expectNoSecretLeak();
   });
@@ -602,7 +606,8 @@ describe("zai-web stored account consumption", () => {
     const { proxyUrl } = await bindProxy(a.id, "pinned");
     rejected.add(stale);
 
-    const failed = await chat({ connectionId: a.id, captcha_verify_param: proof("pinned") });
+    requestProof = proof("pinned");
+    const failed = await chat({ connectionId: a.id });
     expect(failed.status).toBe(401);
     const failure = await failed.text();
     expect(failure).toContain("Z.ai session expired or was rejected");
@@ -622,12 +627,12 @@ describe("zai-web stored account consumption", () => {
     expect((await stored(a.id)).priority).toBeLessThan((await stored(b.id)).priority);
     rejected.add(stale);
 
-    const fallbackProof = proof("fallback");
-    const first = await chat({ captcha_verify_param: fallbackProof });
+    requestProof = proof("fallback");
+    const first = await chat();
     expect(first.status).toBe(200);
     expect(await first.text()).not.toContain(stale);
     expect(routes()).toEqual([[stale, bindingA.proxyUrl], [neighbour, proxyB], [neighbour, proxyB]]);
-    expectProofInBodyOnly(fallbackProof);
+    expectProofInBodyOnly(requestProof);
     expect(await stored(a.id)).toMatchObject({ testStatus: "unavailable", errorCode: 401, apiKey: `token=${stale}` });
     const bBefore = await stored(b.id);
 
@@ -644,10 +649,10 @@ describe("zai-web stored account consumption", () => {
     expect(await stored(b.id)).toEqual(bBefore);
 
     wire = [];
-    const renewedProof = proof("renewed");
-    expect((await chat({ connectionId: a.id, captcha_verify_param: renewedProof })).status).toBe(200);
+    requestProof = proof("renewed");
+    expect((await chat({ connectionId: a.id })).status).toBe(200);
     expect(routes()).toEqual([[renewed, bindingA.proxyUrl], [renewed, bindingA.proxyUrl]]);
-    expectProofInBodyOnly(renewedProof);
+    expectProofInBodyOnly(requestProof);
     expectNoSecretLeak();
   });
 
@@ -657,20 +662,21 @@ describe("zai-web stored account consumption", () => {
     const connection = await importAccount("transport", value);
     completionReply = async (url) => { throw new Error(`synthetic socket failure for ${url}`); };
 
+    requestProof = proof("transport");
     // Unpinned, so the failure is also written to the account's health state.
-    const response = await chat({ captcha_verify_param: proof("transport") });
+    const response = await chat();
     expect(response.status).toBe(502);
     const text = await response.text();
-    // Stricter after the proof fix: a fixed message, because the thrown text quotes the token URL.
+    // Stricter after the proof fix: the executor returns a fixed message, because the thrown text quotes
+    // the token URL. The completion may have reached the provider, so the failure is terminal: no
+    // replay, no cooldown and no copy of the thrown text in the account's health state.
     expect(text).toContain("Z.ai request failed; completion was not replayed");
     expect(text).not.toContain("synthetic socket failure");
     expect(text).not.toContain(value);
     expect(wire.at(-1).url).toContain(value);
     expect(wire.filter((call) => call.target.pathname === COMPLETIONS_PATH)).toHaveLength(1);
-    // The completion may have reached the provider, so the failure is terminal: no replay and no cooldown.
-    const after = await stored(connection.id);
-    expect(after.testStatus).not.toBe("unavailable");
-    expect(String(after.lastError ?? "")).not.toContain("synthetic socket failure");
+    expect((await stored(connection.id)).testStatus).not.toBe("unavailable");
+    expect(String((await stored(connection.id)).lastError ?? "")).not.toContain("synthetic socket failure");
     await disposeLoadedRequestDetailsRepo();
     const scanned = expectNoSecretLeak();
     expect(scanned.output).not.toContain("synthetic socket failure");
@@ -681,18 +687,26 @@ describe("zai-web stored account consumption", () => {
 
   it.each([false, true])("reports a failure for a 200 reply that is not an event stream (stream: %s)", async (stream) => {
     const connection = await importAccount("not-sse", token("not-sse"));
-    // Stricter after the proof fix: the executor itself refuses a non-SSE 200 before any client output.
+    // The executor alone turns this into an empty completion; the gateway's empty-response check must stop it.
     completionReply = () => Response.json({ detail: "synthetic refusal: not an event stream" });
 
-    const response = await chat({ stream, captcha_verify_param: proof(`not-sse-${stream}`) });
+    // Stricter after the proof fix: the executor refuses the non-SSE 200 itself, before any client byte.
+    requestProof = proof(`not-sse-${stream}`);
+    const response = await chat({ stream });
     const text = await response.text();
-    // Buffered and streamed alike end as a failure status, never a success stop.
+    if (stream) {
+      // Stricter: the failure is known before the stream starts, so it travels as a status, not a frame.
+      expect(response.status).not.toBe(200);
+      expect(text).not.toContain('"finish_reason":"stop"');
+    } else {
+      expect(response.status).toBe(502);
+    }
+    // Buffered and streamed alike end with a failure status, never a success stop.
     expect(response.status).toBe(502);
     expect(text).toContain("Z.ai request failed; completion was not replayed");
-    expect(text).not.toContain('"finish_reason":"stop"');
     expect(text).not.toContain("synthetic refusal");
     expect(wire.filter((call) => call.target.pathname === COMPLETIONS_PATH)).toHaveLength(1);
-    // The completion was sent, so the outcome is uncertain: no replay and no account cooldown.
+    // The completion was sent, so its outcome is uncertain: no replay and no account cooldown.
     expect((await stored(connection.id)).testStatus).not.toBe("unavailable");
     expectNoSecretLeak();
   });
@@ -714,13 +728,13 @@ describe("zai-web stored account consumption", () => {
     expect(text).toContain("Z.ai request failed; completion was not replayed");
     expect(text).not.toContain("synthetic refusal: proof missing");
     expect(text).not.toMatch(/synthetic-(stored|request)-proof/);
-    const completions = wire.filter((call) => call.target.pathname === COMPLETIONS_PATH);
-    expect(completions).toHaveLength(1);
+    expect(wire.filter((call) => call.target.pathname === COMPLETIONS_PATH)).toHaveLength(1);
+    const completion = wire.find((call) => call.target.pathname === COMPLETIONS_PATH);
     // Source precedence: the request body proof wins over the stored one.
-    expect(completions[0].body.captcha_verify_param).toBe("synthetic-request-proof");
-    expect(JSON.stringify(completions[0].body)).not.toContain("synthetic-stored-proof");
-    expect(completions[0].target.searchParams.has("captcha_verify_param")).toBe(false);
-    expect(completions[0].url).not.toMatch(/synthetic-(stored|request)-proof/);
+    expect(completion.body.captcha_verify_param).toBe("synthetic-request-proof");
+    expect(JSON.stringify(completion.body)).not.toContain("synthetic-stored-proof");
+    expect(completion.target.searchParams.has("captcha_verify_param")).toBe(false);
+    expect(completion.url).not.toMatch(/synthetic-(stored|request)-proof/);
     expect(JSON.stringify(wire[0].body)).not.toMatch(/synthetic-(stored|request)-proof/);
     expectNoSecretLeak();
   });

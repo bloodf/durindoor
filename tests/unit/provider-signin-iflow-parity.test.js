@@ -78,7 +78,8 @@ describe("iFlow production OAuth contracts", () => {
 });
 
 describe("staged iFlow cookie import", () => {
-  // The manifest stays immutable; assert that its staged helper is now wired.
+  // Staging-only: flip these assertions when the helper is registered in the cookie route.
+  // register-auth-02 registered it (flipped below); the manifest itself stays immutable.
   it("is declared staged with its exact export", async () => {
     const registration = JSON.parse(fs.readFileSync(new URL("../../src/lib/oauth/providerParity/iflow/registration.json", import.meta.url), "utf8"));
     const helper = await import("../../src/lib/oauth/providerParity/iflow/cookie.js");

@@ -13,7 +13,7 @@ afterEach(() => {
 describe("retained Qwen OAuth error paths", () => {
   // register-auth-02 wired the staged Qwen handler, which reports a fixed
   // message and protocol state instead of upstream text (#2034 no-leak rule).
-  it("surfaces a device authorization failure without the upstream body", async () => {
+  it("surfaces a device authorization failure", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response("unavailable", { status: 503 }));
     vi.stubGlobal("fetch", fetch);
     const error = await requestDeviceCode("qwen", "challenge").catch((caught) => caught);
@@ -22,7 +22,7 @@ describe("retained Qwen OAuth error paths", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it("returns the provider's slow-down response without issuing tokens or its description", async () => {
+  it("returns the provider's slow-down response without issuing tokens", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "slow_down", error_description: "wait" }), { status: 400 })));
     const result = await pollForToken("qwen", "device", "verifier");
     expect(result).toMatchObject({ success: false, error: "slow_down" });

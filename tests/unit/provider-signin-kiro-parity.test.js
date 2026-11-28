@@ -181,7 +181,8 @@ describe("Kiro production service contracts (closed network)", () => {
   });
 });
 
-// The manifest stays immutable; register-auth-02 wired its sole slot.
+// Isolated staging assertions: remove this block when the ordered auth batch registers the helper.
+// register-auth-02 wired the slot; the manifest stays immutable, so wiring is also asserted here.
 describe("Kiro staged registration", () => {
   it("documents its sole integration slot and preserves the IDC issuer distinction", () => {
     const providers = fs.readFileSync(new URL("../../src/lib/oauth/providers.js", import.meta.url), "utf8");

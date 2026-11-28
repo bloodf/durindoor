@@ -183,6 +183,43 @@ at most 300 seconds per command. The borrowed graphs were not used or changed.
   an intentional difference documented in `provider-signin-copilot-parity.md`.
   Storybook surfaces are unchanged, so no hashes changed.
 
+## User documentation
+
+Per-provider pages are named by registry ID, so the provider-docs registry test
+(`arch-a2309`) maps each one to a registered provider: `docs/providers/qwen.mdx`,
+`iflow.mdx`, `github.mdx` and `ghe-copilot.mdx`. Kiro's steps already live in
+`kiro.mdx`. All four are indexed in `docs/providers/meta.json` and linked from
+`sign-in-methods.mdx`. An earlier combined page (`sign-in-batch-2.mdx`) was
+removed because a non-provider page must otherwise be marked unreleased.
+
+## Lines removed from tests, and why
+
+The gate flags every removed test line. Each removal below changes an
+assertion whose old contract is now wrong. None drops a scenario.
+
+- **Upstream text in errors** (`github-signin-parity`, `iflow-parity-pass`,
+  `iflow-signin-parity`, `qwen-parity-pass`, `provider-signin-iflow-parity`):
+  the old lines required upstream bodies (`"denied"`, `"unavailable"`,
+  `"wait"`, `"upstream unavailable"`) to reach the caller. They now require
+  the fixed message or protocol error, the absence of that text, and the same
+  request count. Test titles and staging comments were kept.
+- **`provider-signin-iflow-parity` and `provider-signin-kiro-parity`:** the
+  staging `not.toContain` check is flipped to `toContain`. The original
+  staging comments are kept, with one added line each.
+- **`provider-signin-copilot-parity`:** the line-number callsite loop cannot
+  pass. Its manifest is immutable and pins `providers.js:1312`, and that line
+  moved when the slot was wired. It is replaced by per-file checks for the
+  required helper call and the removed path.
+- **`omni-copilot-account-contract-precedence`:** the fixture line for an
+  API-only host became a bound enterprise fixture. Refusal and per-host
+  credential assertions were added.
+- **`port9r-proxy-refresh-884`:** the exact unguarded call became the guarded
+  call, and the guard is exercised.
+- **`src/app/api/providers/[id]/test/testUtils.js`** is product code; its name
+  matches the flag pattern. The removed lines are the probe built from
+  `normalizeGheUrl`. They are replaced by the bound issuer probe, which
+  `ghe-copilot-public-parity-2034` exercises.
+
 ## Scope expansion
 
 `src/shared/services/providerCredentials.js` is outside the listed paths. It

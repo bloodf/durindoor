@@ -1,0 +1,36 @@
+---
+title: GitHub Enterprise Copilot
+description: Sign in to Copilot on GitHub Enterprise Server or GHE.com, and know when to reconnect.
+---
+
+GitHub Enterprise Copilot (`ghe-copilot`, alias `ghe`) signs in on your own
+enterprise host.
+
+1. Open **Dashboard → Providers** and choose **GitHub Enterprise Copilot**.
+   Choose the connection's proxy first.
+2. Enter your enterprise HTTPS origin, for example
+   `https://github.example.com` (GitHub Enterprise Server) or
+   `https://tenant.ghe.com` (GHE.com).
+3. Open the device page on that host and enter the code.
+
+The connection is bound to that host, the sign-in client and the proxy you
+selected. Requests, model discovery, connection tests and token refresh all
+use that host and proxy, and redirects are refused.
+
+The terminal CLI cannot start enterprise sign-in because it cannot send the
+enterprise origin. Use the dashboard.
+
+## Reconnect when
+
+- An older connection has only an API URL and no enterprise origin. An API URL
+  cannot show which host issued the credential, so the connection is refused
+  until you sign in again with the enterprise origin.
+- An older connection's Copilot session cannot be renewed and states no expiry.
+- You change the connection's proxy. The new route must match the route used
+  at sign-in.
+
+A cancelled, expired or denied code saves nothing; start a new sign-in.
+
+Public [GitHub Copilot](./github.mdx), GitHub Enterprise and
+[Microsoft 365 Copilot Web](./copilot-m365-web.mdx) are separate identities.
+Credentials from one cannot be used for another.

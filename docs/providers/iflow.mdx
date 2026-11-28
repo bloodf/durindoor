@@ -1,0 +1,21 @@
+---
+title: iFlow AI
+description: Connect iFlow AI with OAuth or a session cookie and know how key rotation behaves.
+---
+
+iFlow AI (`iflow`, alias `if`) supports OAuth and session-cookie import.
+
+## OAuth
+
+1. Open **Dashboard → Providers**, choose **iFlow AI** and start OAuth.
+2. Sign in on the iFlow page and let it redirect back to the dashboard.
+
+The terminal CLI uses the same OAuth flow.
+
+## Cookie import
+
+Paste one `BXAuth` cookie from your own iFlow session. Import rotates the
+platform API key once. If the response is lost, check your connections before
+you import again. Responses never show the stored key.
+
+A refused or cancelled sign-in saves nothing; start again.

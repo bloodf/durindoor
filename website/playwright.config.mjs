@@ -28,7 +28,9 @@ if (!process.env[TRANSIENT_PORT_ENV]) process.env[TRANSIENT_PORT_ENV] = String(a
 const plan = transientServerPlan();
 // Chromium uses Unix sockets below TMPDIR; long checkpoint paths exceed their
 // kernel limit. Keep browser scratch private and short, independently of reports.
-if (process.env.TEST_WORKER_INDEX === undefined) {
+// Only the Playwright runner owns it: workers inherit it, and test tooling that
+// merely imports this file (Vitest) must not create a directory it cannot reap.
+if (process.env.TEST_WORKER_INDEX === undefined && !process.env.VITEST) {
   const scratch = mkdtempSync("/tmp/dd-pw-");
   process.env.TMPDIR = scratch;
   process.on("exit", () => rmSync(scratch, { recursive: true, force: true }));

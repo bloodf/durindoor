@@ -17,6 +17,18 @@ describe("Vitest project resource classification", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("conservatively follows commented-out local imports", () => {
+    const root = mkdtempSync(join(tmpdir(), "vitest-classifier-"));
+    try {
+      const tests = join(root, "tests");
+      mkdirSync(tests);
+      writeFileSync(join(tests, "sample.test.js"), '// import "./helper.js";');
+      writeFileSync(join(tests, "helper.js"), "server.listen(0);");
+      expect(createFileClassifier(tests, root)("sample.test.js")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("detects a listener after a regex literal containing comment delimiters", () => {
     expect(isIntegrationSource("const slash = /[//]/; server.listen(0);" )).toBe(true);
   });

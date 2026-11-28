@@ -61,10 +61,10 @@ export function createFileClassifier(testsDir, repoRoot = root) {
       }
       let record = sources.get(file);
       if (!record) {
-        let code;
-        try { code = parse(readFileSync(file, "utf8")); } catch { results.set(entryPath, true); return true; }
+        let source;
+        try { source = readFileSync(file, "utf8"); } catch { results.set(entryPath, true); return true; }
         const dependencies = [];
-        for (const match of code.matchAll(localImport)) {
+        for (const match of source.matchAll(localImport)) {
           const specifier = match[1];
           const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
             : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
@@ -75,7 +75,10 @@ export function createFileClassifier(testsDir, repoRoot = root) {
             }
           }
         }
-        record = { matches: containsResource(code), dependencies };
+        // Only candidate resource operations need tokenization; raw imports
+        // may add conservative edges, including imports in comments.
+        const candidate = [...source.matchAll(resourceImport)].length > 0 || resourceOperation.test(source);
+        record = { matches: candidate && isIntegrationSource(source), dependencies };
         sources.set(file, record);
       }
       if (record.matches) { results.set(entryPath, true); return true; }

@@ -94,7 +94,13 @@ async function discover(changedList, output) {
     // suites can exhaust resources before related-test discovery completes.
     limitDependencyConcurrency(vitest);
     const specs = await vitest.getRelevantTestSpecifications();
-    const files = [...new Set(specs.map(({ moduleId }) => relative(testDir, moduleId)))].sort();
+    // The coverage test reads registry JSON through fs, so Vitest cannot see
+    // these files in its import graph. Include its guard for registry changes.
+    const registryChanged = changed.some((file) => /^tests\/e2e\/v5-evidence\/[^/]+\.json$/.test(file));
+    const files = [...new Set([
+      ...specs.map(({ moduleId }) => relative(testDir, moduleId)),
+      ...(registryChanged ? ["unit/v5-int-25-coverage.test.js"] : []),
+    ])].sort();
     if (!files.length && !isBrowserOnlyChange(changed)) {
       throw new Error("Vitest selected zero related test files");
     }

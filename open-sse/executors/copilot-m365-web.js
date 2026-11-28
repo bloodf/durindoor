@@ -1,6 +1,5 @@
 import WebSocket from "ws";
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
@@ -246,9 +245,9 @@ export function runM365Socket({ wsUrl, invocation, signal, onFrame, proxyOptions
   });
 }
 
-export class CopilotM365WebExecutor extends BaseExecutor {
+export class CopilotM365WebExecutor extends WebSessionExecutor {
   constructor() {
-    super("copilot-m365-web", { id: "copilot-m365-web", baseUrl: "wss://substrate.office.com" });
+    super("copilot-m365-web", { id: "copilot-m365-web", baseUrl: "wss://substrate.office.com" }, { observePatchedFetch: false });
   }
 
   /**
@@ -260,9 +259,8 @@ export class CopilotM365WebExecutor extends BaseExecutor {
   }
 
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+  /** Session transport owns HTTP setup and quota dispatch; socket timers bound each turn. */
+  async runSession(input, transport) {
     // The latest chat turn on the wire; every result after it carries its quota ticket.
     let sent = null;
     let dispatch = null;
@@ -277,8 +275,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
         response,
         url,
         headers: {},
-        transformedBody,
-        attemptStartedAt: sender.attemptStartedAt
+        transformedBody
       };
     };
 
@@ -365,7 +362,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
           signal: input.signal,
           proxyOptions: input.proxyOptions,
           // An upload is setup: it uses the transport policy but charges no quota.
-          send: (url, init, proxyOptions) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false })
+          send: (url, init) => transport.send(url, init)
         }));
       }
     } catch (error) {
@@ -400,7 +397,7 @@ export class CopilotM365WebExecutor extends BaseExecutor {
     // Starting a socket turn is the physical send. It stands in for response headers,
     // so the socket's own stall timers bound the turn, not the header deadline.
     const sendTurn = async (url, turnInvocation, signal, onFrame) => {
-      dispatch = sender.sendRequest(redactWsUrl(url), { signal }, input.proxyOptions, {
+      dispatch = transport.sendBillable(redactWsUrl(url), { signal }, {
         transport: ({ signal: turnSignal }) => ({
           done: runM365Socket({ wsUrl: url, proxyOptions: input.proxyOptions, invocation: turnInvocation, signal: turnSignal, onFrame })
         })

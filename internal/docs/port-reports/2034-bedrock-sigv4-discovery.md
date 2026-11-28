@@ -67,30 +67,33 @@ unchanged. The `buildHeaders` `Bearer ***` placeholder was not touched.
     identity is replaced by a refusing provider.
   - *Static and profile:* requests use SigV4 only (`authSchemePreference:
     ["sigv4"]`). The bearer identity is replaced by a refusing provider, so the
-    SDK cannot fall back to `AWS_BEARER_TOKEN_BEDROCK`, the SSO token cache or
-    instance metadata. The secret access key is never sent.
+    action client cannot switch to `AWS_BEARER_TOKEN_BEDROCK`. A named profile
+    still uses its configured credential chain; this is not a restriction on that chain. The secret access key is never sent.
   - *Session token:* the token comes only from the encrypted top-level
     `sessionToken`. A session token without an access key id is refused as a
     configuration error. It is never treated as a key pair.
   - *Profile:* the shared helper uses `fromIni`. The source has no profile mode,
-    so this is a local extension that matches the executor.
+    so this is a local extension. Discovery now refuses effective proxy, relay and
+    strict routes before constructing the provider; effective direct remains supported.
 - **Origin.** The endpoint is pinned to
   `https://bedrock.<region>.amazonaws.com`. The region comes from
   `resolveBedrockRegion`, which accepts only a valid region and ignores arbitrary
   base URLs. FIPS and dual-stack are disabled, and `AWS_ENDPOINT_URL*` is ignored
   because the endpoint is explicit. The request handler refuses any other origin
-  before sending. Profile mode also allows `sts`, `portal.sso` and `oidc`
-  `*.amazonaws.com` hosts, because a profile's credential chain reuses the
-  parent handler.
+  before sending, including STS/SSO hosts. The separate profile credential chain
+  does not share this action-transport boundary.
 - **Redirects.** Requests use `redirect: "manual"`. A 3xx response, an opaque
   redirect, or an answer from another origin is refused without being followed.
 - **Proxy.** The default transport is `proxyAwareFetch` with
-  `resolveCredentialProxyOptions(credentials, proxyOptions)`.
+  `resolveCredentialProxyOptions(credentials, proxyOptions)` for Bedrock actions.
+  Profile credential networking has no selected-proxy guarantee; bound routes
+  are refused using the existing merged route helpers.
 - **Abort and deadline.** The caller's `AbortSignal` and a single total deadline
   are applied. The deadline defaults to 30 seconds, is capped at 60 seconds, and
-  covers credential resolution, every page and every body read. It holds even
-  when a transport or credential provider ignores the signal. Bodies are limited
-  to 2 MiB.
+  bounds caller wait, including while credentials resolve. It does not cancel
+  separate profile credential networking or credential processes. The action
+  handler applies cancellation and a 2 MiB body cap to Bedrock responses only;
+  those guarantees do not cover profile credential responses.
 - **Validation.** A foundation list that is missing or has a malformed row fails
   as `invalid_response`. Inference-profile failures follow the source: auth
   failures are fatal, and other failures keep the foundation models and add a
@@ -149,3 +152,10 @@ The local run is not the exact-head isolated native gate.
 Original AWS suite Git blob: `45bd3dc98f2d36e14fb43654202b1445a5bd243d`.
 Original credential helper Git blob: `b31877af7fb73fb41dfde3f2e5563f89b67d0824`.
 Both were re-hashed after the change and are unchanged.
+
+## Profile boundary correction
+
+The original all-host profile transport claim was incorrect. See
+[the correction report](fix-bedrock-discovery-profile-boundary-2034.md) for pinned
+SDK evidence and regression checks. Historical test results above remain historical;
+none establishes live AWS permissions or credential-chain egress/cancellation.

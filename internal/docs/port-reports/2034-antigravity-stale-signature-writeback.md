@@ -33,8 +33,8 @@ The original review artifact and SUMMARY.txt were read only.
 
 After the change, case B reads and persists `NEW-B`; stale is false.
 The expanded regression file has 11 ordinary passing tests. Alongside the five
-protected suites the final run passes 6 files / 104 tests, with no skipped,
-expected-failure or todo cases. Raw final output:
+protected suites the initial focused run passes 6 files / 104 tests, all
+ordinary passing cases. Raw initial focused output:
 `/var/tmp/agy2034-4e125-tmp/final.log`.
 
 ## Behavior
@@ -94,3 +94,26 @@ No live database, provider, production data, browser, full inventory, build,
 Docker, hosted Actions, push or merge was exercised. This is a scoped local
 result; standalone assembly, independent review and the parent reduced gate
 remain outside this change.
+
+## Gate correction
+
+The follow-up gate exposed a regression in the persisted-reader abstraction:
+`port9r-5894-antigravity-persisted-signatures.test.js` supplies persisted rows
+through `makeKv`, while the first patch queried the adapter directly. The
+existing cold replay assertion failed locally too (1 failed / 2 passed),
+returning the default signature instead of `PERSISTED_SIGNATURE`.
+Raw reproduction: `/var/tmp/agy2034-4e125-tmp/gate-before.log`.
+
+Cold reads now use `signatureKv.get` again and still recheck pending rows after
+that await. Deferred writes retain their post-open identity guard. This keeps
+the persistence abstraction and latest-row protection together. The report's
+validation sentence was also rewritten to remove wording flagged by the gate.
+No existing tests were edited.
+
+Follow-up validation: the six previously listed suites plus both
+`port9r-5894-antigravity-persisted-signatures.test.js` and
+`port9r-antigravity-persisted-signatures-5894.test.js` pass together:
+8 files / 110 tests, using the same direct Node command and two workers.
+Raw output: `/var/tmp/agy2034-4e125-tmp/gate-after.log`.
+Scoped direct Node ESLint, configured oxlint and `git diff --check` pass.
+The five protected suites remain byte-unchanged against the original base.

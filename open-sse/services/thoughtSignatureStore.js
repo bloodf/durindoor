@@ -232,10 +232,10 @@ async function readPersisted(key) {
       return null;
     }
   }
-  const db = await getAdapter();
+  const row = await signatureKv.get(key);
   // A capture can also arrive while the read itself is opening the adapter.
   const pending = unpersisted.get(key);
-  return pending ? liveEntry(pending.row) : readRow(db, key);
+  return pending ? liveEntry(pending.row) : row;
 }
 
 // A usable selected-account id, or null ("unknown" is the gateway's placeholder).

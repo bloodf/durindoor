@@ -209,9 +209,10 @@ describe("Tencent imported accounts through public routes", () => {
     snapshot(secret, da, true);
   });
   /**
-   * A 200 sign-in page is the vendor refusing the session, so no chat work was accepted.
-   * The documented transient retry (at most three attempts) may repeat it, but only on the
-   * pinned account and its own strict proxy, and the caller must get an error.
+   * An HTTP 200 that looks like a sign-in page does not prove the vendor did no billable
+   * work: no source-backed protocol says the chat POST was refused. It is an unusable 2xx
+   * with an unknown outcome, so exactly one POST is sent, on the pinned account and its own
+   * strict proxy, and the caller gets the HTML error page error.
    */
   it("refuses a pinned 200 HTML sign-in page without leaving the pinned account or proxy", async () => {
     const { a, da } = await accounts();
@@ -223,8 +224,7 @@ describe("Tencent imported accounts through public routes", () => {
     expect(text).not.toContain("[DONE]");
     expect(text).not.toContain("fixture answer");
     const calls = flow.network.mock.calls;
-    expect(calls.length).toBeGreaterThanOrEqual(1);
-    expect(calls.length).toBeLessThanOrEqual(3);
+    expect(calls).toHaveLength(1);
     for (const [url, init] of calls) {
       expect(String(url)).toBe(origin + "/api/chat/HunyuanDefault");
       expect(init.headers.cookie).toBe(`sessionid=${secret}`);
@@ -329,19 +329,49 @@ describe("Tencent imported accounts through public routes", () => {
     const text = await response.text();
     expect(text).toContain("synthetic quota refusal");
     if (anthropic) {
-      // Anthropic clients end on the error event; `[DONE]` is not an Anthropic success
-      // terminal, so it may only trail the error and no message_stop/end_turn may appear.
-      const error = text.indexOf("event: error");
-      expect(error, text).toBeGreaterThanOrEqual(0);
-      if (text.includes("[DONE]")) expect(text.indexOf("[DONE]")).toBeGreaterThan(error);
+      // Anthropic streams end on the error event. `[DONE]` is an OpenAI sentinel and has no
+      // place in the Anthropic protocol, so it must not appear at all.
+      expect(text.indexOf("event: error"), text).toBeGreaterThanOrEqual(0);
       expect(text).not.toContain("event: message_delta");
       expect(text).not.toContain("end_turn");
-    } else {
-      expect(text).not.toContain("[DONE]");
     }
+    expect(text).not.toContain("[DONE]");
     expect(text).not.toContain('"finish_reason":"stop"');
     expect(text).not.toContain("event: message_stop");
     expect(flow.network, JSON.stringify(flow.network.mock.calls.map(([url, init]) => ({ url, cookie: init.headers.cookie, route: init.dispatcher?.label })))).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * MaxAI answers a connection reset after its chat POST with the same outcome-unknown
+   * code. Two imported MaxAI accounts on distinct strict proxies: the reset attempt is
+   * terminal and the sibling account is never dispatched.
+   */
+  it("never replays a MaxAI chat POST reset mid-send on the sibling imported account", async () => {
+    await flow.close();
+    flow = await cookiePublicFlow2034("maxai");
+    const maxaiOrigin = "https://www.maxai.co", chatUrl = "https://api.maxai.me/gpt/cwc/chat";
+    const signing = { hmacKey: "1a".repeat(32), aesKey: "2b".repeat(32), appVersion: "webpage_9.8.7", ctxKey: "3c".repeat(20) };
+    const tuple = (tag) => ({ access_token: `synthetic.maxai-access-${tag}.signature`, device_id: `synthetic-device-${tag}`, user_id: `synthetic-user-${tag}` });
+    const expires = Math.floor(Date.now() / 1000) + 3600;
+    const rows = [];
+    for (const tag of ["alpha", "bravo"]) {
+      const values = tuple(tag);
+      const row = await flow.imported({ action: "create", name: `MaxAI ${tag}` }, { origin: maxaiOrigin, cookies: Object.entries(values).map(([name, value]) => ({ name, value, domain: "www.maxai.co", secure: true, expirationDate: expires })) });
+      // Saved signing constants keep the setup page loads off the network boundary.
+      await flow.db.updateProviderConnection(row.id, { providerSpecificData: { ...row.providerSpecificData, maxaiSigningConstants: signing } });
+      rows.push({ row, values, dispatcher: await flow.bind(row.id, `maxai-${tag}`) });
+    }
+    flow.network.mockRejectedValue(new TypeError("synthetic connection reset after dispatch"));
+    const response = await flow.dispatch({ model: "maxai/gpt-5.6" });
+    const text = await response.text();
+    expect(response.status, text).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    const calls = flow.network.mock.calls.map(([url, init]) => ({ url: String(url), bearer: new Headers(init.headers).get("authorization"), route: init.dispatcher?.label }));
+    expect(calls, JSON.stringify(calls)).toHaveLength(1);
+    const used = rows.find((entry) => calls[0].bearer === `Bearer ${entry.values.access_token}`);
+    expect(used, JSON.stringify(calls)).toBeDefined();
+    expect(calls[0]).toEqual({ url: chatUrl, bearer: `Bearer ${used.values.access_token}`, route: used.dispatcher.label });
+    for (const entry of rows) for (const value of Object.values(entry.values)) expect(text).not.toContain(value);
   });
 
 });

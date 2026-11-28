@@ -6,6 +6,19 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 import { resolveMaxaiCredential } from "./maxaiCredentials.js";
 
+// Same code as MINIMAX_CODE_OUTCOME_UNKNOWN (minimax-code.js), which singleModel/postProcess.js
+// treats as terminal: the send may have been accepted, so it is never replayed.
+const OUTCOME_UNKNOWN = "upstream_outcome_unknown";
+// Connection failures raised before the request could reach the vendor.
+const UNSENT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "ERR_PROXY_CONNECTION_FAILED"]);
+/** True only when the thrown transport error proves the request never left. */
+function isUnsentError(error) {
+  for (let current = error, depth = 0; depth < 4 && current; depth += 1, current = current.cause) {
+    if (isString(current.code) && UNSENT_CODES.has(current.code)) return true;
+  }
+  return false;
+}
+
 const BASE = "https://api.maxai.me";
 const PATH = "/gpt/cwc/chat";
 const CONFIG_URL = `${BASE}/models/get_config`;
@@ -90,6 +103,17 @@ function asOpenAIStream(response, model) {
 export class MaxaiExecutor extends BaseExecutor {
   constructor(config = {}) { super("maxai", { baseUrl: BASE + PATH, ...config }); }
   buildUrl() { return BASE + PATH; }
+  /** Carry the outcome-unknown code of a reset chat send to the account layer; other answers parse as before. */
+  parseError(response, bodyText) {
+    const parsed = super.parseError(response, bodyText);
+    try {
+      const error = JSON.parse(bodyText)?.error;
+      if (error?.code !== OUTCOME_UNKNOWN || !isString(error.message)) return parsed;
+      return { ...parsed, message: error.message, errorBody: { error: { type: error.type, code: error.code, message: error.message } } };
+    } catch {
+      return parsed;
+    }
+  }
   async execute(input) {
     if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
     const sender = createExecutorSender(this, input, { observePatchedFetch: false });
@@ -109,7 +133,15 @@ export class MaxaiExecutor extends BaseExecutor {
     if (!headers) return { response: fail(401, "MaxAI session is missing or expired"), url: this.buildUrl(), headers: {}, transformedBody: null };
     let upstream;
     try { upstream = billed(await sender.sendRequest(this.buildUrl(), { method: "POST", headers, body: JSON.stringify(openaiRequest(body || {}, model)), redirect: "manual", signal }, proxyOptions)); }
-    catch (error) { if (isQuotaDispatchUnavailable(error)) throw error; return { response: fail(502, error?.message || "MaxAI request failed"), url: this.buildUrl(), headers, transformedBody: body }; }
+    catch (error) {
+      if (isQuotaDispatchUnavailable(error)) throw error;
+      const message = error?.message || "MaxAI request failed";
+      // The chat POST may have reached MaxAI before the connection failed. Only a connection
+      // proven never to have been sent stays an ordinary failure; otherwise the outcome is
+      // unknown and singleModel/postProcess.js never replays it.
+      const response = isUnsentError(error) ? fail(502, message) : Response.json({ error: { message, type: "provider_error", code: OUTCOME_UNKNOWN } }, { status: 502 });
+      return { response, url: this.buildUrl(), headers, transformedBody: body };
+    }
     if (upstream.status === 418 || (upstream.status >= 300 && upstream.status < 400)) return { response: fail(401, "MaxAI session expired"), url: this.buildUrl(), headers, transformedBody: body };
     if (upstream.status === 401 || upstream.status === 403) return { response: fail(upstream.status, "MaxAI session expired or rejected"), url: this.buildUrl(), headers, transformedBody: body };
     if (!upstream.ok) return { response: upstream, url: this.buildUrl(), headers, transformedBody: body };

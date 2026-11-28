@@ -593,12 +593,28 @@ export function translateNonStreamingResponse(responseBody, targetFormat, source
 }
 
 /**
+ * Providers whose 2xx answer means the vendor accepted billable work. A body that then
+ * times out, breaks or cannot be parsed leaves the outcome unknown, so the error result
+ * carries the internal `upstreamPartialOutput` no-replay flag (singleModel/postProcess.js
+ * and the outer transient retry stop on it). Other providers keep their retry behavior.
+ */
+const ACCEPTED_BODY_OUTCOME_UNKNOWN_PROVIDERS = new Set(["tencent-aistudio-web"]);
+
+/**
  * Handle non-streaming response from provider.
  * Preserve the admission billing epoch, including null, through delayed completion.
  */
 export async function handleNonStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, body, stream, streamToClient, translatedBody, finalBody, requestStartTime, connectionId, comboId = null, comboName = null, comboNoLog = false, apiKey, apiKeyId = null, billingEpoch, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, claudeCloaked = false, customToolNames, trackDone, appendLog, pxpipe, reqTag, log, usageEventId, claudeClassifierCompat, signal = null, terminalProvenance = null, responseBodyTimeoutMs = RESPONSE_BODY_TIMEOUT_MS, credentials = null }) {
   const createErrorResult = (status, message, resetsAt, errorBody, evidence, credentials, clientStatus) =>
     createFormattedErrorResult(status, message, resetsAt, errorBody, evidence, credentials, clientStatus, sourceFormat);
+  /** Error result for an accepted 2xx whose body is unusable. */
+  const acceptedBodyError = (result) => {
+    if (ACCEPTED_BODY_OUTCOME_UNKNOWN_PROVIDERS.has(provider)) {
+      result.upstreamPartialOutput = true;
+      result.response.upstreamPartialOutput = true;
+    }
+    return result;
+  };
   try {
     const markSuccess = async () => {
       if (!onRequestSuccess || !["upstream", "validated"].includes(terminalProvenance)) return;
@@ -621,15 +637,15 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
         return { ...createErrorResult(499, "Request aborted"), quotaTerminalReason: "abort" };
       }
       if (error instanceof BodyReadTimeoutError) {
-        return {
+        return acceptedBodyError({
           ...createErrorResult(HTTP_STATUS.GATEWAY_TIMEOUT, "Provider response body timed out"),
           quotaTerminalReason: "timeout"
-        };
+        });
       }
-      return {
+      return acceptedBodyError({
         ...createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Failed to read provider response"),
         quotaTerminalReason: "stream_error"
-      };
+      });
     }
 
     if (contentType.includes("text/event-stream")) {
@@ -648,7 +664,7 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
       const jsonDocument = parsed ? null : parseJsonDocumentBehindEventStream(sseText, targetFormat);
       if (!parsed && !jsonDocument) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request");
+        return acceptedBodyError(createErrorResult(HTTP_STATUS.BAD_GATEWAY, "Invalid SSE response for non-streaming request"));
       }
       let errorPayload = parsed || jsonDocument.body;
       if ((provider === "antigravity" || provider === "agy") && isJsonRecord(errorPayload?.error)) {
@@ -700,14 +716,14 @@ export async function handleNonStreamingResponse({ providerResponse, provider, m
               `FAILED ${HTTP_STATUS.BAD_GATEWAY}`
           });
           console.error(`[ChatCore] Failed to parse JSON from ${provider}: ${err?.name || "Error"}`);
-          return createErrorResult(HTTP_STATUS.BAD_GATEWAY, htmlErrorPage ?
+          return acceptedBodyError(createErrorResult(HTTP_STATUS.BAD_GATEWAY, htmlErrorPage ?
             HTML_PROVIDER_ERROR_MESSAGE :
-            `Invalid JSON response from ${provider}`);
+            `Invalid JSON response from ${provider}`));
         }
       }
       if (!isJsonRecord(responseBody)) {
         appendLog({ status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}` });
-        return createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`);
+        return acceptedBodyError(createErrorResult(HTTP_STATUS.BAD_GATEWAY, `Invalid JSON response from ${provider}`));
       }
       // Inspect only the error envelope, never echoed request content.
       if (responseBody.error) {

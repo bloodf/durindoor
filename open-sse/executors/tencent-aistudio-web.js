@@ -7,12 +7,33 @@
 // Completions. This port keeps that wire contract, adds the session and error
 // handling the source lacks (expired session, quota, redirect to login) and
 // normalises JSON/SSE so the reply always matches what the caller asked for.
+//
+// Replay safety: the chat POST is billable work. Once it may have reached the
+// vendor (a connection that failed after sending, a 502/504 from an
+// intermediary, or a 2xx whose body cannot be read), nothing proves the vendor
+// did not accept it, so the attempt is answered as `upstream_outcome_unknown`
+// and never replayed, on this account or a sibling (singleModel/postProcess.js).
+// Explicit 401/403/429 answers and a refused sign-in redirect stay ordinary
+// refusals that account fallback may act on.
 import { WebSessionExecutor } from "./webSessionBase.js";
 import { errorResponse } from "../utils/error.js";
 import { isRefusedRedirect } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { stripCookieInputPrefix } from "../../src/shared/utils/cookieValue.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
+
+// Same code as MINIMAX_CODE_OUTCOME_UNKNOWN (minimax-code.js), which singleModel/postProcess.js
+// treats as terminal: the send may have been accepted, so it is never replayed.
+const OUTCOME_UNKNOWN = "upstream_outcome_unknown";
+// Connection failures raised before the request could reach the vendor.
+const UNSENT_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT", "ERR_PROXY_CONNECTION_FAILED"]);
+/** True only when the thrown transport error proves the request never left. */
+function isUnsentError(error) {
+  for (let current = error, depth = 0; depth < 4 && current; depth += 1, current = current.cause) {
+    if (isString(current.code) && UNSENT_CODES.has(current.code)) return true;
+  }
+  return false;
+}
 
 export const TENCENT_AISTUDIO_ORIGIN = "https://aistudio.tencent.ai";
 export const TENCENT_AISTUDIO_PROBE_URL = `${TENCENT_AISTUDIO_ORIGIN}/api/user/info`;
@@ -28,9 +49,32 @@ export function tencentAIStudioCookie(value) {
   return isString(value) ? stripCookieInputPrefix(value).trim() : "";
 }
 
+const UNKNOWN_OUTCOME_MESSAGE = "Tencent AI Studio did not confirm whether it processed the request. It was not retried; check the conversation before sending it again.";
+
+/** A billable attempt the vendor may have accepted: terminal, never replayed. */
+function outcomeUnknown(status = 502) {
+  return errorResponse(status, UNKNOWN_OUTCOME_MESSAGE, { type: "upstream_error", code: OUTCOME_UNKNOWN });
+}
+
+/**
+ * Keep the outcome-unknown code on a parsed error so singleModel/postProcess.js can stop
+ * account fallback and the outer transient retry. Any other body parses unchanged.
+ */
+function outcomeUnknownParse(parsed, bodyText) {
+  try {
+    const error = JSON.parse(bodyText)?.error;
+    if (error?.code !== OUTCOME_UNKNOWN || !isString(error.message)) return parsed;
+    return { ...parsed, message: error.message, errorBody: { error: { type: error.type, code: error.code, message: error.message } } };
+  } catch {
+    return parsed;
+  }
+}
+
 function failure(status, retryAfter) {
   if (isAuthStatus(status)) return errorResponse(401, "Tencent AI Studio session expired or was rejected. Sign in at aistudio.tencent.ai and re-import the cookie.", { type: "authentication_error", code: "session_expired" });
   if (status === 429) return errorResponse(429, "Tencent AI Studio quota or rate limit reached. Try again later.", { type: "rate_limit_error", code: "rate_limited" }, retryAfter);
+  // An intermediary answered for a request the vendor may already have accepted.
+  if (status === 502 || status === 504) return outcomeUnknown(status);
   return errorResponse(status >= 400 ? status : 502, `Tencent AI Studio request failed (HTTP ${status})`, { type: "upstream_error", code: `HTTP_${status}` });
 }
 
@@ -97,6 +141,11 @@ export class TencentAIStudioWebExecutor extends WebSessionExecutor {
 
   buildUrl(model) { return `${TENCENT_AISTUDIO_ORIGIN}/api/chat/${MODEL_MAP[modelKey(model)] || "HunyuanDefault"}`; }
 
+  /** Carry this executor's own outcome-unknown code to the account layer; other answers parse as before. */
+  parseError(response, bodyText) {
+    return outcomeUnknownParse(super.parseError(response, bodyText), bodyText);
+  }
+
   async runSession(input, { sendBillable }) {
     const key = modelKey(input.model);
     const url = this.buildUrl(key);
@@ -113,7 +162,9 @@ export class TencentAIStudioWebExecutor extends WebSessionExecutor {
       if (error?.name === "AbortError" || isQuotaDispatchUnavailable(error)) throw error;
       // The sign-in redirect an expired session receives.
       if (isRefusedRedirect(error)) return reply(failure(401), { cookie: "[REDACTED]" });
-      return reply(errorResponse(502, "Tencent AI Studio request failed: network error", { type: "upstream_error", code: "network_error" }), { cookie: "[REDACTED]" });
+      // Only a connection proven never to reach the vendor is an ordinary network failure.
+      if (isUnsentError(error)) return reply(errorResponse(502, "Tencent AI Studio request failed: network error", { type: "upstream_error", code: "network_error" }), { cookie: "[REDACTED]" });
+      return reply(outcomeUnknown(), { cookie: "[REDACTED]" });
     }
     const shownHeaders = { ...headers, cookie: "[REDACTED]" };
     const { status } = upstream;
@@ -125,9 +176,14 @@ export class TencentAIStudioWebExecutor extends WebSessionExecutor {
     const isSse = /text\/event-stream/i.test(upstream.headers.get("content-type") || "");
     // Matching shape: hand the upstream body through untouched, as the pinned source does.
     if (isSse === wantsStream) return reply(upstream, shownHeaders);
-    const text = await upstream.text();
+    // The vendor accepted the POST; an unreadable 2xx body leaves the outcome unknown.
+    let text;
+    try { text = await upstream.text(); } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      return reply(outcomeUnknown(), shownHeaders);
+    }
     if (wantsStream) {
-      let payload; try { payload = JSON.parse(text); } catch { return reply(errorResponse(502, "Tencent AI Studio returned an unreadable response", { type: "upstream_error", code: "invalid_response" }), shownHeaders); }
+      let payload; try { payload = JSON.parse(text); } catch { return reply(outcomeUnknown(), shownHeaders); }
       return reply(new Response(completionToSse(payload, key), { status: 200, headers: { "content-type": "text/event-stream" } }), shownHeaders);
     }
     return reply(Response.json(sseToCompletion(text, key)), shownHeaders);

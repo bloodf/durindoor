@@ -202,13 +202,13 @@ export function readProcessIdentity(pid, procRoot = "/proc", { readFile = readFi
  *   gone       demonstrably exited; ignore.
  *   foreign    provably not this shard's: another uid without the token, a
  *              kernel thread, a fully readable environment without it, or an
- *              unreadable environment with proven unrelated ancestry, group
- *              and session when the shard server identity is available, and
- *              a start before the server. A descendant that called setsid
- *              and was reparented to PID 1 or a subreaper loses its ancestry,
- *              and it can move itself into another writable cgroup, so
- *              neither ancestry nor cgroup ever clears a process started at
- *              or after the server.
+ *              unreadable environment whose whole ancestry is readable and
+ *              unrelated when the shard server identity is available: no
+ *              member is the server or shares its group or session, and no
+ *              member started at or after the server with PID 1 or a
+ *              subreaper as its parent. A descendant that called setsid and
+ *              was reparented that way loses its ancestry, and it can move
+ *              itself into another writable cgroup, so cgroup never counts.
  *   owned      every uid is euid, the token is in the environment, and the
  *              identity is complete. Only these are ever signalled.
  *   uncertain  could be this shard's and cannot be proven either way: the
@@ -251,9 +251,9 @@ export function classifyProcess(read, owner, euid, shard = null) {
   if (!read.uids) return uncertain(`status ${read.statusError}`);
   if (read.stat.flags & PF_KTHREAD) return { verdict: "foreign", pid, reason: "kernel thread" };
   if (read.environ === null) {
-    // Only a complete, unrelated ancestry plus a start before the server can
-    // excuse a protected environment. Missing
-    // shard/ancestor stat data stays fail-closed. Group or session
+    // Only a complete, unrelated ancestry with no post-start orphan can
+    // excuse a protected environment. Missing shard/ancestor stat data stays
+    // fail-closed. Group or session
     // membership is evidence of possible ownership, never permission to signal.
     if (shard && !couldBelongToShard(read, shard)) {
       return { verdict: "foreign", pid, reason: "unrelated same-uid process with unreadable environ" };
@@ -280,25 +280,47 @@ export function classifyProcess(read, owner, euid, shard = null) {
   };
 }
 
+// A shard descendant whose parent exits is reparented to the nearest
+// subreaper among its ancestors, or to PID 1. Every such ancestor is also an
+// ancestor of the shard server, so the server's ancestry (plus PID 1) is the
+// complete set of possible adopters. Returns null when that chain cannot be read.
+function shardAdopters({ serverIdentity, processes }) {
+  const adopters = new Set([1]);
+  let ancestor = serverIdentity.stat.ppid;
+  while (ancestor > 1) {
+    if (adopters.has(ancestor) || ancestor === serverIdentity.pid) return null;
+    adopters.add(ancestor);
+    const parent = processes.get(ancestor);
+    if (!parent?.stat) return null;
+    ancestor = parent.stat.ppid;
+  }
+  return adopters;
+}
+
+// Walks the process and its ancestors up to PID 1. A member that is the
+// server or shares its group or session, a member started at or after the
+// server whose parent is PID 1 or a subreaper (orphaned after the shard
+// started), an unreadable member, or a loop could mean shard ownership.
+// Any other chain is unrelated. A cgroup move is not evidence either way: a
+// descendant can enter any writable delegated cgroup.
 function couldBelongToShard(read, { serverIdentity, processes }) {
   if (!serverIdentity?.stat || !processes) return true;
   const { pid, stat } = serverIdentity;
-  if (read.pid === pid || read.stat.pgid === stat.pgid || read.stat.session === stat.session) return true;
+  const adopters = shardAdopters({ serverIdentity, processes });
+  if (!adopters) return true;
   const visited = new Set();
-  let ancestor = read.stat.ppid;
-  while (ancestor > 1) {
-    if (ancestor === pid || visited.has(ancestor)) return true;
-    visited.add(ancestor);
-    const parent = processes.get(ancestor);
-    if (!parent?.stat) return true;
-    ancestor = parent.stat.ppid;
+  let member = read;
+  for (;;) {
+    const memberStat = member.stat;
+    if (member.pid === pid || memberStat.pgid === stat.pgid || memberStat.session === stat.session) return true;
+    if (adopters.has(memberStat.ppid) && !startsBefore(memberStat.startTime, stat.startTime)) return true;
+    visited.add(member.pid);
+    const next = memberStat.ppid;
+    if (next <= 1) return false;
+    if (visited.has(next)) return true;
+    member = processes.get(next);
+    if (!member?.stat) return true;
   }
-  // The chain reached PID 1 without passing the server. A shard descendant
-  // that called setsid and whose parent exited looks exactly like this, so
-  // only a start before the server proves the process unrelated. A cgroup
-  // move is not proof: a descendant can enter any writable delegated cgroup.
-  if (startsBefore(read.stat.startTime, stat.startTime)) return false;
-  return true;
 }
 
 function startsBefore(startTime, serverStartTime) {

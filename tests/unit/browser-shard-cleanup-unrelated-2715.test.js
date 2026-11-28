@@ -15,14 +15,17 @@ const otherCgroup = "0::/user.slice/user-1000.slice/other.scope\n";
 
 // The server (200) starts at 100. pid 300 defaults to a reparented process
 // (ppid 1, own group and session) that started with the server in its cgroup.
+// `parent` adds an intermediate ancestor (pid 50 or 60) with ppid 1.
 function fixture({
   ppid = 1, pgid = 300, session = 300, startTime = "100", cgroup = shardCgroup, serverCgroup = shardCgroup,
+  parent = null,
 } = {}) {
   const specs = new Map([
     [200, { ppid: 1, pgid: 200, session: 200, startTime: "100", cgroup: serverCgroup }],
     [300, { ppid, pgid, session, startTime, cgroup }],
     [301, { ppid: 200, pgid: 301, session: 301, startTime: "100", cgroup: shardCgroup }],
   ]);
+  if (parent) specs.set(parent.pid, { ppid: 1, pgid: parent.pid, session: parent.pid, cgroup: otherCgroup, ...parent });
   const readFile = (file) => {
     const pid = Number(path.basename(path.dirname(file)));
     const spec = specs.get(pid);
@@ -55,7 +58,7 @@ function scanUncertain(options) {
   const shard = fixture(options);
   const result = scanShardProcesses(owner, {
     procRoot: "/fake-proc", euid, selfPid: 0, ...shard,
-    readDirectory: () => ["200", "300", "301"],
+    readDirectory: () => [...shard.processes.keys()].map(String),
   });
   return result.uncertain.map(({ pid }) => pid);
 }
@@ -64,6 +67,8 @@ describe("unrelated protected processes (#2715)", () => {
   it.each([
     ["started before the server", { startTime: "99" }],
     ["started before the server with an unreadable cgroup", { startTime: "99", cgroup: null }],
+    ["started after the server under a live daemon that predates it",
+      { startTime: "150", ppid: 50, parent: { pid: 50, startTime: "99" } }],
   ])("classifies a same-uid process with unreadable environ %s as foreign", (_name, options) => {
     expect(classify(options)).toMatchObject({
       verdict: "foreign", reason: "unrelated same-uid process with unreadable environ",
@@ -82,6 +87,8 @@ describe("unrelated protected processes (#2715)", () => {
     ["process group peer", { pgid: 200 }],
     ["session peer", { session: 200 }],
     ["unreadable ancestor", { ppid: 999 }],
+    ["process whose parent was orphaned after the server started",
+      { startTime: "150", ppid: 60, parent: { pid: 60, startTime: "120" } }],
   ])("keeps a %s uncertain", (_name, options) => {
     expect(classify(options)).toMatchObject({ verdict: "uncertain", reason: "environ EACCES" });
   });

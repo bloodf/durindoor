@@ -95,7 +95,30 @@
 // network: every request is answered below, an unexpected request fails the
 // test, and every key is synthetic. Passing here says nothing about the live
 // service.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+//
+// The route also reads the billing epoch from the real database driver, so the
+// file owns a private DATA_DIR (see the first hoisted block).
+import fs from "node:fs";
+import path from "node:path";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeAdapterWithin } from "./helpers/closeAdapterWithin.js";
+
+// Fixture storage isolation: src/lib/db/paths.js prefers process.env.DATA_DIR,
+// so an inherited runner DATA_DIR made this file open and migrate a SQLite file
+// shared with other workers ("database is locked"), and an unset one selected
+// ~/.9router. Claim a private directory before any application import and
+// restore only our own env key. One directory per file is enough: the cases
+// leave no rows behind.
+const isolated = vi.hoisted(() => {
+  const fs = process.getBuiltinModule("node:fs");
+  const os = process.getBuiltinModule("node:os");
+  const path = process.getBuiltinModule("node:path");
+  const had = Object.hasOwn(process.env, "DATA_DIR");
+  const previous = process.env.DATA_DIR;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alibaba-video-registration-data-"));
+  process.env.DATA_DIR = dir;
+  return { dir, had, previous };
+});
 
 const m = vi.hoisted(() => ({
   credentials: vi.fn(),
@@ -261,6 +284,19 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+// The driver keeps its handle on globalThis. Close it, only if its file is ours,
+// before deleting the directory that holds it. A failed close fails the hook and
+// keeps the handle and the directory.
+afterAll(async () => {
+  try {
+    await closeAdapterWithin(globalThis._dbAdapter, isolated.dir);
+    fs.rmSync(isolated.dir, { recursive: true, force: true });
+  } finally {
+    if (isolated.had) process.env.DATA_DIR = isolated.previous;
+    else delete process.env.DATA_DIR;
+  }
+});
+
 describe("registration on the existing alibaba identity", () => {
   it("adds the nine pinned video models to alibaba without a second provider, alias or videoConfig", () => {
     const entry = REGISTRY.find((item) => item.id === "alibaba");
@@ -367,6 +403,8 @@ describe("/v1/video/generations through the registered adapter", () => {
     sequence(accepted(), task("RUNNING"), succeeded());
     const response = await video({ model: `${prefix}/${model}`, resolution: "720P", aspect_ratio: "16:9", seconds: 5 });
     expect(response.status).toBe(200);
+    // The route's billing-epoch read opened the real driver on private storage.
+    expect(globalThis._dbAdapter.file).toBe(path.join(isolated.dir, "db", "data.sqlite"));
     expect(await response.json()).toMatchObject({ data: [{ url: VIDEO_A, format: "mp4" }] });
     expect(calls.map((call) => [call.method, call.url])).toEqual([["POST", SUBMIT_URL], ["GET", taskUrl(TASK_A)], ["GET", taskUrl(TASK_A)]]);
     for (const call of calls) expect(header(call, "Authorization")).toBe(`Bearer ${KEY_A}`);

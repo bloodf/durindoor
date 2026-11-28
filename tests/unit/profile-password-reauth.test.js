@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 
-const pagePath = new URL("../../src/app/(dashboard)/dashboard/profile/page.js", import.meta.url);
+const pagePath = new URL("../../src/app/(dashboard)/dashboard/profile/SecuritySettingsSection.jsx", import.meta.url);
 
 describe("profile password change contract", () => {
   it("submits current password and redirects to login when replacement cookie issuance requires reauthentication", async () => {

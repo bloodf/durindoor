@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const pagePath = new URL("../../src/app/(dashboard)/dashboard/profile/page.js", import.meta.url);
+const pagePath = new URL("../../src/app/(dashboard)/dashboard/profile/GeneralSettingsSection.jsx", import.meta.url);
 
 describe("profile exposeComboOnly toggle contract", () => {
   it("PATCHes the authenticated settings route and renders persisted state", () => {

@@ -1,0 +1,132 @@
+{
+  "issue": "#2034",
+  "status": "staged-unregistered",
+  "source": {
+    "repository": "OmniRoute",
+    "commit": "c71f0065a7efe9230ec23b96a12253b050c4d7ad",
+    "files": [
+      "open-sse/config/audioRegistry.ts",
+      "open-sse/handlers/audioSpeech.ts",
+      "tests/unit/audio-speech-handler.test.ts",
+      "tests/unit/huggingface-audio-router-host.test.ts"
+    ],
+    "registryFields": {
+      "tts": {
+        "id": "huggingface",
+        "baseUrl": "https://router.huggingface.co/hf-inference/models",
+        "authType": "apikey",
+        "authHeader": "bearer",
+        "format": "huggingface-tts",
+        "models": [
+          { "id": "canopylabs/orpheus-3b-0.1-ft", "name": "Orpheus 3B" },
+          { "id": "ResembleAI/chatterbox", "name": "Chatterbox" },
+          { "id": "hexgrad/Kokoro-82M", "name": "Kokoro TTS" }
+        ]
+      },
+      "stt": { "id": "huggingface", "baseUrl": "https://router.huggingface.co/hf-inference/models", "authType": "apikey", "authHeader": "bearer", "format": "huggingface-asr" }
+    },
+    "handler": "handleHuggingFaceTtsSpeech: refuse modelId containing .. or //; POST `${baseUrl}/${modelId}` (Hub id slash unencoded), Content-Type application/json + Authorization Bearer, body { inputs: body.input }; non-2xx -> upstreamErrorResponse (JSON message reused); 2xx body streamed through with upstream content-type, audio/wav when absent"
+  },
+  "localEquivalence": {
+    "checked": [
+      "open-sse/providers/registry/huggingface.js (id huggingface, alias huggingface, aliases [\"hf\"], authType apikey; serviceKinds [\"image\", \"stt\"]; hiddenKinds [\"tts\"]; no ttsConfig; no tts model row)",
+      "open-sse/providers/registry/huggingface.js sttConfig (baseUrl https://router.huggingface.co/hf-inference/models, authType apikey, authHeader bearer, format huggingface-asr): same fields as the source stt row; dispatched by open-sse/handlers/sttCore.js transcribeHuggingFace. STT is present and out of this tts delta",
+      "open-sse/handlers/ttsProviders/genericFormats.js FORMAT_HANDLERS[\"huggingface-tts\"] (same body { inputs } and Bearer header, but unreachable; URL-encodes the Hub id to owner%2Fname, which is not the source path; global fetch without the connection egress policy; no deadline or abort; follows redirects; quotes the upstream error via throwUpstreamError; no accepted-job outcome; labels any non-wav/mp3/ogg answer, e.g. flac, as wav; silently drops voice/speed)",
+      "open-sse/handlers/ttsProviders/index.js synthesizeViaConfig (returns null for huggingface because AI_PROVIDERS.huggingface.ttsConfig is undefined)",
+      "open-sse/handlers/ttsProviders/index.js TTS_ADAPTERS (no huggingface or hf entry)",
+      "src/shared/constants/providers.js (hiddenKinds [\"tts\"] removes huggingface from tts provider lists)",
+      "src/shared/constants/ttsProviders.js (UI config for huggingface exists: hasModelSelector, voiceSource config)",
+      "src/app/api/providers/suggested-models/filters.js (huggingface-image and huggingface-stt filters; no huggingface-tts)"
+    ],
+    "result": "the provider, connection and API-key auth exist and serve image and stt; the speech route is hidden and dormant and its dormant handler sends a different path; this module is the tts delta, reusing the existing connection and auth mode"
+  },
+  "module": "open-sse/services/providerParity/native-huggingface-tts/index.js",
+  "exports": {
+    "huggingfaceTtsAdapter": "default TTS adapter instance; synthesize(text, model, credentials, responseFormat, options)",
+    "createHuggingFaceTtsAdapter": "factory; options { fetchImpl, timeoutMs, maxAudioBytes } for tests",
+    "buildHuggingFaceSpeechRequest": "(model, text, options) -> { url, model, body: { inputs } }; throws status 400 for a malformed Hub id or any field the source would drop",
+    "sniffAudioContainer": "(bytes) -> wav | flac | mp3 | ogg | null",
+    "huggingfaceAcceptedJob": "(modality, jobState) accepted-job accounting with unknown cost",
+    "huggingfaceTtsUrl": "(hubId) -> router URL; throws for a malformed id",
+    "isHuggingFaceHubId": "(id) -> boolean, exactly owner/name",
+    "huggingfaceTtsSuggestions": "suggested-models filter for the huggingface-tts fetcher type",
+    "HUGGINGFACE_TTS_PROVIDER_ADDITIONS": "staged additions to the existing huggingface registry entry (serviceKinds, hiddenKinds removal, model rows, ttsConfig, modelsFetchers.tts)",
+    "HUGGINGFACE_TTS_CONFIG": "ttsConfig block { baseUrl, authType, authHeader, format, models }",
+    "HUGGINGFACE_TTS_MODELS_FETCHER": "modelsFetchers.tts { url, type: huggingface-tts }",
+    "HUGGINGFACE_TTS_MODELS": "source speech models",
+    "HUGGINGFACE_SPEECH_RESPONSE_FORMATS": "[\"json\"] (or none named)",
+    "HUGGINGFACE_SPEECH_CONTAINERS": "[\"wav\", \"flac\", \"mp3\", \"ogg\"]",
+    "HUGGINGFACE_HUB_ID": "Hub id pattern",
+    "HUGGINGFACE_PROVIDER_ID": "huggingface",
+    "HUGGINGFACE_ALIASES": "[\"hf\"]",
+    "HUGGINGFACE_TTS_FORMAT": "huggingface-tts",
+    "HUGGINGFACE_ROUTER_ORIGIN": "https://router.huggingface.co",
+    "HUGGINGFACE_TTS_BASE_URL": "https://router.huggingface.co/hf-inference/models",
+    "HUGGINGFACE_DEFAULT_TTS_MODEL": "canopylabs/orpheus-3b-0.1-ft",
+    "HUGGINGFACE_TTS_TIMEOUT_MS": "120000",
+    "HUGGINGFACE_MAX_AUDIO_BYTES": "26214400",
+    "HUGGINGFACE_MAX_TTS_REQUEST_BYTES": "262144",
+    "huggingfaceTtsModel": "(id) -> source model row or null"
+  },
+  "provider": {
+    "canonicalId": "huggingface",
+    "aliases": ["hf"],
+    "existingRegistryEntry": "open-sse/providers/registry/huggingface.js",
+    "existingServiceKinds": ["image", "stt"],
+    "addServiceKinds": ["tts"],
+    "removeHiddenKinds": ["tts"],
+    "authModes": ["apikey"],
+    "auth": { "header": "Authorization", "scheme": "Bearer", "credentialFields": ["apiKey", "accessToken"] },
+    "connectionBaseUrlHonored": false,
+    "format": "huggingface-tts"
+  },
+  "models": {
+    "tts": [
+      { "id": "canopylabs/orpheus-3b-0.1-ft", "name": "Orpheus 3B" },
+      { "id": "ResembleAI/chatterbox", "name": "Chatterbox" },
+      { "id": "hexgrad/Kokoro-82M", "name": "Kokoro TTS" }
+    ],
+    "otherHubIds": "any id matching owner/name is sent, as the source sends any model id",
+    "voiceSuffix": "refused: the source sends no voice",
+    "dynamicDiscovery": "staged modelsFetchers.tts https://huggingface.co/api/models?inference_provider=hf-inference&pipeline_tag=text-to-speech&limit=30 (type huggingface-tts), following the local image/stt per-kind convention; the source has no speech discovery"
+  },
+  "endpoints": {
+    "speech": {
+      "method": "POST",
+      "url": "https://router.huggingface.co/hf-inference/models/{owner}/{name}",
+      "headers": ["Content-Type: application/json", "Authorization: Bearer <key>"],
+      "body": "{ inputs }",
+      "answer": "audio bytes (wav, flac, mp3 or ogg by magic bytes); JSON is an error envelope or a lost result"
+    }
+  },
+  "bounds": {
+    "ttsTimeoutMs": 120000,
+    "maxAudioBytes": 26214400,
+    "maxTtsRequestBytes": 262144,
+    "maxErrorEnvelopeBytes": 16384,
+    "redirects": "refused",
+    "retries": 0
+  },
+  "integrationPoints": [
+    {
+      "file": "open-sse/providers/registry/huggingface.js",
+      "change": "merge HUGGINGFACE_TTS_PROVIDER_ADDITIONS: serviceKinds [\"image\", \"stt\", \"tts\"], drop hiddenKinds, add the three speech model rows with kind tts, add ttsConfig HUGGINGFACE_TTS_CONFIG and modelsFetchers.tts; keep id, aliases, display, auth, imageConfig and sttConfig unchanged"
+    },
+    {
+      "file": "open-sse/handlers/ttsProviders/index.js",
+      "change": "import { huggingfaceTtsAdapter } and add `huggingface: huggingfaceTtsAdapter, hf: huggingfaceTtsAdapter` to TTS_ADAPTERS, so handleTtsCore uses the adapter before synthesizeViaConfig; the dormant FORMAT_HANDLERS[\"huggingface-tts\"] is then unused and can be removed"
+    },
+    {
+      "file": "src/app/api/providers/suggested-models/filters.js",
+      "change": "add `\"huggingface-tts\": huggingfaceTtsSuggestions` to FILTERS"
+    },
+    {
+      "file": "src/sse/handlers/tts.js",
+      "change": "add huggingface to NAMED_FORMAT_PROVIDERS so a query-string response_format other than json is refused before submit; acceptedJob recording via recordAcceptedTts already exists"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "list the HuggingFace tts kind after registration"
+    }
+  ]
+}

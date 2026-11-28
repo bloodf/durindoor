@@ -21,12 +21,10 @@
  * calls go to that origin; pastes without one (legacy cookies, bare tokens)
  * use www.kimi.com.
  */
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError, withBillableDispatch } from "./sendRequest.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
+import { createRequestSender } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { errorResponse, sanitizeErrorMessage } from "../utils/error.js";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { createHash } from "node:crypto";
 import { extractKimiJwt, extractKimiTokens, KIMI_WEB_ORIGINS } from "@/lib/providers/webCookieAuth";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
@@ -314,9 +312,9 @@ export function foldMessages(messages) {
 // remove the guard.
 const MAX_FRAME_LEN = 8 * 1024 * 1024;
 
-export class KimiWebExecutor extends BaseExecutor {
+export class KimiWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("kimi-web", { id: "kimi-web", baseUrl: BASE_URL });
+    super("kimi-web", { id: "kimi-web", baseUrl: BASE_URL }, { observePatchedFetch: false });
   }
 
   /**
@@ -374,7 +372,9 @@ export class KimiWebExecutor extends BaseExecutor {
     const { refreshToken, origin, source } = resolveKimiTokens(credentials);
     if (!refreshToken) return null;
     try {
-      const res = await proxyAwareFetch(kimiRefreshUrl(origin), {
+      const sender = createRequestSender({ observePatchedFetch: false });
+      const transport = this.sessionTransport({ proxyOptions }, sender, (response) => response);
+      const res = await transport.send(kimiRefreshUrl(origin), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -384,9 +384,8 @@ export class KimiWebExecutor extends BaseExecutor {
           Origin: origin,
           Referer: `${origin}/`
         },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-        signal: AbortSignal.timeout(FETCH_CONNECT_TIMEOUT_MS)
-      }, proxyOptions);
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
       if (!res.ok) {
         log?.warn?.("TOKEN", `kimi-web refresh failed: HTTP ${res.status}`);
         return null;
@@ -412,13 +411,8 @@ export class KimiWebExecutor extends BaseExecutor {
    * @param {object|null} [input.proxyOptions]
    * @returns {Promise<{response: Response, url: string, headers: Record<string,string>, transformedBody: object}>}
    */
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
-    return withBillableDispatch(sender, (billed) => this.runChat(input, sender, billed));
-  }
-
-  async runChat({ body, credentials, stream: wantStream, signal, proxyOptions = null }, sender, billed) {
+  // The shared base owns cancellation, header deadlines, redirects and quota dispatch.
+  async runSession({ body, credentials, stream: wantStream, signal }, transport) {
     const bodyObj = body || {};
 
     const { accessToken: jwt, origin } = resolveKimiTokens(credentials);
@@ -465,12 +459,12 @@ export class KimiWebExecutor extends BaseExecutor {
     // The sender bounds the wait for response headers and then leaves the body alone.
     let upstream;
     try {
-      upstream = billed(await sender.sendRequest(chatUrl, {
+      upstream = await transport.sendBillable(chatUrl, {
         method: "POST",
         headers: reqHeaders,
         body: new Uint8Array(framedBody),
         signal
-      }, proxyOptions));
+      });
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
       return {

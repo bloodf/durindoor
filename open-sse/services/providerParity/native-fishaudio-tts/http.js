@@ -48,8 +48,13 @@ const timeoutError = () => Object.assign(new Error("request timed out"), { name:
  * One request bounded by the caller's signal and a deadline. The wait ends on
  * either even when a transport ignores its signal; a late answer is discarded.
  * Throws an AbortError tagged `notSent` when the caller left before the send.
+ * `noTransportReplay` applies only to the default transport (proxyAwareFetch):
+ * a billable send is never resent directly after a proxy failure. An injected
+ * `fetchImpl` receives the same init as before.
  */
-export async function boundedSend(url, init, { fetchImpl = proxyAwareFetch, credentials, signal, timeoutMs }) {
+export async function boundedSend(url, init, { fetchImpl, credentials, signal, timeoutMs, noTransportReplay = false }) {
+  const send = fetchImpl ?? ((target, request, proxyOptions) =>
+    proxyAwareFetch(target, noTransportReplay ? { ...request, noTransportReplay: true } : request, proxyOptions));
   if (signal?.aborted) throw Object.assign(new Error("aborted before send"), { name: "AbortError", notSent: true });
   const deadline = new AbortController();
   const fetchSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
@@ -64,7 +69,7 @@ export async function boundedSend(url, init, { fetchImpl = proxyAwareFetch, cred
     fetchSignal.addEventListener("abort", stopWaiting, { once: true });
   });
   const pending = Promise.resolve().then(() =>
-    fetchImpl(url, { ...init, redirect: "manual", signal: fetchSignal }, resolveCredentialProxyOptions(credentials)));
+    send(url, { ...init, redirect: "manual", signal: fetchSignal }, resolveCredentialProxyOptions(credentials)));
   let delivered = null;
   try {
     delivered = await Promise.race([pending, bound]);
@@ -150,7 +155,8 @@ export async function sendOnce(url, init, { modality, label, credentials, signal
   const unknown = (result) => (billable ? withAcceptedJob(result, modality, "submit-unknown") : result);
   let sent;
   try {
-    sent = await boundedSend(url, init, { fetchImpl, credentials, signal, timeoutMs });
+    // Billable work goes out once; free discovery keeps the transport's fallback.
+    sent = await boundedSend(url, init, { fetchImpl, credentials, signal, timeoutMs, noTransportReplay: billable });
   } catch (error) {
     if (provenUnsent(error)) {
       return { failure: signal?.aborted

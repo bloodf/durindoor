@@ -1,0 +1,41 @@
+{
+  "issue": 2034,
+  "visibility": "private maintainer handoff; not public activation",
+  "owner": "shared cookie batch owner",
+  "origin": "https://chat.z.ai",
+  "source": {
+    "project": "cheaper-inference/OmniRoute",
+    "license": "MIT",
+    "commit": "4265bb2ad5477450a07d3a43ea33a62c6c874878",
+    "tokenExtractionConfigBlob": "d91c9cdb413b8fbc16c06d5bf506173c303235e7",
+    "storageType": "localStorage",
+    "key": "token"
+  },
+  "proposedCookieImportProfile": {
+    "origin": "https://chat.z.ai",
+    "domains": ["chat.z.ai"],
+    "cookieNames": [],
+    "cookiePrefixes": [],
+    "localStorageKeys": ["token"]
+  },
+  "importBodyField": "localStorage.token",
+  "storedCredentialField": "providerSpecificData.token",
+  "sessionHelperExport": "resolveZaiWebSession",
+  "sessionHelperModule": "open-sse/executors/zai-web/session.js",
+  "legacyCredentialFields": ["apiKey", "accessToken"],
+  "conflictPolicy": "Refuse differing sessions or malformed explicitly stored token; never fall back to another credential",
+  "remainingActivation": [
+    "Registry cookieImport and compiled extension profile remain unchanged in this unit",
+    "Shared create validation must accept providerSpecificData.token without apiKey",
+    "Shared update must atomically replace only the selected account credential and preserve selected proxy binding",
+    "Never combine a legacy cookie capture and localStorage capture as an implicit fallback",
+    "Shared owner must reconcile public docs and immutable contract tests before activation"
+  ],
+  "dispatch": {
+    "proofField": "captcha_verify_param",
+    "proofHelperExport": "resolveZaiCaptchaVerifyParam",
+    "withoutProof": "Local 400 zai_proof_required before any POST",
+    "browserSupported": false,
+    "liveVerified": false
+  }
+}

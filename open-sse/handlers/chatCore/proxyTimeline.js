@@ -4,7 +4,7 @@ import {
   record as recordRepo,
   startTrace as startTraceRepo,
 } from "@/lib/db/repos/proxyTimelineRepo.js";
-import { createTimelineFrameObserver } from "../../utils/proxyTimeline.js";
+import { createTimelineFrameObserver } from "./timelineFrameObserver.js";
 import { isOtelEnabled, isOtelOnlySpan, otelEvent, otelFinish, otelFirstByte, otelStart } from "../../services/otelTracing.js";
 
 // OTel-only ids (timeline persistence disabled) are flagged on the bounded

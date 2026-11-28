@@ -3,7 +3,7 @@ import { createSseFrameDispatcher } from "../../open-sse/utils/sseFrames.js";
 import { createEmptyTerminalGuard } from "../../open-sse/utils/emptyStreamTerminal.js";
 import { createDisconnectAwareStream } from "../../open-sse/utils/streamHandler.js";
 import { createTerminalTracker } from "../../open-sse/utils/streamTerminal.js";
-import { createTimelineFrameObserver } from "../../open-sse/utils/proxyTimeline.js";
+import { createTimelineFrameObserver } from "../../open-sse/handlers/chatCore/timelineFrameObserver.js";
 import { createClientFrameFramer } from "../../open-sse/handlers/chatCore/proxyTimelineFrame.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 

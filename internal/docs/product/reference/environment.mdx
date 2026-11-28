@@ -161,7 +161,7 @@ These are read through `process.env[name]` in `open-sse/config/runtimeConfig.js`
 | `FIRECRAWL_TIMEOUT_MS` | `15000` | Request timeout. `.env.example` writes `30000`. | `open-sse/handlers/fetch/index.js` |
 | `FIRECRAWL_DEFAULT_FORMAT` | `markdown` | Default extraction format. | `open-sse/handlers/fetch/index.js` |
 | `SEARXNG_URL` | `http://localhost:8888/search` | Built-in unauthenticated SearXNG web-search endpoint. | `open-sse/config/runtimeConfig.js` |
-| `CLINE_LIVE_CATALOG` | unset (off) | `true` fetches Cline's live OAuth model catalog. Default stays the registry. | `open-sse/services/clineModels.js` |
+| `CLINE_LIVE_CATALOG` | unset (off) | `true` fetches Cline's live OAuth model catalog. Default stays the registry. | `open-sse/services/catalogs/clineModels.js` |
 
 ## OAuth client overrides
 

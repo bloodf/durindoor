@@ -4,7 +4,7 @@
 // Single source of truth for the synthetic `-thinking` / `-agentic` /
 // `-thinking-agentic` variants 9router layers on top of every Kiro upstream
 // model. The static registry catalog (`providers/registry/kiro.js`), the live
-// Kiro catalog expansion in `services/kiroModels.js`, and the capability
+// Kiro catalog expansion in `services/catalogs/kiroModels.js`, and the capability
 // overrides in `providers/capabilities.js` all derive from these exports so
 // no hardcoded duplicate list of the synthetic ids can drift apart.
 //

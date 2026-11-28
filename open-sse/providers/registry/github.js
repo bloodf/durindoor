@@ -70,7 +70,7 @@ export default {
   // Note: routing to Copilot's Anthropic-native /v1/messages shim (see
   // executors/github.js) is decided by model-NAME pattern at request time, not by
   // a static targetFormat field here — Copilot's live model catalog (see
-  // services/copilotModels.js) regularly exposes claude-* models this static list
+  // services/catalogs/copilotModels.js) regularly exposes claude-* models this static list
   // hasn't caught up with yet, and static per-entry targetFormat would silently
   // miss those while also double-translating requests for models that ARE listed
   // here (chatCore pre-translates to Claude shape, then the executor would

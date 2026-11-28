@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import api from "@/shared/utils/api.js";
 import PropTypes from "prop-types";
 import { Badge } from "@/shared/components";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -52,13 +53,12 @@ async function addCandidate(candidate) {
       baseUrl: candidate.baseUrl,
       type: "openai-compatible",
     }];
-  const res = await fetch(request[0], {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request[1]),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || `Could not add ${candidate.baseUrl} (HTTP ${res.status})`);
+  try {
+    await api.post(request[0], request[1]);
+  } catch (error) {
+    if (error.status) throw new Error(error.body?.error || `Could not add ${candidate.baseUrl} (HTTP ${error.status})`);
+    throw error;
+  }
 }
 
 /**
@@ -86,22 +86,16 @@ export default function LanDiscoveryPanel({ onAdded = null }) {
     setCandidates([]);
     setAdds({});
     try {
-      const res = await fetch("/api/providers/lan-discovery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request.body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 403 && data?.error === "lan_discovery_disabled") {
-        setPhase("disabled");
-        return;
-      }
-      if (!res.ok) throw new Error(data?.error || `Discovery failed (HTTP ${res.status})`);
+      const data = await api.post("/api/providers/lan-discovery", request.body);
       setCandidates(Array.isArray(data?.candidates) ? data.candidates : []);
       setPhase("done");
     } catch (error) {
+      if (error.status === 403 && error.body?.error === "lan_discovery_disabled") {
+        setPhase("disabled");
+        return;
+      }
       setPhase("error");
-      setMessage(error?.message || "Discovery failed");
+      setMessage(error.status ? error.body?.error || `Discovery failed (HTTP ${error.status})` : error?.message || "Discovery failed");
     }
   };
 

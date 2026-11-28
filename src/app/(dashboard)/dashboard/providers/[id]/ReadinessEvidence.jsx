@@ -1,5 +1,6 @@
 "use client";
 
+import api from "@/shared/utils/api.js";
 import { useEffect, useState } from "react";
 
 // Only local readiness is fetched; this never validates credentials or runs inference.
@@ -8,11 +9,7 @@ export default function ReadinessEvidence({ providerId }) {
   useEffect(() => {
     const controller = new AbortController();
     setState({ providerId, status: "loading" });
-    fetch(`/api/providers/${encodeURIComponent(providerId)}/readiness`, { cache: "no-store", signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("Readiness unavailable");
-        return response.json();
-      })
+    api.get(`/api/providers/${encodeURIComponent(providerId)}/readiness`, { cache: "no-store", signal: controller.signal, defaultHeaders: false })
       .then((data) => {
         if (!controller.signal.aborted) setState({ providerId, status: "loaded", data });
       })

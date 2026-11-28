@@ -65,7 +65,7 @@ describe.each(["openai", "anthropic"])("%s compatible Check announcement", (vari
     expect(dialog.querySelector('[role="alert"]')).toBeNull();
     await act(async () => {
       if (outcome === "network") rejectCheck(new Error("offline"));
-      else resolveCheck({ json: async () => outcome === "valid"
+      else resolveCheck({ ok: true, status: 200, json: async () => outcome === "valid"
         ? { valid: true } : { valid: false, error: "Fixture rejected" } });
     });
     expect(document.body.querySelector("dialog")).toBe(dialog);
@@ -91,7 +91,7 @@ describe.each(["openai", "anthropic"])("%s compatible Check announcement", (vari
 
 describe.each(["openai", "anthropic"])("%s compatible Check without an API key", (variant) => {
   it("labels the key optional and posts no key", async () => {
-    const fetch = vi.fn(async () => ({ json: async () => ({ valid: true }) }));
+    const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ valid: true }) }));
     vi.stubGlobal("fetch", fetch);
     await act(async () => root.render(React.createElement(AddCompatibleModal, {
       variant, isOpen: true, onClose: vi.fn(), onCreated: vi.fn(),

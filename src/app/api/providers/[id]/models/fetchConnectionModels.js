@@ -9,7 +9,7 @@ import {
   buildAntigravityCapabilityHintsPsdPatch,
   recordAntigravityForbidden,
   reuseAntigravityCapabilityHints
-} from "open-sse/services/antigravityCatalog.js";
+} from "open-sse/services/catalogs/antigravityCatalog.js";
 import { guardedProbeFetch, getProviderValidationGuard } from "open-sse/utils/outboundUrlGuard.js";
 import { cerebriumBaseUrl } from "open-sse/config/cerebrium.js";
 import { getProviderModels } from "open-sse/config/providerModels.js";

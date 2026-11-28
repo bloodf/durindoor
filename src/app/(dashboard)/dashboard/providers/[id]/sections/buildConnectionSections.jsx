@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { Button, Modal } from "@/shared/components";
 
 import ConnectionRow from "../ConnectionRow";
@@ -44,7 +46,7 @@ export default function buildConnectionSections({ autoPing, bulkUpdatingProxy, c
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
                 onUpdateQuotaLockout={async (quotaLockout) => {
-                  const response = await fetch(`/api/providers/${conn.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quotaLockout }) });
+                  const response = await dashboardRequest(`/api/providers/${conn.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quotaLockout }) });
                   if (!response.ok) throw new Error("Quota schedule update failed");
                   const data = await response.json();
                   setConnections((previous) => replaceUpdatedConnections(previous, [data.connection]));
@@ -61,7 +63,7 @@ export default function buildConnectionSections({ autoPing, bulkUpdatingProxy, c
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {
-                    const res = await fetch(`/api/providers/${conn.id}`, {
+                    const res = await dashboardRequest(`/api/providers/${conn.id}`, {
                       method: "PUT",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ proxyPoolId: proxyPoolId || null }),

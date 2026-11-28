@@ -1,5 +1,6 @@
 "use client";
 
+import api from "@/shared/utils/api.js";
 import { requestSettings } from "@/store/settingsStore";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -213,14 +214,9 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
     if ((!credentialOptional && !formData.apiKey) || !isGooglePseReadyForSave(provider, formData.cx)) return;
     setValidating(true);
     try {
-      const res = await fetch("/api/providers/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx))
-      });
-      const data = await res.json();
+      const data = await api.post("/api/providers/validate", buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx));
       setValidationResult(providerValidationOutcome(data));
-    } catch {setValidationResult("failed");} finally
+    } catch (error) {setValidationResult(error.status && error.body ? providerValidationOutcome(error.body) : "failed");} finally
     {setValidating(false);}
   };
 
@@ -231,16 +227,13 @@ function AddApiKeyModal({ isOpen, provider, providerName, credentialOptional = f
       let isValid = false;
       try {
         setValidating(true);setValidationResult(null);
-        const res = await fetch("/api/providers/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx))
-        });
-        const data = await res.json();
-        isValid = !!data.valid;
+        const data = await api.post("/api/providers/validate", buildGooglePseValidationPayload(provider, formData.apiKey, formData.cx));
+        isValid = !!data?.valid;
         setValidationResult(providerValidationOutcome(data));
-      } catch {setValidationResult("failed");} finally
-      {setValidating(false);}
+      } catch (error) {
+        isValid = !!error.body?.valid;
+        setValidationResult(error.status && error.body ? providerValidationOutcome(error.body) : "failed");
+      } finally {setValidating(false);}
       const providerSpecificData = isGooglePseProvider(provider) ? buildGooglePseProviderSpecificData(formData.cx) : undefined;
       await onSave({
         name: formData.name,
@@ -330,16 +323,16 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
   /** Apply responses only while the initial provider read still belongs to this card. */
   const fetch_ = useCallback(({ signal } = {}) => Promise.all([
-    fetch("/api/providers", { cache: "no-store", signal }),
-    fetch("/api/proxy-pools?isActive=true", { cache: "no-store", signal }),
+    api.get("/api/providers", { cache: "no-store", signal, defaultHeaders: false }).catch((error) => { if (error.status) return null; throw error; }),
+    api.get("/api/proxy-pools?isActive=true", { cache: "no-store", signal, defaultHeaders: false }).catch((error) => { if (error.status) return null; throw error; }),
     requestSettings({ cache: "no-store", signal })
   ]).then(async ([connRes, proxyRes, settingsRes]) => {
-    const connData = await connRes.json();
-    const proxyData = await proxyRes.json();
+    const connData = connRes;
+    const proxyData = proxyRes;
     const settingsData = settingsRes.ok ? await settingsRes.json() : {};
     if (signal?.aborted) return;
-    if (connRes.ok) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
-    if (proxyRes.ok) setProxyPools(proxyData.proxyPools || []);
+    if (connData) setConnections((connData.connections || []).filter((c) => c.provider === providerId));
+    if (proxyData) setProxyPools(proxyData.proxyPools || []);
     const override = (settingsData.providerStrategies || {})[providerId] || {};
     setProviderStrategy(override.fallbackStrategy || null);
     setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
@@ -397,8 +390,8 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
       onConfirm: async () => {
         setConfirmState(null);
         try {
-          const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-          if (res.ok) setConnections((prev) => prev.filter((c) => c.id !== id));
+          await api.del(`/api/providers/${id}`, { defaultHeaders: false });
+          setConnections((prev) => prev.filter((c) => c.id !== id));
         } catch (e) {console.log("delete error:", e);}
       }
     });
@@ -406,41 +399,31 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
 
   const handleToggleActive = async (id, isActive) => {
     try {
-      const res = await fetch(`/api/providers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) });
-      if (res.ok) {
-        const { connection } = await res.json();
-        if (connection) setConnections((prev) => replaceUpdatedConnections(prev, [connection]));
-      }
+      const data = await api.put(`/api/providers/${id}`, { isActive });
+      if (data?.connection) setConnections((prev) => replaceUpdatedConnections(prev, [data.connection]));
     } catch (e) {console.log("toggle error:", e);}
   };
 
   const handleUpdateProxy = async (connId, proxyPoolId) => {
     try {
-      const res = await fetch(`/api/providers/${connId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proxyPoolId: proxyPoolId || null }) });
-      if (res.ok) {
-        const { connection: updatedConnection } = await res.json();
-        setConnections((prev) => prev.map((c) => c.id === connId ? updatedConnection || c : c));
-      }
+      const data = await api.put(`/api/providers/${connId}`, { proxyPoolId: proxyPoolId || null });
+      setConnections((prev) => prev.map((c) => c.id === connId ? data?.connection || c : c));
     } catch (e) {console.log("proxy error:", e);}
   };
 
   const handleSaveApiKey = async (formData) => {
     setAddError(null);
     try {
-      const res = await fetch("/api/providers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: providerId, ...formData }) });
-      if (res.ok) {await fetch_();setShowAddModal(false);return;}
-      const data = await res.json().catch(() => ({}));
-      setAddError(data.error || `Save failed (${res.status})`);
-    } catch (e) {console.log("save apikey error:", e);setAddError("Save failed");}
+      await api.post("/api/providers", { provider: providerId, ...formData });
+      await fetch_();setShowAddModal(false);
+    } catch (e) {console.log("save apikey error:", e);setAddError(e.status ? e.body?.error || `Save failed (${e.status})` : "Save failed");}
   };
 
   const handleUpdateConnection = async (formData) => {
     try {
-      const res = await fetch(`/api/providers/${selectedConnection.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
-      // Reject failures so the edit modal can preserve the draft and offer retry.
-      if (!res.ok) throw new Error("Failed to save connection");
-      if (res.ok) {await fetch_();setShowEditModal(false);}
-    } catch (e) {throw e;}
+      await api.put(`/api/providers/${selectedConnection.id}`, formData);
+      await fetch_();setShowEditModal(false);
+    } catch (e) {if (e.status) throw new Error("Failed to save connection"); throw e;}
   };
 
   if (loading) return <Card><div className="h-20 animate-pulse bg-dd-text/5 rounded-lg" /></Card>;

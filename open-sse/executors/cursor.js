@@ -23,7 +23,7 @@ import {
 "../utils/cursorProtobuf.js";
 import { shouldForceAgentMode } from "../utils/cursorToolMapping.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
-import { resolveCursorModels, resolveAutoModelSelection } from "../services/cursorModels.js";
+import { resolveCursorModels, resolveAutoModelSelection } from "../services/catalogs/cursorModels.js";
 import { estimateUsage } from "../utils/usageTracking.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { chatChunkSse, sseChunk } from "../utils/sse.js";

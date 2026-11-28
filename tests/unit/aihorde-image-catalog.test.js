@@ -6,7 +6,7 @@ import {
   AI_HORDE_CLIENT_AGENT,
   HordeImageCatalog,
   parseHordeImageModels,
-} from "../../open-sse/services/aihordeImageCatalog.js";
+} from "../../open-sse/services/catalogs/aihordeImageCatalog.js";
 
 const ROWS = [
   { name: "stable_diffusion", type: "image", count: 3, queued: 10, eta: 4.6, performance: 1.5, jobs: 2 },

@@ -1,5 +1,5 @@
-import { buildClineHeaders } from "../shared/clineAuth.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { buildClineHeaders } from "../../shared/clineAuth.js";
+import { isString } from "../../../src/shared/utils/typeChecks.js";
 import { createCatalogCache } from "./catalogCache.js";
 
 const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";

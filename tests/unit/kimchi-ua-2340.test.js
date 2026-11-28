@@ -30,7 +30,7 @@ const KIMCHI_REGISTRY_URL = pathToFileURL(
   path.join(REPO_ROOT, "open-sse", "providers", "registry", "kimchi.js"),
 ).href;
 const KIMCHI_MODELS_URL = pathToFileURL(
-  path.join(REPO_ROOT, "open-sse", "services", "kimchiModels.js"),
+  path.join(REPO_ROOT, "open-sse", "services", "catalogs", "kimchiModels.js"),
 ).href;
 const LATEST_RELEASE_URL = "https://api.github.com/repos/getkimchi/kimchi/releases/latest";
 const KIMCHI_UA_RE = /^kimchi\/\d+\.\d+\.\d+$/;

@@ -10,7 +10,7 @@ import {
   clearQoderCatalog,
   getQoderModelConfig,
   resolveQoderModels,
-} from "../../open-sse/services/qoderModels.js";
+} from "../../open-sse/services/catalogs/qoderModels.js";
 
 const credentials = {
   accessToken: "access-token",

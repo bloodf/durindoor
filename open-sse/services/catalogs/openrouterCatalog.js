@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { hasPaidEvidence } from "../config/freeModelCatalog.js";
-import { readBoundedResponseText } from "../utils/error.js";
-import { extractLiveModelLimits } from "./modelMetadata.js";
+import { hasPaidEvidence } from "../../config/freeModelCatalog.js";
+import { readBoundedResponseText } from "../../utils/error.js";
+import { extractLiveModelLimits } from "../modelMetadata.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
-import { LIVE_CATALOG_WAIT_MS } from "../../src/shared/models/catalogDeadline.js";
+import { isFunction, isNumber, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
+import { LIVE_CATALOG_WAIT_MS } from "../../../src/shared/models/catalogDeadline.js";
 
 /**
  * OpenRouter's public model catalogs:
@@ -108,7 +108,7 @@ function rebuildCapabilitiesIndex() {
 async function resolveTransport(fetchImpl, proxyOptions) {
   if (isFunction(fetchImpl)) return fetchImpl;
   if (hasActiveProxyPolicy(proxyOptions)) {
-    const { proxyAwareFetch } = await import("../utils/proxyFetch.js");
+    const { proxyAwareFetch } = await import("../../utils/proxyFetch.js");
     return (url, init) => proxyAwareFetch(url, init, proxyOptions);
   }
   return (url, init) => globalThis.fetch(url, init);

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { normalizeKimchiModel } from "../../open-sse/services/kimchiModels.js";
+import { normalizeKimchiModel } from "../../open-sse/services/catalogs/kimchiModels.js";
 
 import {
   clearLiveModelLimitsCache,

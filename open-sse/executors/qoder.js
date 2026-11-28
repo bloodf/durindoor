@@ -53,7 +53,7 @@ import {
   qoderJobTokenExchangeUrl,
   qoderUserInfoUrl } from
 "../shared/qoder/constants.js";
-import { getQoderModelConfig, resolveQoderModels } from "../services/qoderModels.js";
+import { getQoderModelConfig, resolveQoderModels } from "../services/catalogs/qoderModels.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { encodeDataUri } from "../translator/concerns/image.js";
 

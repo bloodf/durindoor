@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useEffect, useState } from "react";
 import { Button, Modal } from "@/shared/components";
 import { isString } from "@/shared/utils/typeChecks.js";
@@ -20,10 +22,9 @@ export default function SyncProviderModelsModal({ connections, existingIds, prov
     const controller = new AbortController();
     setLoading(true);
     setMessage("");
-    fetch(`/api/providers/${encodeURIComponent(connectionId)}/models`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Model discovery failed");
+    api.get(`/api/providers/${encodeURIComponent(connectionId)}/models`, { cache: "no-store", signal: controller.signal, defaultHeaders: false })
+      .catch((error) => { if (error.status) throw new Error(error.body?.error || "Model discovery failed"); throw error; })
+      .then((data) => {
         const unique = new Map();
         for (const item of Array.isArray(data.models) ? data.models : []) {
           const id = isString(item) ? item : item?.id || item?.modelId || item?.model;
@@ -43,9 +44,7 @@ export default function SyncProviderModelsModal({ connections, existingIds, prov
     setSaving(true);
     setMessage("");
     try {
-      const response = await fetch("/api/models/discovered", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias, ids: available, passthrough }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not add selected models");
+      await api.post("/api/models/discovered", { providerAlias, ids: available, passthrough }).catch((error) => { if (error.status) throw new Error(error.body?.error || "Could not add selected models"); throw error; });
       await onSaved();
       onClose();
     } catch (error) {

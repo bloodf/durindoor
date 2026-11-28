@@ -104,7 +104,7 @@ import registeredAdapter from "../../open-sse/handlers/imageProviders/aihorde.js
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { getModelInfo } from "../../src/sse/services/model.js";
-import { AI_HORDE_CATALOG_URL, AI_HORDE_CLIENT_AGENT, aiHordeImageCatalog } from "../../open-sse/services/aihordeImageCatalog.js";
+import { AI_HORDE_CATALOG_URL, AI_HORDE_CLIENT_AGENT, aiHordeImageCatalog } from "../../open-sse/services/catalogs/aihordeImageCatalog.js";
 import { clearLiveModelLimitsCache } from "../../open-sse/services/liveModelLimits.js";
 import { ACCEPTED_JOB_HEADER } from "../../open-sse/services/combo.js";
 

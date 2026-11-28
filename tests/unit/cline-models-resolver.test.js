@@ -6,7 +6,7 @@ vi.mock("open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: mocks.proxyAwareFetch,
 }));
 
-import { resolveClineModels } from "../../open-sse/services/clineModels.js";
+import { resolveClineModels } from "../../open-sse/services/catalogs/clineModels.js";
 
 // Cline OAuth access tokens are WorkOS JWTs; only those are `workos:`-prefixed
 // on the wire (an opaque ClinePass API key must be sent verbatim).

@@ -21,7 +21,7 @@ import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { errorResponse } from "../utils/error.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
-import { resolveCursorModels } from "../services/cursorModels.js";
+import { resolveCursorModels } from "../services/catalogs/cursorModels.js";
 import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
 import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
 

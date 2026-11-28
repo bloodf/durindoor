@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
-import { clearQoderCatalog, resolveQoderModels } from "../../open-sse/services/qoderModels.js";
+import { clearQoderCatalog, resolveQoderModels } from "../../open-sse/services/catalogs/qoderModels.js";
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
   proxyAwareFetch: vi.fn(),

@@ -12,7 +12,7 @@ import { buildKiroIdentityHeaders } from "../../open-sse/shared/kiroHeaders.js";
 import {
   clearKiroModelCache,
   resolveKiroModels,
-} from "../../open-sse/services/kiroModels.js";
+} from "../../open-sse/services/catalogs/kiroModels.js";
 
 const catalogResponse = () => ({
   ok: true,

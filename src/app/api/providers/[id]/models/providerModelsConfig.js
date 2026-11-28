@@ -1,8 +1,8 @@
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
-import { resolveKiroModels } from "open-sse/services/kiroModels.js";
-import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
-import { resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveKiroModels } from "open-sse/services/catalogs/kiroModels.js";
+import { resolveKimchiModels } from "open-sse/services/catalogs/kimchiModels.js";
+import { resolveQoderModels } from "open-sse/services/catalogs/qoderModels.js";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
 import { refreshGoogleToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { isObject, isString } from "../../../../../shared/utils/typeChecks.js";

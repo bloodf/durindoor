@@ -13,7 +13,7 @@ import {
 "../config/kiroConstants.js";
 import { v4 as uuidv4 } from "uuid";
 import { refreshKiroToken } from "../services/tokenRefresh.js";
-import { enrichKiroCredentialsFromSsoCache } from "../services/kiroModels.js";
+import { enrichKiroCredentialsFromSsoCache } from "../services/catalogs/kiroModels.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {

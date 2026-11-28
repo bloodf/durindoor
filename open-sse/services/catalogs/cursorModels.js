@@ -7,15 +7,15 @@
  */
 
 import crypto from "crypto";
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { PROVIDER_OAUTH } from "../providers/index.js";
-import { buildCursorHeaders } from "../utils/cursorChecksum.js";
-import { appendBoundedCursorChunk, decodeMessage } from "../utils/cursorProtobuf.js";
-import { isNumber, isString, isObject } from "../../src/shared/utils/typeChecks.js";
-import { connectHttp2, cursorProxyUrl } from "../utils/http2Connect.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { PROVIDER_OAUTH } from "../../providers/index.js";
+import { buildCursorHeaders } from "../../utils/cursorChecksum.js";
+import { appendBoundedCursorChunk, decodeMessage } from "../../utils/cursorProtobuf.js";
+import { isNumber, isString, isObject } from "../../../src/shared/utils/typeChecks.js";
+import { connectHttp2, cursorProxyUrl } from "../../utils/http2Connect.js";
 import { createCatalogCache } from "./catalogCache.js";
 
-import { readBoundedResponseText, sanitizeErrorMessage } from "../utils/error.js";
+import { readBoundedResponseText, sanitizeErrorMessage } from "../../utils/error.js";
 
 const MAX_CATALOG_BYTES = 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;

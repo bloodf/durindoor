@@ -45,7 +45,7 @@ import {
   resolveOpenRouterDecisionModels,
   resolveOpenRouterModels,
   OPENROUTER_LOOKUP_BUDGET_MS,
-} from "../../open-sse/services/openrouterCatalog.js";
+} from "../../open-sse/services/catalogs/openrouterCatalog.js";
 import { classifyModelKind, normalizeSyncedModels } from "../../src/lib/modelAutoSync/catalog.js";
 import { buildModelsList, LLM_KIND } from "../../src/app/api/v1/models/buildModelsList.js";
 import { GET as getModelsByKind } from "../../src/app/api/v1/models/[...model]/route.js";

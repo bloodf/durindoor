@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const proxyAwareFetch = vi.hoisted(() => vi.fn());
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));
 
-const { resolveKiroModels, clearKiroModelCache } = await import("../../open-sse/services/kiroModels.js");
+const { resolveKiroModels, clearKiroModelCache } = await import("../../open-sse/services/catalogs/kiroModels.js");
 const { KIRO_DEFAULT_PROFILE_ARNS } = await import("../../open-sse/config/kiroConstants.js");
 
 const catalog = () => Response.json({ models: [{ modelId: "claude-sonnet-4.5" }] });

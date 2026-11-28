@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import Link from "next/link";
 import { requestSettings } from "@/store/settingsStore";
 
@@ -260,12 +262,10 @@ export default function ProvidersPage() {
     setTestingMode(mode === "provider" ? providerId : mode);
     setTestResults(null);
     try {
-      const res = await fetch("/api/providers/test-batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, providerId })
+      const data = await api.post("/api/providers/test-batch", { mode, providerId }).catch((error) => {
+        if (error.body) return error.body;
+        throw error;
       });
-      const data = await res.json();
       setTestResults(data);
       if (data.summary) {
         const { level, message } = testSummaryToast(data.summary);

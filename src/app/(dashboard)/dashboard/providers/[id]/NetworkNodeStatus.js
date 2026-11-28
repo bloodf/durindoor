@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Badge, Button } from "@/shared/components";
@@ -40,9 +42,9 @@ export function normalizeModelNames(models) {
   return [...new Set(names)];
 }
 
-async function readError(res, fallback) {
-  const data = await res.json().catch(() => ({}));
-  return data?.error || `${fallback} (HTTP ${res.status})`;
+/** Preserve the node panel’s HTTP-specific fallback while using the shared client. */
+function readError(error, fallback) {
+  return error.status ? error.body?.error || `${fallback} (HTTP ${error.status})` : error.message;
 }
 
 /**
@@ -69,9 +71,7 @@ export default function NetworkNodeStatus({ connection, onRemoved = null }) {
   const loadModels = useCallback(async () => {
     setModels((prev) => ({ ...prev, status: "loading", error: "" }));
     try {
-      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/models`);
-      if (!res.ok) throw new Error(await readError(res, "Could not load models"));
-      const data = await res.json();
+      const data = await api.get(`/api/providers/${encodeURIComponent(id)}/models`, { defaultHeaders: false }).catch((error) => { throw new Error(readError(error, "Could not load models")); });
       const items = normalizeModelNames(data?.models);
       if (mounted.current) setModels({ status: items.length ? "ready" : "empty", items, error: "" });
     } catch (error) {
@@ -82,9 +82,7 @@ export default function NetworkNodeStatus({ connection, onRemoved = null }) {
   const loadHealth = useCallback(async ({ force = false } = {}) => {
     setHealth((prev) => ({ ...prev, status: "loading", error: "" }));
     try {
-      const res = await fetch(`/api/health/providers${force ? "?force=1" : ""}`);
-      if (!res.ok) throw new Error(await readError(res, "Could not load health"));
-      const data = await res.json();
+      const data = await api.get(`/api/health/providers${force ? "?force=1" : ""}`, { defaultHeaders: false }).catch((error) => { throw new Error(readError(error, "Could not load health")); });
       const entry = Array.isArray(data?.providers) ? data.providers.find((item) => item.id === id) : null;
       if (mounted.current) {
         setHealth({
@@ -110,9 +108,7 @@ export default function NetworkNodeStatus({ connection, onRemoved = null }) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/test`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Test failed (HTTP ${res.status})`);
+      const data = await api.post(`/api/providers/${encodeURIComponent(id)}/test`, undefined, { defaultHeaders: false }).catch((error) => { throw new Error(readError(error, "Test failed")); }) || {};
       if (!mounted.current) return;
       setTestResult({ ok: data.valid === true, message: data.valid === true ? "Test passed" : data.error || "Test failed" });
       const refreshed = await loadHealth({ force: true });

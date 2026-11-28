@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import FireflyBrowserPanel from "../FireflyBrowserPanel.jsx";
 import OpenRouterRoutingCard from "../OpenRouterRoutingCard";
 
@@ -228,7 +230,7 @@ export default function ProviderDetailSections({ addConnectionError, allSelected
                   onConfirm: async () => {
                     setConfirmState(null);
                     try {
-                      const res = await fetch(`/api/provider-nodes/${providerId}`, { method: "DELETE" });
+                      const res = await dashboardRequest(`/api/provider-nodes/${providerId}`, { method: "DELETE" });
                       if (res.ok) {
                         router.push("/dashboard/providers");
                       }
@@ -319,7 +321,7 @@ export default function ProviderDetailSections({ addConnectionError, allSelected
                         let failures = 0;
                         for (const connection of connections.filter((item) => item.authType === "oauth")) {
                           try {
-                            const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/refresh-profile`, { method: "POST" });
+                            const response = await dashboardRequest(`/api/providers/${encodeURIComponent(connection.id)}/refresh-profile`, { method: "POST" });
                             if (!response.ok) failures++;
                           } catch { failures++; }
                         }

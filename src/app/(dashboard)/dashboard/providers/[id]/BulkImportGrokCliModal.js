@@ -1,5 +1,7 @@
 "use client";
 
+import { post } from "@/shared/utils/api";
+
 import { useState } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -62,21 +64,12 @@ export default function BulkImportGrokCliModal({ isOpen, onClose, onSuccess }) {
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/oauth/grok-cli/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data?.error || `Request failed: ${response.status}`);
-        return;
-      }
+      const data = await post("/api/oauth/grok-cli/bulk-import", { accounts }, { strictJson: true });
       setError("");
       setResult(data);
       if (data.success > 0 && isFunction(onSuccess)) onSuccess();
     } catch (requestError) {
-      setError(requestError.message || translate("Request failed"));
+      setError(requestError.status ? (requestError.body?.error || `Request failed: ${requestError.status}`) : (requestError.message || translate("Request failed")));
     } finally {
       setSubmitting(false);
     }

@@ -4,22 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch: mocks.proxyAwareFetch }));
 
-import { createCatalogCache } from "../../open-sse/services/catalogCache.js";
-import { clearKiroModelCache, resolveKiroModels } from "../../open-sse/services/kiroModels.js";
+import { createCatalogCache } from "../../open-sse/services/catalogs/catalogCache.js";
+import { clearKiroModelCache, resolveKiroModels } from "../../open-sse/services/catalogs/kiroModels.js";
 import { clearLiveModelLimitsCache, getCachedLiveLimits, resolveLiveOpenAIModels } from "../../open-sse/services/liveModelLimits.js";
 
+// [module name, directory under open-sse/services]. The catalog modules live in
+// services/catalogs/; liveModelLimits stays at the services/ top level.
 const CATALOG_MODULES = [
-  "qoderModels",
-  "kimchiModels",
-  "kiroModels",
-  "cursorModels",
-  "copilotModels",
-  "ollamaCatalog",
-  "openrouterCatalog",
-  "clineModels",
-  "clinepassModels",
-  "commandcodeModels",
-  "liveModelLimits",
+  ["qoderModels", "catalogs"],
+  ["kimchiModels", "catalogs"],
+  ["kiroModels", "catalogs"],
+  ["cursorModels", "catalogs"],
+  ["copilotModels", "catalogs"],
+  ["ollamaCatalog", "catalogs"],
+  ["openrouterCatalog", "catalogs"],
+  ["clineModels", "catalogs"],
+  ["clinepassModels", "catalogs"],
+  ["commandcodeModels", "catalogs"],
+  ["liveModelLimits", ""],
 ];
 
 function deferred() {
@@ -205,10 +207,13 @@ describe("live model limits cache", () => {
 });
 
 describe("catalog modules", () => {
-  it.each(CATALOG_MODULES)("%s uses createCatalogCache", (name) => {
-    const source = readFileSync(new URL(`../../open-sse/services/${name}.js`, import.meta.url), "utf8");
+  it.each(CATALOG_MODULES)("%s uses createCatalogCache", (name, dir) => {
+    const source = readFileSync(new URL(`../../open-sse/services/${dir ? `${dir}/` : ""}${name}.js`, import.meta.url), "utf8");
 
-    expect(source).toContain('import { createCatalogCache } from "./catalogCache.js";');
+    // The specifier is relative to the module: catalogCache.js is a sibling inside
+    // services/catalogs/, one directory down for modules that stay at services/.
+    const specifier = dir === "catalogs" ? "./catalogCache.js" : "./catalogs/catalogCache.js";
+    expect(source).toContain(`import { createCatalogCache } from "${specifier}";`);
     expect(source).toMatch(/= createCatalogCache\(/);
     expect(source).not.toMatch(/\b(inflight|inFlight)\b/);
   });

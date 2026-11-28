@@ -314,7 +314,7 @@ existing local behavior.
 | --- | --- |
 | `tests/unit/account-fallback-request-scoped-4xx.test.js` + `tests/unit/port-5cdcddf5-combo-request-scoped-4xx.test.js` (offline, focused) | 2 files, **22 tests passed** |
 | `tests/unit/codex-usage-credential-binding.test.js` + `tests/unit/codex-usage-fetch-timeout.test.js` (offline, focused) | 2 files, **3 tests passed** |
-| Whole-tree search for `omniModel`, `lkgp`, `lastKnownGoodProvider`, `GOOGLE_ONE_AI`, `remainingCredits`, `key_value` | no local runtime occurrence (only report prose; `lastKnownGood` occurs in `open-sse/services/ollamaCatalog.js` as an unrelated in-memory model-catalog cache) |
+| Whole-tree search for `omniModel`, `lkgp`, `lastKnownGoodProvider`, `GOOGLE_ONE_AI`, `remainingCredits`, `key_value` | no local runtime occurrence (only report prose; `lastKnownGood` occurs in `open-sse/services/catalogs/ollamaCatalog.js` as an unrelated in-memory model-catalog cache) |
 | Whole-tree search for local writes of `testStatus: "expired"` | none — no local path marks a connection expired from a usage fetch or a health interval |
 | Upstream diff cross-check | merge-commit diffs read for #932, #1049, #1208, #1333, #1338; #1331's merge commit is an empty squash and the PR diff is authoritative (identical to #1333's `accountFallback.ts` hunk) |
 | Metadata path-list cross-check | all six rows match the upstream PR file lists exactly |

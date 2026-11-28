@@ -1,12 +1,14 @@
 "use client";
 
+import { dashboardRequest } from "../dashboardRequest";
+
 import { useCallback } from "react";
 import { loadModelAliases } from "@/shared/utils/modelAliases";
 
 /** Keeps ModelVisibility requests and handlers together. */
 export default function useModelVisibility({ currentProviderIdRef, providerId, providerStorageAlias, setConfirmState, setCustomModels, setDisabledModelIds, setEnabledModelIds, setModelAliases }) {
   const fetchDisabledModels = useCallback(() => {
-    return fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
+    return dashboardRequest(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       if (res.ok) setDisabledModelIds(data.ids || []);
     }).catch((error) => {
@@ -17,7 +19,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
   // Visible-model allowlist for this provider (empty = no restriction).
   const fetchEnabledModels = useCallback(() => {
     const requestProviderId = providerId;
-    return fetch(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
+    return dashboardRequest(`/api/models/enabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       // A response for a provider the page has since switched away from must
       // not overwrite the current provider's banner.
@@ -30,7 +32,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
 
   const handleDisableModel = async (modelId) => {
     try {
-      const res = await fetch("/api/models/disabled", {
+      const res = await dashboardRequest("/api/models/disabled", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerAlias: providerStorageAlias, ids: [modelId] })
@@ -43,7 +45,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
 
   const handleEnableModel = async (modelId) => {
     try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
+      const res = await dashboardRequest(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}&id=${encodeURIComponent(modelId)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
       console.log("Error enabling model:", error);
@@ -58,7 +60,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
       onConfirm: async () => {
         setConfirmState(null);
         try {
-          const res = await fetch("/api/models/disabled", {
+          const res = await dashboardRequest("/api/models/disabled", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ providerAlias: providerStorageAlias, ids })
@@ -73,7 +75,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
 
   const handleEnableAll = async () => {
     try {
-      const res = await fetch(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
+      const res = await dashboardRequest(`/api/models/disabled?providerAlias=${encodeURIComponent(providerStorageAlias)}`, { method: "DELETE" });
       if (res.ok) await fetchDisabledModels();
     } catch (error) {
       console.log("Error enabling all models:", error);
@@ -86,7 +88,7 @@ export default function useModelVisibility({ currentProviderIdRef, providerId, p
   }, []);
 
   const fetchCustomModels = useCallback(() => {
-    return fetch("/api/models/custom", { cache: "no-store" }).then(async (res) => {
+    return dashboardRequest("/api/models/custom", { cache: "no-store" }).then(async (res) => {
       const data = await res.json();
       if (res.ok) {
         setCustomModels(data.models || []);

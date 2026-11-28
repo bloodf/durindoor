@@ -1,5 +1,7 @@
 "use client";
 
+import { post } from "@/shared/utils/api";
+
 import { useState } from "react";
 import PropTypes from "prop-types";
 import Button from "@/shared/ui/components/Button.jsx";
@@ -76,22 +78,13 @@ export default function BulkImportCodexModal({ isOpen, onClose, onSuccess }) {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/oauth/codex/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts, codexFingerprintMode }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setParseError(data?.error || `Request failed: ${res.status}`);
-        return;
-      }
+      const data = await post("/api/oauth/codex/bulk-import", { accounts, codexFingerprintMode }, { strictJson: true });
       setResult(data);
       if (data.success > 0 && isFunction(onSuccess)) {
         onSuccess();
       }
     } catch (err) {
-      setParseError(err.message || translate("Request failed"));
+      setParseError(err.status ? (err.body?.error || `Request failed: ${err.status}`) : (err.message || translate("Request failed")));
     } finally {
       setSubmitting(false);
     }

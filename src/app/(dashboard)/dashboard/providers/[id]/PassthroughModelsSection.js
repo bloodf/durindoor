@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
+import api from "@/shared/utils/api";
 import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
@@ -136,12 +137,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     setTestingModelId(id);
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
-      const res = await fetch("/api/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${id}`, connectionId }),
-      });
-      const data = await res.json();
+      const data = await api.post("/api/models/test", { model: `${providerAlias}/${id}`, connectionId });
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [id]: outcome }));
     } catch {
@@ -168,11 +164,11 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
             try {
               if (model.source === "custom") {
                 const params = new URLSearchParams({ providerAlias, id: model.id, type: "llm" });
-                const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-                if (res.ok) { ok++; } else { failed++; }
+                await api.del(`/api/models/custom?${params}`, { defaultHeaders: false });
+                ok++;
               } else if (model.alias) {
-                const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { method: "DELETE" });
-                if (res.ok) { ok++; } else { failed++; }
+                await api.del(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { defaultHeaders: false });
+                ok++;
               } else {
                 failed++;
               }
@@ -263,6 +259,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
         model: `${providerAlias}/${m.id}`,
         kind: "llm",
       }));
+      // SSE responses require streaming, which the dashboard client does not support.
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

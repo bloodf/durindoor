@@ -13,7 +13,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { credentialFetch } from "../utils/credentialFetch.js";
 import { applyGemini4RequestRules, cleanJSONSchemaForAntigravity, sanitizeFunctionResponseResult } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE, DEFAULT_THINKING_GEMINI_CLI_SIGNATURE } from "../config/defaultThinkingSignature.js";
-import { antigravityCatalogUserAgent } from "../services/antigravityCatalog.js";
+import { antigravityCatalogUserAgent } from "../services/catalogs/antigravityCatalog.js";
 import { isAntigravityCapacityError } from "../services/accountFallback.js";
 import { createGeminiToolNameAliaser } from "../translator/concerns/toolCall.js";
 import { normalizeToolSchema } from "../translator/concerns/toolSchema.js";

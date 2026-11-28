@@ -4,8 +4,8 @@ import { guardedProbeFetch } from "../utils/outboundUrlGuard.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "../providers/shared.js";
 import { isBoolean, isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { extractApiCapabilities, extractLiveModelLimits } from "./modelMetadata.js";
-import { createCatalogCache } from "./catalogCache.js";
-import { cloudflareInferenceId } from "./cloudflareModels.js";
+import { createCatalogCache } from "./catalogs/catalogCache.js";
+import { cloudflareInferenceId } from "./catalogs/cloudflareModels.js";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 

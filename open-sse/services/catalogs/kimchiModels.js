@@ -1,10 +1,10 @@
 import { createHash } from "crypto";
 
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { getKimchiUserAgent } from "../utils/kimchiUserAgent.js";
-import { extractLiveModelLimits } from "./modelMetadata.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { getKimchiUserAgent } from "../../utils/kimchiUserAgent.js";
+import { extractLiveModelLimits } from "../modelMetadata.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 export const KIMCHI_API = "https://llm.kimchi.dev";
 

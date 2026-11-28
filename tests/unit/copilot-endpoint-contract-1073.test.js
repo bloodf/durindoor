@@ -50,7 +50,7 @@ import {
   readCopilotEndpointKinds,
   resolveCopilotEndpointRoute,
 } from "../../open-sse/services/copilotEndpointContract.js";
-import { clearCopilotModelCache, resolveCopilotModels } from "../../open-sse/services/copilotModels.js";
+import { clearCopilotModelCache, resolveCopilotModels } from "../../open-sse/services/catalogs/copilotModels.js";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
 import { GheCopilotExecutor } from "../../open-sse/executors/ghe-copilot.js";
 import { persistCopilotEndpointContract } from "../../src/app/api/providers/[id]/models/modelsConfig.js";

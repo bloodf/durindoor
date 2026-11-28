@@ -46,7 +46,7 @@ import {
   aiHordeImageCatalog,
   readBoundedBody,
   readBoundedJson,
-} from "../../services/aihordeImageCatalog.js";
+} from "../../services/catalogs/aihordeImageCatalog.js";
 
 export const AI_HORDE_IMAGE_ID = "aihorde";
 export const AI_HORDE_MAX_N = 4;
@@ -215,7 +215,7 @@ function decodeInlineImage(value, maxBytes) {
 /**
  * @param {object} [deps] - closed-world seams for tests
  * @param {(url: string, init: RequestInit) => Promise<Response>} [deps.transport] - Horde API calls
- * @param {import("../../services/aihordeImageCatalog.js").HordeImageCatalog} [deps.catalog]
+ * @param {import("../../services/catalogs/aihordeImageCatalog.js").HordeImageCatalog} [deps.catalog]
  * @param {typeof fetch} [deps.downloadFetch] - socket layer under the download guards
  */
 export function createAiHordeImageAdapter({

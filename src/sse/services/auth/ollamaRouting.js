@@ -1,5 +1,5 @@
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
-import { discoverOllamaCatalog } from "open-sse/services/ollamaCatalog.js";
+import { discoverOllamaCatalog } from "open-sse/services/catalogs/ollamaCatalog.js";
 import { isString } from "@/shared/utils/typeChecks.js";
 
 export const OLLAMA_LOCAL_PROVIDER_ID = "ollama-local";

@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useMemo, useState } from "react";
 import Modal from "@/shared/ui/components/Modal.jsx";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
@@ -184,13 +186,7 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
   });
 
   const mintPairing = async () => {
-    const response = await fetch(PAIRING_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(pairingTarget()),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "The pairing could not be created.");
+    const data = await api.post(PAIRING_URL, pairingTarget()).catch((error) => { if (error.status) throw new Error(error.body?.error || "The pairing could not be created."); throw error; });
     return data.pairing;
   };
 
@@ -201,19 +197,13 @@ export default function CookieImportModal({ isOpen, provider, providerName, impo
     setStatus("");
     try {
       const created = await mintPairing();
-      const response = await fetch(IMPORT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", [created.header]: created.token },
-        body: JSON.stringify({
+      const data = await api.post(IMPORT_URL, {
           provider,
           origin: usesCookies ? selected.origin : contract.origin,
           ...(usesCookies ? { cookies: selected.cookies } : null),
           ...(storageKeys.length ? { localStorage: Object.fromEntries(storageKeys.map((key) => [key, storageValues[key].trim()])) } : null),
           ...(targetMode === "create" ? { name: name.trim() } : { connectionId }),
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "The import failed.");
+        }, { headers: { "Content-Type": "application/json", [created.header]: created.token } }).catch((error) => { if (error.status) throw new Error(error.body?.error || "The import failed."); throw error; });
       const imported = usesCookies
         ? `${selected.cookies.length} cookie${selected.cookies.length === 1 ? "" : "s"}`
         : `${storageKeys.length} session value${storageKeys.length === 1 ? "" : "s"}`;

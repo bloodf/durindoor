@@ -1,5 +1,7 @@
 "use client";
 
+import api from "@/shared/utils/api";
+
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal } from "@/shared/components";
@@ -54,12 +56,11 @@ export default function VisibleModelsModal({
       let current = [];
       let failed = false;
       try {
-        const res = await fetch(
+        const data = await api.get(
           `/api/models/enabled?providerAlias=${encodeURIComponent(providerAlias)}`,
-          { cache: "no-store" }
+          { cache: "no-store", defaultHeaders: false }
         );
-        if (res.ok) current = (await res.json()).ids || [];
-        else failed = true;
+        current = data?.ids || [];
       } catch {
         failed = true;
       }
@@ -72,9 +73,7 @@ export default function VisibleModelsModal({
       const liveLists = await Promise.all(
         activeConnectionIds.map(async (connectionId) => {
           try {
-            const res = await fetch(`/api/providers/${connectionId}/models`, { cache: "no-store" });
-            if (!res.ok) return [];
-            const data = await res.json();
+            const data = await api.get(`/api/providers/${connectionId}/models`, { cache: "no-store", defaultHeaders: false });
             return Array.isArray(data?.models) ? data.models : [];
           } catch {
             return [];
@@ -161,15 +160,10 @@ export default function VisibleModelsModal({
     setError("");
     try {
       const ids = Array.from(selected);
-      const res = await fetch("/api/models/enabled", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerAlias, ids }),
+      await api.put("/api/models/enabled", { providerAlias, ids }).catch((error) => {
+        if (error.status) throw new Error(error.body?.error || `Failed to save (${error.status})`);
+        throw error;
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to save (${res.status})`);
-      }
       onSaved?.(ids);
       onClose();
     } catch (e) {

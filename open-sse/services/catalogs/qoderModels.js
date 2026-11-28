@@ -14,14 +14,14 @@
 
 import { createHash } from "crypto";
 
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { buildCosyHeaders } from "../shared/qoder/cosy.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { buildCosyHeaders } from "../../shared/qoder/cosy.js";
 import {
   qoderRegionOf,
   qoderModelListUrl } from
-"../shared/qoder/constants.js";
+"../../shared/qoder/constants.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { isFunction, isObject } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject } from "../../../src/shared/utils/typeChecks.js";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour

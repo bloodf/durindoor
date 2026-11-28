@@ -4,7 +4,7 @@ import {
   buildAntigravityCapabilityHintsPsdPatch,
   parseAntigravityCatalogModels,
   reuseAntigravityCapabilityHints,
-} from "../../open-sse/services/antigravityCatalog.js";
+} from "../../open-sse/services/catalogs/antigravityCatalog.js";
 
 const connection = { id: "ag-1", provider: "antigravity", projectId: "useful-fuze-a1b2c" };
 const payload = {

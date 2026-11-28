@@ -14,13 +14,13 @@
  * by /responses). See copilotEndpointContract.js.
  */
 
-import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { sanitizeErrorMessage } from "../utils/error.js";
-import { GITHUB_COPILOT } from "../config/appConstants.js";
-import { refreshCopilotToken } from "./tokenRefresh.js";
-import { readCopilotEndpointContract } from "./copilotEndpointContract.js";
+import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { sanitizeErrorMessage } from "../../utils/error.js";
+import { GITHUB_COPILOT } from "../../config/appConstants.js";
+import { refreshCopilotToken } from "../tokenRefresh.js";
+import { readCopilotEndpointContract } from "../copilotEndpointContract.js";
 import { createCatalogCache } from "./catalogCache.js";
-import { isFunction, isObject, isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isObject, isString } from "../../../src/shared/utils/typeChecks.js";
 
 const MODELS_URL = "https://api.githubcopilot.com/models";
 const FETCH_TIMEOUT_MS = 10_000;

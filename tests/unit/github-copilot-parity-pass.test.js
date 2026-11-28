@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
-import { clearCopilotModelCache, resolveCopilotModels } from "../../open-sse/services/copilotModels.js";
+import { clearCopilotModelCache, resolveCopilotModels } from "../../open-sse/services/catalogs/copilotModels.js";
 
 const { proxyAwareFetch } = vi.hoisted(() => ({ proxyAwareFetch: vi.fn() }));
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({ proxyAwareFetch }));

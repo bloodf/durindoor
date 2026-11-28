@@ -15,7 +15,7 @@ vi.mock("@/lib/usageDb.js", () => ({
   appendRequestLog: vi.fn(async () => {}), trackPendingRequest: vi.fn(), finishActiveSession: vi.fn(),
   saveRequestDetail: vi.fn(async () => {}), saveRequestUsage: vi.fn(async () => {}),
 }));
-vi.mock("../../open-sse/services/cursorModels.js", async (importOriginal) => ({
+vi.mock("../../open-sse/services/catalogs/cursorModels.js", async (importOriginal) => ({
   ...(await importOriginal()),
   resolveCursorModels: vi.fn(),
 }));
@@ -30,7 +30,7 @@ import REGISTRY from "../../open-sse/providers/registry/index.js";
 import { PROVIDERS } from "../../open-sse/providers/index.js";
 import { CursorApiExecutor, discoverCursorApiModels, deriveCursorApiMachineId } from "../../open-sse/executors/cursor-api.js";
 import { getExecutor } from "../../open-sse/executors/index.js";
-import { resolveCursorModels } from "../../open-sse/services/cursorModels.js";
+import { resolveCursorModels } from "../../open-sse/services/catalogs/cursorModels.js";
 import { handleChatCore } from "../../open-sse/handlers/chatCore.js";
 import { FORMATS } from "../../open-sse/translator/formats.js";
 import { encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";

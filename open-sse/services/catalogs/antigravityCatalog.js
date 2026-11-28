@@ -28,9 +28,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { isNumber, isRecord, isString } from "../../src/shared/utils/typeChecks.js";
-import { ANTIGRAVITY_IDE_USER_AGENT } from "../providers/shared.js";
-import { normalizeCloudCodeProjectId } from "./usage/shared.js";
+import { isNumber, isRecord, isString } from "../../../src/shared/utils/typeChecks.js";
+import { ANTIGRAVITY_IDE_USER_AGENT } from "../../providers/shared.js";
+import { normalizeCloudCodeProjectId } from "../usage/shared.js";
 
 /**
  * The per-account model catalog endpoint. Upstream names the host

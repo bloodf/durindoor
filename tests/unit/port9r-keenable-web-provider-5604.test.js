@@ -68,7 +68,7 @@ describe("registration", () => {
   });
 
   it("is not discoverable on /v1/models/web without an explicit connection", async () => {
-    vi.doMock("open-sse/services/kiroModels.js", () => ({ resolveKiroModels: vi.fn() }));
+    vi.doMock("open-sse/services/catalogs/kiroModels.js", () => ({ resolveKiroModels: vi.fn() }));
     const { buildModelsList } = await import("../../src/app/api/v1/models/buildModelsList.js");
     db.getProviderConnections.mockResolvedValue([{ id: 1, provider: "openai", isActive: true }]);
     const ids = (await buildModelsList(["webSearch", "webFetch"])).map((model) => model.id);

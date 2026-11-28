@@ -20,15 +20,15 @@ vi.mock("@/sse/services/tokenRefresh", () => ({
   updateProviderCredentials: vi.fn(),
 }));
 
-vi.mock("open-sse/services/kiroModels.js", () => ({
+vi.mock("open-sse/services/catalogs/kiroModels.js", () => ({
   resolveKiroModels: vi.fn(),
 }));
 
-vi.mock("open-sse/services/copilotModels.js", () => ({
+vi.mock("open-sse/services/catalogs/copilotModels.js", () => ({
   resolveCopilotModels: vi.fn(),
 }));
 
-vi.mock("open-sse/services/qoderModels.js", () => ({
+vi.mock("open-sse/services/catalogs/qoderModels.js", () => ({
   resolveQoderModels: vi.fn(),
 }));
 

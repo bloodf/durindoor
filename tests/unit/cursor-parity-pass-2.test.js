@@ -139,7 +139,7 @@ describe("Cursor login and refresh routes", () => {
 });
 
 import { EventEmitter } from "node:events";
-import { resolveCursorModels, clearCursorModelCache } from "../../open-sse/services/cursorModels.js";
+import { resolveCursorModels, clearCursorModelCache } from "../../open-sse/services/catalogs/cursorModels.js";
 import { CursorExecutor } from "../../open-sse/executors/cursor.js";
 import { cursorRequestDirectives } from "../../open-sse/executors/cursor.js";
 import { decodeMessage, encodeField, wrapConnectRPCFrame } from "../../open-sse/utils/cursorProtobuf.js";

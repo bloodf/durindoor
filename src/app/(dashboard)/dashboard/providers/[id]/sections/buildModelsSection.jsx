@@ -1,4 +1,6 @@
 "use client";
+
+import { dashboardRequest } from "../dashboardRequest";
 import { filterModelRows, toggleVisibleModels, runModelOperations } from "../modelSelection.js";
 
 import { Button } from "@/shared/components";
@@ -76,13 +78,13 @@ export default function buildModelsSection({ catalogEvidence, chutesCatalog, con
       const requestGeneration = providerGenerationRef.current;
       const { succeeded, failed } = action === "delete" ? await runModelOperations(targets, async (model) => {
         const params = model.source === "custom" ? new URLSearchParams({ providerAlias: providerStorageAlias, id: model.id, type: "llm" }) : new URLSearchParams({ alias: model.alias });
-        const res = await fetch(`/api/models/${model.source === "custom" ? "custom" : "alias"}?${params}`, { method: "DELETE" });
+        const res = await dashboardRequest(`/api/models/${model.source === "custom" ? "custom" : "alias"}?${params}`, { method: "DELETE" });
         if (!res.ok) throw new Error("Request failed");
       }) : await (async () => {
         try {
           const params = new URLSearchParams({ providerAlias: providerStorageAlias });
           targets.forEach((model) => params.append("id", model.id));
-          const res = action === "disable" ? await fetch("/api/models/disabled", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, ids: targets.map((model) => model.id) }) }) : await fetch(`/api/models/disabled?${params}`, { method: "DELETE" });
+          const res = action === "disable" ? await dashboardRequest("/api/models/disabled", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerAlias: providerStorageAlias, ids: targets.map((model) => model.id) }) }) : await dashboardRequest(`/api/models/disabled?${params}`, { method: "DELETE" });
           if (!res.ok) throw new Error("Request failed");
           return { succeeded: targets.map((model) => model.key), failed: [] };
         } catch { return { succeeded: [], failed: targets.map((model) => model.id) }; }

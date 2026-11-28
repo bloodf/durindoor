@@ -14,7 +14,7 @@ vi.mock("fs/promises", () => ({
   readFile: vi.fn(async () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); }),
 }));
 
-const { resolveKiroModels, isRefreshableKiroAuthError } = await import("../../open-sse/services/kiroModels.js");
+const { resolveKiroModels, isRefreshableKiroAuthError } = await import("../../open-sse/services/catalogs/kiroModels.js");
 
 const BEARER_403 = '{"message":"The bearer token included in the request is invalid.","reason":null}';
 

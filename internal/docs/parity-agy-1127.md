@@ -14,7 +14,7 @@ EasyCLIProxyAPI is a desktop management client around a CLIProxyAPI core, not a 
 
 ## Evidence and comparison
 
-Local evidence is from the current checkout: [OAuth handlers](../../src/lib/oauth/providers.js), [Antigravity OAuth service](../../src/lib/oauth/services/antigravity.js), [OAuth config](../../src/lib/oauth/constants/oauth.js), [Antigravity registry](../../open-sse/providers/registry/antigravity.js), [`agy` registry](../../open-sse/providers/registry/agy.js), [executor](../../open-sse/executors/antigravity.js), [countTokens executor](../../open-sse/executors/antigravity-count-tokens.js), [usage/quota](../../open-sse/services/usage/google.js), [project catalog](../../open-sse/services/antigravityCatalog.js).
+Local evidence is from the current checkout: [OAuth handlers](../../src/lib/oauth/providers.js), [Antigravity OAuth service](../../src/lib/oauth/services/antigravity.js), [OAuth config](../../src/lib/oauth/constants/oauth.js), [Antigravity registry](../../open-sse/providers/registry/antigravity.js), [`agy` registry](../../open-sse/providers/registry/agy.js), [executor](../../open-sse/executors/antigravity.js), [countTokens executor](../../open-sse/executors/antigravity-count-tokens.js), [usage/quota](../../open-sse/services/usage/google.js), [project catalog](../../open-sse/services/catalogs/antigravityCatalog.js).
 
 | Contract | Upstream delta at pinned revisions | DurinDoor state and offline evidence | Next-unit acceptance / classification |
 | --- | --- | --- | --- |

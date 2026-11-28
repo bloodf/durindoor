@@ -27,7 +27,7 @@ vi.mock("../../open-sse/utils/mimoAccount.js", async (importOriginal) => ({
   getMimoAccountCookie: vi.fn(),
   invalidateMimoAccountCookieCache: vi.fn(),
 }));
-vi.mock("../../open-sse/services/qoderModels.js", () => ({
+vi.mock("../../open-sse/services/catalogs/qoderModels.js", () => ({
   getQoderModelConfig: vi.fn(async () => ({ key: "auto", max_output_tokens: 8192 })),
   resolveQoderModels: vi.fn(),
 }));

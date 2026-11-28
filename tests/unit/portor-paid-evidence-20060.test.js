@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isFreeModel } from "../../open-sse/config/freeModelCatalog.js";
-import { isOpenRouterFreeModel } from "../../open-sse/services/openrouterCatalog.js";
+import { isOpenRouterFreeModel } from "../../open-sse/services/catalogs/openrouterCatalog.js";
 
 describe("paid evidence overrides free markers", () => {
   it("rejects contradictory flags and positive ancillary prices in both readers", () => {

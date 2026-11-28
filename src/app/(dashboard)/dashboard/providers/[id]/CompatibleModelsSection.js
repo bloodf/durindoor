@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
+import api from "@/shared/utils/api";
 import { Button, ConfirmModal } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import { filterModelsForImport } from "@/shared/utils/modelImportFilter";
@@ -123,15 +124,10 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     setTestingModelIds((prev) => new Set(prev).add(modelId));
     try {
       const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
-      const res = await fetch("/api/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const data = await api.post("/api/models/test", {
           model: `${providerStorageAlias}/${modelId}`,
           connectionId,
-        }),
-      });
-      const data = await res.json();
+        });
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
     } catch {
@@ -171,11 +167,11 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
             try {
               if (model.source === "custom") {
                 const params = new URLSearchParams({ providerAlias: providerStorageAlias, id: model.id, type: "llm" });
-                const res = await fetch(`/api/models/custom?${params}`, { method: "DELETE" });
-                if (res.ok) { ok++; } else { failed++; }
+                await api.del(`/api/models/custom?${params}`, { defaultHeaders: false });
+                ok++;
               } else if (model.alias) {
-                const res = await fetch(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { method: "DELETE" });
-                if (res.ok) { ok++; } else { failed++; }
+                await api.del(`/api/models/alias?alias=${encodeURIComponent(model.alias)}`, { defaultHeaders: false });
+                ok++;
               } else {
                 failed++;
               }
@@ -267,6 +263,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         kind: "llm",
       }));
       const requestedModelIds = new Map(models.map((model, index) => [model.model, currentSelected[index].id]));
+      // SSE responses require streaming, which the dashboard client does not support.
       const res = await fetch("/api/models/test/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -346,12 +343,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
     setImporting(true);
     try {
-      const res = await fetch(`/api/providers/${activeConnection.id}/models`);
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Failed to import models");
-        return;
-      }
+      const data = await api.get(`/api/providers/${activeConnection.id}/models`, { defaultHeaders: false });
       const models = filterModelsForImport(data.models, importFilter);
       if (models.length === 0) {
         alert(importFilter === "all"
@@ -366,7 +358,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         alert("No new models were added.");
       }
     } catch (error) {
-      console.log("Error importing models:", error);
+      if (error.status) alert(error.body?.error || "Failed to import models");
+      else console.log("Error importing models:", error);
     } finally {
       setImporting(false);
     }

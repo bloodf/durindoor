@@ -19,7 +19,7 @@ vi.mock("../../open-sse/utils/proxyFetch.js", async (importOriginal) => ({
   proxyAwareFetch: vi.fn((url, init) => globalThis.fetch(url, init)),
 }));
 // The live catalog is an h2 call; keep this offline suite off the network.
-vi.mock("../../open-sse/services/cursorModels.js", () => ({
+vi.mock("../../open-sse/services/catalogs/cursorModels.js", () => ({
   resolveCursorModels: vi.fn(async () => null),
   resolveAutoModelSelection: vi.fn(() => null),
 }));

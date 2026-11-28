@@ -1,481 +1,87 @@
 "use client";
 
-import { requestSettings } from "@/store/settingsStore";
-
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { createLatestIntentQueue } from "@/shared/utils/latestIntentQueue";
-import { Card, CardHeader, CardContent } from "@/shared/ui/components/Card.jsx";
+import { Card } from "@/shared/ui/components/Card.jsx";
 import Button from "@/shared/ui/components/Button.jsx";
 import Select from "@/shared/ui/components/Select.jsx";
-import Input from "@/shared/ui/components/Input.jsx";
-import DataTable from "@/shared/ui/components/DataTable.jsx";
 import ProviderLogo from "@/shared/ui/components/ProviderLogo.jsx";
 import IconButton from "@/shared/ui/components/IconButton.jsx";
-import Pagination from "@/shared/ui/components/Pagination.jsx";
-import Modal from "@/shared/ui/components/Modal.jsx";
-import { Badge } from "@/shared/ui/components/Badge.jsx";
 import ConfirmDialog from "@/shared/ui/components/ConfirmDialog.jsx";
-import Toggle from "@/shared/ui/components/Toggle.jsx";
-import Tooltip from "@/shared/ui/components/Tooltip.jsx";
 import EmptyState from "@/shared/ui/components/EmptyState.jsx";
-import QuotaTable from "./QuotaTable";
 import {
   groupConnectionsByProvider,
   isCustomNodeId,
-  mergeAccountQuotas,
   providerNodeLabels,
   readMergedViewMap,
   writeMergedViewPreference } from
 "./grouping";
 import {
-  parseQuotaData,
   getEarliestQuotaResetTime,
   getQuotaAvailability,
   filterQuotasByVisibility,
   getHiddenQuotaRows,
-  getQuotaVisibilityKey,
-  updateQuotaVisibility,
   getConnectionLabel,
   sortVisibleConnections,
   buildLoadingState,
   getRefreshConnections,
   filterQuotaStateByConnections,
   getConnectionsEmptyMessage,
-  getPageSizeLabel,
   getConnectionsPaginationSummary,
   getSafePagination,
   getSafeTotals,
-  shouldResetPage,
   getPaginationPageValue,
   getProviderOptions,
   reconcileConnectionsPage,
-  getQuotaCache,
-  setQuotaCache,
-  QUOTA_CACHE_KEY,
-  withCachedQuotaFallback,
   REFRESH_INTERVAL_MS,
   CLAUDE_REFRESH_INTERVAL_MS,
   DEPLETED_QUOTA_THRESHOLD,
-  AUTO_REFRESH_STORAGE_KEY,
-  CONNECTIONS_PAGE_SIZE,
   ACCOUNT_PAGE_SIZE_OPTIONS,
-  ACCOUNT_PAGE_SIZE_MAX,
   ACCOUNT_FILTER_OPTIONS,
   QUOTA_SORT_OPTIONS,
-  createAutoRefreshScheduler,
   refreshProviderQuotas } from
 "./utils";
-import { getCodexPlan } from "@/shared/utils/codexPlanLabel";
 import { EditConnectionModal } from "@/shared/components";
 import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import { getClaudeWeeklyWindowNames, withClaudeWeeklyPlaceholders } from "./claudeQuotaRows";
-
-// Maps the stored providerSpecificData.authMethod to a human label for Kiro.
-// Values come from the Kiro connect flows: builder-id/idc (device code),
-// google/github (social), imported (refresh-token paste), api_key (headless).
-import { isBrowser, isNumber, isObject, isString } from "../../../../../../shared/utils/typeChecks.js";
-const KIRO_METHOD_LABELS = {
-  "builder-id": "AWS Builder ID",
-  idc: "IAM Identity Center",
-  google: "Google",
-  github: "GitHub",
-  imported: "Imported Token",
-  api_key: "API Key"
-};
-
-const REFRESH_INTERVAL_S = REFRESH_INTERVAL_MS / 1000;
-
-const AUTO_PING_SETTINGS_KEYS = {
-  claude: "claudeAutoPing",
-  codex: "codexAutoPing"
-};
-
-const AUTO_PING_TOOLTIPS = {
-  claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
-  codex: "Auto-starts the next 5h Codex window after reset by sending a tiny request to an available model. Consumes a small amount of quota."
-};
-
-function kiroMethodLabel(conn) {
-  const m = conn.providerSpecificData?.authMethod;
-  if (m && KIRO_METHOD_LABELS[m]) return KIRO_METHOD_LABELS[m];
-  return conn.authType === "api_key" ? "API Key" : "OAuth";
-}
-
-/** Keep account identity visible below the canonical provider label, including OAuth accounts without email. */
-function getConnectionSecondaryLabel(connection) {
-  if (connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()) {
-    return connection.email.trim();
-  }
-
-  if (connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()) {
-    return connection.displayName.trim();
-  }
-
-  const name = connection.name?.trim();
-  return name && name !== getConnectionLabel(connection) ? name : null;
-}
-
-// Region is stored for builder-id/idc/api_key flows; social and imported flows
-// omit it, so fall back to the region segment of the profileArn
-// (arn:aws:codewhisperer:<region>:...).
-function kiroRegion(conn) {
-  const r = conn.providerSpecificData?.region;
-  if (r) return r;
-  const arn = conn.providerSpecificData?.profileArn;
-  const seg = isString(arn) ? arn.split(":")[3] : "";
-  return seg || "";
-}
-
-// Shared shape: quota.raw.resetCredits.availableCount (Codex reset credits and
-// Claude Code cedar_ember grants both parse into the same { availableCount, ... }).
-function getCodexResetCreditCount(quota) {
-  const value = quota?.raw?.resetCredits?.availableCount;
-  const count = isNumber(value) ? value : Number(value);
-  return Number.isFinite(count) ? Math.max(0, count) : 0;
-}
-
-const CLAUDE_RESET_LIMIT_NAMES = {
-  five_hour: "session",
-  seven_day: "weekly",
-  seven_day_overage_included: "weekly",
-  seven_day_opus: "Opus weekly",
-  seven_day_sonnet: "Sonnet weekly"
-};
-
-function formatClaudeResetClears(clears) {
-  const names = [...new Set((clears || []).map((c) => CLAUDE_RESET_LIMIT_NAMES[c]).filter(Boolean))];
-  return names.length ? `${names.join(" + ")} limits` : "limits";
-}
-
-function claudeGrantStatus(grant) {
-  if (grant.resetsLeft <= 0) return "used";
-  if (grant.paused) return "paused";
-  if (grant.endsAt && new Date(grant.endsAt).getTime() <= Date.now()) return "expired";
-  if (grant.usableNow) return "usable now";
-  if (grant.startsAt && new Date(grant.startsAt).getTime() > Date.now()) return "not started";
-  return grant.useRequiresLimit ? "at limit only" : "unavailable";
-}
-
-const QUOTA_FILTER_STORAGE_KEY = "quotaTrackerFilterState";
-const QUOTA_FILTER_NAVIGATION_STORAGE_KEY = "quotaTrackerNavigationTarget";
-const FILTER_URL_KEYS = {
-  providerFilter: "provider",
-  accountFilter: "accountStatus",
-  quotaSortMode: "quotaSort",
-  expiringFirst: "expiringFirst",
-  pageSize: "pageSize",
-  page: "page"
-};
-const ACCOUNT_FILTER_VALUES = new Set(
-  ACCOUNT_FILTER_OPTIONS.map((option) => option.value)
-);
-const QUOTA_SORT_VALUES = new Set(
-  QUOTA_SORT_OPTIONS.map((option) => option.value)
-);
-const DEFAULT_QUOTA_FILTER_STATE = {
-  providerFilter: "all",
-  accountFilter: "all",
-  quotaSortMode: "default",
-  expiringFirst: false,
-  pageSize: CONNECTIONS_PAGE_SIZE,
-  page: 1
-};
-
-function normalizeProviderFilter(value) {
-  const normalized = isString(value) ? value.trim() : "";
-  return normalized || "all";
-}
-
-function normalizeAccountFilter(value) {
-  return ACCOUNT_FILTER_VALUES.has(value) ? value : "all";
-}
-
-function normalizeQuotaSortMode(value) {
-  return QUOTA_SORT_VALUES.has(value) ? value : "default";
-}
-
-function normalizeExpiringFirst(value) {
-  return value === true || value === "true" || value === "1";
-}
-
-function normalizePageSize(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return CONNECTIONS_PAGE_SIZE;
-  return Math.min(ACCOUNT_PAGE_SIZE_MAX, Math.max(1, parsed));
-}
-
-function normalizePage(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(1, parsed);
-}
-
-function normalizeQuotaFilterState(value = {}) {
-  return {
-    providerFilter: normalizeProviderFilter(value.providerFilter),
-    accountFilter: normalizeAccountFilter(value.accountFilter),
-    quotaSortMode: normalizeQuotaSortMode(value.quotaSortMode),
-    expiringFirst: normalizeExpiringFirst(value.expiringFirst),
-    pageSize: normalizePageSize(value.pageSize),
-    page: normalizePage(value.page)
-  };
-}
-
-function readStoredQuotaFilterState() {
-  if (!isBrowser()) return null;
-  try {
-    const stored = window.localStorage.getItem(QUOTA_FILTER_STORAGE_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored);
-    if (!parsed || !isObject(parsed) || Array.isArray(parsed)) {
-      return null;
-    }
-    return normalizeQuotaFilterState(parsed);
-  } catch (error) {
-    console.error("Error reading quota filter preference cache:", error);
-    return null;
-  }
-}
-
-function writeStoredQuotaFilterState(state) {
-  if (!isBrowser()) return;
-  try {
-    const normalizedState = normalizeQuotaFilterState(state);
-    window.localStorage.setItem(
-      QUOTA_FILTER_STORAGE_KEY,
-      JSON.stringify(normalizedState)
-    );
-    window.dispatchEvent(
-      new CustomEvent("quotaTrackerFilterStateChange", {
-        detail: normalizedState
-      })
-    );
-  } catch (error) {
-    console.error("Error writing quota filter preference cache:", error);
-  }
-}
-
-function hasQuotaFilterSearchParams(searchParams) {
-  return Object.values(FILTER_URL_KEYS).some((key) => searchParams.has(key));
-}
-
-function readQuotaFilterValue(searchParams, stateKey, normalize, fallbackValue) {
-  const urlKey = FILTER_URL_KEYS[stateKey];
-  if (searchParams.has(urlKey)) {
-    return normalize(searchParams.get(urlKey));
-  }
-  return fallbackValue;
-}
-
-function readQuotaFilterState(searchParams, fallbackState = DEFAULT_QUOTA_FILTER_STATE) {
-  const fallback = normalizeQuotaFilterState(fallbackState);
-  return {
-    providerFilter: readQuotaFilterValue(
-      searchParams,
-      "providerFilter",
-      normalizeProviderFilter,
-      fallback.providerFilter
-    ),
-    accountFilter: readQuotaFilterValue(
-      searchParams,
-      "accountFilter",
-      normalizeAccountFilter,
-      fallback.accountFilter
-    ),
-    quotaSortMode: readQuotaFilterValue(
-      searchParams,
-      "quotaSortMode",
-      normalizeQuotaSortMode,
-      fallback.quotaSortMode
-    ),
-    expiringFirst: readQuotaFilterValue(
-      searchParams,
-      "expiringFirst",
-      normalizeExpiringFirst,
-      fallback.expiringFirst
-    ),
-    pageSize: readQuotaFilterValue(
-      searchParams,
-      "pageSize",
-      normalizePageSize,
-      fallback.pageSize
-    ),
-    page: readQuotaFilterValue(
-      searchParams,
-      "page",
-      normalizePage,
-      fallback.page
-    )
-  };
-}
-
-async function writeQuotaFilterState(state) {
-  try {
-    await requestSettings({
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quotaTrackerState: normalizeQuotaFilterState(state)
-      })
-    });
-  } catch (error) {
-    console.error("Error writing quota filter preference:", error);
-  }
-}
-
-function setSearchParam(params, key, value, defaultValue) {
-  if (value === defaultValue) {
-    params.delete(key);
-  } else {
-    params.set(key, String(value));
-  }
-}
-
-function buildQuotaFilterSearch(searchParams, state) {
-  const params = new URLSearchParams(searchParams.toString());
-  params.delete("stateTs");
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.providerFilter,
-    normalizeProviderFilter(state.providerFilter),
-    "all"
-  );
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.accountFilter,
-    normalizeAccountFilter(state.accountFilter),
-    "all"
-  );
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.quotaSortMode,
-    normalizeQuotaSortMode(state.quotaSortMode),
-    "default"
-  );
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.expiringFirst,
-    normalizeExpiringFirst(state.expiringFirst) ? "1" : "0",
-    "0"
-  );
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.pageSize,
-    normalizePageSize(state.pageSize),
-    CONNECTIONS_PAGE_SIZE
-  );
-  setSearchParam(
-    params,
-    FILTER_URL_KEYS.page,
-    normalizePage(state.page),
-    1
-  );
-  return params;
-}
-
-function getCurrentSearchParams(searchParams) {
-  return new URLSearchParams(searchParams.toString());
-}
-
-function readPendingQuotaFilterNavigation() {
-  if (!isBrowser()) return null;
-  try {
-    const target = window.sessionStorage.getItem(
-      QUOTA_FILTER_NAVIGATION_STORAGE_KEY
-    );
-    if (!target) return null;
-
-    window.sessionStorage.removeItem(QUOTA_FILTER_NAVIGATION_STORAGE_KEY);
-    const url = new URL(target, window.location.origin);
-    if (url.pathname !== window.location.pathname) return null;
-    return new URLSearchParams(url.search);
-  } catch (error) {
-    console.error("Error reading quota navigation target:", error);
-    return null;
-  }
-}
-
-function isSameFilterState(currentState, nextState) {
-  return (
-    currentState.providerFilter === nextState.providerFilter &&
-    currentState.accountFilter === nextState.accountFilter &&
-    currentState.quotaSortMode === nextState.quotaSortMode &&
-    currentState.expiringFirst === nextState.expiringFirst &&
-    currentState.pageSize === nextState.pageSize &&
-    currentState.page === nextState.page);
-
-}
-function formatCreditDate(value) {
-  if (!value) return "N/A";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "N/A";
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  });
-}
-
-function formatTimeRemaining(value) {
-  if (!value) return "N/A";
-  const diffMs = new Date(value).getTime() - Date.now();
-  if (!Number.isFinite(diffMs)) return "N/A";
-  if (diffMs <= 0) return "Expired";
-  const totalHours = Math.ceil(diffMs / (60 * 60 * 1000));
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
-}
-
-/** Quota buffer controls identify both the provider and quota window to assistive technology. */
-function QuotaThresholds({ connection, onSaved }) {
-  const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
-  if (!connection.quotaWindows?.length) return null;
-  async function save(event, key) {
-    event.preventDefault();
-    const value = new FormData(event.currentTarget).get("percent");
-    const percent = value === "" || Number(value) === 0 ? null : Number(value);
-    if (percent !== null && (!Number.isFinite(percent) || percent <= 0 || percent > 100)) {
-      setError("Enter a percentage between 0 and 100.");
-      return;
-    }
-    setPending(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/providers/${encodeURIComponent(connection.id)}/quota-threshold`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dimensionKey: key, percent }),
-      });
-      if (!response.ok) throw new Error("Could not save quota buffer.");
-      await onSaved();
-    } catch (failure) { setError(failure.message); } finally { setPending(false); }
-  }
-  return <div className="flex flex-col gap-2 border-t border-dd-border-subtle pt-2">
-    <p className="text-xs text-dd-muted">Pause when remaining quota reaches the buffer. Clear or set to 0 to use the inherited setting.</p>
-    {connection.quotaWindows.map((window) => <form key={window.key} onSubmit={(event) => void save(event, window.key)} className="flex flex-wrap items-center gap-2">
-      <label className="min-w-0 flex-1 text-xs text-dd-muted" htmlFor={`quota-${connection.id}-${window.key}`}>{window.key}{window.effectivePercent !== null ? ` (effective ${window.effectivePercent}%)` : ""}</label>
-      <input key={String(window.percent)} id={`quota-${connection.id}-${window.key}`} aria-label={`${connection.provider} ${window.key} quota buffer`} name="percent" type="number" min="0" max="100" step="any" defaultValue={window.percent ?? ""} className="w-20 rounded border border-dd-border-subtle bg-transparent px-2 py-1 text-sm" />
-      <Button type="submit" variant="secondary" size="sm" disabled={pending} aria-label={`Save ${connection.provider} ${window.key} quota buffer`}>Save</Button>
-    </form>)}
-    {error ? <p role="alert" className="text-xs text-dd-danger">{error}</p> : null}
-  </div>;
-}
+import { formatClaudeResetClears, formatCreditDate } from "./connectionDisplay";
+import ProviderGroupCard from "./ProviderGroupCard";
+import ConnectionsPager from "./ConnectionsPager";
+import ResetCreditsModal from "./ResetCreditsModal";
+import { useQuotaFilters } from "./useQuotaFilters";
+import { useQuotaData } from "./useQuotaData";
+import { useConnectionActions } from "./useConnectionActions";
+import { useQuotaVisibility } from "./useQuotaVisibility";
+import { useAutoPing } from "./useAutoPing";
+import { REFRESH_INTERVAL_S, useAutoRefresh } from "./useAutoRefresh";
 
 export default function ProviderLimits() {
   const uiV5 = useUiV5();
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialFilterStateRef = useRef(null);
-  if (!initialFilterStateRef.current) {
-    initialFilterStateRef.current = readQuotaFilterState(searchParams);
-  }
-  const initialFilterState = initialFilterStateRef.current;
+  const {
+    initialFilterState,
+    hasHydratedSavedState,
+    providerFilter,
+    accountFilter,
+    quotaSortMode,
+    expiringFirst,
+    page,
+    setPage,
+    pageSize,
+    customPageSizeModeState,
+    setCustomPageSizeMode,
+    customPageSizeInput,
+    setCustomPageSizeInput,
+    filterState,
+    applyQuotaFilterState,
+    updateProviderFilter,
+    updateAccountFilter,
+    updateQuotaSortMode,
+    updateExpiringFirst,
+    updatePageSize,
+    updatePage
+  } = useQuotaFilters();
+  const { quotaVisibility, setQuotaVisibility, handleHideQuota, handleShowQuota } = useQuotaVisibility();
   const [connections, setConnections] = useState([]);
   const [providerOrder, setProviderOrder] = useState([]);
   const [orderPending, setOrderPending] = useState(false);
@@ -486,53 +92,13 @@ export default function ProviderLimits() {
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const connectionsSnapshot = useRef([]);
   const connectionsRequest = useRef(0);
-  const [quotaData, setQuotaData] = useState({});
-  const [loading, setLoading] = useState({});
-  const [errors, setErrors] = useState({});
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
-  const [autoPingQueue] = useState(() => createLatestIntentQueue({
-    write: async (_key, enabled, { connectionId }) => {
-      const response = await fetch(`/api/providers/${encodeURIComponent(connectionId)}/auto-ping`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled })
-      });
-      if (!response.ok) throw new Error(`Auto-ping update failed (${response.status})`);
-      return response.json();
-    },
-    onOptimistic: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
-      ...current,
-      [provider]: { ...(current[provider] || {}), [connectionId]: enabled }
-    })),
-    onConfirmed: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
-      ...current,
-      [provider]: { ...(current[provider] || {}), [connectionId]: enabled }
-    })),
-    onRollback: (_key, enabled, { connectionId, provider }) => setAutoPingMaps((current) => ({
-      ...current,
-      [provider]: { ...(current[provider] || {}), [connectionId]: enabled }
-    }))
-  }));
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [hasHydratedSavedState, setHasHydratedSavedState] = useState(false);
-  const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_S);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
-  const [togglingId, setTogglingId] = useState(null);
-  const [resettingLimitId, setResettingLimitId] = useState(null);
-  const [refreshingTokenId, setRefreshingTokenId] = useState(null);
   const [resetConfirmState, setResetConfirmState] = useState(null);
-  const [resetCreditsState, setResetCreditsState] = useState(null);
   const [deleteConfirmState, setDeleteConfirmState] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [proxyPools, setProxyPools] = useState([]);
-  const [providerFilter, setProviderFilter] = useState(
-    initialFilterState.providerFilter
-  );
   const [providerOptions, setProviderOptions] = useState([]);
   const [nodeLabels, setNodeLabels] = useState({});
   const hasCustomProvider = providerOptions.some(isCustomNodeId);
@@ -545,26 +111,7 @@ export default function ProviderLimits() {
     catch(() => {/* headings fall back to the provider id */});
     return () => { alive = false; };
   }, [hasCustomProvider]);
-  const [accountFilter, setAccountFilter] = useState(
-    initialFilterState.accountFilter
-  );
-  const [quotaSortMode, setQuotaSortMode] = useState(
-    initialFilterState.quotaSortMode
-  );
-  const [quotaVisibility, setQuotaVisibility] = useState({});
-  const [expiringFirst, setExpiringFirst] = useState(
-    initialFilterState.expiringFirst
-  );
-  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
-  const [page, setPage] = useState(initialFilterState.page);
-  const [pageSize, setPageSize] = useState(initialFilterState.pageSize);
-  const [customPageSizeModeState, setCustomPageSizeMode] = useState(
-    !ACCOUNT_PAGE_SIZE_OPTIONS.includes(initialFilterState.pageSize)
-  );
-  const [customPageSizeInput, setCustomPageSizeInput] = useState(
-    String(initialFilterState.pageSize)
-  );
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: initialFilterState.pageSize,
@@ -579,245 +126,9 @@ export default function ProviderLimits() {
   const [mergedProviders, setMergedProviders] = useState({});
 
   const { copied, copy } = useCopyToClipboard();
-  const schedulerRef = useRef(null);
   const refreshAllRef = useRef(null);
   const tickCountRef = useRef(0);
-  const filterStateRef = useRef(initialFilterState);
-  const lastPersistedFilterStateRef = useRef(null);
-  const lastSyncedQueryRef = useRef(searchParams.toString());
-  const hasLocalFilterInteractionRef = useRef(false);
-  const hydratingFromUrlRef = useRef(false);
-
-  const filterState = useMemo(
-    () => ({
-      providerFilter,
-      accountFilter,
-      quotaSortMode,
-      expiringFirst,
-      pageSize,
-      page
-    }),
-    [providerFilter, accountFilter, quotaSortMode, expiringFirst, pageSize, page]
-  );
-
-  useEffect(() => {
-    filterStateRef.current = normalizeQuotaFilterState(filterState);
-  }, [filterState]);
-
-  const persistFilterState = useCallback((state) => {
-    const normalizedState = normalizeQuotaFilterState(state);
-    writeStoredQuotaFilterState(normalizedState);
-    if (
-    lastPersistedFilterStateRef.current &&
-    isSameFilterState(lastPersistedFilterStateRef.current, normalizedState))
-    {
-      filterStateRef.current = lastPersistedFilterStateRef.current;
-      return lastPersistedFilterStateRef.current;
-    }
-    const nextState = normalizedState;
-    lastPersistedFilterStateRef.current = nextState;
-    filterStateRef.current = nextState;
-    writeQuotaFilterState(nextState);
-    return nextState;
-  }, []);
-
-  const applyFilterStateToControls = useCallback((state) => {
-    const normalizedState = normalizeQuotaFilterState(state);
-    filterStateRef.current = normalizedState;
-    setProviderFilter(normalizedState.providerFilter);
-    setAccountFilter(normalizedState.accountFilter);
-    setQuotaSortMode(normalizedState.quotaSortMode);
-    setExpiringFirst(normalizedState.expiringFirst);
-    setPageSize(normalizedState.pageSize);
-    setCustomPageSizeInput(String(normalizedState.pageSize));
-    setPage(normalizedState.page);
-    return normalizedState;
-  }, []);
-
-  const replaceQuotaFilterUrl = useCallback(
-    (state) => {
-      const params = buildQuotaFilterSearch(
-        getCurrentSearchParams(searchParams),
-        state
-      );
-      const query = params.toString();
-      lastSyncedQueryRef.current = query;
-      const targetUrl = query ? `${pathname}?${query}` : pathname;
-      // Next navigation also respects the Storybook virtual application boundary.
-      router.replace(targetUrl, { scroll: false });
-    },
-    [pathname, searchParams, router]
-  );
-
-  const applyQuotaFilterState = useCallback(
-    (nextState) => {
-      hasLocalFilterInteractionRef.current = true;
-      const normalizedState = applyFilterStateToControls(nextState);
-      persistFilterState(normalizedState);
-      replaceQuotaFilterUrl(normalizedState);
-      return normalizedState;
-    },
-    [applyFilterStateToControls, persistFilterState, replaceQuotaFilterUrl]
-  );
-
-  useEffect(() => {
-    if (hasHydratedSavedState) return;
-
-    let cancelled = false;
-    requestSettings({ cache: "no-store" }).
-    then((res) => res.ok ? res.json() : null).
-    then((settings) => {
-      if (cancelled) return;
-      if (hasLocalFilterInteractionRef.current) return;
-      const dbFilterState = normalizeQuotaFilterState(
-        settings?.quotaTrackerState
-      );
-      const currentParams = getCurrentSearchParams(searchParams);
-      const navigationParams = readPendingQuotaFilterNavigation();
-      const sourceParams = navigationParams || currentParams;
-      const urlHasFilterState = hasQuotaFilterSearchParams(sourceParams);
-      const nextFilterState = urlHasFilterState ?
-      readQuotaFilterState(sourceParams) :
-      readStoredQuotaFilterState() || dbFilterState;
-      const normalizedState = applyFilterStateToControls(nextFilterState);
-      if (navigationParams || !urlHasFilterState) {
-        replaceQuotaFilterUrl(normalizedState);
-      } else {
-        lastSyncedQueryRef.current = sourceParams.toString();
-      }
-    }).
-    catch((error) => {
-      console.error("Error reading quota filter preference:", error);
-    }).
-    finally(() => {
-      if (!cancelled) setHasHydratedSavedState(true);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyFilterStateToControls, hasHydratedSavedState, replaceQuotaFilterUrl, searchParams]);
-
-  useEffect(() => {
-    if (!hasHydratedSavedState) return;
-    const currentParams = getCurrentSearchParams(searchParams);
-    const currentQuery = currentParams.toString();
-
-    if (currentQuery === lastSyncedQueryRef.current) return;
-
-    lastSyncedQueryRef.current = currentQuery;
-
-    if (!hasQuotaFilterSearchParams(currentParams)) {
-      const storedFilterState = readStoredQuotaFilterState();
-      if (!storedFilterState) return;
-
-      if (!isSameFilterState(filterStateRef.current, storedFilterState)) {
-        hydratingFromUrlRef.current = true;
-        applyFilterStateToControls(storedFilterState);
-      }
-      replaceQuotaFilterUrl(storedFilterState);
-      return;
-    }
-
-    const nextFilterState = readQuotaFilterState(currentParams);
-    if (isSameFilterState(filterStateRef.current, nextFilterState)) return;
-
-    hydratingFromUrlRef.current = true;
-    applyFilterStateToControls(nextFilterState);
-  }, [applyFilterStateToControls, hasHydratedSavedState, replaceQuotaFilterUrl, searchParams]);
-
-  useEffect(() => {
-    if (!hasHydratedSavedState) return;
-
-    if (hydratingFromUrlRef.current) {
-      hydratingFromUrlRef.current = false;
-      persistFilterState(filterState);
-      return;
-    }
-
-    const persistedFilterState = persistFilterState(filterState);
-    const params = buildQuotaFilterSearch(
-      getCurrentSearchParams(searchParams),
-      persistedFilterState
-    );
-    const query = params.toString();
-    const currentQuery = getCurrentSearchParams(searchParams).toString();
-    lastSyncedQueryRef.current = query;
-
-    if (query === currentQuery) return;
-    replaceQuotaFilterUrl(persistedFilterState);
-  }, [filterState, hasHydratedSavedState, persistFilterState, replaceQuotaFilterUrl, searchParams]);
-
-  const updateProviderFilter = useCallback(
-    (nextValue) => {
-      const nextFilter = normalizeProviderFilter(nextValue);
-      applyQuotaFilterState({
-        ...filterState,
-        providerFilter: nextFilter,
-        page: shouldResetPage(providerFilter, nextFilter) ? 1 : page
-      });
-      setProviderMenuOpen(false);
-    },
-    [applyQuotaFilterState, filterState, page, providerFilter]
-  );
-
-  const updateAccountFilter = useCallback(
-    (nextValue) => {
-      const nextFilter = normalizeAccountFilter(nextValue);
-      applyQuotaFilterState({
-        ...filterState,
-        accountFilter: nextFilter,
-        page: shouldResetPage(accountFilter, nextFilter) ? 1 : page
-      });
-    },
-    [accountFilter, applyQuotaFilterState, filterState, page]
-  );
-
-  const updateQuotaSortMode = useCallback(
-    (nextValue) => {
-      const nextMode = normalizeQuotaSortMode(nextValue);
-      applyQuotaFilterState({
-        ...filterState,
-        quotaSortMode: nextMode,
-        page: shouldResetPage(quotaSortMode, nextMode) ? 1 : page
-      });
-    },
-    [applyQuotaFilterState, filterState, page, quotaSortMode]
-  );
-
-  const updateExpiringFirst = useCallback(
-    (nextValue) => {
-      const nextEnabled = normalizeExpiringFirst(nextValue);
-      applyQuotaFilterState({
-        ...filterState,
-        expiringFirst: nextEnabled,
-        page: shouldResetPage(expiringFirst, nextEnabled) ? 1 : page
-      });
-    },
-    [applyQuotaFilterState, expiringFirst, filterState, page]
-  );
-
-  const updatePageSize = useCallback(
-    (nextValue) => {
-      const nextPageSize = normalizePageSize(nextValue);
-      applyQuotaFilterState({
-        ...filterState,
-        pageSize: nextPageSize,
-        page: shouldResetPage(pageSize, nextPageSize) ? 1 : page
-      });
-    },
-    [applyQuotaFilterState, filterState, page, pageSize]
-  );
-
-  const updatePage = useCallback(
-    (nextPage) => {
-      applyQuotaFilterState({
-        ...filterState,
-        page: normalizePage(nextPage)
-      });
-    },
-    [applyQuotaFilterState, filterState]
-  );
+  const { autoRefresh, setAutoRefresh, countdown, setCountdown, schedulerRef } = useAutoRefresh(refreshAllRef);
 
   const fetchConnections = useCallback(
     async (targetPage = page) => {
@@ -861,7 +172,7 @@ export default function ProviderLimits() {
         return connectionsSnapshot.current;
       }
     },
-    [accountFilter, expiringFirst, page, pageSize, providerFilter]
+    [accountFilter, expiringFirst, page, pageSize, providerFilter, setPage]
   );
 
   const moveProvider = useCallback(async (provider, target) => {
@@ -880,258 +191,45 @@ export default function ProviderLimits() {
     } finally { setOrderPending(false); }
   }, [fetchConnections, orderPending]);
 
-  const fetchQuota = useCallback(async (connectionId, provider, { force = false, refresh = false } = {}) => {
-    setLoading((prev) => ({ ...prev, [connectionId]: true }));
-    setErrors((prev) => ({ ...prev, [connectionId]: null }));
+  const {
+    quotaData,
+    setQuotaData,
+    loading,
+    setLoading,
+    errors,
+    setErrors,
+    lastUpdated,
+    setLastUpdated,
+    fetchQuota,
+    refreshProvider
+  } = useQuotaData(uiV5);
 
-    try {
-      console.log(
-        `[ProviderLimits] Fetching quota for ${provider} (${connectionId})${force ? " (force)" : ""}`
-      );
-      const url = `/api/usage/${connectionId}${refresh ? "?refresh=1" : force ? "?force=1" : ""}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMsg = errorData.error || response.statusText;
 
-        // Handle different error types gracefully
-        if (response.status === 404) {
-          // Connection not found - skip silently
-          console.warn(
-            `[ProviderLimits] Connection not found for ${provider}, skipping`
-          );
-          return;
-        }
-
-        if (response.status === 401) {
-          // Auth error - show message instead of throwing
-          console.warn(
-            `[ProviderLimits] Auth error for ${provider}:`,
-            errorMsg
-          );
-          const quotaEntry = {
-            quotas: [],
-            message: errorMsg
-          };
-          setQuotaData((prev) => ({
-            ...prev,
-            [connectionId]: quotaEntry
-          }));
-          setQuotaCache(connectionId, quotaEntry);
-          return;
-        }
-
-        throw new Error(`HTTP ${response.status}: ${errorMsg}`);
-      }
-
-      const data = await response.json();
-      console.log(`[ProviderLimits] Got quota for ${provider}:`, data);
-
-      // Parse quota data using provider-specific parser
-      const parsedQuotas = parseQuotaData(provider, data);
-      // A rate-limited response with no rows (in-process cache lost to a server
-      // restart) falls back to this connection's saved rows. `staleReason`
-      // carries the reason forward; `message` is cleared so the renderer shows
-      // the table instead of replacing it with a notice.
-      const { quotas, staleReason } = withCachedQuotaFallback(connectionId, parsedQuotas, data);
-
-      const quotaEntry = {
-        quotas,
-        plan: data.plan || null,
-        notice: data.notice || null,
-        message: staleReason ? null : data.message || null,
-        staleReason: staleReason || data.staleReason || null,
-        raw: data
-      };
-
-      setQuotaData((prev) => ({
-        ...prev,
-        [connectionId]: quotaEntry
-      }));
-      setQuotaCache(connectionId, quotaEntry);
-    } catch (error) {
-      if (!uiV5) console.error(
-        `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
-        error
-      );
-      setErrors((prev) => ({
-        ...prev,
-        [connectionId]: error.message || "Failed to fetch quota"
-      }));
-    } finally {
-      setLoading((prev) => ({ ...prev, [connectionId]: false }));
-    }
-  }, [uiV5]);
-
-  // Manual refresh bypasses the provider's valid in-process quota cache.
-  const refreshProvider = useCallback(
-    async (connectionId, provider) => {
-      await fetchQuota(connectionId, provider, { force: true, refresh: true });
-      setLastUpdated(new Date());
-    },
-    [fetchQuota]
-  );
-
-  const handleResetLimit = useCallback(
-    async (connectionId, provider, grantId) => {
-      if ((provider !== "codex" && provider !== "claude") || resettingLimitId) return;
-
-      setResettingLimitId(connectionId);
-      setErrors((prev) => ({ ...prev, [connectionId]: null }));
-
-      try {
-        const response = provider === "claude" ?
-        await fetch(`/api/usage/${connectionId}/claude-reset`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ grantId })
-        }) :
-        await fetch(`/api/usage/${connectionId}/codex-reset-credits`, { method: "POST" });
-        const result = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(result.message || result.error || result.code || "Failed to reset limit");
-        }
-
-        await fetchQuota(connectionId, provider, { force: true });
-        setLastUpdated(new Date());
-      } catch (error) {
-        setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to reset limit" }));
-      } finally {
-        setResettingLimitId(null);
-      }
-    },
-    [fetchQuota, resettingLimitId]
-  );
-
-  const handleViewCodexResetCredits = useCallback(async (connection) => {
-    setResetCreditsState({ connection, loading: true, error: null, data: null });
-    try {
-      const response = await fetch(`/api/usage/${connection.id}/codex-reset-credits`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || result.message || "Failed to load Codex reset credits");
-      }
-      const credits = Array.isArray(result.credits) ? [...result.credits] : [];
-      credits.sort((a, b) => {
-        const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.POSITIVE_INFINITY;
-        const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.POSITIVE_INFINITY;
-        return aTime - bTime;
-      });
-      setResetCreditsState({ connection, loading: false, error: null, data: { kind: "codex", ...result, credits } });
-    } catch (error) {
-      setResetCreditsState({ connection, loading: false, error: error.message || "Failed to load Codex reset credits", data: null });
-    }
-  }, []);
-
-  // Claude grants arrive already parsed with the usage poll; no extra fetch needed.
-  const handleViewClaudeResets = useCallback((connection, resetCredits) => {
-    setResetCreditsState({ connection, loading: false, error: null, data: { kind: "claude", ...resetCredits } });
-  }, []);
-
-  const handleDeleteConnection = useCallback(
-    async (id) => {
-      setDeletingId(id);
-      try {
-        const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
-        if (res.ok) {
-          setQuotaData((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-          });
-          setLoading((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-          });
-          setErrors((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-          });
-
-          if (isBrowser()) {
-            try {
-              const cache = getQuotaCache();
-              if (cache[id]) {
-                delete cache[id];
-                window.localStorage.setItem(
-                  QUOTA_CACHE_KEY,
-                  JSON.stringify(cache)
-                );
-              }
-            } catch (e) {
-              console.error("Error deleting cache entry:", e);
-            }
-          }
-
-          await reconcileConnectionsPage(fetchConnections, page);
-        }
-      } catch (error) {
-        console.error("Error deleting connection:", error);
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [fetchConnections, page]
-  );
-
-  const handleToggleConnectionActive = useCallback(
-    async (id, isActive) => {
-      setTogglingId(id);
-      try {
-        const res = await fetch(`/api/providers/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isActive })
-        });
-        if (res.ok) {
-          setQuotaData((prev) => {
-            const next = { ...prev };
-            return next;
-          });
-          await reconcileConnectionsPage(fetchConnections, page);
-        }
-      } catch (error) {
-        console.error("Error updating connection status:", error);
-      } finally {
-        setTogglingId(null);
-      }
-    },
-    [fetchConnections, page]
-  );
-
-  const handleRefreshToken = useCallback(async (conn) => {
-    setRefreshingTokenId(conn.id);
-    setErrors((prev) => ({ ...prev, [conn.id]: null }));
-    try {
-      const response = await fetch(`/api/providers/${encodeURIComponent(conn.id)}/refresh-token`, { method: "POST" });
-      if (!response.ok) throw new Error("Could not refresh the Codex credential.");
-      await refreshProvider(conn.id, conn.provider);
-    } catch (error) {
-      setErrors((prev) => ({ ...prev, [conn.id]: error.message }));
-    } finally {
-      setRefreshingTokenId(null);
-    }
-  }, [refreshProvider]);
-
-  const handleUltrafast = useCallback(async (conn) => {
-    setTogglingId(conn.id);
-    try {
-      const enabled = conn.providerSpecificData?.codexUltrafastMode !== true;
-      const response = await fetch(`/api/providers/${conn.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerSpecificData: { codexUltrafastMode: enabled } })
-      });
-      if (!response.ok) throw new Error("Could not save Ultrafast setting");
-      await reconcileConnectionsPage(fetchConnections, page);
-    } catch (error) {
-      setConnectionsError(error.message || "Could not save Ultrafast setting");
-    } finally {
-      setTogglingId(null);
-    }
-  }, [fetchConnections, page]);
+  const {
+    deletingId,
+    togglingId,
+    resettingLimitId,
+    refreshingTokenId,
+    resetCreditsState,
+    setResetCreditsState,
+    handleResetLimit,
+    handleViewCodexResetCredits,
+    handleViewClaudeResets,
+    handleDeleteConnection,
+    handleToggleConnectionActive,
+    handleRefreshToken,
+    handleUltrafast
+  } = useConnectionActions({
+    fetchConnections,
+    fetchQuota,
+    refreshProvider,
+    page,
+    setQuotaData,
+    setLoading,
+    setErrors,
+    setLastUpdated,
+    setConnectionsError
+  });
 
   const handleUpdateConnection = useCallback(
     async (formData) => {
@@ -1221,7 +319,7 @@ export default function ProviderLimits() {
     } finally {
       setRefreshingAll(false);
     }
-  }, [refreshingAll, fetchConnections, fetchQuota, page]);
+  }, [refreshingAll, fetchConnections, fetchQuota, page, setCountdown, setErrors, setLastUpdated, setLoading, setQuotaData]);
 
   // Keep a stable ref to the latest refreshAll so the scheduler effect does not
   // resubscribe on every refreshAll identity change (avoids timer churn).
@@ -1261,132 +359,11 @@ export default function ProviderLimits() {
         connectionsRequest.current = initialRequestEpoch + 1;
       }
     };
-  }, [fetchConnections, fetchQuota, hasHydratedSavedState, page]);
+  }, [fetchConnections, fetchQuota, hasHydratedSavedState, page, setErrors, setLastUpdated, setLoading, setQuotaData]);
 
-  useEffect(() => {
-    if (!isBrowser()) return;
-    const stored = window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY);
-    setAutoRefresh(stored === null ? true : stored === "true");
-    setHasHydratedAutoRefresh(true);
-  }, []);
+  const { autoPingMaps, toggleAutoPing } = useAutoPing(setQuotaVisibility);
 
-  // Persist auto-refresh preference
-  useEffect(() => {
-    if (!isBrowser() || !hasHydratedAutoRefresh) return;
-    window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, String(autoRefresh));
-  }, [autoRefresh, hasHydratedAutoRefresh]);
 
-  // Load auto-ping per-connection maps
-  useEffect(() => {
-    requestSettings({ cache: "no-store" }).
-    then((r) => r.ok ? r.json() : {}).
-    then((s) => {
-      const maps = {
-        claude: s?.claudeAutoPing?.connections || {},
-        codex: s?.codexAutoPing?.connections || {}
-      };
-      autoPingQueue.hydrate(Object.entries(maps).flatMap(([provider, connectionsMap]) =>
-      Object.entries(connectionsMap).map(([id, enabled]) => [`${provider}:${id}`, enabled])
-      ));
-      setAutoPingMaps(maps);
-      setQuotaVisibility(s?.quotaVisibility || {});
-    }).
-    catch(() => {});
-  }, [autoPingQueue]);
-
-  const toggleAutoPing = useCallback(async (connectionId, provider, on) => {
-    const settingsKey = AUTO_PING_SETTINGS_KEYS[provider];
-    if (!settingsKey) return;
-    await autoPingQueue.enqueue(`${provider}:${connectionId}`, on, { connectionId, provider });
-  }, [autoPingQueue]);
-
-  const pendingWrites = useRef([]);
-  const isProcessingWrites = useRef(false);
-  const quotaVisibilityRef = useRef(quotaVisibility);
-  useEffect(() => {
-    quotaVisibilityRef.current = quotaVisibility;
-  }, [quotaVisibility]);
-
-  const processQueue = useCallback(async () => {
-    if (isProcessingWrites.current) return;
-    isProcessingWrites.current = true;
-    try {
-      while (pendingWrites.current.length > 0) {
-        const batch = pendingWrites.current.splice(0);
-        const startState = quotaVisibilityRef.current;
-        const nextState = batch.reduce((state, mutate) => mutate(state), startState);
-        setQuotaVisibility(nextState);
-        quotaVisibilityRef.current = nextState;
-        try {
-          const response = await requestSettings({
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quotaVisibility: nextState })
-          });
-          if (!response.ok) throw new Error("Failed to update quota visibility");
-        } catch (error) {
-          console.error("Error updating quota visibility:", error);
-          setQuotaVisibility(startState);
-          quotaVisibilityRef.current = startState;
-        }
-      }
-    } finally {
-      isProcessingWrites.current = false;
-    }
-  }, []);
-
-  const handleHideQuota = useCallback((connectionId, provider, quota) => {
-    const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
-    if (!connectionId || !key) return;
-
-    // Family-key pruning for Antigravity ("gemini"/"claude") lives inside
-    // updateQuotaVisibility (utils.js), which each queued mutation applies.
-    pendingWrites.current.push((state) =>
-    updateQuotaVisibility(state, connectionId, provider, key, true)
-    );
-    processQueue();
-  }, [processQueue]);
-  const handleShowQuota = useCallback((connectionId, provider, quota) => {
-    const key = getQuotaVisibilityKey(quota, quota.visibilityIndex);
-    if (!connectionId || !key) return;
-
-    pendingWrites.current.push((state) =>
-    updateQuotaVisibility(state, connectionId, provider, key, false)
-    );
-    processQueue();
-  }, [processQueue]);
-
-  // One scheduler owns refresh + countdown timers and pauses on tab-hidden,
-  // deriving the countdown from an absolute deadline so buffered tunnels stay
-  // stable across visibility changes. Replaces the prior dual-setInterval logic.
-  useEffect(() => {
-    if (!hasHydratedAutoRefresh || !autoRefresh) {
-      schedulerRef.current?.stop();
-      schedulerRef.current = null;
-      setCountdown(Math.ceil(REFRESH_INTERVAL_MS / 1000));
-      return;
-    }
-
-    const scheduler = createAutoRefreshScheduler({
-      intervalMs: REFRESH_INTERVAL_MS,
-      onRefresh: (force) => refreshAllRef.current?.(force),
-      onCountdown: setCountdown
-    });
-    schedulerRef.current = scheduler;
-    scheduler.start();
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) scheduler.pause();else
-      void scheduler.resume();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      scheduler.stop();
-      if (schedulerRef.current === scheduler) schedulerRef.current = null;
-    };
-  }, [autoRefresh, hasHydratedAutoRefresh]);
 
   // Hydrate per-provider merged-view preferences from localStorage (client-only).
   useEffect(() => {
@@ -1558,162 +535,65 @@ export default function ProviderLimits() {
 
       {connectionsError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-dd border border-dd-danger p-3 text-sm text-dd-danger"><p>Provider connections could not be loaded. {connectionsError}{connections.length ? " Last received accounts remain visible and may be stale." : " Retry to load your connections."}</p><Button icon="refresh" variant="secondary" disabled={refreshingAll} onClick={refreshAll}>Retry connections</Button></div> : null}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-busy={connectionsLoading || undefined}>
-        {connectionsLoading && !connections.length ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => {
-          const isGrouped = group.connections.length > 1;
-          // Connections can share a team's prepaid balance. Keep credit rows
-          // per account, including zero balances and saved merged preferences.
-          // Rolling spend rows have no window to add up, so they stay separate too.
-          const canMerge = isGrouped && !group.connections.some((conn) =>
-            (quotaData[conn.id]?.quotas || []).some((quota) => quota.isCreditBalance === true || quota.isSpend === true)
-          );
-          const isMerged = canMerge && mergedProviders[group.provider] === true;
-          const isCodexGroup = group.provider === "codex";
-
-          const renderAccountSection = (conn, sectionIndex) => {
-            const quota = quotaData[conn.id];
-            const isLoading = loading[conn.id];
-            const error = errors[conn.id];
-            const isInactive = conn.isActive === false;
-            const isCodex = conn.provider === "codex";
-            const isClaude = conn.provider === "claude";
-            const codexPlan = isCodex ? getCodexPlan(quota, conn) : "";
-            const claudeReset = isClaude ? quota?.raw?.resetCredits : null;
-            const resetLabel = isCodex ? "Codex reset credit" : "Claude limit reset";
-            const resetCreditCount = getCodexResetCreditCount(quota);
-            const isResettingLimit = resettingLimitId === conn.id;
-            const rowBusy = deletingId === conn.id || togglingId === conn.id || isResettingLimit || refreshingTokenId === conn.id;
-            const { visibleQuotas, hiddenQuotaRows } = connectionQuotaRows[conn.id] || { visibleQuotas: [], hiddenQuotaRows: [] };
-            const testStatus = isInactive ? "disabled" : conn.testStatus || "unknown";
-            const testStatusTone = isInactive ? "neutral" : conn.testStatus === "active" || conn.testStatus === "success" ? "success" : conn.testStatus === "error" || conn.testStatus === "expired" || conn.testStatus === "unavailable" ? "danger" : "neutral";
-            const secondaryLabel = getConnectionSecondaryLabel(conn);
-
-            return <section key={conn.id} aria-label={secondaryLabel ? `${getConnectionLabel(conn)} · ${secondaryLabel}` : getConnectionLabel(conn) || conn.id} className={[sectionIndex > 0 ? "border-t border-dd-border-subtle" : "", isInactive ? "opacity-60" : "", "flex flex-col gap-3 p-3"].filter(Boolean).join(" ")}>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="flex min-w-0 flex-1 basis-full flex-col gap-0.5 sm:basis-0">
-                  <span className="truncate text-[13px] font-medium text-dd-text">{getConnectionLabel(conn)}</span>
-                  {secondaryLabel ? <span className="truncate text-xs text-dd-muted">{secondaryLabel}</span> : null}
-                </span>
-                <span className="flex min-w-0 max-w-full w-full flex-wrap items-center gap-1.5 sm:w-auto">
-                  {conn.quotaPaused && !isInactive ? <Badge tone="warning" size="sm">Paused (quota)</Badge> : null}
-                  {isCodex && codexPlan ? <Badge tone="accent" size="sm" className="capitalize">{codexPlan}</Badge> : null}
-                  {isCodex || claudeReset ? <>
-                    <Tooltip content={resetCreditCount > 0 ? claudeReset ? `Use your reset now (${resetCreditCount} left, use by ${formatCreditDate(claudeReset.expiresAt)}) · refills ${formatClaudeResetClears(claudeReset.clears)}` : `Use one ${resetLabel}. Available: ${resetCreditCount}` : `No ${resetLabel}s available`}><Button variant="secondary" size="sm" icon={isResettingLimit ? "progress_activity" : "restart_alt"} onClick={() => setResetConfirmState({ connection: conn, resetCreditCount, grantId: claudeReset?.nextGrantId })} disabled={resetCreditCount <= 0 || isLoading || rowBusy} className={isResettingLimit ? "[&_span]:animate-spin dd-tnum" : "dd-tnum"} aria-label={resetCreditCount > 0 ? `Use one ${resetLabel}. ${resetCreditCount} available.` : `No ${resetLabel}s available`}>{resetCreditCount}</Button></Tooltip>
-                    <Tooltip content={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"}><IconButton label={isCodex ? "View Codex reset credit expiry" : "View Claude Code reset expiry"} icon="schedule" onClick={() => isCodex ? handleViewCodexResetCredits(conn) : handleViewClaudeResets(conn, claudeReset)} disabled={isLoading || rowBusy} /></Tooltip>
-                  </> : null}
-                  {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && !isInactive ? <Tooltip content={AUTO_PING_TOOLTIPS[conn.provider]}><IconButton label="Toggle auto-ping" icon="bolt" onClick={() => toggleAutoPing(conn.id, conn.provider, autoPingMaps[conn.provider]?.[conn.id] !== true)} className={autoPingMaps[conn.provider]?.[conn.id] === true ? "text-dd-accent" : ""} /></Tooltip> : null}
-                  {isCodex ? <Tooltip content="Ultrafast applies to GPT 6.2 Sol and uses 6× included usage"><Button variant="secondary" size="sm" disabled={rowBusy} aria-pressed={conn.providerSpecificData?.codexUltrafastMode === true} onClick={() => handleUltrafast(conn)}>Ultrafast {conn.providerSpecificData?.codexUltrafastMode === true ? "on" : "off"}</Button></Tooltip> : null}
-                  {isCodex && conn.authType === "oauth" ? <Button variant="secondary" size="sm" disabled={rowBusy} onClick={() => handleRefreshToken(conn)}>{refreshingTokenId === conn.id ? "Refreshing credential…" : "Refresh credential"}</Button> : null}
-                  <Tooltip content="Refresh (bypass cache)"><IconButton label="Refresh quota" title="Refresh (bypass cache)" icon={isLoading ? "progress_activity" : "refresh"} onClick={() => refreshProvider(conn.id, conn.provider)} disabled={isLoading || rowBusy} className={isLoading ? "[&_span]:animate-spin" : ""} /></Tooltip>
-                  <Tooltip content="Edit connection"><IconButton label="Edit connection" icon="edit" onClick={() => { setSelectedConnection(conn); setShowEditModal(true); }} disabled={rowBusy} /></Tooltip>
-                  <Tooltip content="Delete connection"><IconButton label="Delete connection" icon="delete" onClick={() => setDeleteConfirmState(conn)} disabled={rowBusy} className="text-dd-danger hover:text-dd-danger" /></Tooltip>
-                  <Toggle checked={conn.isActive ?? true} disabled={rowBusy} aria-label={conn.isActive ?? true ? "Disable connection" : "Enable connection"} onChange={(nextActive) => handleToggleConnectionActive(conn.id, nextActive)} />
-                </span>
-              </div>
-              {conn.provider === "kiro" ? <div className="flex flex-wrap items-center gap-1"><Badge tone="accent" size="sm">{kiroMethodLabel(conn)}</Badge>{kiroRegion(conn) ? <Badge tone="info" size="sm">{kiroRegion(conn)}</Badge> : null}<Badge tone={testStatusTone} size="sm">{testStatus}</Badge>{conn.providerSpecificData?.profileArn ? <Button variant="ghost" size="sm" icon={copied === conn.id ? "check" : "content_copy"} onClick={() => copy(conn.providerSpecificData.profileArn, conn.id)} title={conn.providerSpecificData.profileArn} className="max-w-full justify-start px-2 font-mono text-[11px]"><span className="truncate">{conn.providerSpecificData.profileArn}</span></Button> : null}</div> : null}
-              <QuotaThresholds connection={conn} onSaved={fetchConnections} />
-              {conn.provider === "github" && quota?.raw?.rateLimit ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs" role="status">Last GitHub rate limit: {quota.raw.rateLimit.remaining ?? "?"} / {quota.raw.rateLimit.limit ?? "?"} remaining{quota.raw.rateLimit.resetAt ? ` · resets ${new Date(quota.raw.rateLimit.resetAt).toLocaleString()}` : ""}</div> : null}
-              {isLoading ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger">{error}{uiV5 ? <Button variant="secondary" size="sm" icon="refresh" className="ms-2" onClick={() => refreshProvider(conn.id, conn.provider)} disabled={rowBusy}>Retry quota</Button> : null}</div> : quota?.message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.message}</div> : <>
-                {/* Stale rows still beat no rows, but the reason must be visible
-                    so nobody mistakes cached numbers for live ones. */}
-                {quota?.staleReason ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs text-dd-warning">{quota.staleReason}</div> : null}
-                {quota?.notice ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info">{quota.notice}</div> : null}
-                <QuotaTable quotas={visibleQuotas} compact sortMode={isCodex ? quotaSortMode : "default"} showSortLabel={isCodex && quotaSortMode !== "default"} onHideQuota={(quotaRow) => handleHideQuota(conn.id, conn.provider, quotaRow)} />
-              </>}
-              {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 border-t border-dd-border-subtle pt-2 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden:</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
-            </section>;
-          };
-
-          const mergedQuotas = isMerged ?
-          mergeAccountQuotas(group.connections.map((conn) => ({
-            connectionId: conn.id,
-            quotas: (connectionQuotaRows[conn.id]?.visibleQuotas || []).filter((quota) => !quota.notReported)
-          }))) :
-          [];
-          const anyAccountLoading = group.connections.some((conn) => loading[conn.id]);
-
-          return <Card key={group.provider || group.connections[0]?.id} padding={false} className="min-w-0"
-            onDragOver={(event) => { if (draggedProvider.current) event.preventDefault(); }}
-            onDrop={(event) => { event.preventDefault(); const source = draggedProvider.current; draggedProvider.current = null; if (source) void moveProvider(source, group.provider); }}>
-            <div className="flex items-center gap-1 px-3 pt-2">
-              <button type="button" draggable={!orderPending} disabled={orderPending} aria-label={`Drag ${group.provider} to reorder`} title="Drag to reorder, or press Space then arrow keys" onDragStart={() => { draggedProvider.current = group.provider; }} onDragEnd={() => { draggedProvider.current = null; }} aria-pressed={keyboardProvider === group.provider} onClick={() => setKeyboardProvider((current) => current === group.provider ? null : group.provider)} onKeyDown={(event) => {
-                if (event.key === "Escape") { setKeyboardProvider(null); return; }
-                if (keyboardProvider !== group.provider || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
-                event.preventDefault();
-                const offset = event.key === "ArrowUp" ? -1 : 1;
-                void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) + offset]);
-              }} className="cursor-grab text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined">drag_indicator</span></button>
-              <button type="button" disabled={orderPending || providerOrder.indexOf(group.provider) <= 0} onClick={() => void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) - 1])} aria-label={`Move ${group.provider} earlier`} className="text-dd-muted disabled:opacity-40">↑</button>
-              <button type="button" disabled={orderPending || providerOrder.indexOf(group.provider) < 0 || providerOrder.indexOf(group.provider) === providerOrder.length - 1} onClick={() => void moveProvider(group.provider, providerOrder[providerOrder.indexOf(group.provider) + 1])} aria-label={`Move ${group.provider} later`} className="text-dd-muted disabled:opacity-40">↓</button>
-            </div>
-            <CardHeader
-              title={<span className="inline-flex min-w-0 items-center gap-2"><ProviderLogo provider={group.provider} size={32} /><span className={nodeLabels[group.provider] ? "truncate" : "truncate capitalize"}>{nodeLabels[group.provider] || group.provider}</span></span>}
-              subtitle={isGrouped ? `${group.connections.length} accounts` : null}
-              actions={canMerge ? <Tooltip content="Merge identical quotas across accounts"><span className="flex items-center gap-1.5 text-xs text-dd-muted">Merged<Toggle size="sm" checked={isMerged} aria-label={`Merge ${group.provider} quotas across accounts`} onChange={(nextMerged) => toggleMergedView(group.provider, nextMerged)} /></span></Tooltip> : null}
-            />
-            <div className="flex flex-col">
-              {isMerged ? <div className="flex flex-col gap-3 p-3">
-                {group.connections.map((conn) => {
-                  const error = errors[conn.id];
-                  const message = quotaData[conn.id]?.message || quotaData[conn.id]?.notice;
-                  const accountLabel = getConnectionLabel(conn);
-                  const { hiddenQuotaRows } = connectionQuotaRows[conn.id] || { hiddenQuotaRows: [] };
-                  return <div key={conn.id} className="flex flex-col gap-2">
-                    <QuotaThresholds connection={conn} onSaved={fetchConnections} />
-              {conn.provider === "github" && quota?.raw?.rateLimit ? <div className="rounded-dd border border-dd-warning/30 bg-dd-warning/10 px-3 py-2 text-xs" role="status">Last GitHub rate limit: {quota.raw.rateLimit.remaining ?? "?"} / {quota.raw.rateLimit.limit ?? "?"} remaining{quota.raw.rateLimit.resetAt ? ` · resets ${new Date(quota.raw.rateLimit.resetAt).toLocaleString()}` : ""}</div> : null}
-                    {conn.quotaPaused ? <Badge tone="warning" size="sm">Paused (quota)</Badge> : null}
-                    {error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-[13px] text-dd-danger"><span className="font-medium">{accountLabel}:</span> {error}</div> : message ? <div className="rounded-dd border border-dd-info bg-dd-info/10 p-3 text-[13px] text-dd-info"><span className="font-medium">{accountLabel}:</span> {message}</div> : null}
-                    {hiddenQuotaRows.length > 0 ? <div className="flex flex-wrap items-center gap-1 text-xs text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined text-[14px]">visibility_off</span><span>Hidden ({accountLabel}):</span>{hiddenQuotaRows.map((quotaRow) => <Button key={getQuotaVisibilityKey(quotaRow, quotaRow.visibilityIndex)} variant="secondary" size="sm" onClick={() => handleShowQuota(conn.id, conn.provider, quotaRow)} title="Show this quota row">{quotaRow.name}</Button>)}</div> : null}
-                  </div>;
-                })}
-                {anyAccountLoading && mergedQuotas.length === 0 ? <div className="flex justify-center py-5 text-dd-muted"><span role="status" aria-label="Loading quota" className="material-symbols-outlined animate-spin text-[28px]">progress_activity</span></div> : null}
-                {mergedQuotas.length > 0 ? <QuotaTable quotas={mergedQuotas} compact sortMode={isCodexGroup ? quotaSortMode : "default"} showSortLabel={isCodexGroup && quotaSortMode !== "default"} /> : null}
-              </div> : group.connections.map((conn, sectionIndex) => renderAccountSection(conn, sectionIndex))}
-            </div>
-          </Card>;
-        }) : connectionsError ? null : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
+        {connectionsLoading && !connections.length ? <Card className="md:col-span-2"><div role="status" className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading provider limits...</div></Card> : hasVisibleConnections ? providerGroups.map((group) => <ProviderGroupCard
+          key={group.provider || group.connections[0]?.id}
+          group={group}
+          autoPingMaps={autoPingMaps}
+          connectionQuotaRows={connectionQuotaRows}
+          copied={copied}
+          copy={copy}
+          deletingId={deletingId}
+          draggedProvider={draggedProvider}
+          errors={errors}
+          fetchConnections={fetchConnections}
+          handleHideQuota={handleHideQuota}
+          handleRefreshToken={handleRefreshToken}
+          handleShowQuota={handleShowQuota}
+          handleToggleConnectionActive={handleToggleConnectionActive}
+          handleUltrafast={handleUltrafast}
+          handleViewClaudeResets={handleViewClaudeResets}
+          handleViewCodexResetCredits={handleViewCodexResetCredits}
+          keyboardProvider={keyboardProvider}
+          loading={loading}
+          mergedProviders={mergedProviders}
+          moveProvider={moveProvider}
+          nodeLabels={nodeLabels}
+          orderPending={orderPending}
+          providerOrder={providerOrder}
+          quotaData={quotaData}
+          quotaSortMode={quotaSortMode}
+          refreshProvider={refreshProvider}
+          refreshingTokenId={refreshingTokenId}
+          resettingLimitId={resettingLimitId}
+          setDeleteConfirmState={setDeleteConfirmState}
+          setKeyboardProvider={setKeyboardProvider}
+          setResetConfirmState={setResetConfirmState}
+          setSelectedConnection={setSelectedConnection}
+          setShowEditModal={setShowEditModal}
+          toggleAutoPing={toggleAutoPing}
+          toggleMergedView={toggleMergedView}
+          togglingId={togglingId}
+          uiV5={uiV5}
+        />
+        ) : connectionsError ? null : <div className="md:col-span-2"><Card><EmptyState icon={emptyState.icon} title={emptyState.title} message={emptyState.description} /></Card></div>}
       </div>
       {orderError ? <div role="alert">{orderError}</div> : null}
-      {connectionsLoaded ? <Card padding={false}>
-        <CardContent className="flex flex-wrap items-center gap-3 p-3">
-          <span className="text-xs text-dd-muted">{connectionsPageSummary}</span>
-          <div className="ms-auto flex flex-wrap items-center gap-2">
-            <Select
-              aria-label="Accounts per page"
-              value={customPageSizeMode ? "custom" : String(pageSize)}
-              onChange={(nextValue) => {
-                if (nextValue === "custom") { setCustomPageSizeMode(true); return; }
-                setCustomPageSizeMode(false);
-                updatePageSize(nextValue);
-              }}
-              options={[...ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => ({ value: String(option), label: `${option} / page` })), { value: "custom", label: "Custom" }]}
-            />
-            {customPageSizeMode ? <Input
-              type="number"
-              min="1"
-              max={ACCOUNT_PAGE_SIZE_MAX}
-              inputMode="numeric"
-              value={customPageSizeInput}
-              onChange={(event) => setCustomPageSizeInput(event.target.value)}
-              onBlur={() => updatePageSize(customPageSizeInput)}
-              onKeyDown={(event) => { if (event.key === "Enter") updatePageSize(customPageSizeInput); }}
-              aria-label="Custom accounts per page"
-              className="w-24"
-            /> : null}
-          </div>
-          <Pagination
-            page={pagination.page}
-            pageCount={pagination.totalPages}
-            total={pagination.total}
-            rowsLabel={`Page ${pagination.page} / ${pagination.totalPages}`}
-            onPage={updatePage}
-          />
-        </CardContent>
-      </Card> : null}
+      {connectionsLoaded ? <ConnectionsPager
+        connectionsPageSummary={connectionsPageSummary}
+        customPageSizeMode={customPageSizeMode}
+        pageSize={pageSize}
+        setCustomPageSizeMode={setCustomPageSizeMode}
+        updatePageSize={updatePageSize}
+        customPageSizeInput={customPageSizeInput}
+        setCustomPageSizeInput={setCustomPageSizeInput}
+        pagination={pagination}
+        updatePage={updatePage}
+      /> : null}
 
       <ConfirmDialog open={Boolean(resetConfirmState)} onCancel={() => { if (!resettingLimitId) setResetConfirmState(null); }} onConfirm={async () => { const connection = resetConfirmState?.connection; if (!connection) return; await handleResetLimit(connection.id, connection.provider, resetConfirmState?.grantId); setResetConfirmState(null); }} title={resetConfirmState?.connection?.provider === "claude" ? "Reset Claude limits?" : "Reset Codex limit?"} message={resetConfirmState?.connection?.provider === "claude" ? `Refills your ${formatClaudeResetClears(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.clears)} now for ${getConnectionLabel(resetConfirmState.connection) || "this account"} · your weekly reset day stays ${formatCreditDate(quotaData[resetConfirmState.connection.id]?.raw?.resetCredits?.weeklyResetsAt)}. This cannot be undone. Resets left: ${resetConfirmState.resetCreditCount ?? 0}.` : `Use 1 Codex reset credit for ${getConnectionLabel(resetConfirmState?.connection || {}) || "this account"}. This cannot be undone. Remaining credits: ${resetConfirmState?.resetCreditCount ?? 0}.`} confirmLabel="Reset limit" cancelLabel="Cancel" tone="danger" pending={Boolean(resettingLimitId)} />
       <ConfirmDialog open={Boolean(deleteConfirmState)} onCancel={() => { if (!deletingId) setDeleteConfirmState(null); }} onConfirm={async () => { const connection = deleteConfirmState; if (!connection) return; await handleDeleteConnection(connection.id); setDeleteConfirmState(null); }} title="Delete connection?" message={`Delete ${getConnectionLabel(deleteConfirmState || {}) || "this connection"}? This cannot be undone.`} confirmLabel="Delete connection" cancelLabel="Cancel" tone="danger" pending={Boolean(deletingId)} />
 
-      <Modal open={Boolean(resetCreditsState)} onClose={() => setResetCreditsState(null)} title={resetCreditsState?.data?.kind === "claude" ? "Claude Code Limit Resets" : "Codex Reset Credit Expiry"} subtitle={resetCreditsState ? getConnectionLabel(resetCreditsState.connection) : resetCreditsState?.data?.kind === "claude" ? "Claude account" : "Codex account"} size="xl" pending={Boolean(resetCreditsState?.loading)}>{resetCreditsState?.loading ? <div className="flex items-center justify-center gap-2 py-10 text-sm text-dd-muted"><span aria-hidden="true" className="material-symbols-outlined animate-spin">progress_activity</span>Loading reset credits...</div> : resetCreditsState?.error ? <div role="alert" className="rounded-dd border border-dd-danger bg-dd-danger/10 p-3 text-sm text-dd-danger">{resetCreditsState.error}</div> : resetCreditsState?.data?.kind === "claude" && resetCreditsState.data.grants?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.availableCount ?? 0} reset{resetCreditsState.data.availableCount === 1 ? "" : "s"} left</span><span>Weekly reset day: {formatCreditDate(resetCreditsState.data.weeklyResetsAt)}</span></div><DataTable framed={false} ariaLabel="Claude Code limit resets" density="compact" rows={resetCreditsState.data.grants} keyFn={(grant) => grant.id} columns={[{ key: "label", label: "Reset", render: (grant) => <div className="flex flex-col gap-0.5"><span>{grant.label || grant.id}</span><Badge tone="accent" size="sm" className="w-fit">{claudeGrantStatus(grant)}</Badge></div> }, { key: "left", label: "Left", render: (grant) => `${grant.resetsLeft} / ${grant.resetsTotal}` }, { key: "refills", label: "Refills", render: (grant) => formatClaudeResetClears(grant.clears) }, { key: "useBy", label: "Use By", render: (grant) => formatCreditDate(grant.endsAt) }, { key: "remaining", label: "Remaining", render: (grant) => formatTimeRemaining(grant.endsAt) }]} /></div> : resetCreditsState?.data?.credits?.length ? <div className="space-y-3"><div className="flex justify-between rounded-dd bg-dd-surface-2 px-3 py-2 text-xs text-dd-muted"><span>{resetCreditsState.data.credits.length} reset credit{resetCreditsState.data.credits.length === 1 ? "" : "s"}</span><span>{resetCreditsState.data.availableCount ?? 0} available</span></div><DataTable framed={false} ariaLabel="Codex reset credit expiry" density="compact" rows={resetCreditsState.data.credits} keyFn={(credit, index) => `${credit.status}-${credit.expiresAt || index}`} columns={[{ key: "status", label: "Status", render: (credit) => <Badge tone="accent" size="sm">{credit.status || "unknown"}</Badge> }, { key: "grantedAt", label: "Granted at", render: (credit) => formatCreditDate(credit.grantedAt) }, { key: "expiresAt", label: "Expires at", render: (credit) => formatCreditDate(credit.expiresAt) }, { key: "remaining", label: "Remaining", render: (credit) => formatTimeRemaining(credit.expiresAt) }]} /></div> : <EmptyState icon="event_busy" title={resetCreditsState?.data?.kind === "claude" ? "No limit resets available for this account." : "No reset credit details returned"} />}</Modal>
+      <ResetCreditsModal resetCreditsState={resetCreditsState} setResetCreditsState={setResetCreditsState} />
 
       <EditConnectionModal isOpen={showEditModal} connection={selectedConnection} proxyPools={proxyPools} onSave={handleUpdateConnection} onClose={() => { setShowEditModal(false); setSelectedConnection(null); }} />
     </div>);

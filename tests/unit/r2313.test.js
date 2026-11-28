@@ -252,3 +252,20 @@ describe("review regressions", () => {
     expect(mergeRefreshedCredentials("claude", {}, { accessToken: "A1", expires_in: 1e300 })).toBeNull();
   });
 });
+
+ it("a delayed Copilot token does not overwrite a newer one from a concurrent exchange", async () => {
+    const connection = await createConnection("github", {
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      providerSpecificData: { copilotToken: "C0", copilotTokenExpiresAt: nowSeconds() - 1 },
+    });
+    const winnerExpiry = nowSeconds() + 3600;
+    mocks.refreshCopilotToken.mockImplementationOnce(async () => {
+      await repo.updateProviderConnection(connection.id, {
+        providerSpecificData: { copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry },
+      });
+      return { token: "C1", expiresAt: nowSeconds() + 1800 };
+    });
+    const result = await wrapper.checkAndRefreshToken("github", connection);
+    expect((await stored(connection.id)).providerSpecificData).toMatchObject({ copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry });
+    expect(result.providerSpecificData).toMatchObject({ copilotToken: "C2", copilotTokenExpiresAt: winnerExpiry });
+  });

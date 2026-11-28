@@ -408,6 +408,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
         expiresIn: copilotToken ? Math.round(remaining / 1000) : "missing"
       });
 
+      // Compare the exchange snapshot too: another exchange can keep OAuth tokens unchanged.
+      const expectedCopilotToken = creds.providerSpecificData?.copilotToken;
+      const expectedCopilotExpiry = creds.providerSpecificData?.copilotTokenExpiresAt;
       const copilotTokenResult = await refreshCopilotToken(creds.accessToken, effectiveProxyOptions);
       if (copilotTokenResult && !isValidCopilotTokenResult(copilotTokenResult)) {
         log.warn("TOKEN_REFRESH", "Rejected malformed Copilot token result", { provider, connectionId: creds.connectionId });
@@ -425,7 +428,10 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
             copilotTokenExpiresAt: copilotTokenResult.expiresAt
           }
         }, { presentedRefreshToken: creds.refreshToken, presentedAccessToken: creds.accessToken,
-          presentedLastRefreshAt: creds.lastRefreshAt });
+          presentedLastRefreshAt: creds.lastRefreshAt,
+          shouldCommitConnection: (connection) =>
+            connection.providerSpecificData?.copilotToken === expectedCopilotToken &&
+            connection.providerSpecificData?.copilotTokenExpiresAt === expectedCopilotExpiry });
         if (!applied) return { ...creds, ...await getProviderConnectionById(creds.connectionId) };
 
         creds.providerSpecificData = updatedSpecific;

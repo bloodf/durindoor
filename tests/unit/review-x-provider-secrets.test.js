@@ -22,7 +22,9 @@ const nonSecrets = {
 const credentialReads = [
   "cookie", "copilotToken", "extraApiKeys", "firebaseRefreshToken", "jwt",
   "mimoPassToken", "recaptchaV3Token", "refreshToken", "refresh_token",
-  "sessionToken", "storageState", "token", "turnstileToken", "userToken",
+  "sessionToken", "storageState", "turnstileToken", "userToken",
+  // Z.ai Web Local Storage session token (open-sse/executors/zai-web/session.js, #2034).
+  "token",
 ];
 
 function sourceFiles(dir) {

@@ -1,0 +1,136 @@
+{
+  "issue": "#2034",
+  "owner": "register-native14",
+  "status": "staged-unimported-unregistered",
+  "source": {
+    "project": "cheaper-inference/OmniRoute",
+    "pullRequest": 20103,
+    "commit": "3a17f7e908308a217887a7617c2c793b95ea83c0",
+    "license": "MIT",
+    "files": [
+      "open-sse/handlers/vertexEmbeddings.ts",
+      "open-sse/handlers/embeddings.ts",
+      "open-sse/config/embeddingRegistry.ts",
+      "open-sse/config/vertexModels.ts",
+      "open-sse/executors/vertexAuth.ts"
+    ]
+  },
+  "module": "open-sse/services/providerParity/native-vertex-embedding/index.js",
+  "exports": {
+    "vertexEmbeddingAdapter": "embed({ model, body, credentials, signal, log }) -> core result with response/accounting or error/acceptedJob; buildUrl/buildBody introspection",
+    "createVertexEmbeddingAdapter": "factory({ timeoutMs, fetch }); fetch is the network boundary only",
+    "buildVertexEmbeddingPlan": "(model, body) -> model, itemCount, dimensions, body, bodies",
+    "mapVertexEmbeddingResponse": "(raw, plan) -> OpenAI list; validates count, width, finite values",
+    "vertexEmbeddingScope": "(credentials) -> SA/project/location/origin; no network",
+    "vertexEmbeddingUrl": "(validated scope, validated model) -> fixed Google predict URL",
+    "mintVertexEmbeddingToken": "(sa, {signal, send, remaining}) -> token; no cache",
+    "vertexEmbeddingAcceptedJob": "(result, jobState) -> result with unknown-cost no-replay marker",
+    "VERTEX_EMBEDDING_MODELS": "three static rows, kind embedding",
+    "VERTEX_EMBEDDING_TIMEOUT_MS": 60000,
+    "VERTEX_EMBEDDING_MAX_RESPONSE_BYTES": 16777216,
+    "VERTEX_EMBEDDING_TASK_TYPE": "RETRIEVAL_QUERY"
+  },
+  "provider": {
+    "canonicalId": "vertex",
+    "aliases": [
+      "vx"
+    ],
+    "addKinds": [
+      "embedding"
+    ],
+    "auth": [
+      "explicit service_account JSON in selected credentials.apiKey"
+    ],
+    "refuse": [
+      "authorized_user ADC JSON",
+      "preset OAuth token",
+      "Express API key",
+      "AWS credentials",
+      "ambient ADC",
+      "metadata",
+      "filesystem credentials"
+    ],
+    "locationMigration": "location wins only when region absent or equal; conflicting non-empty values fail. Default us-central1. Project is SA project_id; conflicting projectId fails.",
+    "host": "source getVertexHost: eu -> aiplatform.eu.rep.googleapis.com; all regional locations and global -> aiplatform.googleapis.com (not Veo regional host)",
+    "runtimeUrlOverrides": false,
+    "alias": "vertex",
+    "uiAlias": "vx",
+    "existingKinds": [
+      "llm",
+      "imageToText",
+      "video",
+      "tts",
+      "stt",
+      "music"
+    ],
+    "activatedKinds": [
+      "llm",
+      "imageToText",
+      "video",
+      "tts",
+      "stt",
+      "music",
+      "embedding"
+    ]
+  },
+  "models": [
+    {
+      "id": "text-embedding-005",
+      "dimensions": 768,
+      "kind": "embedding"
+    },
+    {
+      "id": "text-multilingual-embedding-002",
+      "dimensions": 768,
+      "kind": "embedding"
+    },
+    {
+      "id": "gemini-embedding-001",
+      "dimensions": 3072,
+      "kind": "embedding"
+    }
+  ],
+  "request": {
+    "input": "1..250 non-empty strings; no token arrays, structured or multimodal inputs",
+    "dimensions": "optional positive JSON safe integer, forwarded as outputDimensionality; no inferred model-specific upper bound",
+    "taskType": "RETRIEVAL_QUERY fixed per instance",
+    "batch": "one predict for text models; one sequential predict per Gemini input",
+    "encoding": "float or locally packed little-endian float32 base64; never forwarded",
+    "path": "/v1/projects/{SA project}/locations/{location}/publishers/google/models/{allowlisted model}:predict",
+    "body": "{instances:[{content,task_type}],parameters?:{outputDimensionality}}"
+  },
+  "response": "predictions[].embeddings.values -> ordered OpenAI list; finite/count/width checked. No source estimated tokens: public zero placeholders, accounting usageMissing=true and unknown cost. Source model echo: bare body.model if supplied, otherwise vertex/resolved-model.",
+  "errors": "no upstream body, token, JSON or secret is exposed; manual redirects; one deadline including mint/body/batch. Postsubmit 5xx/timeout/abort/unusable 2xx and all failures after any successful batch part carry acceptedJob. Never retry or replay.",
+  "activationTargets": [
+    {
+      "file": "open-sse/handlers/embeddingProviders/index.js",
+      "change": "import vertexEmbeddingAdapter and map existing vertex identity; never generic OpenAI compatibility"
+    },
+    {
+      "file": "open-sse/handlers/embeddingsCore.js",
+      "change": "existing adapter.embed branch is sufficient; retain no shared refresh/retry"
+    },
+    {
+      "file": "src/sse/handlers/embeddings.js",
+      "change": "persist acceptedJob as unknown cost on selected account and stop account fallback; prerequisite to activation"
+    },
+    {
+      "file": "open-sse/providers/registry/vertex.js",
+      "change": "append three embedding-kind rows, preserve all existing identity/aliases/models and kinds; no price guesses"
+    },
+    {
+      "file": "src/app/api/providers/[id]/models/route.js",
+      "change": "verify static embedding discovery and location migration; no guessed live discovery"
+    },
+    {
+      "file": "docs/providers/catalog.mdx",
+      "change": "document SA-only embeddings, input and batch semantics, location migration and unknown usage"
+    }
+  ],
+  "unproved": [
+    "live Google acceptance",
+    "live model availability by location",
+    "live dimension acceptance",
+    "public gateway accounting/no-replay until registration owner integrates it"
+  ]
+}

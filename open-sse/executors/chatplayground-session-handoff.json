@@ -1,7 +1,7 @@
 {
   "issue": 2034,
   "sourceFreeze": "2026-11-27T23:49:25.752045Z",
-  "owner": "register-auth03",
+  "owner": "register-cookie-repairs",
   "module": "open-sse/executors/chatplaygroundSession.js",
   "export": "inspectChatPlaygroundConnection",
   "arguments": [
@@ -10,7 +10,7 @@
     "{ signal, timeoutMs <= 10000, discovery: boolean }"
   ],
   "success": "ok:true, valid:true, status:200; discovery additionally returns catalog for chatPlaygroundCatalog",
-  "failure": "ok:false, status, reason; map valid:false, never treat HTTP 200 alone as readiness",
+  "failure": "ok:false, status, reason; unsupported_me_identity_shape must map to unverified/unsupported, not invalid credentials or healthy; other failures must never treat HTTP 200 alone as readiness",
   "activation": [
     "Exclude chatplayground from both generic Bearer model resolvers before activation; never relabel stored Cookie as Bearer.",
     "Route test and validate through this helper with discovery:false and selected proxy transport.",
@@ -19,7 +19,7 @@
   ],
   "protocol": "Existing fixed web API and Clerk mint only. /me requires nonempty string id; unknown shape returns unsupported_me_identity_shape. Catalog is credential-free as in current chat. No live protocol verification.",
   "scope": "No src, registry or generic resolver changes in this unit; legacy public mismatches remain until registration owner activates wiring.",
-  "protocolCaveat": "The /me id requirement is this unit's fail-closed choice, not a source-proven claim. The repo's own mocks (cookie-flow-chatplayground-2034, port-omni-20375) answer /me with {user:{}}, so wiring this helper makes those flows return unsupported_me_identity_shape (valid:false) until live evidence fixes the shape. Do not relax it to HTTP 200 alone; change it only with evidence.",
+  "protocolCaveat": "The /me id requirement is this unit's fail-closed choice, not a source-proven claim. The repo's own mocks (cookie-flow-chatplayground-2034, port-omni-20375) answer /me with {user:{}}, so wiring this helper makes those flows return unsupported_me_identity_shape (valid:false) with unverified/unsupported classification until source-backed evidence establishes the shape. Do not relax it to HTTP 200 alone; change it only with evidence.",
   "reproductions": [
     {
       "id": 1,

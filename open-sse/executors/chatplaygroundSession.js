@@ -1,4 +1,6 @@
 /** Current web protocol only; no endpoint discovery, retries, or shared token cache. */
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
+
 export const CHATPLAYGROUND_API = "https://web.chatplayground.ai/api";
 const WEB = "https://web.chatplayground.ai";
 const CLERK = "https://clerk.chatplayground.ai";
@@ -68,7 +70,7 @@ export async function acquireChatPlaygroundSession(raw, fetcher, options = {}) {
     if (input.startsWith("eyJ") && input.split(".").length === 3) token = input;
     else {
       const sid = payload(cookies.__session || "")?.sid;
-      if (!cookies.__client || /[\r\n]/.test(cookies.__client) || typeof sid !== "string" || !/^[\w-]{1,256}$/.test(sid)) return failure(401);
+      if (!cookies.__client || /[\r\n]/.test(cookies.__client) || !isString(sid) || !/^[\w-]{1,256}$/.test(sid)) return failure(401);
       const response = await fetcher(`${CLERK}/v1/client/sessions/${encodeURIComponent(sid)}/tokens${QUERY}`, {
         method: "POST", redirect: "manual", credentials: "omit", signal,
         headers: { accept: "*/*", "content-type": "application/x-www-form-urlencoded", origin: WEB, referer: `${WEB}/`, cookie: `__client=${cookies.__client}` },
@@ -77,7 +79,7 @@ export async function acquireChatPlaygroundSession(raw, fetcher, options = {}) {
       if (!response.ok) { void response.body?.cancel().catch(() => {}); return failure(response.status); }
       token = (await readChatPlaygroundJson(response, signal)).jwt;
     }
-    if (typeof token !== "string" || !token || token.length > 16384 || /[\s;=]/.test(token) || token.includes("__client") || token.includes("__session") || token === cookies.__client || token === cookies.__session) return failure(502);
+    if (!isString(token) || !token || token.length > 16384 || /[\s;=]/.test(token) || token.includes("__client") || token.includes("__session") || token === cookies.__client || token === cookies.__session) return failure(502);
     if (signal.aborted) return failure(408, "session_aborted");
     const exp = payload(token)?.exp;
     const now = Date.now();
@@ -87,11 +89,12 @@ export async function acquireChatPlaygroundSession(raw, fetcher, options = {}) {
 }
 
 /** Nonbillable selected-connection readiness/discovery. No chat, retries, or credential fallback.
- * Identity proof here means a nonempty string `id` from the current /me contract, not live verification.
+ * The nonempty string `id` guard is unverified, not a source-backed /me field contract.
+ * Unknown shapes must be classified as unsupported/unverified, never invalid credentials.
  */
 export async function inspectChatPlaygroundConnection(credentials, fetcher, options = {}) {
   return withChatPlaygroundSessionDeadline(async (signal) => {
-    if (typeof fetcher !== "function") return failure(400, "selected_connection_transport_required");
+    if (!isFunction(fetcher)) return failure(400, "selected_connection_transport_required");
     const auth = await acquireChatPlaygroundSession(chatPlaygroundCredential(credentials), fetcher, { signal });
     if (!auth.ok) return auth;
     if (signal.aborted) return failure(408, "session_aborted");
@@ -99,7 +102,7 @@ export async function inspectChatPlaygroundConnection(credentials, fetcher, opti
     const me = await fetcher(`${CHATPLAYGROUND_API}/me`, { method: "GET", redirect: "manual", credentials: "omit", headers, signal });
     if (!me.ok) { void me.body?.cancel().catch(() => {}); return failure(me.status); }
     const identity = await readChatPlaygroundJson(me, signal);
-    if (typeof identity?.id !== "string" || !identity.id.trim()) return failure(502, "unsupported_me_identity_shape");
+    if (!isString(identity?.id) || !identity.id.trim()) return failure(502, "unsupported_me_identity_shape");
     if (signal.aborted) return failure(408, "session_aborted");
     if (!options.discovery) return { ok: true, valid: true, status: 200 };
     const response = await fetcher(`${CHATPLAYGROUND_API}/models`, { method: "GET", redirect: "manual", credentials: "omit", headers: { Accept: "application/json", Origin: WEB, Referer: `${WEB}/` }, signal });

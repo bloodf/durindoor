@@ -32,7 +32,7 @@ The existing compatibility wrappers remain available; registration must activate
 the new helper, rather than interpreting those wrappers as strict readiness.
 
 Machine-readable activation instructions are in
-`open-sse/executors/chatplayground-session-handoff.json` for register-auth03.
+`open-sse/executors/chatplayground-session-handoff.json` for register-cookie-repairs.
 No shared registration, models, test or validation wiring changed here.
 
 ## Bounded reproductions for registration owner
@@ -153,3 +153,61 @@ and XDG_CACHE_HOME were unique private `/var/tmp` paths. Each run had a
   8 files passed: 179/179 including the new cases (173/173 before them).
 
 The full `test:ci` run was not performed in this unit.
+
+## Gate 3 retry
+
+Carried checkpoint `1f6e62d53ced3dd8f4179c21d84be95cc7ffb42b` as four
+unchanged commits before this correction; all 18 evidence cases remain unchanged.
+Replaced all four runtime `typeof` checks in the helper with the existing
+`isString` / `isFunction` project predicates, preserving primitive-string and
+function validation without lint suppression. The `/me.id` guard remains an
+unverified local guard, not a source-backed field contract.
+
+Activation owner is **register-cookie-repairs**. Classify
+`unsupported_me_identity_shape` as **unverified/unsupported**, never as invalid
+credentials or healthy. Preserve the existing chat path independently of this
+strict readiness guard. No provider response-field evidence was obtained.
+
+Actual retained gate-3 JSON was read from the coordinator's unit directory.
+Evidence passed (18/18); checks and their retry exited 1 with the retained tail
+showing `no-runtime-typeof` on `sid` and `token`. No earlier diagnostics are
+available in that retained tail.
+
+Retry verification used `/var/tmp/chatplayground-gate3-i9fxy2b_/repo`, an archive
+of the carried head with the three corrected files overlaid. All eight exact
+previous suite paths ran from `tests/` with `node node_modules/vitest/vitest.mjs
+run ... --maxWorkers=2`: **179/179 passed**, including **18/18 unchanged own
+cases**. Environment was `env -i` with explicit PATH/LANG/CI and private
+HOME/DATA_DIR/TMPDIR/cache/store, with a 300 second command ceiling.
+
+The scratch copy initially used read-only borrowed package links. Invoking
+`pnpm run lint` unexpectedly triggered pnpm's automatic dependency setup in
+that private copy before lint. Its `.pnpm` is a private directory; the borrowed
+store remains separate and was not repaired, deleted or relinked. No explicit
+install command was issued. The tls-client-node install hook attempted GitHub
+metadata access and reported HTTP 403; no provider call or credential was used.
+This setup deviation is recorded rather than represented as an install-free run.
+
+`pnpm run lint` exited **0**: root ESLint reported 0 errors / 348 warnings;
+the actual bundled anti-slop gate reported **0 diagnostics across 3696 files**.
+The complete full checkpoint (build and complete CI inventory) was not rerun
+in this unit; these focused results do not replace the independent full gate.
+
+Exact related-suite command (from the private copy's `tests/`, under the
+isolated environment described above):
+
+```sh
+node node_modules/vitest/vitest.mjs run \
+  unit/fix-chatplayground-session-contract-2034.test.js \
+  unit/cookie-flow-chatplayground-2034.test.js \
+  unit/chatplayground-provider.test.js \
+  unit/port-omni-20375-chatplayground-unified-api.test.js \
+  unit/review-x-chatplayground.test.js \
+  unit/web-session-redirects.test.js \
+  unit/review-x-executor-send-3.test.js \
+  unit/arch-c2309.test.js --maxWorkers=2
+```
+
+The own evidence test is byte-identical to checkpoint `1f6e62d53ce`. The
+executor is also unchanged from that checkpoint. Only the helper predicates,
+helper JSDoc and report/JSON handoff changed in the retry correction.

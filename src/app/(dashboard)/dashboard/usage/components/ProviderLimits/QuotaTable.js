@@ -96,7 +96,7 @@ export default function QuotaTable({ quotas = [], compact = false, sortMode = "d
         return (
           <div className="flex flex-col gap-1">
             {hasWindow ? (
-              <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="progressbar" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={quota.remaining}>
+              <div className={`${compact ? "h-1" : "h-1.5"} overflow-hidden rounded-dd ${tone.surface}`} role="meter" aria-label={`${quota.name} remaining`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(Number(quota.remaining) || 0, 100))}>
                 <div className={`h-full rounded-dd ${tone.bar} transition-[width] motion-reduce:transition-none`} style={{ width: `${Math.min(quota.remaining, 100)}%` }} />
               </div>
             ) : null}

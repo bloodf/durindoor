@@ -65,7 +65,7 @@ The default bind accepts connections on all interfaces. Remote access requires t
 
 ## Heap and DNS
 
-The server prefers IPv4 DNS results. The default V8 heap cap is 75% of system memory, at least `512` MB and at most `6144` MB. The memory figure is what Node's `os.totalmem()` reports.
+The server prefers IPv4 DNS results. The default V8 heap cap uses 75% of the lower of host memory (`os.totalmem()`) and a positive known process memory constraint (`process.constrainedMemory()`). It has a `512` MB floor bounded by available memory and a `6144` MB ceiling. If neither figure is known, the cap is `6144` MB. Constraints unavailable or reported as zero are ignored.
 
 | `NINEROUTER_MAX_OLD_SPACE_SIZE` | Effect |
 | --- | --- |

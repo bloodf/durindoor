@@ -263,7 +263,6 @@ export const FREE_MODEL_BUDGETS = [
   { provider: "kiro", modelId: "minimax-m2.1", displayName: "MiniMax M2.1", monthlyTokens: 25000, creditTokens: 0, freeType: "recurring-monthly", poolKey: "kiro", tos: "avoid" },
   { provider: "kiro", modelId: "glm-5", displayName: "GLM-5", monthlyTokens: 25000, creditTokens: 0, freeType: "recurring-monthly", poolKey: "kiro", tos: "avoid" },
   { provider: "kiro", modelId: "qwen3-coder-next", displayName: "Qwen3 Coder Next", monthlyTokens: 25000, creditTokens: 0, freeType: "recurring-monthly", poolKey: "kiro", tos: "avoid" },
-  { provider: "liquid", modelId: "liquid-lfm-40b", displayName: "Liquid LFM 40B", monthlyTokens: 0, creditTokens: 0, freeType: "keyless", poolKey: "liquid", tos: "unknown" },
   { provider: "llm7", modelId: "gpt-4o-mini-2024-07-18", displayName: "GPT-4o mini (LLM7)", monthlyTokens: 0, creditTokens: 0, freeType: "discontinued", poolKey: "llm7-free", tos: "caution" },
   { provider: "llm7", modelId: "gpt-4.1-nano-2025-04-14", displayName: "GPT-4.1 nano (LLM7)", monthlyTokens: 0, creditTokens: 0, freeType: "discontinued", poolKey: "llm7-free", tos: "caution" },
   { provider: "llm7", modelId: "deepseek-r1-0528", displayName: "DeepSeek R1 (LLM7)", monthlyTokens: 0, creditTokens: 0, freeType: "discontinued", poolKey: "llm7-free", tos: "caution" },

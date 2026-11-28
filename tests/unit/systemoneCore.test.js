@@ -14,6 +14,8 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 }));
 
 import { proxyAwareFetch } from "../../open-sse/utils/proxyFetch.js";
+import liquid from "../../open-sse/providers/registry/liquid.js";
+import { getModelInfoCore } from "../../open-sse/services/model.js";
 import { handleSystemoneCore } from "../../open-sse/handlers/systemoneCore.js";
 
 function makeProviderResponse(body, status = 200) {
@@ -182,5 +184,64 @@ describe("handleSystemoneCore", () => {
     expect(url).toBe("https://openrouter.ai/api/v1/systemone");
     expect(init.headers["HTTP-Referer"]).toBeDefined();
     expect(init.headers["X-Title"]).toBeDefined();
+  });
+});
+
+
+describe("Liquid native System One", () => {
+  it("registers decisions alongside Liquid chat and resolves provider identity", async () => {
+    expect(liquid.serviceKinds).toEqual(["llm", "systemone"]);
+    expect(liquid.transport.baseUrl).toBe("https://api.liquid.ai/openai/v1/chat/completions");
+    expect(liquid.models.filter((row) => row.kind === "systemone").map((row) => row.id)).toEqual(["d1", "d1.2", "d1.2-ultra"]);
+    expect(await getModelInfoCore("liquid/d1.2", {})).toEqual({ provider: "liquid", model: "d1.2" });
+    expect(await getModelInfoCore("openrouter/liquid/d1.2", {})).toEqual({ provider: "openrouter", model: "liquid/d1.2" });
+  });
+  beforeEach(() => vi.mocked(proxyAwareFetch).mockReset());
+
+  it.each(["d1", "d1.2", "d1.2-ultra", "future:version"])('dispatches %s only to the fixed Liquid endpoint', async (model) => {
+    const upstream = { answers: { urgent: true }, usage: { input_tokens: 12, output_tokens: 1 } };
+    vi.mocked(proxyAwareFetch).mockResolvedValueOnce(makeProviderResponse(upstream));
+    const proxyOptions = { proxyUrl: "http://proxy.example:8080" };
+    const options = makeOptions({
+      modelInfo: { provider: "liquid", model },
+      credentials: { apiKey: "liquid-key", providerSpecificData: { baseUrl: "https://evil.example/v1" } },
+      proxyOptions,
+    });
+    options.body = { ...options.body, model: "https://evil.example/model", baseUrl: "https://evil.example", upstreamUrl: "http://169.254.169.254" };
+    const result = await handleSystemoneCore(options);
+    expect(result.success).toBe(true);
+    expect(await result.response.json()).toEqual(upstream);
+    expect(result.usage).toEqual({ prompt_tokens: 12, completion_tokens: 1 });
+    const [url, init, proxy] = vi.mocked(proxyAwareFetch).mock.calls[0];
+    expect(url).toBe("https://api.liquid.ai/decisions/v1/systemone");
+    expect(init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer liquid-key" });
+    expect(init.redirect).toBe("error");
+    expect(proxy).toBe(proxyOptions);
+    expect(JSON.parse(init.body)).toEqual({ ...options.body, model });
+  });
+
+  it.each(["", "../d1", "d1..2", "d1/foo", "d1 2", "d1\n", "d1?host=evil", "https://evil.example", "d1%2fpath", "a".repeat(101), null, 42, {}])('rejects malformed native model %j without sending credentials', async (model) => {
+    const result = await handleSystemoneCore(makeOptions({ modelInfo: { provider: "liquid", model }, credentials: { apiKey: "liquid-key" } }));
+    expect(result.status).toBe(400);
+    expect(proxyAwareFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps OpenRouter Liquid routes and keys on OpenRouter", async () => {
+    vi.mocked(proxyAwareFetch).mockResolvedValueOnce(makeProviderResponse({ answers: {} }));
+    await handleSystemoneCore(makeOptions({ modelInfo: { provider: "openrouter", model: "liquid/d1.2" }, credentials: { apiKey: "or-key" } }));
+    const [url, init] = vi.mocked(proxyAwareFetch).mock.calls[0];
+    expect(url).toBe("https://openrouter.ai/api/v1/systemone");
+    expect(init.headers.Authorization).toBe("Bearer or-key");
+    expect(JSON.parse(init.body).model).toBe("liquid/d1.2");
+  });
+
+  it("fails closed when transport refuses a redirect", async () => {
+    vi.mocked(proxyAwareFetch).mockImplementationOnce(async (_url, init) => {
+      expect(init.redirect).toBe("error");
+      throw new TypeError("fetch failed: unexpected redirect");
+    });
+    const result = await handleSystemoneCore(makeOptions({ modelInfo: { provider: "liquid", model: "d1" }, credentials: { apiKey: "liquid-key" } }));
+    expect(result.status).toBe(502);
+    expect(proxyAwareFetch).toHaveBeenCalledOnce();
   });
 });

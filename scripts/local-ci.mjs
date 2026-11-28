@@ -21,6 +21,7 @@ import { chromiumLaunchOptions } from "../tests/utils/chromiumLaunch.mjs";
 import { isMainModule } from "./lib/is-main-module.mjs";
 import {
   SHARD_OWNER_ENV, SHARD_PORT_ENV, SHARD_STATE_ENV, cleanupShardServer, newShardOwnerToken, reserveLoopbackPort,
+  snapshotShardBaseline,
 } from "./lib/website-shard-server.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -186,6 +187,21 @@ export function selectWebsiteBrowserShards(inventory, count = WEBSITE_BROWSER_SH
   }));
 }
 
+// Playwright owns grouping semantics (including serial suites and projects).
+// Probe its real shard listings rather than approximating groups from test count.
+export async function planWebsiteBrowserShards(inventory, listShard, count = WEBSITE_BROWSER_SHARD_COUNT) {
+  const candidates = selectWebsiteBrowserShards(inventory, count);
+  for (let total = candidates.length; total >= 1; total--) {
+    const shards = selectWebsiteBrowserShards(inventory, total);
+    const results = [];
+    for (const shard of shards) results.push({ entries: await listShard(shard) });
+    if (results.some((result) => !result.entries.length)) continue;
+    verifyWebsiteBrowserCoverage(inventory, results);
+    return shards;
+  }
+  throw new Error("Playwright produced no non-empty shard plan");
+}
+
 export function websiteBrowserInventoryCommand(web, browser, reportFile) {
   for (const [label, value] of [["web", web], ["browser", browser], ["reportFile", reportFile]]) {
     if (!isString(value) || !path.isAbsolute(value)) throw new Error(`website browser ${label} must be an absolute path`);
@@ -266,20 +282,20 @@ export function websiteBrowserShardEnv(shardOpts, port) {
 
 // Runs after every shard, whatever ended it: pass, failure, budget or silence
 // timeout, interrupt or spawn error. A failed cleanup is a failed check and
-// stops the remaining shards (fail closed).
-export async function websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanup = cleanupShardServer) {
+// stops the remaining shards (fail closed). `baseline` is the pre-shard
+// snapshot of processes whose ownership cannot be read (snapshotShardBaseline).
+export async function websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanup = cleanupShardServer, { baseline = null } = {}) {
   const step = { id: `${shardId}-server-cleanup`, job: "website-build", kind: "check", port };
   try {
-    const result = await cleanup({ owner: shardOpts.server.owner, port, stateFile: shardOpts.server.stateFile });
+    const result = await cleanup({ owner: shardOpts.server.owner, port, stateFile: shardOpts.server.stateFile, baseline });
     Object.assign(step, {
       status: result.ok ? "passed" : "failed",
-      reason: result.ok
-        ? (result.foreignListener ? "shard server stopped; an unrelated listener on the port was left untouched" : "shard server stopped")
-        : result.reason,
+      reason: result.ok ? "shard server stopped" : result.reason,
       verification: result.verification,
       signalled: result.signalled,
       survivors: result.survivors,
-      foreignListener: result.foreignListener,
+      uncertain: result.uncertain ?? [],
+      unattributedListener: Boolean(result.unattributedListener),
     });
   } catch (error) {
     Object.assign(step, { status: "failed", reason: `shard server cleanup could not be established: ${error.message}` });
@@ -809,7 +825,18 @@ if (!websiteRun) {
           throw new Error("missing or stale website browser inventory report");
         }
         const discovered = collectWebsiteBrowserInventory(JSON.parse(readFileSync(inventoryFile, "utf8")));
-        const shards = selectWebsiteBrowserShards(discovered.tests);
+        const shards = await planWebsiteBrowserShards(discovered.tests, async (shard) => {
+          const reportFile = path.join(browserReportRoot, `plan-${shard.total}-${shard.index}.json`);
+          rmSync(reportFile, { force: true });
+          const [id, cmd, args, options] = websiteBrowserInventoryCommand(web, browser, reportFile);
+          const step = await run(`${id}-plan-${shard.total}-${shard.index}`, "website-build", cmd,
+            [...args, `--shard=${shard.shard}`], options);
+          if (!ok(step)) throw new Error("website browser shard planning failed");
+          if (!existsSync(reportFile) || statSync(reportFile).mtimeMs < Date.parse(step.startedAt) - 1000) {
+            throw new Error("missing or stale website browser shard plan");
+          }
+          return extractPlaywrightTests(JSON.parse(readFileSync(reportFile, "utf8")));
+        });
         const shardCommands = websiteBrowserShardCommands(web, shards, {
           browser,
           outputRoot: browserOutputRoot,
@@ -829,10 +856,11 @@ if (!websiteRun) {
           rmSync(shardOpts.reportFile, { force: true });
           rmSync(shardOpts.server.stateFile, { force: true });
           const port = await reserveLoopbackPort();
+          const baseline = snapshotShardBaseline();
           const step = await run(shardId, "website-build", cmd, args, {
             cwd: shardOpts.cwd, env: websiteBrowserShardEnv(shardOpts, port),
           });
-          const cleanupStep = await websiteBrowserShardCleanupStep(shardId, shardOpts, port);
+          const cleanupStep = await websiteBrowserShardCleanupStep(shardId, shardOpts, port, cleanupShardServer, { baseline });
           cleanupStep.at = now();
           evidence.steps.push(cleanupStep);
           save();

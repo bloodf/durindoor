@@ -46,6 +46,22 @@ The visible-model allowlist and the disabled-models list still apply on top of t
 
 Pruning only changes listings. A request that names a removed model is still sent to the provider, which answers for itself.
 
+## Request a Claude effort as a model ID suffix
+
+A synced Claude model is listed with the `thinking_levels` it supports. A client can pick one of those levels by appending it to the model ID, for example `anthropic/claude-sonnet-5-high`. The request is sent upstream as the base model (`claude-sonnet-5`) with that reasoning effort. The suffix applies only when all of these hold:
+
+- auto-update is on for the provider and its last successful sync lists the base model;
+- the suffix is `low`, `medium`, `high`, `xhigh` or `max` and is one of the base model's listed `thinking_levels`;
+- no synced, built-in or **Add Model** entry already has the full suffixed ID. Such an entry is used as written.
+
+Otherwise the ID is sent to the provider unchanged. The suffix is a default, not an override. Precedence, highest first:
+
+1. A provider thinking setting of `none` or `off`. The suffix's effort is never applied, even though `none` first removes every thinking and effort field of the request, including `output_config.effort`. See [Provider thinking setting](../reference/model-limits.mdx#provider-thinking-setting).
+2. A thinking or reasoning field in the request body, or an effort level chosen as the provider's thinking setting.
+3. The effort from the suffix.
+
+A `model(level)` suffix is a request override, not a catalog default, and keeps its own precedence. Provider limits still apply: GitHub Copilot, for example, drops the effort for Claude models that reject it. Codex and Cursor keep their own effort suffix handling.
+
 ## Recover from a failed sync
 
 - The list is only replaced after a successful, non-empty fetch. An error, timeout (30 seconds), auth failure or empty list keeps the previous list, and the provider page shows the failure.

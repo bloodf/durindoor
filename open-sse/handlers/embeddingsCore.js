@@ -96,6 +96,7 @@ export async function handleEmbeddingsCore({
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
+      ...(provider === "trustedrouter" ? { redirect: "error" } : null),
       signal
     }, proxyOptions);
   } catch (error) {

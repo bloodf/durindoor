@@ -42,6 +42,8 @@ proof omission. This is a local synthetic regression, not evidence of live use.
 
 ## Validation
 
+The validation results in this document are historical source-lineage evidence. The lineage runs used `tests/unit/helpers/cookiePublicFlow2034.js` with blob `3ac4504379112cf34bf49ff28046699c297314b1`; that helper is carried byte-identically in the exact-fixture candidate. These results do not represent test execution on the current candidate head. In a separate review, the reviewer reported 105 passing tests with a 179-test baseline and differential/fuzz evidence after restoring the fixture in that review context; those results are also separate from candidate-head execution. The parent final-head gate and review remain outstanding.
+
 Dependencies were installed frozen for root, CLI and tests with an explicit
 unique private store. Commands used `env -i`, private HOME, DATA_DIR, TMPDIR and
 cache under `/var/tmp/zai-request-proof-2034.qCK0i8`, a 300-second ceiling, and

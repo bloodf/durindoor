@@ -102,3 +102,81 @@ it("binds replacement to one Veo connection and refuses foreign or expired input
   }
   expect(JSON.stringify(logs.flatMap((spy) => spy.mock.calls))).not.toContain(secret);
 });
+
+it("imports each dashboard input and dispatches the pinned session through the public video route", async () => {
+  const { cookiePublicFlow2034 } = await import("./helpers/cookiePublicFlow2034.js");
+  const { buildImportCandidates, parseCookieHeaderValue, parseCurlCommand, parseHarDocument } = await import("../../src/shared/utils/cookieImportParser.js");
+  const flow = await cookiePublicFlow2034("veoaifree-web");
+  try {
+    const formats = [
+      ["header", parseCookieHeaderValue(`Cookie: ${name}=synthetic-header`)],
+      ["curl", parseCurlCommand(`curl '${origin}/' -H 'Cookie: ${name}=synthetic-curl'`)],
+      ["har", parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${origin}/`, headers: [], cookies: [{ name, value: "synthetic-har" }] } }] } }))],
+    ];
+    const accounts = [];
+    for (const [kind, parsed] of formats) {
+      expect(parsed.ok).toBe(true);
+      const pairing = await flow.issue({ action: "create", name: `Veo ${kind}` });
+      const candidates = buildImportCandidates({ kind, parsed }, pairing.contract);
+      expect(candidates.ok).toBe(true);
+      const response = await flow.submit(pairing, { ...candidates.candidates[0], name: `Veo ${kind}` });
+      expect(response.status).toBe(201);
+      const text = await response.text();
+      expect(text).not.toContain(`synthetic-${kind}`);
+      const saved = await flow.db.getProviderConnectionById(JSON.parse(text).connection.id);
+      expect(saved.apiKey).toBe(`${name}=synthetic-${kind}`);
+      accounts.push(saved);
+    }
+    const firstProxy = await flow.bind(accounts[0].id, "veo-a");
+    const secondProxy = await flow.bind(accounts[1].id, "veo-b");
+    const { POST } = await import("../../src/app/api/v1/video/generations/route.js");
+    flow.network.mockResolvedValueOnce(new Response('nonce":"abcdef"')).mockResolvedValueOnce(new Response("rate-limit-exceed"));
+    const response = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[1].id },
+      body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }),
+    }));
+    const output = await response.text();
+    expect(response.status).toBe(429);
+    expect(response.headers.get("x-durindoor-accepted-job")).toBe("1");
+    expect(output).not.toContain("synthetic-curl");
+    expect(flow.network).toHaveBeenCalledTimes(2);
+    expect(flow.network.mock.calls.every(([, init]) => init.dispatcher === secondProxy)).toBe(true);
+    expect(flow.network.mock.calls.some(([, init]) => init.dispatcher === firstProxy)).toBe(false);
+    expect(flow.network.mock.calls[1][1].headers.Cookie).toBe(`${name}=synthetic-curl`);
+    expect(JSON.stringify(flow.network.mock.calls)).not.toContain("synthetic-header");
+    flow.network.mockReset();
+    flow.network.mockResolvedValueOnce(new Response('nonce":"abc123"'))
+      .mockResolvedValueOnce(new Response("synthetic-scene"))
+      .mockResolvedValueOnce(new Response("https://cdn.example.com/video.mp4"));
+    const success = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[0].id },
+      body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }),
+    }));
+    expect(success.status).toBe(200);
+    expect(await success.json()).toMatchObject({ data: [{ url: "https://cdn.example.com/video.mp4", type: "video" }] });
+    expect(flow.network).toHaveBeenCalledTimes(3);
+    expect(flow.network.mock.calls.every(([, init]) => init.dispatcher === firstProxy)).toBe(true);
+    expect(flow.network.mock.calls[1][1].headers.Cookie).toBe(`${name}=synthetic-header`);
+    expect(flow.network.mock.calls[2][1].headers.Cookie).toBe(`${name}=synthetic-header`);
+    expect(new URLSearchParams(flow.network.mock.calls[2][1].body).get("sceneData")).toBe("synthetic-scene");
+    const thirdProxy = await flow.bind(accounts[2].id, "veo-c");
+    const controller = new AbortController();
+    flow.network.mockReset();
+    flow.network.mockResolvedValueOnce(new Response('nonce":"abc123"'))
+      .mockImplementationOnce(async () => { controller.abort(); throw new Error("synthetic interruption"); });
+    const interrupted = await POST(new Request("https://dashboard.example/api/v1/video/generations", {
+      method: "POST", headers: { "content-type": "application/json", "x-connection-id": accounts[2].id },
+      body: JSON.stringify({ model: "veo-free/veo", prompt: "synthetic rain" }), signal: controller.signal,
+    }));
+    expect(interrupted.status).toBe(499);
+    expect(interrupted.headers.get("x-durindoor-accepted-job")).toBe("1");
+    expect(flow.network).toHaveBeenCalledTimes(2);
+    expect(flow.network.mock.calls.every(([, init]) => init.dispatcher === thirdProxy)).toBe(true);
+    expect(flow.network.mock.calls[1][1].headers.Cookie).toBe(`${name}=synthetic-har`);
+    const list = await (await flow.list()).text();
+    expect(list).not.toContain("synthetic-header");
+    expect(list).not.toContain("synthetic-curl");
+    expect(list).not.toContain("synthetic-har");
+    expect(JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls))).not.toContain("synthetic-curl");
+  } finally { await flow.close(); }
+}, 60000);

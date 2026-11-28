@@ -15,6 +15,8 @@ function payload(token) {
 
 /** A deadline also bounds transports/readers that ignore AbortSignal. Never expose upstream errors. */
 export async function withChatPlaygroundSessionDeadline(work, { signal, timeoutMs = 10000 } = {}) {
+  // Return before creating a rejecting deadline promise on the pre-aborted path.
+  if (signal?.aborted) return failure(408, "session_aborted");
   const controller = new AbortController();
   let timer;
   let onAbort;
@@ -22,10 +24,8 @@ export async function withChatPlaygroundSessionDeadline(work, { signal, timeoutM
     onAbort = () => { controller.abort(); reject(new Error("session_aborted")); };
     signal?.addEventListener("abort", onAbort, { once: true });
     timer = setTimeout(onAbort, Math.max(1, Math.min(timeoutMs || 10000, 10000)));
-    if (signal?.aborted) onAbort();
   });
   try {
-    if (controller.signal.aborted) return failure(408, "session_aborted");
     return await Promise.race([work(controller.signal), stopped]);
   } catch { return failure(controller.signal.aborted ? 408 : 502, controller.signal.aborted ? "session_aborted" : "session_transport_failed"); }
   finally { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); controller.abort(); }

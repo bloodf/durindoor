@@ -71,3 +71,25 @@ were performed. Vitest and repository gates have **not run**; native isolated ga
 setup must run the new test and existing ChatPlayground/cookie-flow/redirect suites,
 then required full CI. CodeGraph wrapper reported required version unavailable;
 bounded exact-file reads were used instead. No claim of live protocol parity.
+
+## Evidence failure correction
+
+The supplied gate rejection contained exit 1 without a command or diagnostic.
+Independent reproduction found a concrete exit-1 defect in the pre-aborted path:
+`withChatPlaygroundSessionDeadline` rejected its deadline promise, then returned
+before attaching `Promise.race`. Node reported unhandled `session_aborted` after
+the caller had already received `{ ok:false, status:408 }`.
+
+The helper now returns before constructing that promise when the caller signal is
+already aborted. The new regression exercises both acquisition and readiness and
+waits one event-loop turn so the test runner can observe unhandled rejections.
+No network dispatch occurs on this path.
+
+Before correction, an isolated native Node reproduction exited 1 with the
+unhandled rejection. After correction, the same scenario passed with
+`--unhandled-rejections=strict`, repeated ten times for both entry points, plus
+active abort, stalled-body timeout and normal mint/readiness checks. The run used
+`env -i`, explicit PATH/LANG/CI, a unique private `/var/tmp` HOME/DATA_DIR/TMPDIR/
+cache and `timeout 60s`. Syntax and diff-whitespace checks passed. Vitest/full CI
+remain unavailable locally because dependency directories are absent; the exact
+external evidence gate has not been rerun or claimed passing.

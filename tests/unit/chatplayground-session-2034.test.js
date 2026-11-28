@@ -67,6 +67,17 @@ describe("selected ChatPlayground sessions #2034", () => {
     expect(await inspectChatPlaygroundConnection({}, unsent, { signal: controller.signal })).toMatchObject({ status: 408 });
     expect(unsent).not.toHaveBeenCalled();
   });
+  it("settles pre-aborted acquisition and readiness without unhandled rejection", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetcher = vi.fn();
+    const options = { signal: controller.signal };
+    await expect(acquireChatPlaygroundSession(cookie("a"), fetcher, options)).resolves.toMatchObject({ status: 408 });
+    await expect(inspectChatPlaygroundConnection({ apiKey: cookie("a") }, fetcher, options)).resolves.toMatchObject({ status: 408 });
+    // Vitest reports unhandled rejections after the promise has ostensibly settled.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetcher).not.toHaveBeenCalled();
+  });
   it("does not redispatch chat after unknown work", async () => {
     const fetcher = vi.fn(async (url) => {
       if (url.includes("clerk.")) return json({ jwt: "opaque-token" });

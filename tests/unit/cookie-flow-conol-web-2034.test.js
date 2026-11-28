@@ -166,3 +166,70 @@ describe("conol-web real cookie flow (#2034)", () => {
     for (const secret of [A, B, p.token, next.token]) expect(logged).not.toContain(secret);
   });
 });
+
+describe("conol-web public route dispatch (#2034)", () => {
+  it.each([false, true])("does not rotate a pinned request after vendor refusal (stream=%s)", async (stream) => {
+    const { cookiePublicFlow2034 } = await import("./helpers/cookiePublicFlow2034.js");
+    const flow = await cookiePublicFlow2034("conol-web");
+    try {
+      const a = await flow.imported({ action: "create", name: "Refused A" }, { origin: ORIGIN, cookies: [cookie(A)] });
+      const b = await flow.imported({ action: "create", name: "Refused B" }, { origin: ORIGIN, cookies: [cookie(B)] });
+      const proxyA = await flow.bind(a.id, "refused-a");
+      await flow.bind(b.id, "refused-b");
+      flow.network.mockResolvedValue(new Response("refused", { status: 401 }));
+      const response = await flow.dispatch({ model: "cnl/claude-fable-5", stream, id: a.id });
+      const text = await response.text();
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(text).not.toContain("[DONE]");
+      expect(flow.network).toHaveBeenCalledTimes(1);
+      const [, init] = flow.network.mock.calls[0];
+      expect(new Headers(init.headers).get("cookie")).toBe(`${NAME}=${A}`);
+      expect(init.dispatcher).toBe(proxyA);
+      expect(text).not.toContain(A);
+      expect(text).not.toContain(B);
+    } finally {
+      await flow.close();
+    }
+  });
+  it.each([
+    [false, false, "header"], [false, true, "curl"], [true, false, "har"], [true, true, "header"],
+  ])("dispatches pinned imported credentials through the selected proxy (anthropic=%s, stream=%s, input=%s)", async (anthropic, stream, kind) => {
+    const { cookiePublicFlow2034 } = await import("./helpers/cookiePublicFlow2034.js");
+    const flow = await cookiePublicFlow2034("conol-web");
+    try {
+      const header = `${NAME}=${A}`;
+      const parsed = kind === "header" ? parseCookieHeaderValue(header) : kind === "curl"
+        ? parseCurlCommand(`curl '${ORIGIN}/api/agent-servers' -H 'Cookie: ${header}'`)
+        : parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${ORIGIN}/api/agent-servers`, headers: [{ name: "Cookie", value: header }], cookies: [] } }] } }));
+      const selected = buildImportCandidates({ kind, parsed }, getCookieImportContract("conol-web"));
+      expect(selected.ok).toBe(true);
+      const a = await flow.imported({ action: "create", name: "Public A" }, { origin: ORIGIN, cookies: selected.candidates[0].cookies });
+      expect(a.apiKey).toBe(header);
+      const b = await flow.imported({ action: "create", name: "Public B" }, { origin: ORIGIN, cookies: [cookie(B)] });
+      const proxyA = await flow.bind(a.id, "a");
+      await flow.bind(b.id, "b");
+      flow.network.mockImplementation(async (url) => {
+        const path = String(url);
+        if (path.endsWith("/api/sessions")) return Response.json({ sessionId: "synthetic-session" }, { status: 201 });
+        if (path.endsWith("/model")) return Response.json({});
+        if (path.endsWith("/messages")) return new Response(null, { status: 202 });
+        if (path.endsWith("?logDeltas=1")) return new Response('{"type":"assistant","text":"synthetic reply"}\n{"type":"done"}\n');
+        throw Error("Unexpected vendor request");
+      });
+      const response = await flow.dispatch({ model: "cnl/claude-fable-5", anthropic, stream, id: a.id });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("synthetic reply");
+      expect(flow.network).toHaveBeenCalledTimes(6);
+      for (const [, init] of flow.network.mock.calls) {
+        expect(new Headers(init.headers).get("cookie")).toBe(`${NAME}=${A}`);
+        expect(init.dispatcher).toBe(proxyA);
+      }
+      const output = JSON.stringify({ text, listing: await (await flow.list()).json(), logs: flow.logs.flatMap((spy) => spy.mock.calls) });
+      expect(output).not.toContain(A);
+      expect(output).not.toContain(B);
+    } finally {
+      await flow.close();
+    }
+  });
+});

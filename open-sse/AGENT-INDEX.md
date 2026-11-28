@@ -316,7 +316,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `lemonade` | openai | apikey | `http://localhost:13305/api/v1` |
 | `leonardo` |  | apikey | `` |
 | `linkup` |  | apikey | `` |
-| `liquid` |  | apikey | `https://api.liquid.ai/v1/chat/completions` |
+| `liquid` |  | apikey | `https://api.liquid.ai/openai/v1/chat/completions` |
 | `literouter` |  | apikey | `https://api.literouter.com/v1/chat/completions` |
 | `llama-cpp` | openai | apikey | `http://127.0.0.1:8080/v1` |
 | `llamafile` | openai | apikey | `http://127.0.0.1:8080/v1` |
@@ -468,6 +468,7 @@ Run `node scripts/gen-agent-index.mjs` to regenerate.
 | `tortoise` |  | freeTier | `` |
 | `trae` | openai | oauth | `https://core-normal.trae.ai/api/remote/v1` |
 | `triton` | openai | apikey | `http://localhost:8000/v1` |
+| `trustedrouter` | openai | apikey | `https://api.trustedrouter.com/v1/chat/completions` |
 | `twinmind` | openai | apikey | `https://api2.twinmind.com/api/v3` |
 | `typesafe` |  | apikey | `` |
 | `typhoon` | openai | apikey | `https://api.opentyphoon.ai/v1/chat/completions` |

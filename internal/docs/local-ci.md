@@ -14,7 +14,7 @@ fnm exec --using=24.22.2 node scripts/local-ci.mjs \
   --website always --title "$PR_TITLE" --out "$NEW_PRIVATE_OUTPUT"
 ```
 
-Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Twelve sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. When the full website job is selected (`--website always`, or `--website auto` with changed website inputs), an executable local Chromium browser is required; a missing or invalid browser fails `website-browser-suites` and the evidence/summary. When available, `scripts/local-ci.mjs` discovers the complete configured Playwright inventory (`website-browser-inventory`, running `node website/node_modules/@playwright/test/cli.js test --list --reporter=json`) and splits it into deterministic shards (`website-browser-shard-1` through `website-browser-shard-N`, up to 8 shards via `--shard=i/N --reporter=list,json --output=<private-dir>`). Each shard is a separate supervised command under its own 300-second ceiling with its own transient loopback Next.js server, process-group cleanup, and private output/screenshot/report paths under `--out`. Each shard server gets a free loopback port reserved just before the shard starts (never the fixed 3100), a private state file and a random owner token, all passed through the child env allowlist. Playwright runs the server in its own process group, so killing a shard does not stop it; the launcher (`website/scripts/transient-server.mjs`) watches the runner PID and stops its server when the runner is gone. After every shard, whatever ended it, `website-browser-shard-N-server-cleanup` (`scripts/lib/website-shard-server.mjs`) signals only processes that `/proc` shows carry that shard's token under the same uid with an unchanged start time, never an unrelated listener on the port, and fails the gate and stops the remaining shards when an owned process survives or ownership cannot be verified; `verify-website-browser-reports` fails the gate on any failed shard, zero-test shard, skipped/unexpected test, or incomplete union against the discovered inventory. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
+Full is the default. PR runs may use `--website auto`. Every command has a 300-second ceiling. Twelve sequential Vitest batches together cover the complete tracked test inventory, and the failure baseline stays empty. `cd tests && pnpm run test:ci` uses the same partition and batch arguments from `tests/__baseline__/full-batches.mjs`, with its own 300-second ceiling per command, so a developer or hosted run exercises the same commands as the checkpoint. When the full website job is selected (`--website always`, or `--website auto` with changed website inputs), an executable local Chromium browser is required; a missing or invalid browser fails `website-browser-suites` and the evidence/summary. When available, `scripts/local-ci.mjs` discovers the complete configured Playwright inventory (`website-browser-inventory`, running `node website/node_modules/@playwright/test/cli.js test --list --reporter=json`) and splits it into deterministic shards (`website-browser-shard-1` through `website-browser-shard-N`, up to 8 shards via `--shard=i/N --reporter=list,json --output=<private-dir>`). Each shard is a separate supervised command under its own 300-second ceiling with its own transient loopback Next.js server, process-group cleanup, and private output/screenshot/report paths under `--out`. Each shard server gets a free loopback port reserved just before the shard starts (never the fixed 3100), a private state file and a random owner token, all passed through the child env allowlist. Playwright runs the server in its own process group, so killing a shard does not stop it; the launcher (`website/scripts/transient-server.mjs`) watches the runner PID and stops its server when the runner is gone. After every shard, whatever ended it, `website-browser-shard-N-server-cleanup` (`scripts/lib/website-shard-server.mjs`) signals only processes that `/proc` shows carry that shard's token in their environment under the same uid with an unchanged start time, never a listener it cannot attribute, and fails the gate and stops the remaining shards when an owned process survives, a live process's ownership cannot be read, an unattributed listener still holds the port, or ownership cannot be verified at all; `verify-website-browser-reports` fails the gate on any failed shard, zero-test shard, skipped/unexpected test, or incomplete union against the discovered inventory. Together with a review from a different model family than the author, a passing run is sufficient to merge. See [AGENTS.md](../../AGENTS.md#local-gate-authority). No owner receipt, frozen bundle or hash manifest is required.
 
 ## Workflow coverage
 
@@ -158,12 +158,16 @@ CI, and the full inventory checkpoint remains required for merges.
 
 ### Batched runner cleanup
 
-`tests/__baseline__/run-ci.mjs` reserves up to one second inside each command's
-five-minute ceiling for termination and verification. It signals the detached
-process group with SIGKILL. If group signaling fails (including EPERM), it also
-signals the known command PID, then enumerates that group with POSIX `ps` and
-signals its remaining members individually. It repeatedly verifies that no live
-members remain; ESRCH and the runner's close event alone are not exit evidence.
+`tests/__baseline__/run-ci.mjs` reserves up to five seconds (a quarter of the
+ceiling when that is shorter) inside each command's five-minute ceiling for
+termination and verification. It signals the detached process group with
+SIGKILL, then enumerates that group with POSIX `ps` and signals each live member
+individually, including when group signaling fails (EPERM or any other error).
+It never signals a PID that the inventory has not just reported as a member of
+the command group. It repeatedly verifies that no live members remain; ESRCH and
+the runner's close event alone are not exit evidence. A failed `ps` listing is
+unknown, not empty: transient listing failures are retried, and part of the
+cleanup budget is reserved for one final inventory after the last signal.
 Zombie entries are already terminated and do not count as live workers.
 
 An unreadable inventory or workers still live at the cleanup deadline produces
@@ -175,3 +179,86 @@ services need changing. Deterministic injected-operation tests cover EPERM,
 ESRCH, other signal errors, successful cleanup, and failure propagation. Native
 process-group integration coverage runs on the host platform; Linux evidence
 does not establish macOS permission behavior.
+
+Browser checkpoint follow-ups (#2661): the shared Playwright config rejects focused
+cases in discovery and execution. Before executing, local CI asks Playwright to
+list each proposed shard, reduces the count if a shard is empty, and verifies the
+complete exact-once union. Serial/file/project groups therefore follow Playwright's
+own allocation. Execution still rejects empty, skipped, failed and flaky reports.
+Owned-process enumeration errors fail cleanup even when the port is free; missing
+procfs cannot establish successful cleanup. No unverified process is signalled.
+Direct browser runs select and pin a fresh loopback port, while CI supplies each
+shard's port. An occupied selected port remains a hard failure. Chromium scratch
+uses a private short `/tmp/dd-pw-*` directory, removed on normal runner exit,
+independent of long report/output paths. Each planning and execution command
+retains the five-minute ceiling and private allowlisted CI environment.
+
+Browser shard cleanup ownership (#2684): every PID in `/proc` is classified
+before anything is signalled.
+
+- **Exited**: `ENOENT`/`ESRCH` on its `/proc/<pid>` files, or state `Z`/`X`.
+  This includes a PID reaped between two reads. Zombies hold no sockets.
+- **Foreign**: every uid in `status` differs from the runner's euid (their
+  protected `environ` is never needed), a kernel thread, or a fully readable
+  environment without the exact `WEBSITE_TRANSIENT_OWNER=<token>` entry. A
+  token in argv (`cmdline`) is never read and never proves ownership.
+- **Owned**: all four uids equal the euid, the exact token is in `environ`,
+  and `stat`/`status` parse. Only owned processes are signalled, after a
+  re-read confirms the same start time.
+- **Uncertain**: a same-uid (or unknown-uid) process whose `stat`, `status` or
+  `environ` is unreadable (`EACCES`, `EPERM`, `EIO`), malformed or empty, a
+  PID that changed hands on three consecutive reads, or the token under
+  another or changed uid. Uncertain processes are never signalled. Cleanup
+  waits for them like owned ones, so a process that is briefly unreadable while
+  it exits does not fail the step; one that stays makes cleanup fail.
+
+Signals go to one verified PID at a time, never to a process group. A
+`kill(-pgid)` reaches every member of the group, and a group led by an owned
+process can still hold an uncertain member, a member that dropped the token,
+or an unrelated process that joined it with `setpgid`. Proving the whole group
+would mean classifying every member, and membership can change between that
+check and the signal, so the guard makes no group-wide claim. Every shard
+process inherits the token and is found and signalled on its own; a member
+that cannot be proven owned is never signalled and fails cleanup while it
+lives. Residual race: Node has no PID-reuse-safe signal (`pidfd_send_signal`),
+so a verified process can exit, be reaped and have its PID reused between the
+re-read and `kill()`. The re-read happens immediately before each signal to
+keep that window a few system calls wide; it is narrowed, not closed.
+
+Same-uid processes with protected environments are common on developer hosts
+(`ssh-agent`, `gpg-agent`, browser sandboxes mark themselves non-dumpable).
+Local CI snapshots the uncertain PIDs and their start times just before each
+shard starts; a process with the same PID and start time cannot have received
+the token and is excluded. A recycled PID, a new unreadable process started
+during the shard, or a token seen under another uid is not excluded.
+
+After no owned or uncertain process remains, the port is probed. A listener
+that still answers after a two-second grace is unattributed: it may be a
+descendant that dropped the token or an unrelated program. It is never
+signalled, its PID is never looked up, the state file is kept, and cleanup
+fails. A probe that times out or errors other than with `ECONNREFUSED` counts
+as a held port. A final scan after the probe fails cleanup if a shard
+process appeared in between. Scope: Linux procfs with the default
+`hidepid=0` mount; under `hidepid=1` other users' processes are unreadable
+and cleanup fails closed. Tests use a synthetic procfs with injected read
+errors and mocked `kill` and probe
+(`tests/unit/browser-shard-cleanup-procfs.test.js`).
+
+macOS is not a supported host for browser shard cleanup. It has no `/proc`, so
+`scripts/lib/website-shard-server.mjs` signals nothing there and every shard
+cleanup step fails, even when the port is free. Local CI then stops the
+remaining shards. Stock macOS tools cannot supply the proof this guard needs:
+
+- `ps -E` joins the environment to the arguments with plain spaces, and a
+  process can rewrite its arguments between reads, so a token in its output is
+  not proof of ownership.
+- `ps` hides the environment of Apple platform binaries, and can fall back to
+  showing only the command name. An absent token is not proof of absence.
+- `lstart` has one-second resolution, so it cannot tell a recycled PID apart.
+- A process list and a port probe are separate moments, so both can look clear
+  while a late child binds the port.
+
+Supporting macOS needs a source that separates the environment and reports
+precise start times per PID, such as a native `sysctl(KERN_PROCARGS2)` or
+`proc_pidinfo` reader. Until one exists, cleanup stays fail-closed. Run the
+browser checkpoint on Linux.

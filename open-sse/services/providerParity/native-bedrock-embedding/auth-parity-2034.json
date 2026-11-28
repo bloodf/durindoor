@@ -1,0 +1,30 @@
+{
+  "issue": 2034,
+  "status": "private-staged-unregistered",
+  "source": {
+    "project": "cheaper-inference/OmniRoute",
+    "license": "MIT",
+    "commit": "3a17f7e908308a217887a7617c2c793b95ea83c0",
+    "frozenAt": "2026-11-27T23:49:25.752045Z",
+    "files": ["open-sse/config/embeddingRegistry.ts", "open-sse/handlers/embeddings.ts", "open-sse/handlers/bedrockEmbeddings.ts", "open-sse/config/bedrock.ts", "open-sse/executors/bedrock.ts"]
+  },
+  "authMatrix": [
+    { "shape": "top-level apiKey or accessToken; no IAM cues", "invoke": "Bearer", "discovery": "Bearer" },
+    { "shape": "missing usable opaque token or CR/LF token", "invoke": "401 before transport", "discovery": "refuse before transport" },
+    { "shape": "any defined IAM cue at top-level or providerSpecificData, including empty/null/false", "invoke": "400 before transport", "discovery": "refuse before transport" },
+    { "shape": "static accessKeyId or awsAccessKeyId with apiKey secret", "invoke": "unsupported; refuse", "discovery": "unsupported in embedding discovery; separate native discovery has IAM" },
+    { "shape": "temporary IAM with encrypted top-level sessionToken", "invoke": "unsupported; refuse", "discovery": "unsupported in embedding discovery" },
+    { "shape": "explicit profile, incomplete IAM or conflicting auth modes", "invoke": "unsupported; refuse", "discovery": "unsupported in embedding discovery" }
+  ],
+  "refusedCueFields": ["accessKeyId", "awsAccessKeyId", "secretAccessKey", "awsSecretAccessKey", "sessionToken", "awsSessionToken", "profile", "awsProfile", "authMode", "credentialMode"],
+  "safe": ["opaque Bearer keys without format guessing", "one cloned connection snapshot per call", "fixed regional AWS origins; no runtime endpoint selection", "manual redirects", "bounded invoke/body/abort", "no automatic invoke replay", "unknown work carries unknown-cost acceptedJob", "environment proxy fallback disabled"],
+  "unsupported": ["IAM InvokeModel/SigV4", "profile/SSO resolution", "metadata/environment/default credential chains", "inference-profile execution", "image inputs", "arbitrary model IDs"],
+  "exports": ["bedrockEmbeddingAdapter", "createBedrockEmbeddingAdapter", "buildBedrockEmbeddingRequest", "normalizeBedrockEmbeddings", "discoverBedrockEmbeddingModels", "BEDROCK_EMBEDDING_MODELS", "BEDROCK_URL_TEMPLATE"],
+  "publicActivation": {
+    "owner": "register-native14",
+    "targets": ["open-sse/handlers/embeddingProviders/index.js", "open-sse/handlers/embeddingsCore.js", "provider model catalog and discovery route"],
+    "activatedHere": false
+  },
+  "test": "tests/unit/bedrock-embedding-auth-parity-2034.test.js",
+  "report": "internal/docs/port-reports/bedrock-embedding-auth-parity-2034.md"
+}

@@ -7,12 +7,15 @@ import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
 import { bedrockRegion, BEDROCK_EMBEDDING_MODELS } from "./config.js";
 import { boundedFetch, bedrockToken, bedrockHeaders, redirectState, discard } from "./http.js";
 export async function discoverBedrockEmbeddingModels({ credentials, signal, fetch: send, timeoutMs = 30000 }) {
+  try { credentials = structuredClone(credentials); }
+  catch { throw new Error("Invalid Bedrock connection snapshot"); }
   const token = bedrockToken(credentials);
-  if (!token || credentials?.providerSpecificData?.profile || credentials?.providerSpecificData?.accessKeyId || credentials?.sessionToken) throw new Error("Bedrock bearer API key required");
+  if (!token) throw new Error("Bedrock bearer API key required");
   const region = bedrockRegion(credentials);
   const origin = `https://bedrock.${region}.amazonaws.com`;
   const end = Date.now() + Math.min(30000, Math.max(1, timeoutMs));
-  const transport = send ?? ((url, init) => proxyAwareFetch(url, init, resolveCredentialProxyOptions(credentials)));
+  const proxyOptions = { ...resolveCredentialProxyOptions(credentials), disableEnvProxy: true };
+  const transport = send ?? ((url, init) => proxyAwareFetch(url, init, proxyOptions));
   async function get(path) {
     if (signal?.aborted || Date.now() >= end) throw new Error("Bedrock discovery ended");
     let response;

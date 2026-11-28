@@ -13,8 +13,22 @@ const PRE_CONNECT_ERROR_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED
 
 export const discard = (response) => void response?.body?.cancel?.().catch(() => {});
 
+/**
+ * This InvokeModel subset is Bearer-only (frozen source embeddings.ts buildAuth).
+ * Presence, rather than truthiness, rejects incomplete/malformed/conflicting IAM
+ * hints too. Secrets remain in encrypted top-level storage; none are migrated.
+ * No key-format heuristic can distinguish an opaque Bearer key from an AWS secret.
+ */
+export function bedrockUnsupportedAuth(credentials) {
+  const fields = ["accessKeyId", "awsAccessKeyId", "secretAccessKey", "awsSecretAccessKey", "sessionToken", "awsSessionToken", "profile", "awsProfile", "authMode", "credentialMode"];
+  return [credentials, credentials?.providerSpecificData].some(record =>
+    record && fields.some(field => Object.hasOwn(record, field) && record[field] !== undefined)
+  );
+}
+
 /** The selected connection's key (source: `apiKey || accessToken`), or null when missing or unusable as a header. */
 export function bedrockToken(credentials) {
+  if (bedrockUnsupportedAuth(credentials)) return null;
   const token = [credentials?.apiKey, credentials?.accessToken].find((value) => isString(value) && value.trim());
   return token && !/[\r\n]/.test(token) ? token : null;
 }

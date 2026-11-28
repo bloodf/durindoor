@@ -6,7 +6,7 @@ import { proxyAwareFetch } from "../../../utils/proxyFetch.js";
 import { resolveCredentialProxyOptions } from "../../oauthCredentialManager.js";
 import { bedrockUrl, BEDROCK_EMBEDDING_MODELS } from "./config.js";
 import { buildBedrockEmbeddingRequest } from "./request.js";
-import { boundedFetch, bedrockToken, bedrockHeaders, bedrockSecrets, provenUnsent, redirectState, refusedAnswer, withAcceptedJob } from "./http.js";
+import { boundedFetch, bedrockUnsupportedAuth, bedrockToken, bedrockHeaders, bedrockSecrets, provenUnsent, redirectState, refusedAnswer, withAcceptedJob } from "./http.js";
 
 const error = (status, message) => createErrorResult(status, `Bedrock ${message}`);
 const unknown = (status, state = "submit-unknown") => withAcceptedJob(error(status, "embedding outcome unavailable"), state);
@@ -25,15 +25,19 @@ export function createBedrockEmbeddingAdapter({ fetch: send, timeoutMs = 60000, 
     buildUrl: bedrockUrl, buildHeaders: credentials => bedrockHeaders(bedrockToken(credentials) ?? ""),
     buildBody: (model, body) => buildBedrockEmbeddingRequest(model, body).bodies,
     async embed({ model, body, credentials, signal }) {
+      // Freeze the selected account/region/proxy before any asynchronous dispatch.
+      try { credentials = structuredClone(credentials); }
+      catch { return error(400, "invalid connection snapshot"); }
       let plan, url;
       try { plan = buildBedrockEmbeddingRequest(model, body); url = bedrockUrl(model, credentials); }
       catch { return error(400, "unsupported embedding input or region"); }
       // Bearer is a separate supported subset; never mistake AWS secrets for bearer tokens.
-      if (credentials?.providerSpecificData?.profile || credentials?.providerSpecificData?.accessKeyId || credentials?.sessionToken || credentials?.providerSpecificData?.sessionToken) return error(400, "native embeddings require a Bedrock bearer API key");
+      if (bedrockUnsupportedAuth(credentials)) return error(400, "native embeddings require a Bedrock bearer API key");
       const token = bedrockToken(credentials);
       if (!token) return error(401, "API key required");
       if (signal?.aborted) return error(499, "request aborted");
-      const transport = send ?? ((target, init) => proxyAwareFetch(target, init, resolveCredentialProxyOptions(credentials)));
+      const proxyOptions = { ...resolveCredentialProxyOptions(credentials), disableEnvProxy: true };
+      const transport = send ?? ((target, init) => proxyAwareFetch(target, init, proxyOptions));
       const deadline = now() + Math.min(60000, Math.max(1, timeoutMs));
       const vectors = [];
       let tokens = 0, usageKnown = true, submitted = false;

@@ -28,6 +28,8 @@ import {
 // Pin values before workers reload the config. Occupied explicit ports still fail.
 if (!process.env[TRANSIENT_PORT_ENV]) process.env[TRANSIENT_PORT_ENV] = String(await reserveLoopbackPort());
 const plan = transientServerPlan();
+// Preserve failure artifacts outside the temporary Chromium scratch directory.
+const reportsRoot = join(tmpdir(), "omc-docs");
 // Chromium uses Unix sockets below TMPDIR; long checkpoint paths exceed their
 // kernel limit. Keep browser scratch private and short, independently of reports.
 if (process.env.TEST_WORKER_INDEX === undefined) {
@@ -65,7 +67,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 2,
   reporter: "list",
-  outputDir: join(tmpdir(), "omc-docs", `playwright-docs-results-${plan.port}`),
+  outputDir: join(reportsRoot, `playwright-docs-results-${plan.port}`),
   globalSetup: "./tests/global-setup.mjs",
   use: useOptions,
   webServer: {

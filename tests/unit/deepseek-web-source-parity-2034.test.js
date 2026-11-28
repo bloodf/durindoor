@@ -89,16 +89,19 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 it("requires source proof regardless of legacy bypass flags", async () => {
-  for (const value of [undefined, "", "false", "off", "source"]) {
+  expect(deepSeekWebProofOfWorkEnabled({})).toBe(true);
+  for (const value of [undefined, "", "false", "off", "1", "true", "worker", "source", " Source "]) {
     expect(deepSeekWebProofOfWorkEnabled({ DURINDOOR_DEEPSEEK_WEB_POW: value })).toBe(true);
     vi.stubEnv("DURINDOOR_DEEPSEEK_WEB_POW", value);
     mocks.fetch.mockClear();
     const { response } = await new Executor().execute(input());
     expect(response.status).toBe(200);
-    expect((await response.json()).choices[0].message.content).toBe("回答 answer");
+    expect((await response.json()).choices[0].message).toMatchObject({ content: "回答 answer", reasoning_content: "consider this" });
     expect(mocks.fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
       "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
     ]);
+    expect(Object.keys(mocks.fetch.mock.calls[2][1].headers).map(h => h.toLowerCase())).not.toContain("x-ds-pow-response");
+    expect(Object.keys(mocks.fetch.mock.calls[3][1].headers).map(h => h.toLowerCase())).toContain("x-ds-pow-response");
   }
 });
 

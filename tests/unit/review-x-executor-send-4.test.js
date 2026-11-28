@@ -27,6 +27,7 @@ import { ChatGptWebExecutor } from "../../open-sse/executors/chatgpt-web.js";
 import { CloudflarePlaygroundExecutor } from "../../open-sse/executors/cloudflare-playground.js";
 import { CursorExecutor } from "../../open-sse/executors/cursor.js";
 import { DeepSeekWebExecutor } from "../../open-sse/executors/deepseek-web.js";
+import { deepSeekHashV1 } from "../../open-sse/executors/deepseek-web/deepseek-pow-hash.js";
 import { DevinCliAgenticExecutor } from "../../open-sse/executors/devin-cli-agentic.js";
 import { DevinCliExecutor } from "../../open-sse/executors/devin-cli.js";
 import { DevinDesktopExecutor, DEVIN_DESKTOP_AUTH_URL, DEVIN_DESKTOP_OPT_IN_KEY } from "../../open-sse/executors/devin-desktop.js";
@@ -170,15 +171,30 @@ const cases = [
   },
   {
     name: "deepseek-web",
-    attempts: 3,
-    unchargedFirst: 2,
+    attempts: 4,
+    unchargedFirst: 3,
     // An aborted DeepSeek request has always answered 499 instead of throwing.
     abortedStatus: 499,
     setup() {
       serve((url) => {
         if (url.endsWith("/users/current")) return Response.json({ data: { biz_data: { token: "access" } } });
         if (url.endsWith("/chat_session/create")) return Response.json({ data: { biz_data: { chat_session: { id: "s1" } } } });
-        return sse(`data: ${JSON.stringify({ data: { biz_data: { response: "hi" } } })}\n\n`);
+        if (url.endsWith("/create_pow_challenge")) {
+          expect(JSON.parse(sends.at(-1).options.body)).toEqual({ target_path: "/api/v0/chat/completion" });
+          return Response.json({ data: { biz_data: { challenge: {
+            algorithm: "DeepSeekHashV1", salt: "shared-sender", expire_at: 1900000000,
+            difficulty: 8, signature: "synthetic-signature",
+            challenge: deepSeekHashV1("shared-sender_1900000000_3"),
+          } } } });
+        }
+        expect(sends.map(send => new URL(send.url).pathname)).toEqual([
+          "/api/v0/users/current", "/api/v0/chat_session/create", "/api/v0/chat/create_pow_challenge", "/api/v0/chat/completion",
+        ]);
+        expect(JSON.parse(Buffer.from(sends.at(-1).options.headers["X-Ds-Pow-Response"], "base64"))).toEqual({
+          algorithm: "DeepSeekHashV1", salt: "shared-sender", answer: 3, signature: "synthetic-signature",
+          challenge: deepSeekHashV1("shared-sender_1900000000_3"), target_path: "/api/v0/chat/completion",
+        });
+        return sse(`data: ${JSON.stringify({ data: { biz_data: { response: "hi" } } })}\n\ndata: [DONE]\n\n`);
       });
       return new DeepSeekWebExecutor();
     },

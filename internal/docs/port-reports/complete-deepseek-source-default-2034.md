@@ -118,3 +118,51 @@ result, because chatCore returns its own client-cancellation response. Neither
 fix changes production behavior or weakens the no-replay assertion. Failure baseline is unchanged and no entries,
 assertion skips, todos or expected-failure markers were added. Protected paths
 are untouched. Full exact-head CI and independent review remain for the parent.
+
+## Gate follow-up
+
+The parent gate found another three-request fixture in
+`tests/unit/review-x-executor-send-4.test.js`. The subsequent instruction to fix
+the failing gate authorizes this additional fixture migration. Only its DeepSeek
+case changes: physical success sends increase from three to four, unbilled setup
+sends before local quota denial increase from two to three, and the fixture now
+supplies a deterministic real-solver challenge plus DONE. Exact path order,
+challenge target and the decoded nonce-3 proof are asserted. The suite's existing
+quota rejection, one-ticket settlement, no-send-on-abort, attempt count and
+attempt timestamp assertions are unchanged. No production change is needed.
+The suite remains 36 cases; the eight-file scoped inventory totals 254 cases.
+
+The gate's removed-line flags are reconciled as follows. Removed lines do not
+represent permission to weaken tests; these are the narrow protocol migrations
+authorized by the original order:
+
+| Flagged file | Replacement and preserved intent |
+| --- | --- |
+| cookie-flow-deepseek-web-2034 | Replace source opt-in with unset environment; all 35 cases and exact account/proxy/proof assertions remain. |
+| deepseek-web-capture | Add DONE to the same successful response; original token precedence, origin, import and capture assertions remain. The original EOF shape remains a negative parity case. |
+| deepseek-web-provider | Add DONE; move the completion bearer assertion from call 2 to 3 and account B's first request from call 3 to 4. Both credential assertions remain. |
+| port9r-deepseek-web-reasoner-3945 | Add DONE to the same response; every model/expert/thinking assertion remains. |
+| provider-registration-web-batch-a-routes | Replace only DeepSeek's incomplete delta with the same answer plus valid finish/DONE and real proof; original incomplete delta remains a negative parity case. Other providers are unchanged. |
+| deepseek-web-source-parity-2034 | Supersede the rejected default-off/three-request/no-proof expectations with mandatory-proof/four-request coverage; restore strict EOF rejection. Keep malformed/empty/mixed negatives. Add DONE to the legacy success fixture. |
+
+This follow-up restores the flag row's full reasoning/content assertion and
+retains every previously tested flag value, including `1`, `true`, `worker` and
+whitespace/case-normalized `Source`, alongside unset/false/off. The challenge's
+no-proof-header assertion remains; the completion must carry the proof header.
+The rejected 200-on-EOF and default-off expectations are intentionally not
+restored because they contradict the requested source contract.
+
+The first expanded run also exposed a runner-layout issue in the unrelated
+Devin fixture: placing TMPDIR under HOME makes its isolated-home guard reject
+the temporary child home. The corrected command gives HOME and TMPDIR separate
+private sibling directories. No Devin code, fixture or assertion is changed.
+
+Follow-up verification: the two edited suites pass all 115 cases (79 parity,
+36 shared-sender), zero failures/skips. Evidence:
+`/var/tmp/ds2034-gate-final.B19quh/results.json`. The expanded first run also
+passed the other six suites' 139 cases. Together these cover all 254 scoped
+cases. The final rerun uses separate private sibling HOME/TMPDIR paths, two
+workers and the same credential-free 300-second command limit. Root lint passes:
+zero errors, 348 existing warnings, zero anti-slop diagnostics. Evidence:
+`/var/tmp/ds2034-lint-gate.NaqY1A/output.log`.
+No full inventory, production build, live request or protected-file edit is used.

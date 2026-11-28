@@ -700,14 +700,26 @@ describe("claude-web: known gaps (NOT PARITY)", () => {
     expect(completionOrg(completions().at(-1))).toBe("org-first");
   });
 
-  it("NOT PARITY: HAR parsing drops cookie expiry, so the server cannot apply its expiry refusal", async () => {
-    const parsed = parseHarDocument(harDocument({ url: ORGS_URL, cookies: [
-      { name: "sessionKey", value: SECRET.a, expires: "2000-01-01T00:00:00.000Z", secure: true },
-    ] }));
-    expect(parsed.entries[0].cookies).toEqual([{ name: "sessionKey", value: SECRET.a }]);
+  it("refuses an expired HAR sessionKey before offering it, also through copied and serialized results", async () => {
+    const { getCookieImportContract } = await import("@/lib/providers/cookieImport/contract");
+    const expired = { url: ORGS_URL, cookies: [{ name: "sessionKey", value: SECRET.a, expires: "2000-01-01T00:00:00.000Z", secure: true }] };
+    const refused = parseHarDocument(harDocument(expired));
+    expect(refused).toEqual({ ok: false, error: "The HAR file's cookies have expired or carry invalid domain, path or expiry metadata." });
+    expect(JSON.stringify(refused)).not.toContain(SECRET.a);
 
-    // The server's rule works on the extension's field, which the HAR path never produces.
-    const { buildImportedCookieHeader, getCookieImportContract } = await import("@/lib/providers/cookieImport/contract");
+    // Beside a fresh request, the expired one is dropped at parse time, so no copy can revive it.
+    const freshExpiry = Math.floor(Date.now() / 1000) + 3600;
+    const parsed = parseHarDocument(harDocument(expired, { url: ORGS_URL, cookies: [{ name: "sessionKey", value: SECRET.b, expirationDate: freshExpiry, secure: true }] }));
+    expect(parsed.entries.map((entry) => entry.cookies)).toEqual([[{ name: "sessionKey", value: SECRET.b, expirationDate: freshExpiry }]]);
+    for (const copy of [parsed, JSON.parse(JSON.stringify(parsed)), structuredClone(parsed)]) {
+      const built = buildImportCandidates({ kind: "har", parsed: copy }, getCookieImportContract("claude-web"));
+      expect(built.candidates.map((candidate) => candidate.cookies)).toEqual([[{ name: "sessionKey", value: SECRET.b, expirationDate: freshExpiry }]]);
+      expect(JSON.stringify(built)).not.toContain(SECRET.a);
+    }
+    expect(await stored()).toHaveLength(0);
+
+    // The server applies the same refusal to an expired `expirationDate`, whichever path sent it.
+    const { buildImportedCookieHeader } = await import("@/lib/providers/cookieImport/contract");
     expect(buildImportedCookieHeader(getCookieImportContract("claude-web"), [
       { name: "sessionKey", value: SECRET.a, expirationDate: Date.parse("2000-01-01T00:00:00.000Z") / 1000 },
     ])).toEqual({ ok: false, error: "Cookie is expired" });

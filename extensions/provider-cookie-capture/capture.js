@@ -42,6 +42,7 @@ export const MESSAGES = Object.freeze({
   no_cookie_store: "Could not find the browser session for this tab. Nothing was sent.",
   no_cookies: "No approved session cookie was found. Sign in to the provider in this tab, create a new pairing and try again.",
   ambiguous_cookies: "The provider site holds more than one signed-in session cookie, so nothing was sent. Sign out, sign in once more in this tab, create a new pairing and try again.",
+  incomplete_cookies: "The provider session cookie is split into pieces that are incomplete or exceed the import limit, so nothing was sent. Sign out, sign in once more in this tab, create a new pairing and try again.",
   no_local_storage: "The provider page holds no approved session value. Open the provider site in this tab, create a new pairing and try again.",
   tab_navigated: "The tab left the provider site while its session value was being read, so nothing was sent. Return to the provider site in this tab and click Send again.",
   cancelled: "Cancelled. Create a new pairing if you want to try again.",
@@ -252,7 +253,20 @@ async function readHashedFamily(chrome, plan, storeId, cancelled, now) {
   return { cookies };
 }
 
-/** @returns {Promise<{ cookies: object[], ambiguous: boolean }>} */
+/**
+ * Exact-name reads of the approved cookies in the tab's own store; never enumerates the jar.
+ *
+ * Chunked families (`<name>.<n>`):
+ *  - whole cookie present: chunks are read from `.0` up to the first gap or the cookie ceiling,
+ *    exactly as before (the import contract lets complete chunks supersede the whole copy);
+ *  - whole cookie missing: every canonical index `.0`..`.15` is read, even after a hole, plus the
+ *    overflow sentinel `.16`. An approved chunk after a hole, or the sentinel, makes the capture
+ *    `incomplete`: nothing is sent and nothing is truncated silently.
+ * A chunk that is not a secure cookie of this host counts as absent, like any unapproved cookie.
+ * A missing final chunk with no higher index present cannot be told apart from a complete set.
+ *
+ * @returns {Promise<{ cookies: object[], ambiguous: boolean, incomplete: boolean }>}
+ */
 async function readApprovedCookies(chrome, plan, storeId, cancelled) {
   const url = `${plan.providerOrigin}/`;
   const host = new URL(plan.providerOrigin).hostname;
@@ -266,7 +280,7 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     if (out) found.push(out);
     return out;
   };
-  const done = (ambiguous = false) => ({ cookies: ambiguous ? [] : found, ambiguous });
+  const done = (ambiguous = false, incomplete = false) => ({ cookies: ambiguous || incomplete ? [] : found, ambiguous, incomplete });
   for (const name of plan.cookieNames) {
     await take(name);
     if (cancelled()) return done();
@@ -277,10 +291,23 @@ async function readApprovedCookies(chrome, plan, storeId, cancelled) {
     if (cancelled()) return done();
   }
   for (const prefix of plan.cookiePrefixes) {
-    // Exact-name reads only: chunks are contiguous from .0 and probing stops at the first gap
-    // or the cookie ceiling. A chunk beyond a gap is never read, so it cannot be detected here.
-    for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
-      if (!(await take(`${prefix}${index}`)) || cancelled()) break;
+    const whole = plan.cookieNames.find((name) => prefix === `${name}.`);
+    if (whole !== undefined && found.some((cookie) => cookie.name === whole)) {
+      // Whole cookie present: probe contiguous chunks only, stopping at the first gap or the ceiling.
+      for (let index = 0; index < MAX_COOKIES && found.length < MAX_COOKIES; index += 1) {
+        if (!(await take(`${prefix}${index}`)) || cancelled()) break;
+      }
+      if (cancelled()) return done();
+      continue;
+    }
+    // Whole cookie missing: the chunks are the session. Read 0..MAX_COOKIES-1 and the sentinel.
+    let hole = false;
+    for (let index = 0; index <= MAX_COOKIES; index += 1) {
+      const chunk = await take(`${prefix}${index}`);
+      if (cancelled()) return done();
+      if (!chunk) { hole = true; continue; }
+      // The overflow sentinel, or a chunk after a hole: the set is not one complete session.
+      if (index === MAX_COOKIES || hole) return done(false, true);
     }
   }
   if (found.length > MAX_COOKIES || found.some((cookie) => cookie.value.length > 8192 || /[^\x20-\x7e]|;|^\s|\s$/.test(cookie.value))) return done(true);
@@ -403,6 +430,7 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
 
     let cookies = [];
     let ambiguousCookies = false;
+    let incompleteCookies = false;
     if (planUsesCookies(plan)) {
       // The session is the cookie store that owns this tab (normal, incognito, container).
       let stores;
@@ -412,7 +440,7 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
       if (cancelled()) return fail("cancelled");
       if (!store) return fail("no_cookie_store");
 
-      try { ({ cookies, ambiguous: ambiguousCookies } = await readApprovedCookies(chrome, plan, store.id, cancelled)); }
+      try { ({ cookies, ambiguous: ambiguousCookies, incomplete: incompleteCookies } = await readApprovedCookies(chrome, plan, store.id, cancelled)); }
       catch { await permissionsAvailable(); return cancelled() ? fail("cancelled") : fail("permission_denied"); }
       if (plan.hashedCookiePrefixes?.length) {
         let read;
@@ -437,6 +465,7 @@ export async function runCapture({ chrome, fetch, plan, confirmed, signal, now =
     }
     if (!(await permissionsAvailable())) return cancelled() ? fail("cancelled") : fail("permission_denied");
     if (cancelled()) return fail("cancelled");
+    if (incompleteCookies) return fail("incomplete_cookies");
     if (ambiguousCookies) return fail("ambiguous_cookies");
     if (planUsesCookies(plan) && cookies.length === 0) return fail("no_cookies");
     if (localStorage && Object.keys(localStorage).length !== plan.localStorageKeys.length) return fail("no_local_storage");

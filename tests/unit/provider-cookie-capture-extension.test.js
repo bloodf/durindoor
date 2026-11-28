@@ -366,7 +366,10 @@ describe("credential filtering and session binding", () => {
     expect(fetch.mock.calls[0][1].body).not.toContain(NOISE);
   });
 
-  it("collects contiguous chunks only, in index order, and stops at the first gap", async () => {
+  const CHUNK = "__Secure-next-auth.session-token.";
+  const chunkNames = (count) => Array.from({ length: count }, (_, index) => `${CHUNK}${index}`);
+
+  it("refuses a chunk after a gap without sending, and never lists the jar", async () => {
     const d = { domain: ".chatgpt.com" };
     const jar = {
       "__Secure-next-auth.session-token.0": cookie("__Secure-next-auth.session-token.0", CHUNK0, d),
@@ -374,14 +377,48 @@ describe("credential filtering and session binding", () => {
       "__Secure-next-auth.session-token.3": cookie("__Secure-next-auth.session-token.3", NOISE, d),
     };
     const { calls, fetch, result } = await capture({ p: chatgptPairing(), chromeOpts: { tabUrl: "https://chatgpt.com/c/1", cookies: jar } });
+    expect(result).toEqual({ ok: false, code: "incomplete_cookies", message: MESSAGES.incomplete_cookies });
+    expect(fetch).not.toHaveBeenCalled();
+    const requested = calls.filter((c) => c.name === "cookies.get").map((c) => c.arg.name);
+    // Exact names only, past the hole at `.2`, stopping at the first chunk found after it.
+    expect(requested).toEqual(["__Secure-next-auth.session-token", ...chunkNames(4)]);
+    expect(callNames(calls)).not.toContain("cookies.getAll");
+    expect(callNames(calls)).toContain("permissions.remove");
+    leaks(result, [CHUNK0, CHUNK1, NOISE]);
+  });
+
+  it("collects contiguous chunks in index order when the whole cookie is missing", async () => {
+    const d = { domain: ".chatgpt.com" };
+    const jar = {
+      "__Secure-next-auth.session-token.0": cookie("__Secure-next-auth.session-token.0", CHUNK0, d),
+      "__Secure-next-auth.session-token.1": cookie("__Secure-next-auth.session-token.1", CHUNK1, d),
+    };
+    const { calls, fetch, result } = await capture({ p: chatgptPairing(), chromeOpts: { tabUrl: "https://chatgpt.com/c/1", cookies: jar } });
     expect(result.ok).toBe(true);
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body).toMatchObject({ provider: "chatgpt-web", origin: "https://chatgpt.com" });
-    expect(body.cookies.map((c) => c.name)).toEqual(["__Secure-next-auth.session-token.0", "__Secure-next-auth.session-token.1"]);
+    expect(body.cookies.map((c) => c.name)).toEqual(chunkNames(2));
     expect(body.cookies[0].domain).toBe("chatgpt.com");
     const requested = calls.filter((c) => c.name === "cookies.get").map((c) => c.arg.name);
-    expect(requested).toEqual(["__Secure-next-auth.session-token", "__Secure-next-auth.session-token.0", "__Secure-next-auth.session-token.1", "__Secure-next-auth.session-token.2"]);
-    expect(fetch.mock.calls[0][1].body).not.toContain(NOISE);
+    // Bounded: the whole name, then `.0`..`.15` and the `.16` overflow sentinel, nothing else.
+    expect(requested).toEqual(["__Secure-next-auth.session-token", ...chunkNames(MAX_COOKIES + 1)]);
+    expect(callNames(calls)).not.toContain("cookies.getAll");
+  });
+
+  it("refuses a missing-whole chunk set that reaches the overflow sentinel instead of truncating it", async () => {
+    const jar = Object.fromEntries(chunkNames(MAX_COOKIES + 1).map((name) => [name, cookie(name, VALUE, { domain: "chatgpt.com" })]));
+    const { calls, fetch, result } = await capture({ p: chatgptPairing(), chromeOpts: { tabUrl: "https://chatgpt.com/", cookies: jar } });
+    expect(result).toMatchObject({ ok: false, code: "incomplete_cookies" });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(calls.filter((c) => c.name === "cookies.get").map((c) => c.arg.name)).toEqual(["__Secure-next-auth.session-token", ...chunkNames(MAX_COOKIES + 1)]);
+    expect(callNames(calls)).not.toContain("cookies.getAll");
+  });
+
+  it("sends exactly the sixteen canonical chunks when the sentinel is absent", async () => {
+    const jar = Object.fromEntries(chunkNames(MAX_COOKIES).map((name) => [name, cookie(name, "x", { domain: "chatgpt.com" })]));
+    const { fetch, result } = await capture({ p: chatgptPairing(), chromeOpts: { tabUrl: "https://chatgpt.com/", cookies: jar } });
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).cookies.map((c) => c.name)).toEqual(chunkNames(MAX_COOKIES));
   });
 
   it("never exceeds the dashboard's cookie ceiling when probing chunks", async () => {

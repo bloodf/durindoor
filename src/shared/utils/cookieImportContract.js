@@ -206,13 +206,20 @@ export function displayCookieNames(contract) {
 /**
  * True when the provider approves this cookie name: either the name itself,
  * a chunk of an approved cookie, or a member of an approved hashed family.
+ *
+ * A chunk index must be canonical (`0`, or no leading zero) and below
+ * MAX_IMPORT_COOKIES, the same `.0`..`.15` range the browser capture reads, so
+ * `.00`, `.016` or `.16` are never stored as a chunk of the session.
  */
 export function isApprovedCookieName(contract, name) {
   if (contract.cookieNames.includes(name) || contract.optionalCookies?.includes(name)) return true;
   if (hashedCookiePrefixOf(contract, name) !== null) return true;
-  return contract.cookiePrefixes.some((prefix) =>
-    name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)) &&
-    contract.cookieNames.some((base) => prefix.startsWith(base)));
+  return contract.cookiePrefixes.some((prefix) => {
+    if (!name.startsWith(prefix)) return false;
+    const index = name.slice(prefix.length);
+    return /^(0|[1-9][0-9]?)$/.test(index) && Number(index) < MAX_IMPORT_COOKIES &&
+      contract.cookieNames.some((base) => prefix.startsWith(base));
+  });
 }
 
 /** Cookie names follow the RFC token grammar. */

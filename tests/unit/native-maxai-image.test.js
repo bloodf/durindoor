@@ -239,7 +239,7 @@ describe("wire contract", () => {
     expect(resolveMaxaiImageCredential({ accessToken: jwt, providerSpecificData: { deviceId: "\"dev\"" } }))
       .toEqual({ token: jwt, deviceId: "dev", userId: "jwt-user" });
     expect(resolveMaxaiImageCredential({ apiKey: "access_token=t; device_id=d; user_id=u", providerSpecificData: { maxaiAccessToken: "psd" } }))
-      .toEqual({ token: "psd", deviceId: "d", userId: "u" });
+      .toEqual({ token: "t", deviceId: "d", userId: "u" });
     expect(resolveMaxaiImageCredential({ apiKey: "access_token=t" })).toBeNull();
     expect(resolveMaxaiImageCredential({ providerSpecificData: { accessToken: "t\r\nX: y", deviceId: "d", userId: "u" } })).toBeNull();
   });

@@ -140,3 +140,79 @@ it("binds update to its selected connection and rejects another origin without c
   expect((await getProviderConnectionById(first.id)).providerSpecificData["app-config-uuid"]).toBe(device);
   expect((await getProviderConnectionById(second.id)).providerSpecificData["app-config-uuid"]).toBe("Rsynthetic-second");
 });
+
+// These cases use the actual public routes, database, registry and executor. Vendor
+// frames are synthetic; the UUID and strict proxy are observed at the network edge.
+import { describe } from "vitest";
+import { cookiePublicFlow2034 } from "./helpers/cookiePublicFlow2034.js";
+
+describe("TinyCMS imported accounts through public routes", () => {
+  let flow;
+  const values = ["Rsynthetic-public-first", "Rsynthetic-public-second"];
+  const candidate = (value) => ({ origin: site, localStorage: { "app-config-uuid": value } });
+  const model = "tinycms-web/gpt-5.5";
+  const vendorJson = () => Response.json({ id: "synthetic", object: "chat.completion", model: "gpt-5.5", choices: [{ index: 0, message: { role: "assistant", content: "fixture answer" }, finish_reason: "stop" }] });
+  const vendorSse = () => new Response('data: {"id":"synthetic","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"content":"fixture answer"},"finish_reason":null}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
+  beforeEach(async () => { vi.doUnmock("../../open-sse/utils/proxyFetch.js"); flow = await cookiePublicFlow2034("tinycms-web"); });
+  afterEach(async () => { await flow?.close(); });
+  async function accounts() {
+    const a = await flow.imported({ action: "create", name: "Public A" }, candidate(values[0]));
+    const b = await flow.imported({ action: "create", name: "Public B" }, candidate(values[1]));
+    return { a, b, da: await flow.bind(a.id, "tiny-a"), db: await flow.bind(b.id, "tiny-b") };
+  }
+  function vendor(stream, chat = stream ? vendorSse : vendorJson) {
+    flow.network.mockImplementation(async (url) => {
+      if (String(url).includes("ipify")) return Response.json({ ip: "203.0.113.9" });
+      if (String(url).endsWith("/api/challenge")) return Response.json({ challenge: "synthetic", challengeId: "challenge", difficulty: 0, version: "1", expiresAt: 4102444800000 });
+      return chat();
+    });
+  }
+  function credentialCalls() { return flow.network.mock.calls.filter(([url]) => String(url).includes("gov.freegpt.win")); }
+  it.each([false, true].flatMap((anthropic) => [false, true].flatMap((stream) => [0, 1].map((index) => [anthropic, stream, index]))))(
+    "dispatches the selected stored UUID and strict proxy anthropic=%s stream=%s account=%s", async (anthropic, stream, index) => {
+      const { a, b, da, db } = await accounts();
+      vendor(stream);
+      const response = await flow.dispatch({ model, anthropic, stream, id: [a, b][index].id });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("fixture answer");
+      const calls = credentialCalls();
+      expect(calls).toHaveLength(2);
+      for (const [, init] of calls) {
+        expect(init.headers.uuid).toBe(values[index]);
+        expect(init.headers.cookie).toBeUndefined();
+        expect(init.dispatcher).toBe([da, db][index]);
+      }
+      const listing = await (await flow.list()).text();
+      for (const value of values) {
+        expect(listing).not.toContain(value);
+        expect(text).not.toContain(value);
+        expect(JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls))).not.toContain(value);
+      }
+    },
+  );
+  it("updates only its paired account and rejects foreign origin and ownership", async () => {
+    const { a, b } = await accounts();
+    const before = await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById));
+    let p = await flow.issue({ action: "update", connectionId: a.id });
+    expect((await flow.submit(p, { ...candidate(device), connectionId: b.id })).ok).toBe(false);
+    p = await flow.issue({ action: "update", connectionId: a.id });
+    expect((await flow.submit(p, { ...candidate(device), origin: "https://foreign.example", connectionId: a.id })).ok).toBe(false);
+    expect((await flow.pairResponse({ action: "update", connectionId: a.id }, "synthetic-foreign-owner")).status).toBe(403);
+    expect(await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById))).toEqual(before);
+    await flow.imported({ action: "update", connectionId: a.id }, candidate(device));
+    expect((await flow.db.getProviderConnectionById(a.id)).providerSpecificData["app-config-uuid"]).toBe(device);
+    expect(await flow.db.getProviderConnectionById(b.id)).toEqual(before[1]);
+  });
+  it.each([401, 429, 502])("does not report success on a pinned chat refusal %s", async (status) => {
+    const { a, da } = await accounts();
+    vendor(true, () => Response.json({ error: "synthetic refusal" }, { status }));
+    const response = await flow.dispatch({ model, stream: true, id: a.id });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    const calls = credentialCalls();
+    expect(calls.map(([url, init]) => [String(url).endsWith("/api/challenge") ? "challenge" : "chat", init.headers.uuid, init.dispatcher])).toEqual([["challenge", values[0], da], ["chat", values[0], da]]);
+  });
+});

@@ -146,3 +146,268 @@ describe("NoTrack real capture to stored dispatch", () => {
     expect(db.all("SELECT * FROM providerConnections")).toHaveLength(0);
   });
 });
+
+// The public fixture unloads the adapter mocks above and exercises the real gateway.
+import { cookiePublicFlow2034 } from "./helpers/cookiePublicFlow2034.js";
+describe("NoTrack imported accounts through public routes", () => {
+  let flow;
+  const otherValues = { uid: "synthetic-uid-b", si_usr_id: "synthetic-user-b", si_ses_id: "synthetic-session-b", nt_session: "synthetic-optional-b" };
+  const candidate = (v) => ({ origin, cookies: Object.entries(v).map(([name, value]) => ({ name, value, domain: "notrack.ai", secure: true })) });
+  const cookie = (v) => Object.entries(v).map(([name, value]) => `${name}=${value}`).join("; ");
+  const vendor = () => new Response('data: {"type":"delta","chunk":"fixture answer"}\n\n', { headers: { "content-type": "text/event-stream" } });
+  beforeEach(async () => { flow = await cookiePublicFlow2034("notrack-web"); });
+  afterEach(async () => { await flow?.close(); });
+  async function accounts() {
+    const a = await flow.imported({ action: "create", name: "Public A" }, candidate(values));
+    const b = await flow.imported({ action: "create", name: "Public B" }, candidate(otherValues));
+    const da = await flow.bind(a.id, "a"); const dbDispatcher = await flow.bind(b.id, "b");
+    return { a, b, da, dbDispatcher };
+  }
+  function snapshot(v, dispatcher, index = 0) {
+    const [url, init] = flow.network.mock.calls[index];
+    expect(String(url)).toBe(`${origin}/api/dispatch`);
+    expect(init.headers.cookie).toBe(cookie(v));
+    expect(init.dispatcher).toBe(dispatcher);
+    expect(init.redirect).toBe("error");
+    expect(JSON.parse(init.body)).toMatchObject({ user_input: "[User]\nsynthetic question", model: "C" });
+  }
+  const dispatch = (options = {}) => flow.dispatch({ model: "notrack-web/notrack-c", ...options });
+  it.each([false, true].flatMap((anthropic) => [false, true].flatMap((stream) => ["a", "b"].map((label) => [anthropic, stream, label]))))("pins public route anthropic=%s stream=%s account=%s", async (anthropic, stream, label) => {
+    const { a, b, da, dbDispatcher } = await accounts();
+    flow.network.mockImplementation(vendor);
+    const response = await dispatch({ anthropic, stream, id: label === "a" ? a.id : b.id });
+    const text = await response.text();
+    expect(response.status, text).toBe(200);
+    expect(text).toContain("fixture answer");
+    expect(flow.network).toHaveBeenCalledTimes(1);
+    snapshot(label === "a" ? values : otherValues, label === "a" ? da : dbDispatcher);
+    const listed = await (await flow.list()).text();
+    const output = listed + text + JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls));
+    for (const secret of [...Object.values(values), ...Object.values(otherValues)]) expect(output).not.toContain(secret);
+  });
+  it.each(["header", "curl", "har"])("persists parsed %s before public dispatch", async (kind) => {
+    const parsed = kind === "header" ? parseCookieHeaderValue(`Cookie: ${header}`) : kind === "curl" ? parseCurlCommand(`curl '${origin}/api/dispatch' -H 'Cookie: ${header}'`) : parseHarDocument(JSON.stringify({ log: { entries: [{ request: { url: `${origin}/api/dispatch`, headers: [{ name: "Cookie", value: header }], cookies: [] } }] } }));
+    const built = buildImportCandidates({ kind, parsed }, getCookieImportContract("notrack-web"));
+    expect(built.ok).toBe(true);
+    const row = await flow.imported({ action: "create", name: kind }, built.candidates[0]);
+    expect(row.apiKey).toBe(header);
+    const dispatcher = await flow.bind(row.id, kind);
+    flow.network.mockImplementation(vendor);
+    const response = await dispatch({ id: row.id });
+    expect(response.status, await response.text()).toBe(200);
+    expect(flow.network).toHaveBeenCalledTimes(1);
+    snapshot(values, dispatcher);
+  });
+  it("updates only the paired account and rejects a foreign owner", async () => {
+    const { a, b, dbDispatcher } = await accounts();
+    const before = await flow.db.getProviderConnectionById(a.id);
+    const p = await flow.issue({ action: "update", connectionId: a.id });
+    expect((await flow.submit(p, { ...candidate(otherValues), connectionId: b.id })).status).toBe(409);
+    expect((await flow.pairResponse({ action: "update", connectionId: a.id }, "synthetic-foreign-owner")).status).toBe(403);
+    await flow.imported({ action: "update", connectionId: b.id }, candidate(values));
+    expect(await flow.db.getProviderConnectionById(a.id)).toEqual(before);
+    flow.network.mockImplementation(vendor);
+    expect((await dispatch({ id: b.id })).status).toBe(200);
+    snapshot(values, dbDispatcher);
+  });
+  it.each([["foreign origin", { origin: "https://notrack.ai.evil.example" }], ["expired", { cookies: [{ ...candidate(values).cookies[0], expirationDate: 1 }, ...candidate(values).cookies.slice(1)] }], ["localStorage", { localStorage: { token: "synthetic-storage" } }]])("rejects %s without a write", async (_label, change) => {
+    const { a, b } = await accounts();
+    const before = await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById));
+    const p = await flow.issue({ action: "update", connectionId: a.id });
+    expect((await flow.submit(p, { ...candidate(values), connectionId: a.id, ...change })).status).toBe(400);
+    expect(await Promise.all([a.id, b.id].map(flow.db.getProviderConnectionById))).toEqual(before);
+    expect(flow.network).not.toHaveBeenCalled();
+  });
+  it.each([401, 429, 502])("does not rotate a pinned account on HTTP %s", async (status) => {
+    const { a, da } = await accounts();
+    flow.network.mockImplementation(() => new Response("synthetic refusal", { status }));
+    const response = await dispatch({ id: a.id, stream: true });
+    const text = await response.text();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(text).not.toContain("[DONE]"); expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network).toHaveBeenCalledTimes(1); snapshot(values, da);
+  });
+  it("falls back only after an explicit 401 refusal", async () => {
+    const { a, b, da, dbDispatcher } = await accounts();
+    await flow.db.updateProviderConnection(a.id, { priority: 1 });
+    await flow.db.updateProviderConnection(b.id, { priority: 2 });
+    flow.network.mockResolvedValueOnce(new Response("refused", { status: 401 })).mockImplementation(vendor);
+    const response = await dispatch();
+    expect(response.status, await response.text()).toBe(200);
+    expect(flow.network).toHaveBeenCalledTimes(2); snapshot(values, da, 0); snapshot(otherValues, dbDispatcher, 1);
+  });
+  it("does not replay a rejected network request with an uncertain outcome", async () => {
+    await accounts();
+    flow.network.mockRejectedValue(new TypeError("synthetic connection reset after dispatch"));
+    const response = await dispatch();
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(await response.text()).not.toContain("[DONE]");
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it.each([["HTML", "<html>sign in</html>"], ["malformed", "data: {broken\n\n"], ["vendor error", 'data: {"type":"error","message":"synthetic quota refusal"}\n\n']])("rejects %s vendor body without a success terminal", async (_label, bodyText) => {
+    const { a } = await accounts();
+    flow.network.mockImplementation(() => new Response(bodyText, { headers: { "content-type": "text/event-stream" } }));
+    const response = await dispatch({ id: a.id, stream: true });
+    const text = await response.text();
+    expect(text).not.toContain("[DONE]");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it("does not replay after partial text and a broken vendor body", async () => {
+    await accounts();
+    let sent = false;
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ pull(controller) {
+      if (!sent) { sent = true; controller.enqueue(new TextEncoder().encode('data: {"type":"delta","chunk":"partial fixture"}\n\n')); }
+      else controller.error(new TypeError("synthetic body failure"));
+    } }), { headers: { "content-type": "text/event-stream" } }));
+    const response = await dispatch({ stream: true });
+    let text = ""; const reader = response.body.getReader();
+    try { for (;;) { const { done, value } = await reader.read(); if (done) break; text += new TextDecoder().decode(value); } } catch { /* Preserve delivered bytes. */ }
+    expect(sent).toBe(true);
+    expect(text).not.toContain("[DONE]"); expect(text).not.toContain('"finish_reason":"stop"');
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it("honors caller abort without replay", async () => {
+    await accounts(); const controller = new AbortController();
+    flow.network.mockImplementation(async (_url, init) => { controller.abort(); throw init.signal.reason; });
+    const response = await dispatch({ signal: controller.signal });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(await response.text()).not.toContain("[DONE]");
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it("bounds a stalled buffered vendor body without replay", async () => {
+    await accounts();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start(controller) { setTimeout(() => { try { controller.close(); } catch { /* The body deadline already cancelled it. */ } }, 1500); } }), { headers: { "content-type": "text/event-stream" } }));
+    const pending = dispatch();
+    const result = await Promise.race([pending, new Promise((resolve) => setTimeout(() => resolve(null), 1000))]);
+    if (!result) await pending;
+    expect(result, "the 100ms body deadline must terminate the request").not.toBeNull();
+    expect(result.status).toBeGreaterThanOrEqual(400);
+    expect(await result.text()).not.toContain("[DONE]");
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  }, 10000);
+
+  // Repair evidence. Each case below runs the real public route, gateway
+  // selection, registry executor and stored proxy binding; only the vendor
+  // transport answers with synthetic frames. None of it is live NoTrack proof.
+  const sse = (text) => new Response(text, { headers: { "content-type": "text/event-stream" } });
+  const formats = [false, true].flatMap((anthropic) => [false, true].map((stream) => [anthropic, stream]));
+  async function ordered() {
+    const set = await accounts();
+    await flow.db.updateProviderConnection(set.a.id, { priority: 1 });
+    await flow.db.updateProviderConnection(set.b.id, { priority: 2 });
+    return set;
+  }
+  /** Read what a stream delivered before it broke; `failed` tells whether it ended in an error. */
+  async function drain(response) {
+    let text = "", failed = false;
+    const reader = response.body.getReader();
+    try { for (;;) { const { done, value } = await reader.read(); if (done) break; text += new TextDecoder().decode(value); } } catch { failed = true; }
+    return { text, failed };
+  }
+  function noSecrets(text) {
+    const output = text + JSON.stringify(flow.logs.flatMap((spy) => spy.mock.calls));
+    for (const secret of [...Object.values(values), ...Object.values(otherValues)]) expect(output).not.toContain(secret);
+  }
+  const unusable = [
+    ["HTML", () => sse("<html>sign in</html>"), "Notrack returned an unusable response"],
+    ["malformed SSE", () => sse("data: {broken\n\n"), "Notrack returned an unusable response"],
+    ["vendor error frame", () => sse('data: {"type":"error","message":"synthetic quota refusal"}\n\n'), "Notrack reported a generation failure"],
+    ["HTTP 500", () => new Response("synthetic failure", { status: 500 }), "Notrack returned HTTP 500"],
+    ["HTTP 502", () => new Response("synthetic failure", { status: 502 }), "Notrack returned HTTP 502"],
+    ["transport reset", () => { throw new TypeError("synthetic connection reset after dispatch"); }, "Notrack connection failed"],
+  ];
+  it.each(unusable.flatMap(([label, make, message]) => formats.map(([anthropic, stream]) => [label, anthropic, stream, make, message])))("answers %s once with a fixed error and no fallback anthropic=%s stream=%s", async (_label, anthropic, stream, make, message) => {
+    const { da } = await ordered();
+    flow.network.mockImplementation(make);
+    const response = await dispatch({ anthropic, stream });
+    const text = await response.text();
+    expect(response.status).toBe(502);
+    const body = JSON.parse(text);
+    expect(anthropic ? body.error.type : body.error.code).toBe(anthropic ? "api_error" : "bad_gateway");
+    expect(body.error.message).toContain(message);
+    expect(body.choices).toBeUndefined(); expect(body.content).toBeUndefined(); expect(body.usage).toBeUndefined();
+    for (const marker of ["[DONE]", '"finish_reason":"stop"', "message_stop", "end_turn", "synthetic quota refusal", "synthetic failure"]) expect(text).not.toContain(marker);
+    expect(flow.network).toHaveBeenCalledTimes(1); snapshot(values, da);
+    expect(flow.usage).not.toHaveBeenCalled();
+    noSecrets(text);
+  });
+  it.each([403, 429])("falls back only after an explicit %s refusal", async (status) => {
+    const { da, dbDispatcher } = await ordered();
+    flow.network.mockResolvedValueOnce(new Response("refused", { status })).mockImplementation(vendor);
+    const response = await dispatch();
+    expect(response.status, await response.text()).toBe(200);
+    expect(flow.network).toHaveBeenCalledTimes(2); snapshot(values, da, 0); snapshot(otherValues, dbDispatcher, 1);
+  });
+  const midStream = [
+    ["vendor error frame", 'data: {"type":"error","message":"synthetic quota refusal"}\n\n'],
+    ["malformed frame", "data: {broken\n\n"],
+    ["stalled body", null],
+  ];
+  it.each(midStream.flatMap(([label, tail]) => [false, true].map((anthropic) => [label, anthropic, tail])))("ends a stream with %s after partial text without a success terminal or replay anthropic=%s", async (_label, anthropic, tail) => {
+    const { da } = await ordered(); const cancelled = vi.fn();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"type":"delta","chunk":"partial fixture"}\n\n'));
+      if (tail) controller.enqueue(new TextEncoder().encode(tail));
+    }, cancel: cancelled }), { headers: { "content-type": "text/event-stream" } }));
+    const started = Date.now();
+    const response = await dispatch({ anthropic, stream: true });
+    expect(response.status).toBe(200);
+    const { text, failed } = await drain(response);
+    expect(Date.now() - started, "the 100ms idle body deadline must end a stalled stream").toBeLessThan(1000);
+    expect(failed).toBe(true);
+    expect(text).toContain("partial fixture");
+    expect(cancelled, "the upstream body is cancelled once the stream fails").toHaveBeenCalled();
+    for (const marker of ["[DONE]", '"finish_reason":"stop"', "message_stop", "end_turn", "synthetic quota refusal"]) expect(text).not.toContain(marker);
+    expect(flow.network).toHaveBeenCalledTimes(1); snapshot(values, da);
+    expect(flow.usage.mock.calls.map(([entry]) => entry.status)).not.toContain("success");
+    noSecrets(text);
+  }, 10000);
+  it.each([false, true])("bounds a streamed body that stalls before any text without replay anthropic=%s", async (anthropic) => {
+    const { da } = await ordered();
+    const cancelled = vi.fn();
+    flow.network.mockImplementation(() => new Response(new ReadableStream({ start(controller) { setTimeout(() => { try { controller.close(); } catch { /* The body deadline already cancelled it. */ } }, 1500); }, cancel: cancelled }), { headers: { "content-type": "text/event-stream" } }));
+    const started = Date.now();
+    const response = await dispatch({ anthropic, stream: true });
+    const text = await response.text();
+    expect(Date.now() - started, "the 100ms idle body deadline must end the request").toBeLessThan(1000);
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(text).toContain("Notrack response body timed out");
+    expect(text).not.toContain("[DONE]"); expect(text).not.toContain("message_stop");
+    expect(cancelled).toHaveBeenCalled();
+    expect(flow.network).toHaveBeenCalledTimes(1); snapshot(values, da);
+  }, 10000);
+  it("passes a caller abort during the buffered body read without replay", async () => {
+    await ordered(); const controller = new AbortController();
+    flow.network.mockImplementation(() => { setTimeout(() => controller.abort(), 20); return new Response(new ReadableStream({ pull: () => new Promise(() => {}) }), { headers: { "content-type": "text/event-stream" } }); });
+    const response = await dispatch({ signal: controller.signal });
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(await response.text()).not.toContain("[DONE]");
+    expect(flow.network).toHaveBeenCalledTimes(1);
+  });
+  it.each(formats)("enforces client API key scopes on the public route anthropic=%s stream=%s", async (anthropic, stream) => {
+    const { a, b, da, dbDispatcher } = await accounts();
+    const keyA = await flow.db.createApiKey("a", "synthetic-machine", [], null, null, { providerConnectionIds: [a.id] });
+    const keyB = await flow.db.createApiKey("b", "synthetic-machine", [], null, null, { providerConnectionIds: [b.id] });
+    await flow.db.updateSettings({ requireApiKey: true });
+    flow.network.mockImplementation(vendor);
+    for (const [row, key, v, dispatcher] of [[a, keyA, values, da], [b, keyB, otherValues, dbDispatcher]]) {
+      flow.network.mockClear();
+      const response = await dispatch({ anthropic, stream, id: row.id, headers: { authorization: `Bearer ${key.key}` } });
+      const text = await response.text();
+      expect(response.status, text).toBe(200);
+      expect(text).toContain("fixture answer");
+      expect(flow.network).toHaveBeenCalledTimes(1); snapshot(v, dispatcher);
+      expect(flow.usage.mock.calls.at(-1)[0]).toMatchObject({ apiKeyId: key.id });
+      noSecrets(text + JSON.stringify(flow.usage.mock.calls));
+    }
+    flow.network.mockClear();
+    for (const headers of [{ authorization: `Bearer ${keyB.key}` }, { authorization: "Bearer synthetic-invalid" }, {}]) {
+      const response = await dispatch({ anthropic, stream, id: a.id, headers });
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(await response.text()).not.toContain("fixture answer");
+    }
+    expect(flow.network).not.toHaveBeenCalled();
+  });
+
+});

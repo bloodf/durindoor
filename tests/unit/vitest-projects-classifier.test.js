@@ -29,6 +29,43 @@ describe("Vitest project resource classification", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it.each([
+    ["multiline dynamic import", 'await import(\n "./helper.js"\n);'],
+    ["CommonJS local require", 'const helper = require("./helper.js");'],
+    ["bare builtin import", 'import "node:child_process";'],
+    ["commented builtin import", 'import cp from /* c */ "node:child_process"; cp.spawn("echo");'],
+    ["spaced builtin require", 'const cp = require( "node:child_process"); cp.spawn("echo");'],
+    ["malformed source", "const = ;"],
+  ])("classifies %s at the file boundary", (_name, source) => {
+    const root = mkdtempSync(join(tmpdir(), "vitest-classifier-"));
+    try {
+      const tests = join(root, "tests");
+      mkdirSync(tests);
+      writeFileSync(join(tests, "sample.test.js"), source);
+      writeFileSync(join(tests, "helper.js"), "server.listen(0);");
+      expect(createFileClassifier(tests, root)("sample.test.js")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("rebuilds corrupt cache and invalidates changed helper files", () => {
+    const root = mkdtempSync(join(tmpdir(), "vitest-classifier-"));
+    try {
+      const tests = join(root, "tests");
+      const cache = join(tests, "node_modules", ".cache");
+      mkdirSync(cache, { recursive: true });
+      writeFileSync(join(cache, "vitest-projects.json"), "{broken");
+      writeFileSync(join(tests, "sample.test.js"), 'import "./helper.js";');
+      writeFileSync(join(tests, "helper.js"), "export const value = 1;");
+      const first = createFileClassifier(tests, root);
+      expect(first("sample.test.js")).toBe(false);
+      first.saveCache();
+      writeFileSync(join(tests, "helper.js"), "server.listen(12345);");
+      expect(createFileClassifier(tests, root)("sample.test.js")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("detects a listener after a regex literal containing comment delimiters", () => {
     expect(isIntegrationSource("const slash = /[//]/; server.listen(0);" )).toBe(true);
   });

@@ -27,6 +27,7 @@ const playwrightDir = dirname(createRequire(resolve(__dirname, "../package.json"
 const scanned = globSync("**/*.test.js", { cwd: __dirname, exclude: ["**/node_modules/**", "**/.omc/**", "**/.claude/**"] }).sort();
 const isIntegration = createFileClassifier(__dirname);
 const integrationFiles = scanned.filter(isIntegration);
+isIntegration.saveCache();
 const integrationSet = new Set(integrationFiles);
 const unitFiles = scanned.filter(file => !integrationSet.has(file));
 

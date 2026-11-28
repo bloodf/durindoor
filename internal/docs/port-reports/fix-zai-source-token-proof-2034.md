@@ -66,7 +66,9 @@ against `open-sse/executors/zai-web/stream.ts` at the same port pin.
   whitespace trimming into completion JSON `captcha_verify_param`, never into
   an invented query/header or a solver. Audit body copies redact its aliases.
 - A missing/blank proof or image request produces local HTTP 400
-  `zai_proof_required` before **either** POST. Normal text/proof dispatch sends
+  `zai_proof_required` before **either** POST. No Z.ai work exists at that
+  point, so this result carries `claudeRequestScoped: false` (see "Prework
+  refusal and combo fallback" below). Normal text/proof dispatch sends
   setup and one completion to fixed `https://chat.z.ai`, with the selected
   account's token and the exact selected proxy options on both requests.
   Redirects are manual and rejected; a Location is never followed.
@@ -87,10 +89,84 @@ against `open-sse/executors/zai-web/stream.ts` at the same port pin.
   only once in that case, to the completion of the account that is finally
   selected. No new retry loop is added. Caller cancellation settles dispatch
   and throws.
+- A thrown setup failure (before the completion send) answers with the fixed
+  text "Z.ai chat setup failed; completion was not sent". A failure from the
+  completion send on keeps "Z.ai request failed; completion was not replayed",
+  because its outcome is unknown. Statuses (401/403/429 or 502), codes,
+  redaction and the marker are unchanged.
 - Body reads have local 120-second and 16-MiB bounds, cancel their reader on
   failure, and honor caller cancellation. These are local safety bounds,
   **not** a provider proof TTL. Error messages never include provider response
   text or thrown transport messages, which can contain token URLs or proofs.
+
+### Prework refusal and combo fallback
+
+An independent review of `eb93adee35d` found that the no-proof and image
+refusal returned `claudeRequestScoped: true`. Combo (`open-sse/services/combo.js`)
+returns any result with that marker as final, so a combo whose Z.ai member had
+no proof stopped with the 400 instead of trying its next member, although
+nothing had been sent. The fix is in `open-sse/executors/zai-web.js` only: that
+early return now sets `claudeRequestScoped: false`. The result then takes the
+existing path for a request-scoped 400 `invalid_request_error`: no account
+cooldown or account fallback on the same model, and the combo moves to its
+next member. No shared combo, chatCore or `src/` code changed. The marker is
+set by the executor only and is never read from client input.
+
+Everything from the moment the completion send starts is unchanged. A failure
+there keeps `claudeRequestScoped: true`, so it is final: no account, combo or
+outer transient retry, exactly one completion POST, and the unknown-outcome
+message. An invalid proof or a vendor error after the send never falls back.
+
+Image input through the gateway: `zai-web/glm-5.3` reports `vision: false`, so
+the shared chatCore modality strip (`stripUnsupportedModalities`) removes
+image parts before the executor runs. Through the public routes the executor's
+image refusal is not reached for this model. With a stored proof the request
+becomes a text-only turn with no image bytes; without a proof it is the
+no-proof refusal. This shared behavior predates this fix and is not changed
+here. The executor's own image refusal stays tested directly.
+
+New regression `tests/unit/zai-web-proof-combo-fallback-2034.test.js` (15
+cases) uses a real isolated SQLite database, `requireApiKey: true` with a key
+minted by the real repo, a real combo, per-account strict proxy pools, and the
+public `/v1/chat/completions` and `/v1/messages` routes. Only `proxyAwareFetch`
+is mocked, and global fetch refuses every call. It covers:
+- an unadmitted key gets 401 with no provider call;
+- OpenAI and Anthropic, text and image: the proofless Z.ai member refuses
+  locally (400, `zai_proof_required`, marker false), Z.ai sees no request,
+  and the next member answers on its own account and proxy;
+- a direct (non-combo) Z.ai request on either route stays 400 with no POST;
+- an image request with a stored proof sends no image bytes to Z.ai;
+- a failure after the completion POST (rejecting frame, or a throw) stays
+  final: setup plus one completion on the Z.ai proxy, next member never called;
+- executor-level: no proof, stored proof plus image, request proof plus image
+  give 400 with marker false, no POST and a redacted body;
+- executor-level: a thrown setup send and a setup reply without a chat id
+  return the setup-failed text, marker false, and only `chats/new` is called.
+
+Against the previous executor, 9 of the 15 cases fail. These are the four
+combo fallback cases, the three executor refusal cases and the two setup-text
+cases, so the suite tells the old hard stop apart from the fix.
+
+The one changed assertion in an existing file is
+`tests/unit/fix-zai-source-token-proof-2034.test.js:91`, in the prework table:
+`expect(result.claudeRequestScoped).toBe(true)` became `.toBe(false)`. The
+same proof/image inputs, the 400, `zai_proof_required`, no-POST and redaction
+assertions are unchanged. Every post-completion `claudeRequestScoped` true
+assertion (lines 107, 127, 147, 191) is unchanged. No case was removed, and
+every other suite is byte-for-byte unchanged.
+
+### Proof scope limits
+
+- Anthropic Messages: translation keeps only Messages fields, so a
+  `captcha_verify_param` in a `/v1/messages` body is not forwarded. On that
+  route only the stored proof (`providerSpecificData`) is used, and a proof
+  cannot be supplied per request.
+- A stored proof has no local TTL, expiry check or renewal. It is sent as
+  stored until the provider rejects it, and that rejection is final for the
+  request. No validity, lifetime or renewal behavior is claimed.
+- Public capture/import activation of a stored proof is separate shared work
+  (see the handoff below) and is not part of this fix. No proof verifier,
+  browser integration or automatic mint was added.
 
 ### Precise limits and shared-owner handoff
 
@@ -192,6 +268,14 @@ browser, Docker or `~/.9router` was used.
   `provider-cookie-import-contracts`, `provider-registration-web-batch-a`,
   `review-x-executor-send-2`, `review-x-sse-final` and `web-session-redirects`.
   10 files, 505 of 505 tests.
+- PASS (prework fallback revision): from `tests/`, the same runner with
+  `--maxWorkers=2` over the new combo file, the four Zai suites and
+  `web-session-redirects`, `provider-registration-web-batch-a-routes`,
+  `provider-registration-web-batch-a`, `provider-cookie-import-contracts`,
+  `review-x-executor-send-2` and `review-x-sse-final`: 11 files, 520 of 520
+  (the 505 above plus the 15 new cases). Direct `node` ESLint and oxlint (with
+  `.oxlintrc.json`) on the touched files: 0 diagnostics. Root `pnpm run lint`
+  was not rerun.
 - NOT RUN: `test:ci`, full inventory, build, `scripts/checks.sh final`. These
   are outside this unit's scope and belong to later PR qualification.
 

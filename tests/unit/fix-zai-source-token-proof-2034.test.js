@@ -88,7 +88,7 @@ describe("Z.ai pinned source proof contract", () => {
       const result = await run(input("a", { body }));
       expect(result.response.status).toBe(400);
       expect((await result.response.json()).error.code).toBe("zai_proof_required");
-      expect(result.claudeRequestScoped).toBe(true);
+      expect(result.claudeRequestScoped).toBe(false);
     }
     expect(wire.calls).toHaveLength(0);
   });

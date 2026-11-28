@@ -78,6 +78,14 @@ async function readCompletion(response, signal) {
 export class ZaiWebExecutor extends BaseExecutor {
   constructor() { super("zai-web", { id: "zai-web", baseUrl: ORIGIN }); }
 
+  /**
+   * Runs one Z.ai turn: chat setup (`chats/new`, not quota-bearing), then exactly one billable completion POST.
+   *
+   * `claudeRequestScoped` on the result is the existing request-terminal marker, and only this executor sets
+   * it, never from client input. It is false for refusals decided before any POST (missing proof, image input)
+   * and for setup failures, so ordinary fallback applies. It is true for any failure from the completion send
+   * on, because that work may have reached Z.ai: no account, combo or outer retry may send it again.
+   */
   async execute(input) {
     input.signal?.throwIfAborted();
     const token = resolveZaiWebSession(input.credentials, extractZaiWebToken);
@@ -87,7 +95,9 @@ export class ZaiWebExecutor extends BaseExecutor {
     const proof = resolveZaiCaptchaVerifyParam(input.credentials ?? {}, input.body);
     const hasImages = messages.some((message) => Array.isArray(message.content) && message.content.some((part) => ["image_url", "input_image", "image"].includes(part?.type)));
     // Pinned upstream uses a browser here. No compatible account/proxy-bound browser exists locally.
-    if (!proof || hasImages) return { response: errorResponse(400, "Z.ai requires a fresh browser-issued CAPTCHA proof for this account and challenge. Supply captcha_verify_param for a text request; an account/proxy-bound browser transport is unavailable here.", { type: "invalid_request_error", code: "zai_proof_required" }), claudeRequestScoped: true, url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
+    // This refusal is decided before either POST, so no Z.ai work exists. It carries no request-terminal
+    // marker, so the ordinary request-scoped 400 handling applies and a combo may try its next member.
+    if (!proof || hasImages) return { response: errorResponse(400, "Z.ai requires a fresh browser-issued CAPTCHA proof for this account and challenge. Supply captcha_verify_param for a text request; an account/proxy-bound browser transport is unavailable here.", { type: "invalid_request_error", code: "zai_proof_required" }), claudeRequestScoped: false, url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
     const latest = [...messages].reverse().find((message) => message.role === "user");
     const prompt = isString(latest?.content) ? latest.content : Array.isArray(latest?.content) ? latest.content.filter((part) => part.type === "text").map((part) => part.text).join("\n") : "";
     if (!prompt) return { response: errorResponse(400, "Z.ai requires a user message", { type: "invalid_request_error", code: "invalid_request" }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
@@ -132,7 +142,10 @@ export class ZaiWebExecutor extends BaseExecutor {
         throw requestAbortError(input.signal.reason);
       }
       const status = [401, 403, 429].includes(error?.status) ? error.status : 502;
-      return carry({ response: errorResponse(status, status === 401 || status === 403 ? "Z.ai session expired or was rejected" : status === 429 ? "Z.ai quota exceeded" : "Z.ai request failed; completion was not replayed", { type: status === 401 || status === 403 ? "authentication_error" : "upstream_error", code: `HTTP_${status}` }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) });
+      // Before the completion send only setup failed, so say the completion was not sent. After it, the
+      // outcome is unknown and the completion is never replayed.
+      const failed = completionStarted ? "Z.ai request failed; completion was not replayed" : "Z.ai chat setup failed; completion was not sent";
+      return carry({ response: errorResponse(status, status === 401 || status === 403 ? "Z.ai session expired or was rejected" : status === 429 ? "Z.ai quota exceeded" : failed, { type: status === 401 || status === 403 ? "authentication_error" : "upstream_error", code: `HTTP_${status}` }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) });
     }
   }
 

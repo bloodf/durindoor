@@ -49,6 +49,12 @@ afterEach(async () => {
 });
 
 const openai = (model = "zw/glm-5.3", extra = {}) => handleChat(request("/v1/chat/completions", { model, messages: [{ role: "user", content: "ping" }], ...extra }));
+// Synthetic opaque proofs: they only prove forwarding, never provider validity.
+const completionCalls = () => wire.calls.filter((call) => call.url.startsWith(`${ORIGIN}/api/v2/chat/completions?`));
+const expectProofInBodyOnly = (call, proof) => {
+  expect(call.body.captcha_verify_param).toBe(proof);
+  expect(call.url).not.toContain(proof);
+};
 
 describe("Z.ai Web private provider port", () => {
   it("validates token-shaped credentials, lists models, and handles JSON and SSE chat", async () => {
@@ -59,42 +65,53 @@ describe("Z.ai Web private provider port", () => {
     expect(invalid.response.status).toBe(401);
     const catalog = await (await routes.models.GET(request("/v1/models", null, "GET"))).json();
     expect(catalog.data.map((model) => model.id)).toEqual(expect.arrayContaining(["zw/glm-5.3", "zw/glm-5.3-flash"]));
-    const json = await openai();
+    const json = await openai("zw/glm-5.3", { captcha_verify_param: "synthetic-proof-json" });
     expect(json.status).toBe(200);
     expect((await json.json()).choices[0].message).toMatchObject({ content: "hello", reasoning_content: "reason" });
-    const stream = await (await openai("zw/glm-5.3", { stream: true })).text();
+    const stream = await (await openai("zw/glm-5.3", { stream: true, captcha_verify_param: "synthetic-proof-sse" })).text();
     expect(stream).toContain('"content":"hello"'); expect(stream).toContain("[DONE]");
+    expect(completionCalls()).toHaveLength(2);
+    expectProofInBodyOnly(completionCalls()[0], "synthetic-proof-json");
+    expectProofInBodyOnly(completionCalls()[1], "synthetic-proof-sse");
     expect(saved.authType).toBe("cookie");
   });
 
   it("serves the Anthropic Messages route from the same mocked executor", async () => {
-    await connection("zai-a", cookie(jwt("a")));
+    const saved = await connection("zai-a", cookie(jwt("a")));
+    // Anthropic translation keeps only Messages fields, so the proof uses the source's stored-credential location.
+    const { updateProviderConnection } = await import("../../src/lib/localDb.js");
+    await updateProviderConnection(saved.id, { providerSpecificData: { ...saved.providerSpecificData, captchaVerifyParam: "synthetic-proof-messages" } });
     const response = await routes.messages.POST(request("/v1/messages", { model: "zw/glm-5.3", max_tokens: 64, messages: [{ role: "user", content: "ping" }] }));
     expect(response.status).toBe(200);
     expect(JSON.stringify(await response.json())).toContain("hello");
+    expect(completionCalls()).toHaveLength(1);
+    expectProofInBodyOnly(completionCalls()[0], "synthetic-proof-messages");
   });
 
   it("maps expired sessions and quota responses and keeps two cookie sessions isolated", async () => {
     await connection("zai-a", cookie(jwt("a")));
     await connection("zai-b", cookie(jwt("b")));
-    const result = await openai();
+    const result = await openai("zw/glm-5.3", { captcha_verify_param: "synthetic-proof-route" });
     expect(result.status).toBe(200);
     const executor = new ZaiWebExecutor();
-    const directInput = (id) => ({ body: { model: "glm-5.3", messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt(id)) } });
+    const directInput = (id) => ({ body: { model: "glm-5.3", captcha_verify_param: `synthetic-proof-${id}`, messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt(id)) } });
     const beforeDirect = wire.calls.length;
     const first = await executor.execute(directInput("a"));
     const second = await executor.execute(directInput("b"));
     expect(first.response.status).toBe(200); expect(second.response.status).toBe(200);
     expect(wire.calls.slice(beforeDirect).map((call) => call.token)).toEqual([jwt("a"), jwt("a"), jwt("b"), jwt("b")]);
+    const directCompletions = wire.calls.slice(beforeDirect).filter((call) => call.url.startsWith(`${ORIGIN}/api/v2/chat/completions?`));
+    expectProofInBodyOnly(directCompletions[0], "synthetic-proof-a");
+    expectProofInBodyOnly(directCompletions[1], "synthetic-proof-b");
     await connection("zai-expired", cookie(jwt("expired")));
     vi.stubGlobal("fetch", vi.fn(syntheticUpstream(new Set())));
-    const expired = await executor.execute({ body: { model: "glm-5.3", messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt("expired")) } });
+    const expired = await executor.execute({ body: { model: "glm-5.3", captcha_verify_param: "synthetic-proof-expired", messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt("expired")) } });
     expect(expired.response.status).toBe(401);
     vi.stubGlobal("fetch", vi.fn(async (url, init) => {
       if (String(url) === `${ORIGIN}/api/v1/chats/new`) return Response.json({ id: "mock-chat" });
       return new Response("quota", { status: 429 });
     }));
-    const throttled = await executor.execute({ body: { model: "glm-5.3", messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt("a")) } });
+    const throttled = await executor.execute({ body: { model: "glm-5.3", captcha_verify_param: "synthetic-proof-throttled", messages: [{ role: "user", content: "ping" }] }, credentials: { apiKey: cookie(jwt("a")) } });
     expect(throttled.response.status).toBe(429);
   });
 });

@@ -65,7 +65,7 @@ async function createConnection(provider = "claude", extra = {}) {
 const stored = (id) => repo.getProviderConnectionById(id);
 
 describe("commit race", () => {
-  it("1+2: a stale unrotated refresh keeps the newer stored access token but returns the issued one", async () => {
+  it("1+2: a stale unrotated refresh keeps the newer stored access token but returns the stored winner", async () => {
     const connection = await createConnection();
     mocks.refreshProviderCredentials.mockImplementationOnce(async () => {
       await repo.updateProviderConnection(connection.id, { accessToken: "A-winner" });
@@ -75,10 +75,10 @@ describe("commit race", () => {
     const result = await wrapper.checkAndRefreshToken("claude", { ...connection }, null, { force: true });
 
     expect(await stored(connection.id)).toMatchObject({ accessToken: "A-winner", refreshToken: "R0" });
-    expect(result.accessToken).toBe("A-late");
+    expect(result.accessToken).toBe("A-winner");
   });
 
-  it("2: a request that loses a rotation race still gets the valid access token it was issued", async () => {
+  it("2: a request that loses a rotation race gets the stored winner", async () => {
     const connection = await createConnection();
     mocks.refreshProviderCredentials.mockImplementationOnce(async () => {
       await repo.updateProviderConnection(connection.id, { accessToken: "A-winner", refreshToken: "R-winner" });
@@ -88,7 +88,7 @@ describe("commit race", () => {
     const result = await wrapper.checkAndRefreshToken("claude", { ...connection }, null, { force: true });
 
     expect(await stored(connection.id)).toMatchObject({ accessToken: "A-winner", refreshToken: "R-winner" });
-    expect(result.accessToken).toBe("A-late");
+    expect(result.accessToken).toBe("A-winner");
   });
 
   it("3: persists when the exchange already stored the replacement refresh token", async () => {
@@ -222,5 +222,33 @@ describe("5: valid flows still persist", () => {
     expect(await stored(connection.id)).toMatchObject({
       accessToken: "A1", refreshToken: "R1", providerSpecificData: { copilotToken: "C1", copilotTokenExpiresAt },
     });
+  });
+});
+
+describe("review regressions", () => {
+  it("rejects a delayed rotation after a newer refresh stored the same replacement", async () => {
+    const connection = await createConnection();
+    mocks.refreshProviderCredentials.mockImplementationOnce(async () => {
+      await repo.updateProviderConnection(connection.id, { accessToken: "A2", refreshToken: "R1", lastRefreshAt: new Date().toISOString() });
+      return { accessToken: "A1", refreshToken: "R1", expiresIn: 3600 };
+    });
+    const result = await wrapper.checkAndRefreshToken("claude", connection, null, { force: true });
+    expect((await stored(connection.id)).accessToken).toBe("A2");
+    expect(result.accessToken).toBe("A2");
+  });
+  it("rejects a Copilot write after a concurrent access-token replacement", async () => {
+    const connection = await createConnection("github", { expiresAt: new Date(Date.now() + 86400000).toISOString() });
+    mocks.refreshCopilotToken.mockImplementationOnce(async () => {
+      await repo.updateProviderConnection(connection.id, { accessToken: "A2" });
+      return { token: "C-late", expiresAt: nowSeconds() + 1800 };
+    });
+    const result = await wrapper.checkAndRefreshToken("github", connection);
+    expect((await stored(connection.id)).providerSpecificData?.copilotToken).toBeUndefined();
+    expect(result.accessToken).toBe("A2");
+    expect(result.copilotToken).toBeUndefined();
+  });
+  it("rejects raw expires_in overflow through the real normalization function", async () => {
+    const { mergeRefreshedCredentials } = await import("../../open-sse/services/oauthCredentialManager.js");
+    expect(mergeRefreshedCredentials("claude", {}, { accessToken: "A1", expires_in: 1e300 })).toBeNull();
   });
 });

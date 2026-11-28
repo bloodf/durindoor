@@ -1,6 +1,6 @@
 // Re-export from open-sse with local logger
 import * as log from "../utils/logger.js";
-import { updateProviderConnection } from "../../lib/localDb.js";
+import { getProviderConnectionById, updateProviderConnection } from "../../lib/localDb.js";
 import { isObject, isString } from "../../shared/utils/typeChecks.js";
 import {
   getProjectIdForConnection,
@@ -206,7 +206,7 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  *   access token is no longer this one, so a stale refresh never overwrites a newer one.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken, presentedLastRefreshAt } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -260,7 +260,8 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
       const rotated = Boolean(updates.refreshToken) && updates.refreshToken !== presentedRefreshToken;
       guard = {
         shouldCommitConnection: (stored) => rotated ?
-        stored.refreshToken === presentedRefreshToken || stored.refreshToken === updates.refreshToken :
+        (stored.refreshToken === presentedRefreshToken || stored.refreshToken === updates.refreshToken) &&
+        (stored.lastRefreshAt ?? null) === (presentedLastRefreshAt ?? null) :
         stored.refreshToken === presentedRefreshToken &&
         (!presentedAccessToken || !stored.accessToken || stored.accessToken === presentedAccessToken)
       };
@@ -370,9 +371,9 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
       // Persist to DB (non-blocking path continues below)
       const guardedCodex = provider === "codex" && expectedRefreshContext.provider === "codex";
       const applied = newCreds.rotationCommitted === true ? true : await updateProviderCredentials(creds.connectionId, mergedCreds,
-        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken });
+        guardedCodex ? { expectedRefreshContext } : { presentedRefreshToken, presentedAccessToken, presentedLastRefreshAt: creds.lastRefreshAt });
       // Never dispatch a Codex token whose identity the store did not accept.
-      if (!applied && (guardedCodex || provider === "codex" && hasCodexIdentityClaims(newCreds))) return creds;
+      if (!applied) return { ...creds, ...await getProviderConnectionById(creds.connectionId) };
 
       creds = {
         ...creds,
@@ -417,13 +418,15 @@ export async function checkAndRefreshToken(provider, credentials, proxyOptions =
           copilotTokenExpiresAt: copilotTokenResult.expiresAt
         };
 
-        await updateProviderCredentials(creds.connectionId, {
+        const applied = await updateProviderCredentials(creds.connectionId, {
           providerSpecificData: {
             ...(creds._connection?.providerSpecificData || creds.providerSpecificData),
             copilotToken: copilotTokenResult.token,
             copilotTokenExpiresAt: copilotTokenResult.expiresAt
           }
-        });
+        }, { presentedRefreshToken: creds.refreshToken, presentedAccessToken: creds.accessToken,
+          presentedLastRefreshAt: creds.lastRefreshAt });
+        if (!applied) return { ...creds, ...await getProviderConnectionById(creds.connectionId) };
 
         creds.providerSpecificData = updatedSpecific;
         creds.copilotToken = copilotTokenResult.token;

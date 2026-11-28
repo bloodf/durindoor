@@ -139,6 +139,11 @@ export function mergeRefreshedCredentials(provider, currentCredentials, refreshe
   if (!refreshedCredentials) return null;
   if (isUnrecoverableRefreshError(refreshedCredentials)) return refreshedCredentials;
 
+  // Reject explicit invalid lifetimes before normalization can supply a default.
+  const lifetime = refreshedCredentials.expiresIn ?? refreshedCredentials.expires_in;
+  if (lifetime !== undefined && (!Number.isFinite(Number(lifetime)) || Number(lifetime) <= 0 ||
+      Number(lifetime) > 366 * 24 * 60 * 60)) return null;
+
   const next = {};
   const nowIso = new Date(nowMs).toISOString();
 

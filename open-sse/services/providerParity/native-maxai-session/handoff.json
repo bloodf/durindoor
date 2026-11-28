@@ -1,0 +1,43 @@
+{
+  "owner": "register-cookie-repairs-02",
+  "beforeDispatch": {
+    "selection": "one-connection-one-credential-revision-one-proxy-snapshot",
+    "renewal": "explicit-policy-for-missing-or-near-JWT-expiry; source-margin-is-3600-seconds",
+    "unknownExpiry": "unknown-not-a-fabricated-24-hour-expiry",
+    "failure": "surface-safe-reconnect-or-renewal-failure; no-account-mixing",
+    "constants": "owner-supplied-from-bounded-source-backed-loader-through-selected-proxy",
+    "action": "renew-selected-snapshot-once-and-CAS-before-any-billable-submit"
+  },
+  "explicitAuthReject": {
+    "sourceStatuses": [
+      401,
+      418
+    ],
+    "renewal": "at-most-one-renewal-for-the-selected-snapshot",
+    "billableReplay": "helper-never-replays; owner-must-prove-dispatch-was-rejected-before-any-retry",
+    "unknownOutcome": "no-automatic-chat-or-image-replay-or-account-fallback"
+  },
+  "persistence": {
+    "canonicalRefreshToken": "existing-encrypted-top-level-refreshToken",
+    "newPsdSecretFields": false,
+    "atomicReplacement": [
+      "accessToken",
+      "deviceId",
+      "userId",
+      "refreshToken",
+      "actual-expiry-or-clear-old-expiry"
+    ],
+    "compareAndSwap": "match-connection-id-and-credential-revision-and-original-tuple-and-refreshToken-and-proxy-revision",
+    "staleCompletion": "discard-result-if-reconnected-disabled-deleted-or-revision-changed; never-overwrite-or-reactivate",
+    "coordination": "owner-per-connection-singleflight-and-CAS; standard-serializeRefresh-has-no-MaxAI-rotation-group",
+    "drain": "owner-trackRefreshPersistence-around-renew-and-CAS"
+  },
+  "publicWork": [
+    "authenticated-manual-import-export-ui",
+    "encrypted-storage-mapping",
+    "replace-stale-cookie-and-token-fields-atomically",
+    "review-image-tuple-migration-before-image-activation",
+    "public-registry-and-capture-corrections"
+  ],
+  "capture": "no-verified-site-cookie-or-localStorage-keys; no-foreign-extension-private-storage-access"
+}

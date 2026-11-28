@@ -91,6 +91,10 @@ function refusingIdentity(name, message) {
   };
 }
 
+function timedOut() {
+  return new BedrockDiscoveryError("timeout", 504, MESSAGES.timeout, "TimeoutError");
+}
+
 function discard(response) {
   void response?.body?.cancel?.().catch(() => {});
 }
@@ -116,6 +120,12 @@ function waitFor(promise, signal) {
 /**
  * SDK HTTP handler bound to one discovery: fixed origin, no redirects, caller abort plus the
  * discovery deadline, and a bounded body read. The SDK signs before it calls `handle`.
+ *
+ * The body reader arms its own timer for the time left to `end`, which can fire before the
+ * discovery timer. Its TimeoutError becomes the same `timeout` failure here, for any status,
+ * so the outcome does not depend on timer order. Only the body read is remapped; transport
+ * errors raised before a response are passed on unchanged. A caller abort still takes
+ * precedence in `toDiscoveryError`.
  */
 function createDiscoveryRequestHandler({ origin, transport, signal, end }) {
   return {
@@ -159,12 +169,17 @@ function createDiscoveryRequestHandler({ origin, transport, signal, end }) {
         discard(response);
         throw refusal("ForeignOrigin");
       }
-      const text = await readBoundedResponseText(response, {
-        signal: fetchSignal,
-        maxBytes: BEDROCK_DISCOVERY_MAX_BODY_BYTES,
-        timeoutMs: Math.max(1, end - Date.now()),
-        throwOnTimeout: true,
-      });
+      let text;
+      try {
+        text = await readBoundedResponseText(response, {
+          signal: fetchSignal,
+          maxBytes: BEDROCK_DISCOVERY_MAX_BODY_BYTES,
+          timeoutMs: Math.max(1, end - Date.now()),
+          throwOnTimeout: true,
+        });
+      } catch (error) {
+        throw error?.name === "TimeoutError" ? timedOut() : error;
+      }
       return {
         response: {
           statusCode: response.status,
@@ -184,7 +199,7 @@ function createDiscoveryRequestHandler({ origin, transport, signal, end }) {
 
 /** Map any failure to a redacted BedrockDiscoveryError. */
 function toDiscoveryError(error, state) {
-  if (state.timedOut) return new BedrockDiscoveryError("timeout", 504, MESSAGES.timeout, "TimeoutError");
+  if (state.timedOut) return timedOut();
   if (state.callerAborted) return new BedrockDiscoveryError("aborted", 499, MESSAGES.aborted, "AbortError");
   if (error instanceof BedrockDiscoveryError) return error;
   if (error instanceof BedrockDiscoveryResponseError) {

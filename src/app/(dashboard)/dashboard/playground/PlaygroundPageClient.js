@@ -1,8 +1,8 @@
 "use client";
-
+import { usePlaygroundDiscovery } from "./usePlaygroundDiscovery";
+import { ensureSessionForModel, STORAGE_KEYS, createId, safeParse, textValue, humanize, formatRelativeTime, makeSessionTitle, buildUserContent, fileToDataUrl, cloneSession } from "./playgroundSessionHelpers";
 import { useUiV5 } from "@/shared/ui/v5/production/uiVersion.js";
 import MotionIcon from "@/shared/ui/v5/motion/MotionIcon.jsx";
-
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Button from "@/shared/ui/components/Button.jsx";
 import { Badge } from "@/shared/ui/components/Badge.jsx";
@@ -15,119 +15,11 @@ import EmptyState from "@/shared/ui/components/EmptyState.jsx";
 import Pagination from "@/shared/ui/components/Pagination.jsx";
 import SegmentedControl from "@/shared/ui/components/SegmentedControl.jsx";
 import PlaygroundCompare from "./PlaygroundCompare.jsx";
-import { getModelsByProviderId } from "@/shared/constants/models";
-import { isAnthropicCompatibleProvider, isOpenAICompatibleProvider } from "@/shared/constants/providers";
 import { readChatStream, throwIfStreamFailed } from "@/lib/playground/compare";
 import { sanitizeErrorText } from "@/lib/playground/errors";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
-import { buildModelIndex, getConnectionOptions, getModelReasoningOptions, getProviderLabel, groupModelsByProvider, normalizeLiveModel, normalizeReasoningEffort, normalizeStaticModel, paginateSessions, resolveSavedModel } from "./playgroundHelpers";
-import { isBrowser, isObject, isString } from "../../../../shared/utils/typeChecks.js";
-
-const STORAGE_KEYS = {
-  sessions: "basic-chat.sessions",
-  activeSessionId: "basic-chat.activeSessionId",
-  activeProviderId: "basic-chat.activeProviderId",
-  draft: "basic-chat.draft",
-  reasoningEffort: "playground.reasoningEffort",
-  activeConnectionId: "playground.activeConnectionId"
-};
-
-function createId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `chat_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function safeParse(value, fallback) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-function textValue(value) {
-  if (isString(value)) return value;
-  if (value == null) return "";
-  if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(" ");
-  if (isObject(value)) {
-    if (isString(value.message)) return value.message;
-    if (isString(value.error)) return value.error;
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-  return String(value);
-}
-
-function humanize(value = "") {
-  return String(value).
-  replace(/[-_]/g, " ").
-  replace(/\b\w/g, (char) => char.toUpperCase()).
-  trim() || "Unknown";
-}
-
-function formatRelativeTime(value) {
-  if (!value) return "Now";
-  const time = new Date(value).getTime();
-  if (Number.isNaN(time)) return "Now";
-  const diffMinutes = Math.max(1, Math.round((Date.now() - time) / 60000));
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  return `${Math.round(diffHours / 24)}d`;
-}
-
-function makeSessionTitle(text = "") {
-  const normalized = textValue(text).replace(/\s+/g, " ").trim();
-  if (!normalized) return "New chat";
-  return normalized.length > 52 ? `${normalized.slice(0, 52).trimEnd()}…` : normalized;
-}
-
-function buildUserContent(message) {
-  const text = textValue(message.content).trim();
-  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
-
-  if (attachments.length === 0) return text;
-
-  const content = [];
-  if (text) content.push({ type: "text", text });
-
-  for (const attachment of attachments) {
-    if (attachment?.dataUrl) {
-      content.push({ type: "image_url", image_url: { url: attachment.dataUrl } });
-    }
-  }
-
-  return content.length > 0 ? content : text;
-}
-
-async function fileToDataUrl(file) {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function cloneSession(session) {
-  return {
-    ...session,
-    messages: Array.isArray(session.messages) ? session.messages.map((message) => ({ ...message })) : []
-  };
-}
-
-function parseProviderModelsPayload(data) {
-  if (Array.isArray(data?.models)) return data.models;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data)) return data;
-  return [];
-}
-
-
+import { buildModelIndex, getConnectionOptions, getModelReasoningOptions, normalizeReasoningEffort, paginateSessions, resolveSavedModel } from "./playgroundHelpers";
+import { isBrowser } from "../../../../shared/utils/typeChecks.js";
 export default function PlaygroundPageClient() {
   const v5 = useUiV5();
   const [providerGroups, setProviderGroups] = useState([]);
@@ -176,7 +68,6 @@ export default function PlaygroundPageClient() {
   const [mode, setMode] = useState("chat");
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
-  const loadAbortRef = useRef(null);
   const initializedRef = useRef(false);
   const modelMenuRef = useRef(null);
   const modelTriggerRef = useRef(null);
@@ -185,106 +76,10 @@ export default function PlaygroundPageClient() {
   const modelValueId = useId();
   const historyMenuRef = useRef(null);
   const historyTriggerRef = useRef(null);
-
   useEffect(() => {
     setIsHydrated(true);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadAbortRef.current?.abort();
-    const controller = new AbortController();
-    loadAbortRef.current = controller;
-
-    async function loadData() {
-      setLoadingData(true);
-      setLoadError("");
-
-      try {
-        const providersRes = await fetch("/api/providers", { cache: "no-store", signal: controller.signal });
-        const providersData = await providersRes.json().catch(() => ({}));
-        const connections = Array.isArray(providersData.connections) ?
-        providersData.connections.filter((connection) => connection?.isActive !== false) :
-        [];
-
-        if (connections.length === 0) {
-          if (!cancelled) {
-            setProviderGroups([]);
-            setLoadError("No providers connected yet.");
-          }
-          return;
-        }
-
-        const liveResults = await Promise.all(
-          connections.map(async (connection) => {
-            if (!connection || connection.canDiscoverModels === false) {
-              return { connection, models: [] };
-            }
-            try {
-              const response = await fetch(`/api/providers/${connection.id}/models`, { cache: "no-store", signal: controller.signal });
-              const data = await response.json().catch(() => ({}));
-              if (!response.ok) return { connection, models: [] };
-              const models = parseProviderModelsPayload(data).
-              map((model) => normalizeLiveModel(model, connection)).
-              filter(Boolean);
-              return { connection, models };
-            } catch {
-              return { connection, models: [] };
-            }
-          })
-        );
-
-        const normalizedConnections = connections.map((connection) => {
-          const providerId = connection.provider || connection.id;
-          return {
-            ...connection,
-            provider: connection.provider || connection.id,
-            providerId,
-            providerName: getProviderLabel(connection),
-            providerType: isOpenAICompatibleProvider(providerId) ?
-            "openai-compatible" :
-            isAnthropicCompatibleProvider(providerId) ?
-            "anthropic-compatible" :
-            providerId
-          };
-        });
-
-        const normalizedModels = [
-        ...normalizedConnections.flatMap((connection) =>
-        getModelsByProviderId(connection.providerId).
-        map((model) => normalizeStaticModel(model, connection)).
-        filter(Boolean)
-        ),
-        ...liveResults.flatMap((result) => result.models || [])];
-
-
-        const normalized = groupModelsByProvider(normalizedConnections, normalizedModels);
-
-        if (!cancelled) {
-          setProviderGroups(normalized);
-          if (normalized.length === 0) {
-            setLoadError("Providers connected but no models available.");
-          }
-        }
-      } catch (error) {
-        if (error?.name === "AbortError") return;
-        if (!cancelled) {
-          setLoadError(sanitizeErrorText(error?.message) || "Failed to load providers/models.");
-          setProviderGroups([]);
-        }
-      } finally {
-        if (!cancelled) setLoadingData(false);
-      }
-    }
-
-    loadData();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      if (loadAbortRef.current === controller) loadAbortRef.current = null;
-    };
-  }, []);
-
+  usePlaygroundDiscovery(setProviderGroups, setLoadingData, setLoadError);
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (modelMenuRef.current && !modelMenuRef.current.contains(event.target)) {
@@ -294,15 +89,12 @@ export default function PlaygroundPageClient() {
         setHistoryOpen(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
   // Abort any in-flight chat request when the component unmounts so a
   // navigation away mid-stream can't setState on an unmounted tree.
   useEffect(() => () => abortRef.current?.abort(), []);
-
   // Rows are addressed by the node id; the configured prefix (and a raw
   // upstream id saved before node binding) are legacy aliases. A saved
   // selection resolves only to a row of its own provider and never through an
@@ -414,21 +206,6 @@ export default function PlaygroundPageClient() {
 
   const updateSession = (sessionId, updater) => {
     setSessions((prev) => prev.map((session) => session.id === sessionId ? updater(cloneSession(session)) : session));
-  };
-
-  const ensureSessionForModel = (model) => {
-    if (!model) return null;
-    return {
-      id: createId(),
-      title: "New chat",
-      providerId: model.providerId,
-      providerName: model.providerName,
-      modelId: model.id,
-      modelName: model.name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: []
-    };
   };
 
   const handleNewChat = () => {

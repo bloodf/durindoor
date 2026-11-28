@@ -8,9 +8,10 @@ No live provider acceptance is claimed.
 
 ## Scope and behavior
 
-Only `open-sse/executors/doubao-web.js`, the new
+The implementation changes `open-sse/executors/doubao-web.js`, the new
 `tests/unit/fix-doubao-errors-terminal-2034.test.js`, and this report change.
-The executor's JSDoc documents the runtime contract. Existing suites and cookie
+The executor's JSDoc documents the runtime contract. Only the explicitly authorized Doubao fixtures/assertions in `arch-c2311.test.js`
+are migrated on retry. Other existing suites and cookie
 capture/import requirements remain unchanged, including existing `ttwid` behavior.
 The test sends a synthetic `ttwid` when it is already in a stored Cookie header.
 
@@ -114,7 +115,8 @@ Targeted ESLint passes on this head. In the earlier run, root `pnpm run lint`
 passes (348 existing src warnings, zero errors; anti-slop zero diagnostics). The
 35 new cases were rerun after the final source changes and with structured console
 arguments serialized rather than collapsed to object labels. `git diff --check` passes.
-Existing tests and failure baselines are unchanged; every new case runs normally.
+Failure baselines are unchanged; every new case runs normally. The retry
+migration of the existing architecture suite is detailed below.
 
 ## Limits and provenance
 
@@ -131,3 +133,43 @@ OmniRoute (MIT), `open-sse/executors/doubao-web.ts` at
 `b15b2ee6ac0f57af254be4a3cc60ba8a6cc9a523`. This repair uses existing DurinDoor
 helpers and locally authored validation; no additional upstream logic was ported.
 CodeGraph was unavailable on PATH, so source lookup used bounded checkout search.
+
+## Gate-3 retry: authorized architecture fixture migration
+
+Carried the full `4506ad2b03c32386fc97236971a40bcff03fdd03` checkpoint
+onto base `e3658bc6836` as `c08ae479256`; the executor and all 35 own cases
+are unchanged. No source head was fetched. The referenced `.orq/.../gate-3.json`
+is absent in this checkout; the two reported failures were confirmed in the
+existing test source before editing.
+
+- Error assertion before: expected sanitized `Dola error: upstream rejected token=…`.
+  After: exact `Dola upstream request failed`, with separate assertions excluding
+  raw upstream prose and the synthetic secret. The adjacent Notrack expectation
+  and every other provider case are unchanged.
+- Positive block/patch fixture before: `Hel`, `lo`, `data: not-json`, `[DONE]`.
+  After: `Hel`, `lo`, a benign `: keepalive` SSE comment, `[DONE]`, still yielding
+  `Hello`. The separate streamed `Hello` case still ends at complete-event EOF.
+- Malformed input remains explicit negative coverage in both stream modes:
+  partial text followed by `data: not-json` returns 502 with exact safe message,
+  no choices/stop/usage, one dispatch, and `claudeRequestScoped: true` to prevent
+  gateway replay. The unchanged own suite exercises the actual gateway boundary.
+
+The actual source contract skips comment-only frames, parses nonempty data as
+JSON, and fails invalid JSON before publishing any buffered source text. It
+continues to accept EOF after complete source events; no parser tolerance was
+added for the obsolete positive fixture.
+
+Retry validation (Node 24.22.3, pnpm 12.18.0): root and tests frozen-lockfile
+installs succeeded in this checkout with a new private store. The exact seven
+files in the command above plus `unit/arch-c2311.test.js` passed: **234/234,
+eight files**, including own 35 and cookie-flow 31. The command ran from `tests/`
+with `--maxWorkers=2`, `env -i`, private `/var/tmp/doubao-2034-retry.lQopxZBg`
+HOME/DATA_DIR/TMPDIR/cache/store and a 300-second ceiling. No credentials were
+inherited. No full-suite worker was started.
+
+Targeted ESLint passes for the executor and own regression file. Adding the
+architecture file to ESLint fails on its **pre-existing duplicate `readStreamLines`
+import** (base lines 16 and 190; now lines 16 and 208), outside the authorized
+Doubao assertion/fixture migration. It was left unchanged. Vitest collects and
+passes that file. `git diff --check` passes. No root lint/build/full gate is
+claimed for this retry.

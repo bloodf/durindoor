@@ -102,10 +102,13 @@ describe("webSessionBase", () => {
     expect(sanitizeErrorMessage(body.error.message)).toBe(body.error.message);
   });
 
-  it("keeps the upstream detail it echoed, redacted by the shared sanitizer", async () => {
+  it("uses a fixed Doubao error while retaining sanitized Notrack detail", async () => {
     route(EXECUTORS[2].failing);
     const { response } = await run(EXECUTORS[2]);
-    expect((await response.json()).error.message).toBe(sanitizeErrorMessage(`Dola error: upstream rejected token=${SECRET}`));
+    const body = await response.json();
+    expect(body.error.message).toBe("Dola upstream request failed");
+    expect(JSON.stringify(body)).not.toContain("upstream rejected");
+    expect(JSON.stringify(body)).not.toContain(SECRET);
     route(EXECUTORS[3].failing);
     const notrack = await run(EXECUTORS[3]);
     expect((await notrack.response.json()).error.message).toBe(sanitizeErrorMessage(`Notrack connection failed: socket closed for Bearer ${SECRET}`));
@@ -129,10 +132,25 @@ describe("SSE fixtures parse as before", () => {
   });
 
   it("doubao-web joins block and patch deltas across events", async () => {
-    route(() => sse(`${dolaEvent("Hel")}${dolaPatch("lo")}data: not-json\n\ndata: [DONE]\n\n`));
+    route(() => sse(`${dolaEvent("Hel")}${dolaPatch("lo")}: keepalive\n\ndata: [DONE]\n\n`));
     expect(await content((await run(EXECUTORS[2])).response)).toBe("Hello");
     route(() => sse(`${dolaEvent("Hel")}${dolaPatch("lo")}`));
     expect(await streamed((await run(EXECUTORS[2], { stream: true })).response)).toBe("Hello");
+  });
+
+  // A comment is benign SSE; malformed data is a failed source turn, even
+  // after usable text. The request-scoped flag prevents gateway account replay.
+  it.each([false, true])("doubao-web rejects malformed data after text (stream=%s)", async (stream) => {
+    route(() => sse(`${dolaEvent("Hel")}${dolaPatch("lo")}data: not-json\n\ndata: [DONE]\n\n`));
+    const result = await run(EXECUTORS[2], { stream });
+    expect(result.response.status).toBe(502);
+    expect(result.claudeRequestScoped).toBe(true);
+    const body = await result.response.json();
+    expect(body.error.message).toBe("Dola generation failed");
+    expect(body.choices).toBeUndefined();
+    expect(body.usage).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('"stop"');
+    expect(mocks.proxyAwareFetch).toHaveBeenCalledOnce();
   });
 
   it("notrack-web joins a line split across chunks, in both reply shapes", async () => {

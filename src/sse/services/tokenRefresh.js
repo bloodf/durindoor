@@ -204,9 +204,10 @@ function _refreshProjectId(provider, connectionId, accessToken, proxyOptions) {
  * @param {string} [options.presentedAccessToken] Access token held when the refresh began.
  *   When the refresh token did not rotate, the write is also refused if the stored
  *   access token is no longer this one, so a stale refresh never overwrites a newer one.
+ * @param {Function} [options.shouldCommitConnection] Additional stored-row snapshot guard.
  * @returns {Promise<boolean>}
  */
-export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken, presentedLastRefreshAt } = {}) {
+export async function updateProviderCredentials(connectionId, newCredentials, { expectedRefreshContext, presentedRefreshToken, presentedAccessToken, presentedLastRefreshAt, shouldCommitConnection } = {}) {
   const rotatedApiKey = newCredentials?.rotatedApiKey;
   try {
     // Persist only the cookie, and only while the sending session is current.
@@ -265,6 +266,12 @@ export async function updateProviderCredentials(connectionId, newCredentials, { 
         stored.refreshToken === presentedRefreshToken &&
         (!presentedAccessToken || !stored.accessToken || stored.accessToken === presentedAccessToken)
       };
+    }
+    // Apply exchange-specific snapshots under the same lock as the OAuth guard.
+    if (shouldCommitConnection) {
+      const oauthGuard = guard?.shouldCommitConnection;
+      guard = { ...guard, shouldCommitConnection: (stored) =>
+        (!oauthGuard || oauthGuard(stored)) && shouldCommitConnection(stored) };
     }
     // The repo compares rotated identity claims with the stored row under its write lock.
     if (hasCodexIdentityClaims(updates)) guard = { ...guard, refreshRotation: true };

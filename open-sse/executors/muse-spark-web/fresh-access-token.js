@@ -1,7 +1,7 @@
 // Ported from OmniRoute 4265bb2ad5477450a07d3a43ea33a62c6c874878 (MIT).
 // DurinDoor #2034: the browser leg uses the selected connection's egress route.
 import { createHash } from "node:crypto";
-import { isString } from "../../../src/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../../src/shared/utils/typeChecks.js";
 import { acquireBrowserContext, getBrowserPoolStatus, openPage, releaseBrowserContext } from "../../services/browserPool.js";
 import { sanitizeErrorMessageWithSecrets } from "../../utils/error.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
@@ -48,7 +48,11 @@ export const MUSE_REFRESH_LIMITS = Object.freeze({
  * @param {AbortSignal|undefined} signal - caller cancellation
  * @param {string} [connectionId]
  * @param {object|null} [proxyOptions] - the selected connection's proxy options
- * @returns {Promise<{ok: true, token: string, updatedCookie?: string} | {ok: false, status?: number, error: string, refused?: boolean}>}
+ * `rotationPersistable` is true only when the bootstrap's `ecto_1_sess` Set-Cookie is a single,
+ * non-empty, non-expiring value (see `isPersistableSessionRotation`). The executor alone decides
+ * whether to hand it to the dispatcher's write-back.
+ *
+ * @returns {Promise<{ok: true, token: string, updatedCookie?: string, rotationPersistable?: boolean} | {ok: false, status?: number, error: string, refused?: boolean}>}
  */
 async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", proxyOptions = null) {
   if (signal?.aborted) return { ok: false, refused: true, error: "Meta AI token refresh aborted before any work" };
@@ -62,7 +66,7 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", pr
   const fromCache = () => {
     for (const [key, entry] of META_TOKEN_CACHE) if (entry.expiresAt <= Date.now()) META_TOKEN_CACHE.delete(key);
     const cached = META_TOKEN_CACHE.get(cacheKey);
-    return cached ? { ok: true, token: cached.token, updatedCookie: cached.updatedCookie } : null;
+    return cached ? { ok: true, token: cached.token, updatedCookie: cached.updatedCookie, rotationPersistable: cached.rotationPersistable } : null;
   };
   const hit = fromCache();
   if (hit) return hit;
@@ -95,6 +99,36 @@ async function fetchFreshAccessToken(cookieHeader, signal, connectionId = "", pr
   }
 }
 
+/**
+ * Decide whether a bootstrap `Set-Cookie` for `ecto_1_sess` may be written back to the connection.
+ *
+ * Refused: no structured `getSetCookie()` list, more than one `ecto_1_sess` cookie, an empty value,
+ * `Max-Age` of zero or less, or an `Expires` date that is not in the future. A deleting or expiring
+ * Set-Cookie must never replace a stored session. The turn itself still uses whatever the existing
+ * refresh code chose. Whether Meta actually rotates this cookie is unverified.
+ *
+ * @param {Headers} headers - bootstrap response headers
+ * @returns {boolean}
+ */
+function isPersistableSessionRotation(headers) {
+  const list = isFunction(headers?.getSetCookie) ? headers.getSetCookie() : null;
+  if (!Array.isArray(list)) return false;
+  const sessions = list.filter((line) => /^\s*ecto_1_sess=/.test(line));
+  if (sessions.length !== 1) return false;
+  const [pair, ...attributes] = sessions[0].split(";").map((part) => part.trim());
+  if (!pair.slice("ecto_1_sess=".length)) return false;
+  for (const attribute of attributes) {
+    const [name, ...rest] = attribute.split("=");
+    const value = rest.join("=").trim();
+    if (/^max-age$/i.test(name.trim()) && !(Number(value) > 0)) return false;
+    if (/^expires$/i.test(name.trim())) {
+      const at = Date.parse(value);
+      if (!Number.isFinite(at) || at <= Date.now()) return false;
+    }
+  }
+  return true;
+}
+
 async function refreshUncached({ cookieHeader, cacheKey, route, proxyOptions, signal, cleanups }) {
   const heisenbergResponse = await proxyAwareFetch(META_AI_GRAPHQL_API, {
     method: "POST",
@@ -117,6 +151,7 @@ async function refreshUncached({ cookieHeader, cacheKey, route, proxyOptions, si
   if (sessMatch && sessMatch[1] && sessMatch[1] !== "") {
     updatedCookie = cookieHeader.replace(/ecto_1_sess=[^;]+/, `ecto_1_sess=${sessMatch[1]}`);
   }
+  const rotationPersistable = Boolean(updatedCookie) && isPersistableSessionRotation(heisenbergResponse.headers);
   const effectiveCookie = updatedCookie || cookieHeader;
   const seams = _metaTokenBrowserPoolForTesting;
   const acquire = seams?.acquire || acquireBrowserContext;
@@ -164,8 +199,8 @@ async function refreshUncached({ cookieHeader, cacheKey, route, proxyOptions, si
       return { ok: false, status: 401, error: "Meta AI session expired; re-import your ecto_1_sess cookie" };
     }
     const token = `ecto1:${match[1]}`;
-    META_TOKEN_CACHE.set(cacheKey, { token, updatedCookie, expiresAt: Date.now() + META_TOKEN_TTL_MS });
-    return { ok: true, token, updatedCookie };
+    META_TOKEN_CACHE.set(cacheKey, { token, updatedCookie, rotationPersistable, expiresAt: Date.now() + META_TOKEN_TTL_MS });
+    return { ok: true, token, updatedCookie, rotationPersistable };
   } finally {
     await Promise.resolve().then(() => page?.close?.()).catch(() => {});
     await releaseQuietly();

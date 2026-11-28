@@ -4,11 +4,11 @@ import { Buffer } from "node:buffer";
 import WebSocket from "ws";
 import { BaseExecutor } from "./base.js";
 import { createExecutorSender, requestAbortError, unpatchedGlobalFetch, withBillableDispatch } from "./sendRequest.js";
-import { isString } from "../../src/shared/utils/typeChecks.js";
+import { isFunction, isString } from "../../src/shared/utils/typeChecks.js";
 import { UnsupportedOmniRouteWebSessionExecutor } from "./unsupported-websession.js";
-import { normalizeSessionCookieHeader, normalizeSessionCookieHeaders } from "./websession-utils.js";
+import { stripCookieInputPrefix } from "./websession-utils.js";
 import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.js";
-import { sanitizeErrorMessage } from "../utils/error.js";
+import { sanitizeErrorMessage, sanitizeErrorMessageWithSecrets } from "../utils/error.js";
 import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import { isRecord } from "./muse-spark-web/response-parser.js";
 import {
@@ -368,36 +368,106 @@ function buildNonStreamingResponse(content, reasoningContent, model, id, created
     }
   );
 }
-function buildErrorResponse(status, message, code) {
+function buildErrorResponse(status, message, code, type = "upstream_error") {
   return new Response(
     JSON.stringify({
       error: {
         message: sanitizeErrorMessage(message),
-        type: "upstream_error",
+        type,
         code: code || undefined
       }
     }),
     { status, headers: { "Content-Type": "application/json" } }
   );
 }
+// RFC 6265 `cookie-octet`, and the same set without "=".
+const COOKIE_OCTETS_RE = /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+$/;
+const BARE_PADDED_VALUE_RE = /^[\x21\x23-\x2B\x2D-\x3A\x3C\x3E-\x5B\x5D-\x7E]+=+$/;
+const COOKIE_PAIR_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+=[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/;
+const ECTO_PAIR_RE = /(?:^|;\s*)ecto_1_sess=([^;]+)/;
+/**
+ * Normalize one stored Muse credential into a `Cookie` header, or return "" to refuse it (#2034).
+ *
+ * Accepted shapes, and nothing else:
+ * - a header (optionally prefixed `Cookie:`) whose `;`-separated pairs are all well-formed RFC 6265
+ *   pairs and which contains an `ecto_1_sess=` pair. It is returned as written.
+ * - a bare opaque value made of cookie octets with no "=", or with "=" only as trailing padding
+ *   (`abc==`). It becomes `ecto_1_sess=<value>`. A padded value used to be read as a header with
+ *   no `ecto_1_sess` and refused.
+ * Refused: CR, LF or any other control character inside the value, a pair that is not `name=value`
+ * (a foreign header line such as `X-Other: v`), and a `name=value` cookie list without
+ * `ecto_1_sess`. No other cookie name is assumed to be the Meta session.
+ *
+ * @param {unknown} apiKey - stored connection credential
+ * @returns {string} normalized header, or "" when the shape is not recognized
+ */
 function normalizeMetaAiCookieHeader(apiKey) {
-  return normalizeSessionCookieHeader(apiKey, META_AI_DEFAULT_COOKIE);
+  if (!isString(apiKey)) return "";
+  const raw = stripCookieInputPrefix(apiKey);
+  if (!raw || /[\x00-\x1F\x7F]/.test(raw)) return "";
+  if (ECTO_PAIR_RE.test(raw)) {
+    const pairs = raw.split(";").map((pair) => pair.trim());
+    if (pairs.every((pair, index) => COOKIE_PAIR_RE.test(pair) || (pair === "" && index === pairs.length - 1))) return raw;
+    return "";
+  }
+  // `ecto_1_sess=` with an empty value is an empty session, not a padded bare value.
+  if (raw.startsWith(`${META_AI_DEFAULT_COOKIE}=`)) return "";
+  if (BARE_PADDED_VALUE_RE.test(raw) || (!raw.includes("=") && COOKIE_OCTETS_RE.test(raw))) {
+    return `${META_AI_DEFAULT_COOKIE}=${raw}`;
+  }
+  return "";
 }
-function selectMetaAiCookieHeader(credentials) {
+/** True when the stored credential is a bare value rather than a header. */
+function isBareMetaAiCookie(apiKey) {
+  const raw = stripCookieInputPrefix(apiKey);
+  return !ECTO_PAIR_RE.test(raw);
+}
+/**
+ * Pick the cookie header for this turn. `fromApiKey` says whether it came from the connection's
+ * primary `apiKey`; only that one is eligible for rotation write-back.
+ *
+ * @returns {{header: string, fromApiKey: boolean}}
+ */
+function selectMetaAiCookie(credentials) {
+  const primary = normalizeMetaAiCookieHeader(credentials.apiKey || "");
+  if (primary) return { header: primary, fromApiKey: true };
+  // A malformed primary credential is refused, as before; it never falls through to an extra key.
+  if (isString(credentials.apiKey) && credentials.apiKey.trim()) return { header: "", fromApiKey: false };
   const extraCookieValues = Array.isArray(credentials.providerSpecificData?.extraApiKeys) ? credentials.providerSpecificData.extraApiKeys.filter(
     (value) => isString(value) && value.trim().length > 0
   ) : [];
-  const normalizedPool = normalizeSessionCookieHeaders(
-    [credentials.apiKey || "", ...extraCookieValues],
-    META_AI_DEFAULT_COOKIE
-  );
-  if (normalizedPool.length === 0) {
-    return "";
+  for (const value of extraCookieValues) {
+    const header = normalizeMetaAiCookieHeader(value);
+    if (header) return { header, fromApiKey: false };
   }
-  if (normalizedPool.length === 1 || !credentials.connectionId) {
-    return normalizedPool[0];
+  return { header: "", fromApiKey: false };
+}
+/**
+ * Hand a bootstrap-rotated `ecto_1_sess` to the dispatcher's `onCredentialsRefreshed` (#2034).
+ *
+ * The rotated value is written back in the stored shape: a bare value stays bare, a header gets
+ * its `ecto_1_sess` value replaced. Only the primary `apiKey` is eligible, only when the refresh
+ * marked the rotation persistable (a non-empty, non-expiring Set-Cookie), and only when the new
+ * header is still a recognized shape. The caller-supplied callback owns the write and its
+ * compare-and-set against the sending credential, so a concurrent re-import or an earlier rotation
+ * is never overwritten from here. A failure is logged without the cookie and does not fail the turn.
+ */
+async function persistRotatedCookie({ credentials, selected, freshToken, onCredentialsRefreshed, log }) {
+  if (!isFunction(onCredentialsRefreshed) || !selected.fromApiKey) return;
+  if (!freshToken.updatedCookie || freshToken.rotationPersistable !== true) return;
+  if (normalizeMetaAiCookieHeader(freshToken.updatedCookie) !== freshToken.updatedCookie) return;
+  const rotatedValue = freshToken.updatedCookie.match(ECTO_PAIR_RE)?.[1];
+  if (!rotatedValue || freshToken.updatedCookie === selected.header) return;
+  const stored = String(credentials.apiKey);
+  // A rotated value that would not read back as bare keeps the canonical `ecto_1_sess=` form.
+  const bareRoundTrips = normalizeMetaAiCookieHeader(rotatedValue) === `${META_AI_DEFAULT_COOKIE}=${rotatedValue}`;
+  const apiKey = isBareMetaAiCookie(stored) && bareRoundTrips ? rotatedValue : freshToken.updatedCookie;
+  try {
+    await onCredentialsRefreshed({ ...credentials, apiKey });
+  } catch (err) {
+    const secrets = [stored, apiKey, rotatedValue, stored.match(ECTO_PAIR_RE)?.[1]].filter(Boolean);
+    log?.warn?.("MUSE-SPARK-WEB", `Rotated session cookie was not saved: ${sanitizeErrorMessageWithSecrets(err instanceof Error ? err.message : String(err), secrets)}`);
   }
-  return normalizedPool[0];
 }
 function buildMetaAiHeaders(cookieHeader) {
   return {
@@ -424,8 +494,20 @@ function resultWithResponse(response, headers, transformedBody) {
     transformedBody
   };
 }
-function errorResult(status, message, code, headers, transformedBody) {
-  return resultWithResponse(buildErrorResponse(status, message, code), headers, transformedBody);
+function errorResult(status, message, code, headers, transformedBody, type) {
+  return resultWithResponse(buildErrorResponse(status, message, code, type), headers, transformedBody);
+}
+const META_AI_OUTCOME_UNKNOWN_MESSAGE = "Meta AI did not confirm whether it processed the prompt; it was not retried";
+/**
+ * Mark a failure after the prompt frame was sent as outcome-unknown (#2034). Meta may have run the
+ * turn, so the existing never-replay contract applies: `claudeRequestScoped` on the result and
+ * `upstreamPartialOutput` on the response make singleModel/postProcess.js and combo routing answer
+ * it as terminal, with no sibling account, no transient replay and no account cooldown. Failures
+ * before the prompt frame (handshake HTTP status, proxy refusal) and 401/429 keep ordinary handling.
+ */
+function outcomeUnknownResult(result) {
+  result.response.upstreamPartialOutput = true;
+  return { ...result, claudeRequestScoped: true };
 }
 function getOpenAiMessages(body) {
   const messages = body.messages;
@@ -589,6 +671,8 @@ async function wsChat(prompt, conversationId, authorization, cookieHeader, templ
       followRedirects: false
     });
     let settled = false;
+    // Set once the prompt frame is handed to the socket; after that, Meta may have accepted the turn.
+    let promptSent = false;
     let accumulatedText = "";
     const contentDeltas = [];
     let timeout = null;
@@ -602,7 +686,7 @@ async function wsChat(prompt, conversationId, authorization, cookieHeader, templ
         ws.close();
       } catch {
       }
-      resolve(result);
+      resolve({ ...result, promptSent });
     };
     const fail = (error) => finish({ content: "", deltas: [], error });
     const armIdleTimeout = () => {
@@ -618,6 +702,7 @@ async function wsChat(prompt, conversationId, authorization, cookieHeader, templ
     ws.onopen = () => {
       ws.send(buildWsIntroFrame(conversationId));
       ws.send(buildWsPromptFrame(prompt, conversationId, { templateB64, requestId }));
+      promptSent = true;
     };
     ws.onmessage = (event) => {
       armIdleTimeout();
@@ -757,7 +842,8 @@ class MuseSparkWebExecutor extends BaseExecutor {
     credentials,
     signal,
     log,
-    proxyOptions
+    proxyOptions,
+    onCredentialsRefreshed
   }, sender, billed) {
     // The GraphQL setup calls are not charged; the WebSocket turn is quota-bearing.
     const setup = (url, init) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false });
@@ -777,15 +863,24 @@ class MuseSparkWebExecutor extends BaseExecutor {
     if (!parsedHistory.foldedPrompt) {
       return errorResult(400, "Empty query after processing messages", "invalid_request", {}, body);
     }
-    let cookieHeader = selectMetaAiCookieHeader(credentials);
-    if (!cookieHeader || !/(?:^|;\s*)ecto_1_sess=[^;]+/.test(cookieHeader)) return errorResult(401, "Re-import your ecto_1_sess session cookie.", "auth_error", {}, body);
+    const selected = selectMetaAiCookie(credentials);
+    let cookieHeader = selected.header;
+    if (!cookieHeader || !ECTO_PAIR_RE.test(cookieHeader)) return errorResult(401, "Re-import your ecto_1_sess session cookie.", "auth_error", {}, body);
     const freshToken = await _fetchFreshAccessTokenDispatch(cookieHeader, signal, credentials.connectionId, proxyOptions);
+    if (!freshToken.ok && freshToken.refused === true) {
+      // A local refusal (unsupported route or engine, or an exceeded refresh bound). It says nothing
+      // about the session: it is neither an auth failure nor a success, and no turn was sent.
+      return errorResult(503, `Meta AI browser refresh refused; the session was not verified. ${freshToken.error || ""}`.trim(), "meta_ai_refresh_unsupported", {}, body, "unsupported");
+    }
     if (!freshToken.ok) {
       const status = freshToken.status === 429 ? 429 : (freshToken.status === 401 || freshToken.status === 403 ? 401 : 502);
       return errorResult(status, status === 401 ? "Meta AI session expired; re-import your ecto_1_sess cookie." : "Meta AI token bootstrap failed", "meta_ai_auth_error", {}, body);
     }
     const authorization = freshToken.token;
-    if (freshToken.updatedCookie) cookieHeader = freshToken.updatedCookie;
+    if (freshToken.updatedCookie) {
+      cookieHeader = freshToken.updatedCookie;
+      await persistRotatedCookie({ credentials, selected, freshToken, onCredentialsRefreshed, log });
+    }
     const continuationCacheKey = getContinuationCacheKey(parsedHistory, credentials, model);
     const cached = continuationCacheKey ? lookupCachedConversation(continuationCacheKey) : null;
     const conversationContext = getConversationContext(cached);
@@ -841,19 +936,21 @@ class MuseSparkWebExecutor extends BaseExecutor {
       const lower = wsResult.error.toLowerCase();
       const status = /429|rate.limit/.test(lower) ? 429 : /auth|authorization|401/.test(lower) ? 401 : 502;
       const message = status === 401 ? `${wsResult.error} \u2014 your meta.ai ecto_1_sess cookie may be missing or expired; re-paste the ecto_1_sess value from DevTools.` : wsResult.error;
+      if (wsResult.promptSent === true && status === 502) return outcomeUnknownResult(errorResult(status, `${message}. ${META_AI_OUTCOME_UNKNOWN_MESSAGE}`, "meta_ai_outcome_unknown", headers, body));
       return errorResult(status, message, "meta_ai_ws_error", headers, body);
     }
     const content = wsResult.content || "";
     if (!content && !wsResult.deltas.length) {
       evictContinuationIfNeeded(cached, continuationCacheKey);
       log?.error?.("MUSE-SPARK-WEB", "WS returned empty response");
-      return errorResult(
+      const empty = errorResult(
         502,
-        "Meta AI returned no assistant content",
+        wsResult.promptSent === true ? `Meta AI returned no assistant content. ${META_AI_OUTCOME_UNKNOWN_MESSAGE}` : "Meta AI returned no assistant content",
         "meta_ai_empty_response",
         headers,
         body
       );
+      return wsResult.promptSent === true ? outcomeUnknownResult(empty) : empty;
     }
     const deltas = wsResult.deltas.length > 0 ? wsResult.deltas : [content];
     const parsed = {

@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("../../", import.meta.url));
+const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const require = createRequire(resolve(root, "package.json"));
 const { transformSync } = require("esbuild");
 const { parse: parseJavaScript } = require("@babel/parser");
@@ -41,7 +41,8 @@ export function isIntegrationSource(source) {
 }
 
 /** Classify a test and its local transitive imports, with cycle-safe memoization. */
-export function createFileClassifier(testsDir) {
+export function createFileClassifier(testsDir, repoRoot = root) {
+  repoRoot = resolve(repoRoot);
   const sources = new Map();
   const results = new Map();
   return function isIntegration(entry) {
@@ -65,10 +66,10 @@ export function createFileClassifier(testsDir) {
         const dependencies = [];
         for (const match of code.matchAll(localImport)) {
           const specifier = match[1];
-          const target = specifier.startsWith("@/") ? resolve(root, "src", specifier.slice(2))
-            : specifier.startsWith("open-sse/") ? resolve(root, specifier)
+          const target = specifier.startsWith("@/") ? resolve(repoRoot, "src", specifier.slice(2))
+            : specifier.startsWith("open-sse/") ? resolve(repoRoot, specifier)
             : resolve(dirname(file), specifier);
-          if (target.startsWith(root + "/") && !target.includes("/node_modules/")) {
+          if (target.startsWith(repoRoot + "/") && !target.includes("/node_modules/")) {
             for (const candidate of [target, target + ".js", target + ".mjs", resolve(target, "index.js")]) {
               if (existsSync(candidate)) { dependencies.push(candidate); break; }
             }

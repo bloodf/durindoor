@@ -1,7 +1,22 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isIntegrationSource } from "../__baseline__/vitest-projects.mjs";
+import { createFileClassifier, isIntegrationSource } from "../__baseline__/vitest-projects.mjs";
 
 describe("Vitest project resource classification", () => {
+  it("detects a listener in an imported helper without overrides", () => {
+    const root = mkdtempSync(join(tmpdir(), "vitest-classifier-"));
+    try {
+      const tests = join(root, "tests");
+      mkdirSync(tests);
+      writeFileSync(join(tests, "sample.test.js"), 'import "./helper.js";');
+      writeFileSync(join(tests, "helper.js"), "server.listen(0);");
+      expect(createFileClassifier(tests, root)("sample.test.js")).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("detects a listener after a regex literal containing comment delimiters", () => {
     expect(isIntegrationSource("const slash = /[//]/; server.listen(0);" )).toBe(true);
   });

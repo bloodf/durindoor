@@ -229,3 +229,39 @@ it("keeps canonical timeline framing when recovery follows an unterminated frame
   expect(events[0]).toContain("upstream_stream_incomplete");
   expect(events[1]).toBe("data: [DONE]");
 });
+
+it("keeps NDJSON observation line-bounded beyond the SSE size limit", () => {
+  let count = 0;
+  const timeline = createTimelineFrameObserver({ format: "ndjson", onFrame: () => count++ });
+  const dispatcher = createSseFrameDispatcher([], { parseFrames: false });
+  const line = `${JSON.stringify({ text: "x".repeat(1024) })}\n`;
+  const bytes = encoder.encode(line);
+  const iterations = Math.ceil((65 * 1024 * 1024) / bytes.length);
+  for (let i = 0; i < iterations; i++) {
+    const batch = dispatcher.push(bytes);
+    expect(batch.frames).toHaveLength(0);
+    timeline.push(bytes, batch);
+  }
+  timeline.flush(dispatcher.flush());
+  expect(count).toBe(iterations);
+});
+
+it("retains a replacement character from the decoder flush", async () => {
+  const bytes = new Uint8Array([0x7b, 0xc3]);
+  const source = new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); } });
+  const events = [];
+  const timeline = createTimelineFrameObserver({ format: "ndjson", onFrame: (frame) => events.push(frame) });
+  const controller = { isConnected: () => true, handleComplete: vi.fn(), handleError: vi.fn() };
+  const stream = createDisconnectAwareStream({ readable: source }, controller, null, null,
+    (chunk, batch) => timeline.push(chunk, batch), (batch) => timeline.flush(batch), null, null, 0, true);
+  expect(new Uint8Array(await new Response(stream).arrayBuffer())).toEqual(bytes);
+  expect(events).toEqual(["{�"]);
+});
+
+it("drops the trailing newline of an unterminated SSE frame", () => {
+  const events = [];
+  const timeline = createTimelineFrameObserver({ format: "sse", onFrame: (frame) => events.push(frame) });
+  timeline.push(encoder.encode("data: x\n"));
+  timeline.flush();
+  expect(events).toEqual(["data: x"]);
+});

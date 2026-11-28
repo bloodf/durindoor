@@ -247,14 +247,14 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const clientTap = emittedFormat && traceId
     ? attachClientFrameTap(traceId, emittedFormat === FORMATS.OLLAMA ? "ndjson" : "sse-lines")
     : null;
-  const onClientEnd = () => {
+  const onClientEnd = (batch) => {
     reqLogger?.flushStreams?.();
-    clientTap?.onClientEnd();
+    clientTap?.onClientEnd(batch);
     if (traceId) { try { finishTrace(traceId, { status: "ok" }); } catch {} }
   };
-  const onClientAbort = () => {
+  const onClientAbort = (batch) => {
     reqLogger?.flushStreams?.();
-    clientTap?.onClientAbort();
+    clientTap?.onClientAbort(batch);
     if (traceId) { try { finishTrace(traceId, { status: "aborted" }); } catch {} }
   };
   // Disconnect-aware piping owns client cancellation; capture transform state
@@ -266,7 +266,7 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   });
   const transformedBody = pipeWithDisconnect(
     providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, terminalTracker,
-    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard,
+    clientTap?.onClientBytes || null, onClientEnd, onClientAbort, keepaliveFrame, SSE_KEEPALIVE_MS, undefined, emptyTerminalGuard, emittedFormat === FORMATS.OLLAMA,
   );
 
   trackStreamTokenLimit(transformedBody, transformStream.hasTokenLimitTerminal);

@@ -182,8 +182,10 @@ export function encodeObservedSseFrames(text, frames) {
  * A batch returned by push/flush also supplies decoded text to legacy line taps.
  * Complete frames forwarded by the empty-terminal guard reuse its observations.
  */
-export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder() } = {}) {
-  const reader = createSseFrameReader({ preserveWire: true });
+export function createSseFrameDispatcher(observers = [], { decoder = new TextDecoder(), parseFrames = true } = {}) {
+  // Line-oriented client timelines consume decoded text directly; retaining an
+  // SSE frame there would accumulate every NDJSON line until the size cap.
+  const reader = parseFrames ? createSseFrameReader({ preserveWire: true }) : null;
   let decodedBytes = false;
   const observe = (frames) => {
     for (const frame of frames) {
@@ -218,12 +220,12 @@ export function createSseFrameDispatcher(observers = [], { decoder = new TextDec
       }
       decodedBytes = true;
       const text = decoder.decode(bytes, { stream: true });
-      return { text, frames: observe(parse(reader.push(text))) };
+      return { text, frames: observe(parse(reader?.push(text) ?? [])) };
     },
     flush() {
       const text = decodedBytes ? decoder.decode() : "";
       decodedBytes = false;
-      return { text, frames: observe(parse([...reader.push(text), ...reader.flush()])) };
+      return { text, frames: observe(parse(reader ? [...reader.push(text), ...reader.flush()] : [])) };
     },
   };
 }

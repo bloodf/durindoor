@@ -4,9 +4,9 @@ import { createClientFrameFramer } from "./proxyTimelineFrame.js";
 /** Share the output stage's observations, retaining the legacy line/NDJSON view. */
 export function createTimelineFrameObserver({ format, onFrame }) {
   const framer = format === "sse" ? null : createClientFrameFramer({ format, onFrame });
-  const dispatcher = createSseFrameDispatcher();
+  const dispatcher = createSseFrameDispatcher([], { parseFrames: format === "sse" });
   let trailingWire = "";
-  const emit = (wire) => { if (wire) onFrame(wire.replace(/\r\n/g, "\n").replace(/\r$/, "")); };
+  const emit = (wire) => { if (wire) onFrame(wire.replace(/\r\n/g, "\n").replace(/\r$/, "").replace(/\n$/, "")); };
   const consume = (batch) => {
     if (framer) {
       if (batch.text) framer.push(batch.text);

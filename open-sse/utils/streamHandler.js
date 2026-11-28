@@ -152,12 +152,12 @@ function isCommentKeepalive(value) {
  * @param {Uint8Array|null} keepaliveFrame - Client-format SSE keepalive bytes.
  * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  */
-export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0) {
+export function createDisconnectAwareStream(transformStream, streamController, onAbortTerminal = null, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, lineTimeline = false) {
   const reader = transformStream.readable.getReader();
   let terminalEmitted = false;
   const frames = terminalTracker || onClientBytes ? createSseFrameDispatcher([
     (frame) => terminalTracker?.observeParsedClientFrame?.(frame),
-  ]) : null;
+  ], { parseFrames: !lineTimeline || !!terminalTracker }) : null;
   let keepaliveTimer = null;
   let clientBytesStarted = false;
 
@@ -354,7 +354,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {number} keepaliveMs - Keepalive interval; zero disables pings.
  * @param {number} ttftTimeoutMs - Maximum wait for the first raw upstream byte
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, emptyTerminalGuard = null) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, terminalTracker = null, onClientBytes = null, onClientEnd = null, onClientAbort = null, keepaliveFrame = null, keepaliveMs = 0, ttftTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS, emptyTerminalGuard = null, lineTimeline = false) {
   let stallTimer = null;
   let firstChunkTimer = null;
   let chunkCount = 0;
@@ -467,5 +467,6 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
     onClientAbort,
     keepaliveFrame,
     keepaliveMs,
+    lineTimeline,
   );
 }

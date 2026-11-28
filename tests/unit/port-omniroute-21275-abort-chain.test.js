@@ -78,6 +78,12 @@ describe("OmniRoute #21275: a rebuilt request keeps the client abort after GC", 
     expect(signal.aborted).toBe(true);
   });
 
+  it("routes image edit uploads through the shared bounded reader", () => {
+    const source = readFileSync(new URL("../../src/sse/handlers/imageEdit.js", import.meta.url), "utf8");
+    expect(source).toMatch(/import \{ readBoundedRequest \} from /);
+    expect(source).toMatch(/await readBoundedRequest\(request,/);
+  });
+
   // These rebuilds sit in private helpers, so the call sites are pinned by source.
   it.each([
     "src/sse/handlers/stt.js",

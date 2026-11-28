@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
-import { formatModelProbeErrors, updateModelProbeErrors } from "@/shared/utils/modelTestResults.js";
+import useModelProbeErrors from "./useModelProbeErrors.js";
+import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels.js";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import { testAndDisableFailedModels, bulkDisableMessage } from "@/shared/utils/providerModelBulkActions.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
@@ -101,8 +102,6 @@ export default function useProviderDetail(providerId) {
   const [customModels, setCustomModels] = useState([]);
   const [modelTestResults, setModelTestResults] = useState({});
   const [bulkModelsTestError, setModelsTestError] = useState("");
-  const [modelProbeErrors, setModelProbeErrors] = useState({});
-  const modelsTestError = [bulkModelsTestError, formatModelProbeErrors(modelProbeErrors)].filter(Boolean).join("; ");
   const [modelsTestMessage, setModelsTestMessage] = useState("");
   const [bulkTestingModels, setBulkTestingModels] = useState(false);
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
@@ -322,6 +321,12 @@ export default function useProviderDetail(providerId) {
     return levels && levels.includes(thinkingMode) ? thinkingMode : null;
   };
   const providerStorageAlias = isCompatible ? providerId : providerAlias;
+  const probeConnectionId = connections.find((connection) => connection.isActive !== false)?.id;
+  const { error: modelProbeError, recordError: recordModelProbeError } = useModelProbeErrors(
+    providerStorageAlias, probeConnectionId,
+    [...models, ...kiloFreeModels, ...getProviderCustomModelRows({ customModels, modelAliases, providerAlias: providerStorageAlias })].map((model) => model.id),
+  );
+  const modelsTestError = [bulkModelsTestError, modelProbeError].filter(Boolean).join("; ");
   // Union of levels across this provider's reasoning models — drives the level picker options.
   // Include custom models too (e.g. manually added gpt-5.6-sol → max).
   const providerThinkingLevels = getProviderThinkingLevels({
@@ -658,12 +663,12 @@ export default function useProviderDetail(providerId) {
       if (providerGenerationRef.current !== requestGeneration) return null;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
-      setModelProbeErrors((prev) => updateModelProbeErrors(prev, `${providerStorageAlias}/${modelId}`, connectionId, outcome === "error" ? data.error || "Model not reachable" : null));
+      recordModelProbeError(modelId, outcome === "error" ? data.error || "Model not reachable" : null);
       return outcome;
     } catch {
       if (providerGenerationRef.current !== requestGeneration) return null;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
-      setModelProbeErrors((prev) => updateModelProbeErrors(prev, `${providerStorageAlias}/${modelId}`, connectionId, "Network error"));
+      recordModelProbeError(modelId, "Network error");
       return "error";
     } finally {
       if (providerGenerationRef.current === requestGeneration) {

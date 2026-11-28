@@ -6840,6 +6840,26 @@
       ]
     },
     {
+      "id": "src/app/(dashboard)/dashboard/combos/ComboCard.jsx#ComboCard",
+      "sourcePath": "src/app/(dashboard)/dashboard/combos/ComboCard.jsx",
+      "symbol": "ComboCard",
+      "sourceSha256": "5174b1d761281f63032bbda767f4b42edf30ac685e789069034f599f6bbdfb4e",
+      "proposedClassification": "visual",
+      "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "approvedClassification": null,
+      "approvedScenarioIds": [],
+      "approvedException": null,
+      "requiredScenarioIds": [],
+      "storyScenarios": [],
+      "unresolvedHistoricalScenarioIds": [],
+      "reviewEvidence": null,
+      "sourceReviewStatus": "pending-independent-source-review",
+      "runtimeStatus": "pending",
+      "historicalSourceApprovals": []
+    },
+    {
       "id": "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx#ConnectionGroupsPanel",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/ConnectionGroupsPanel.jsx",
       "symbol": "ConnectionGroupsPanel",
@@ -7024,7 +7044,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
@@ -7040,7 +7060,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
@@ -7061,7 +7081,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacing opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
@@ -7078,7 +7098,7 @@
           ],
           "proposedSourceEvidence": "Actual CreateComboSpacingMobile opens and retains production ComboFormModal, asserts its real footer actions, selects a real nested combo, closes the picker and leaves the form/model row visible. This supplies retained create-form ownership, unlike CreateFlow which cancels/unmounts. Existing native geometry/process and full browser/accessibility obligations remain pending. Extracted component source now src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx; scenario still exercises the real mounted route editor. Pending review.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
@@ -7123,7 +7143,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/components/ComboFormModal.jsx": "5f79b2a78032e23622ae59be30b2022e675fe477489630778d0dd99accc1a689"
@@ -7297,7 +7317,7 @@
           "sourceHashes": {
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52"
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220"
           },
           "proposedSourceEvidence": "Actual LoadFailure renders CombosErrorResetHarness, not CombosPage. Play asserts initial production error title/dashboard destination and fixture counter, activates Try again, then asserts Combos restored in the harness main and absence of the production title/retry/dashboard link. Neither the error nor a restored production CombosPage remains mounted; this is a transition-only reference, not retained page/widget coverage.",
           "expectedConsoleErrors": [],
@@ -7567,8 +7587,8 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#ComboCard",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "ComboCard",
-      "sourceSha256": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
-      "proposedClassification": "visual",
+      "sourceSha256": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
+      "proposedClassification": "nonvisual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
       "reviewStatus": "pending",
@@ -7587,7 +7607,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7698,7 +7718,7 @@
       "id": "src/app/(dashboard)/dashboard/combos/page.js#CombosPage",
       "sourcePath": "src/app/(dashboard)/dashboard/combos/page.js",
       "symbol": "CombosPage",
-      "sourceSha256": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+      "sourceSha256": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -7727,7 +7747,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7745,7 +7765,7 @@
             "empty"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7763,7 +7783,7 @@
             "asserted unmount reset"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7786,7 +7806,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7805,7 +7825,7 @@
             "asserted modal unmount"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7824,7 +7844,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7840,7 +7860,7 @@
             "error"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7856,7 +7876,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           }
@@ -7871,7 +7891,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacing play opens live Create Combo dialog and proves footer controls plus model row geometry.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -7887,7 +7907,7 @@
           ],
           "proposedSourceEvidence": "CreateComboSpacingMobile executes same live dialog and geometry assertions at mobile viewport.",
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/combos/page.js": "80cf8d3a87dff69a53bd92c57bc3517ab78d8bfa11e817597523a7628acd8a52",
+            "src/app/(dashboard)/dashboard/combos/page.js": "561cf06e8191e63000f3b1f37ae003278cc2a9c2e3b4737e8dd4ce8eb25f7220",
             "src/app/(dashboard)/dashboard/combos/page.stories.jsx": "78fefde3278bb040006cf31f9fede53c96e761c392469c424da7d90897841309",
             "src/app/(dashboard)/dashboard/combos/error.js": "318ea7f6567c639652e79a0025d5f8be801650b6555cf32e00d9c58186b61377"
           },
@@ -22927,7 +22947,7 @@
       "id": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js#PlaygroundPageClient",
       "sourcePath": "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js",
       "symbol": "PlaygroundPageClient",
-      "sourceSha256": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+      "sourceSha256": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
       "proposedClassification": "visual",
       "approvedClassification": null,
       "proposedCoverageRationale": "Automated current-source inventory proposal. Independent classification and scenario ownership review are pending.",
@@ -22951,7 +22971,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "PlaygroundPageClient.stories.jsx#EmptyConversation",
@@ -22967,7 +22987,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "PlaygroundPageClient.stories.jsx#SendsCompletion",
@@ -22983,7 +23003,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "Play opens provider/model menu."
@@ -22998,7 +23018,7 @@
             "controls"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "Play opens history."
@@ -23012,7 +23032,7 @@
             "text"
           ],
           "sourceHashes": {
-            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "ffa75b4dd7709c5ecc410d67195c6d87ab9cc82b879f7fc0da001d825d2bcbe9",
+            "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.js": "da9139f80bad876103007981160e116ba85712ce22fcf1a469cf02a8d844c05a",
             "src/app/(dashboard)/dashboard/playground/PlaygroundPageClient.stories.jsx": "ca1ef25a3ae2415ad83bbe3aa5382feab4cca6a21501606adcc4365fd27e83ea"
           },
           "proposedSourceEvidence": "CompletionError fixture returns HTTP503 with error Fixture provider unavailable.; sendMessage sets the sanitized loadError banner and assistant error message. Frozen ff930 screenshot shows both retained texts; the real play asserts the Error status.",
@@ -39911,8 +39931,80 @@
       "approvedClassification": null,
       "approvedScenarioIds": [],
       "approvedException": null,
-      "requiredScenarioIds": [],
-      "storyScenarios": [],
+      "requiredScenarioIds": [
+        "production-usage-resetcreditsmodal--open",
+        "production-usage-resetcreditsmodal--claude-grants",
+        "production-usage-resetcreditsmodal--loading",
+        "production-usage-resetcreditsmodal--error",
+        "production-usage-resetcreditsmodal--empty"
+      ],
+      "storyScenarios": [
+        {
+          "id": "production-usage-resetcreditsmodal--open",
+          "storyId": "production-usage-resetcreditsmodal--open",
+          "runtimeArtifactId": "production-usage-resetcreditsmodal--open",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.js": "552bb913d9d80146efc5160d63555e2ef8395c25b56abef8154a90d4ca0cdeb7",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx": "68bcb7c901ecbfaec46ef1877d5865af8f6d16cab95780b9402cb80fbbb8dc64"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-usage-resetcreditsmodal--claude-grants",
+          "storyId": "production-usage-resetcreditsmodal--claude-grants",
+          "runtimeArtifactId": "production-usage-resetcreditsmodal--claude-grants",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.js": "552bb913d9d80146efc5160d63555e2ef8395c25b56abef8154a90d4ca0cdeb7",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx": "68bcb7c901ecbfaec46ef1877d5865af8f6d16cab95780b9402cb80fbbb8dc64"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-usage-resetcreditsmodal--loading",
+          "storyId": "production-usage-resetcreditsmodal--loading",
+          "runtimeArtifactId": "production-usage-resetcreditsmodal--loading",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.js": "552bb913d9d80146efc5160d63555e2ef8395c25b56abef8154a90d4ca0cdeb7",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx": "68bcb7c901ecbfaec46ef1877d5865af8f6d16cab95780b9402cb80fbbb8dc64"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-usage-resetcreditsmodal--error",
+          "storyId": "production-usage-resetcreditsmodal--error",
+          "runtimeArtifactId": "production-usage-resetcreditsmodal--error",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.js": "552bb913d9d80146efc5160d63555e2ef8395c25b56abef8154a90d4ca0cdeb7",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx": "68bcb7c901ecbfaec46ef1877d5865af8f6d16cab95780b9402cb80fbbb8dc64"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        },
+        {
+          "id": "production-usage-resetcreditsmodal--empty",
+          "storyId": "production-usage-resetcreditsmodal--empty",
+          "runtimeArtifactId": "production-usage-resetcreditsmodal--empty",
+          "axes": [
+            "source-association-pending-review"
+          ],
+          "sourceHashes": {
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.js": "552bb913d9d80146efc5160d63555e2ef8395c25b56abef8154a90d4ca0cdeb7",
+            "src/app/(dashboard)/dashboard/usage/components/ProviderLimits/ResetCreditsModal.stories.jsx": "68bcb7c901ecbfaec46ef1877d5865af8f6d16cab95780b9402cb80fbbb8dc64"
+          },
+          "proposedSourceEvidence": "Built componentPath associates this story with the source file. Branch and private-fragment coverage require independent review."
+        }
+      ],
       "unresolvedHistoricalScenarioIds": [],
       "reviewEvidence": null,
       "sourceReviewStatus": "pending-independent-source-review",
@@ -84000,6 +84092,56 @@
       "reviewEvidence": null
     },
     {
+      "storyId": "v5-review-pages-usage-resetcreditsmodal--open",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-providerlimits-resetcreditsmodal.stories.jsx",
+      "sourceSha256": "96aebdd9349fbf90ac5c889b7037901d72f964557713834fcf762e1cf77bd468",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-usage-resetcreditsmodal--claude-grants",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-providerlimits-resetcreditsmodal.stories.jsx",
+      "sourceSha256": "96aebdd9349fbf90ac5c889b7037901d72f964557713834fcf762e1cf77bd468",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-usage-resetcreditsmodal--loading",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-providerlimits-resetcreditsmodal.stories.jsx",
+      "sourceSha256": "96aebdd9349fbf90ac5c889b7037901d72f964557713834fcf762e1cf77bd468",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-usage-resetcreditsmodal--error",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-providerlimits-resetcreditsmodal.stories.jsx",
+      "sourceSha256": "96aebdd9349fbf90ac5c889b7037901d72f964557713834fcf762e1cf77bd468",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
+      "storyId": "v5-review-pages-usage-resetcreditsmodal--empty",
+      "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-providerlimits-resetcreditsmodal.stories.jsx",
+      "sourceSha256": "96aebdd9349fbf90ac5c889b7037901d72f964557713834fcf762e1cf77bd468",
+      "reviewStatus": "pending",
+      "reviewedBy": null,
+      "reason": "Built Storybook source association only. Independent reference classification and runtime qualification are pending; this record grants no production coverage.",
+      "runtimeStatus": "pending",
+      "reviewEvidence": null
+    },
+    {
       "storyId": "v5-review-pages-usage-usage-surfaces--overview",
       "sourcePath": "./src/shared/ui/v5/stories/src-app-dashboard-dashboard-usage-components-usagesurface.stories.jsx",
       "sourceSha256": "2df968e4760e57e2cb21d89fc87e4bd2f147129493cf1051de5cb23029652097",
@@ -105316,11 +105458,11 @@
   ],
   "inventoryReconciliation": {
     "tool": "scripts/sync-storybook-inventory.mjs",
-    "builtIndexSha256": "753d2cd214edadfe320d018c645d2147ba0a800d0693ffb3c8ac5c70c41869f2",
-    "sourceCensusSha256": "3697b23b02e853c78d04327bc3c7874ee2df9e45a1f973fad531cc5f01634f68",
-    "pendingRows": 464,
+    "builtIndexSha256": "31d0dc2b9bbb1a632bf71974ff2b65de4afc3872978d299998f2175592f84a71",
+    "sourceCensusSha256": "d716e7173034783f23ea57a298a41fe0d65d2f7a19ca1f591e2e1f9386c50926",
+    "pendingRows": 465,
     "retainedApprovedRows": 196,
-    "pendingReferences": 1498,
+    "pendingReferences": 1503,
     "runtimeStatus": "pending"
   }
 }

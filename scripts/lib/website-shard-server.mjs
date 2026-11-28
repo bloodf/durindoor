@@ -146,10 +146,6 @@ function readOnce(pid, dir, readFile) {
   const environRead = readProcFile(readFile, path.join(dir, "environ"));
   if (GONE_CODES.has(environRead.error)) return gone;
 
-  // Only evidence for ancestry checks; a missing or unreadable cgroup file
-  // says nothing about whether the process lives.
-  const cgroupRead = readProcFile(readFile, path.join(dir, "cgroup"));
-
   // Re-read stat: a process that exited while we read it is gone, and a PID
   // that changed hands in between must be read again from scratch.
   const againRead = readProcFile(readFile, path.join(dir, "stat"));
@@ -177,7 +173,6 @@ function readOnce(pid, dir, readFile) {
     dirUid,
     environ: environRead.text === null ? null : environRead.text.split("\0").filter(Boolean),
     environError: environRead.error,
-    cgroup: isString(cgroupRead.text) && cgroupRead.text.trim() ? cgroupRead.text : null,
   };
 }
 
@@ -209,10 +204,11 @@ export function readProcessIdentity(pid, procRoot = "/proc", { readFile = readFi
  *              kernel thread, a fully readable environment without it, or an
  *              unreadable environment with proven unrelated ancestry, group
  *              and session when the shard server identity is available, and
- *              either a start before the server or a different, readable
- *              cgroup. A descendant that called setsid and was reparented to
- *              PID 1 or a subreaper loses its ancestry, so ancestry alone
- *              never clears a process started after the server.
+ *              a start before the server. A descendant that called setsid
+ *              and was reparented to PID 1 or a subreaper loses its ancestry,
+ *              and it can move itself into another writable cgroup, so
+ *              neither ancestry nor cgroup ever clears a process started at
+ *              or after the server.
  *   owned      every uid is euid, the token is in the environment, and the
  *              identity is complete. Only these are ever signalled.
  *   uncertain  could be this shard's and cannot be proven either way: the
@@ -255,8 +251,8 @@ export function classifyProcess(read, owner, euid, shard = null) {
   if (!read.uids) return uncertain(`status ${read.statusError}`);
   if (read.stat.flags & PF_KTHREAD) return { verdict: "foreign", pid, reason: "kernel thread" };
   if (read.environ === null) {
-    // Only a complete, unrelated ancestry plus a start before the server (or a
-    // different, readable cgroup) can excuse a protected environment. Missing
+    // Only a complete, unrelated ancestry plus a start before the server can
+    // excuse a protected environment. Missing
     // shard/ancestor stat data stays fail-closed. Group or session
     // membership is evidence of possible ownership, never permission to signal.
     if (shard && !couldBelongToShard(read, shard)) {
@@ -299,10 +295,9 @@ function couldBelongToShard(read, { serverIdentity, processes }) {
   }
   // The chain reached PID 1 without passing the server. A shard descendant
   // that called setsid and whose parent exited looks exactly like this, so
-  // only a start before the server, or a different cgroup when both are
-  // readable, proves the process unrelated.
+  // only a start before the server proves the process unrelated. A cgroup
+  // move is not proof: a descendant can enter any writable delegated cgroup.
   if (startsBefore(read.stat.startTime, stat.startTime)) return false;
-  if (read.cgroup && serverIdentity.cgroup && read.cgroup !== serverIdentity.cgroup) return false;
   return true;
 }
 

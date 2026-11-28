@@ -64,7 +64,6 @@ describe("unrelated protected processes (#2715)", () => {
   it.each([
     ["started before the server", { startTime: "99" }],
     ["started before the server with an unreadable cgroup", { startTime: "99", cgroup: null }],
-    ["in a different, readable cgroup", { startTime: "150", cgroup: otherCgroup }],
   ])("classifies a same-uid process with unreadable environ %s as foreign", (_name, options) => {
     expect(classify(options)).toMatchObject({
       verdict: "foreign", reason: "unrelated same-uid process with unreadable environ",
@@ -75,6 +74,7 @@ describe("unrelated protected processes (#2715)", () => {
   it.each([
     ["reparented process started with the server", {}],
     ["reparented process started after the server", { startTime: "150" }],
+    ["reparented process in a different, readable cgroup", { startTime: "150", cgroup: otherCgroup }],
     ["reparented process with an unreadable cgroup", { startTime: "150", cgroup: null }],
     ["reparented process when the server cgroup is unreadable", { startTime: "150", cgroup: otherCgroup, serverCgroup: null }],
     ["direct descendant", { ppid: 200 }],
@@ -89,6 +89,7 @@ describe("unrelated protected processes (#2715)", () => {
   it("reports a reparented setsid descendant as uncertain in a scan", () => {
     expect(scanUncertain()).toEqual([200, 300, 301]);
     expect(scanUncertain({ startTime: "150" })).toEqual([200, 300, 301]);
+    expect(scanUncertain({ startTime: "150", cgroup: otherCgroup })).toEqual([200, 300, 301]);
   });
 
   it("stays fail-closed without the shard identity", () => {

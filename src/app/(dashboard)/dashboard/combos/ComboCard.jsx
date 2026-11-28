@@ -17,7 +17,7 @@ import ModelSummary from "@/shared/ui/v5/combos/ModelSummary.jsx";
 import "@/shared/ui/v5/combos/combos.css";
 
 
-function getStrategyOptions(globalStrategy) {
+export function getStrategyOptions(globalStrategy) {
   const options = [
     { value: "fallback", label: translate("Fallback — try in order") },
     { value: "round-robin", label: translate("Round Robin — rotate") },

@@ -2,7 +2,6 @@ import { sendTls } from "./executor.js";
 /** ChatGPT Web session helpers. The HTTP entry preserves the public transport API. */
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { sha3_512Hex } from "../../utils/sha3-512.js";
 import { tlsFetchChatGpt as tlsFetchChatGptRaw } from "../../services/chatgptTlsClient.js";
 import { __resetChatGptImageCacheForTesting } from "../../services/chatgptImageCache.js";
 import { buildNextAuthSessionCookie, mergeRefreshedCookie } from "../../../src/lib/providers/webCookieAuth.js";
@@ -547,33 +546,10 @@ function buildPrekeyConfig(userAgent, dpl, scriptSrc) {
 // POW_YIELD_EVERY iterations — roughly every ~5ms of work — so concurrent
 // requests and I/O still get scheduled. Wall time is approximately the same
 // as the synchronous version; what changes is fairness, not throughput.
-const POW_YIELD_EVERY = 1000;
-
-
-function yieldToEventLoop() {
-  return new Promise((resolve) => setImmediate(resolve));
-}
-
-
-async function solvePow(opts) {
-  const cfg = [...opts.config];
-  for (let i = 0; i < opts.maxIter; i++) {
-    if (i > 0 && i % POW_YIELD_EVERY === 0) await yieldToEventLoop();
-    cfg[3] = i;
-    const json = JSON.stringify(cfg);
-    const b64 = Buffer.from(json).toString("base64");
-    // Portable SHA3-512 — pure-JS fallback under Electron/BoringSSL (OmniRoute #5531).
-    const hash = sha3_512Hex(opts.seed + b64);
-    if (opts.target && hash.slice(0, opts.target.length) <= opts.target) {
-      return `${opts.prefix}${b64}`;
-    }
-  }
-  opts.log?.warn?.(
-    "CGPT-WEB",
-    `PoW (${opts.label}) exhausted ${opts.maxIter} iterations against target=${opts.target || "<empty>"}; submitting unsolved token (Sentinel may reject)`
-  );
-  const b64 = Buffer.from(JSON.stringify(cfg)).toString("base64");
-  return `${opts.prefix}${b64}`;
+// The HTTP entry retains the portable PoW loop alongside its source-level guard.
+let solvePow;
+function setChatGptPowSolver(solver) {
+  solvePow = solver;
 }
 
 
@@ -612,4 +588,4 @@ function __resetChatGptWebCachesForTesting() {
   dplCache = null;
 }
 
-export { redirectPolicy, tlsFetchChatGpt, SEND_DEADLINE_MS, sendTls, proxyAgentForWebSocket, CHATGPT_BASE, SESSION_URL, SENTINEL_PREPARE_URL, CONV_URL, CHATGPT_USER_AGENT, OAI_CLIENT_VERSION, deviceIdFor, browserHeaders, oaiHeaders, tokenCache, cookieKey, exchangeSession, SessionAuthError, runSessionWarmup, configuredProPollTimeoutMs, configuredProPollIntervalMs, prepareChatRequirements, SentinelBlockedError, fetchDpl, randomHex, buildPrekeyConfig, solveProofOfWork, __resetChatGptWebCachesForTesting };
+export { setChatGptPowSolver, redirectPolicy, tlsFetchChatGpt, SEND_DEADLINE_MS, sendTls, proxyAgentForWebSocket, CHATGPT_BASE, SESSION_URL, SENTINEL_PREPARE_URL, CONV_URL, CHATGPT_USER_AGENT, OAI_CLIENT_VERSION, deviceIdFor, browserHeaders, oaiHeaders, tokenCache, cookieKey, exchangeSession, SessionAuthError, runSessionWarmup, configuredProPollTimeoutMs, configuredProPollIntervalMs, prepareChatRequirements, SentinelBlockedError, fetchDpl, randomHex, buildPrekeyConfig, solveProofOfWork, __resetChatGptWebCachesForTesting };

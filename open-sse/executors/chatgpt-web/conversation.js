@@ -260,71 +260,10 @@ function buildConversationBody(parsed, modelSlug, parentMessageId, options) {
  * and an asset_pointer like "file-service://file-XXXX" (final) or
  * "sediment://..." (in-progress preview).
  */
-async function* readChatGptSseEvents(body, signal) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let dataLines = [];
-  let eventName = null;
-
-  function flush() {
-    if (dataLines.length === 0) {
-      eventName = null;
-      return null;
-    }
-    const payload = dataLines.join("\n");
-    dataLines = [];
-    const sseEventName = eventName;
-    eventName = null;
-    const trimmed = payload.trim();
-    if (!trimmed || trimmed === "[DONE]") return "done";
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (sseEventName && !parsed.type) parsed.type = sseEventName;
-      return parsed;
-    } catch {
-      console.warn("[chatgpt-web] stream event JSON parse failed");
-      return null;
-    }
-  }
-
-  try {
-    while (true) {
-      if (signal?.aborted) return;
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      while (true) {
-        const idx = buffer.indexOf("\n");
-        if (idx < 0) break;
-        const rawLine = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 1);
-        const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-
-        if (line === "") {
-          const parsed = flush();
-          if (parsed === "done") return;
-          if (parsed) yield parsed;
-          continue;
-        }
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
-          dataLines.push(line.slice(5).trimStart());
-        }
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer.trim().startsWith("data:")) {
-      dataLines.push(buffer.trim().slice(5).trimStart());
-    }
-    const tail = flush();
-    if (tail && tail !== "done") yield tail;
-  } finally {
-    reader.releaseLock();
-  }
+// The public HTTP entry owns the provider-private SSE parser.
+let readChatGptSseEvents;
+function setChatGptSseReader(reader) {
+  readChatGptSseEvents = reader;
 }
 
 
@@ -498,4 +437,4 @@ async function pollForFinalAssistantAnswer(conversationId, ctx) {
   return last;
 }
 
-export { parseOpenAIMessages, looksLikeImageGenRequest, looksLikeImageEditRequest, buildConversationBody, readChatGptSseEvents, delayWithAbort, fetchConversationDetail, pollForFinalAssistantAnswer };
+export { setChatGptSseReader, parseOpenAIMessages, looksLikeImageGenRequest, looksLikeImageEditRequest, buildConversationBody, readChatGptSseEvents, delayWithAbort, fetchConversationDetail, pollForFinalAssistantAnswer };

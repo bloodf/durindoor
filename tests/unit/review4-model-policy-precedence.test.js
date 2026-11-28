@@ -97,6 +97,8 @@ beforeAll(async () => {
   const aliasRepo = await import("@/lib/db/repos/aliasRepo.js");
   await aliasRepo.setModelAlias("kea-9627-bare-alias", "openai/gpt-4o");
   await aliasRepo.setModelAlias("kea-9627-denied-alias", "openai/gpt-4o-mini");
+  await aliasRepo.addCustomModel({ providerAlias: "openai", id: "review2709-private-shared" });
+  await aliasRepo.addCustomModel({ providerAlias: "xai", id: "review2709-private-shared" });
 
   const combosRepo = await import("@/lib/db/repos/combosRepo.js");
   await combosRepo.createCombo({
@@ -161,6 +163,14 @@ describe("restricted-key unknown model policy precedence", () => {
       expect(credentialLookup).not.toHaveBeenCalled();
     }
   );
+
+  it("denies private custom ambiguity before credentials or dispatch", async () => {
+    const response = await restrictedChat("review2709-private-shared");
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.message).toBe('Model "review2709-private-shared" is not allowed for this API key');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(credentialLookup).not.toHaveBeenCalled();
+  });
 
   it.each(["kea-9627-bare-alias", "openai/gpt-4o", "gpt-4o"])(
     "allows configured aliases and valid provider models: %s", async (model) => {

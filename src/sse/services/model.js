@@ -269,9 +269,14 @@ export function createRoutableModelIdChecker() {
 }
 
 /**
- * Get full model info (parse or resolve)
+ * Get full model info (parse or resolve). Shared/media callers retain the
+ * OpenAI passthrough for unknown bare names; inference explicitly rejects them.
+ * Optional custom metadata may enrich resolution but its failure is not a
+ * routing-store failure. Alias, combo, node and connection errors still throw.
+ * @param {string} modelStr
+ * @param {{ rejectUnknownBare?: boolean }} [options]
  */
-export async function getModelInfo(modelStr) {
+export async function getModelInfo(modelStr, { rejectUnknownBare = false } = {}) {
   modelStr = normalizeModelReference(modelStr);
   let parsed = parseModel(modelStr);
   if (parsed.isAlias) {
@@ -281,7 +286,7 @@ export async function getModelInfo(modelStr) {
     if (resolved.errorType === "model_not_found") {
       // Only unresolved bare ids consult operator rows. Aliases and existing
       // prefix inference retain precedence; duplicate custom ids need a prefix.
-      const rows = (await getCustomModels()).filter((row) => row.id === modelStr);
+      const rows = (await readOptionalMetadata(() => getCustomModels(), [])).filter((row) => row.id === modelStr);
       const targets = new Map();
       for (const row of rows) {
         const target = await getModelInfo(`${row.providerAlias}/${row.id}`);
@@ -289,6 +294,9 @@ export async function getModelInfo(modelStr) {
       }
       if (targets.size > 1) return { provider: null, model: modelStr, errorType: "ambiguous_model" };
       if (targets.size === 1) resolved = targets.values().next().value;
+      if (resolved.errorType === "model_not_found" && !rejectUnknownBare) {
+        resolved = { provider: "openai", model: modelStr };
+      }
     }
     if (!resolved.provider || !resolved.model) return resolved;
     // Only inferred, bare Claude identifiers may use an OAuth connection.

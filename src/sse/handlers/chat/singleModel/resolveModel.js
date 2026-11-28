@@ -53,14 +53,24 @@ export function isNonChatModel(provider, model) {
  * A string that names no provider is a nested combo, handed back to the caller
  * through ctx.dispatchNestedCombo. Unresolvable bare models on inference routes
  * return HTTP 404 `model_not_found` before credential lookup or upstream
- * dispatch (OmniRoute #21349 / KEA-9627). Ambiguous, malformed, image-only,
+ * dispatch (OmniRoute #21349 / KEA-9627). Model policy precedes unresolved
+ * and ambiguous details. Policy-allowed ambiguity, malformed, image-only,
  * and non-chat models keep their HTTP 400 rejections.
  */
 export async function resolveModel(ctx) {
   const { request, requestSignal, modelStr } = ctx;
   if (requestAborted(request, requestSignal)) return terminal(errorResponse(499, "Request aborted"));
   const resolveInfo = ctx.resolveModelInfo || getModelInfo;
-  const modelInfo = await resolveInfo(modelStr);
+  const modelInfo = await resolveInfo(modelStr, { rejectUnknownBare: true });
+
+  // Unresolved identities reveal no routing details until model policy allows
+  // the raw name. Resolved identities still use canonical admission below.
+  if (modelInfo?.errorType === "ambiguous_model" || modelInfo?.errorType === "model_not_found") {
+    const policyError = await enforceApiKeyModelPolicy(request, modelStr, ctx.apiKey, { limits: false });
+    if (policyError) {
+      return terminal(ctx.reportComboPolicyRejections && policyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError);
+    }
+  }
 
   if (modelInfo?.errorType === "ambiguous_model") {
     const message = modelInfo.errorMessage || `Model '${modelStr}' is ambiguous. Use provider/model prefix.`;
@@ -69,13 +79,6 @@ export async function resolveModel(ctx) {
   }
 
   if (modelInfo?.errorType === "model_not_found") {
-    // Preserve policy precedence for unresolved names without resolving aliases
-    // through exposure lists or selecting credentials. Resolved aliases still
-    // use their underlying provider/model identity in admission.
-    const policyError = await enforceApiKeyModelPolicy(request, modelStr, ctx.apiKey, { limits: false });
-    if (policyError) {
-      return terminal(ctx.reportComboPolicyRejections && policyError.status === HTTP_STATUS.FORBIDDEN ? comboPolicyRejection() : policyError);
-    }
     return terminal(unknownBareModelResponse(modelStr, modelInfo.errorMessage));
   }
 

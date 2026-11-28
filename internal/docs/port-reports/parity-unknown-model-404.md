@@ -75,3 +75,14 @@ All commands ran in an isolated environment (`env -i` with private temporary `HO
 ## Remaining merge gates
 
 Full local CI (`scripts/local-ci.mjs --mode full`) and independent model-family review remain merge gates outside this scoped task.
+
+## PR #2709 shared-caller correction
+
+The original inference-route tests did not establish non-chat passthrough for
+every bare media name. Review of `77215b64e55bedca6c3c60b0b26fd4be537911b0`
+reproduced rejection of `dall-e-3` by the shared dashboard resolver. Rejection
+is now opt-in at the inference stage; existing unknown404 assertions remain
+unchanged. The protected admission suite also used `invalid` as a placeholder
+for its credential-error cases. Only its two chat model literals now use the
+registry-supported `openai/gpt-4o`; all four cases and assertions remain.
+See [the continuation report](2709-focused-correction-continuation.md).

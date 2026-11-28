@@ -165,3 +165,13 @@ suites are byte-identical to local unit base
 merged source head exactly. `git diff --check` passed. Private JSON reports and
 logs are retained under `/var/tmp/review4-continuation.j3zwWY`; these paths are
 local evidence, not portable prerequisites. No full-suite or full-CI claim.
+
+## PR #2709 reviewed-head correction
+
+The earlier statement that shared callers retained passthrough was inaccurate
+for reviewed head `77215b64e55bedca6c3c60b0b26fd4be537911b0`. The core helper
+kept its default, but the dashboard wrapper always enabled rejection. A real
+exported-function test reproduced `dall-e-3` returning model_not_found instead
+of the prior OpenAI passthrough. The wrapper now defaults to passthrough and
+the inference resolution stage explicitly enables rejection. Custom identity
+resolution and raw wire ids remain intact. See [the continuation report](2709-focused-correction-continuation.md).

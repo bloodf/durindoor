@@ -102,3 +102,12 @@ standalone regression file to that exact path and updated the portable commands.
 Test assertions and production code are unchanged. The exact selector, run from
 `tests/`, now collects and passes all 11 cases. Scoped ESLint and
 `git diff --check` pass. This correction does not claim a complete gate rerun.
+
+## PR #2709 ambiguity amendment
+
+At reviewed head `77215b64e55bedca6c3c60b0b26fd4be537911b0`, the missing-model
+branch enforced policy but custom ambiguity still returned 400 first. That
+validation claim did not establish policy isolation for ambiguity. Both
+unresolved outcomes now enforce policy on the raw requested name before
+returning details. Unrestricted ambiguity remains 400; restricted ambiguity
+returns 403 without credential selection. See [the continuation report](2709-focused-correction-continuation.md).

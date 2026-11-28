@@ -6,12 +6,10 @@
  * socket, then expose provider frames as OpenAI-compatible SSE or JSON.
  */
 import { createHash } from "node:crypto";
-import { BaseExecutor } from "./base.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
-import { transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
-import { proxyAwareFetch, resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
+import { resolveWebSocketProxyRoute } from "../utils/proxyFetch.js";
 import { sanitizeErrorMessage } from "../utils/error.js";
 import { isFunction, isNumber, isObject, isString } from "../../src/shared/utils/typeChecks.js";
 import { isExpiredSessionToken, webSocketAuthStatus } from "../utils/webSessionExpiry.js";
@@ -213,23 +211,6 @@ export function flattenPrompt(body) {
   return `${systemText ? `[System Instructions]\n${systemText}\n\n` : ""}${turns}`;
 }
 
-function timeoutSignal(parentSignal, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(new Error("Copilot session start timeout")), timeoutMs);
-  const onAbort = () => controller.abort(parentSignal?.reason || new Error("Request aborted"));
-  if (parentSignal) {
-    if (parentSignal.aborted) onAbort();else
-    parentSignal.addEventListener("abort", onAbort, { once: true });
-  }
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(timeout);
-      parentSignal?.removeEventListener?.("abort", onAbort);
-    }
-  };
-}
-
 function sseErrorResponse(error, status = 502) {
   const message = error?.message || error || "Copilot stream error";
   const upstreamStatus = error?.status === 401 || error?.status === 403 ? error.status : status;
@@ -252,18 +233,18 @@ export function checkCopilotWebCredential(rawCredential) {
   return { accessToken };
 }
 
-export class CopilotWebExecutor extends BaseExecutor {
+export class CopilotWebExecutor extends WebSessionExecutor {
   constructor() {
-    super("copilot-web", { id: "copilot-web", baseUrl: COPILOT_START_URL });
+    super("copilot-web", { id: "copilot-web", baseUrl: COPILOT_START_URL }, { observePatchedFetch: false });
   }
 
-  async getSession(accessToken, signal, proxyOptions = null, send = proxyAwareFetch) {
+  async getSession(accessToken, signal, proxyOptions = null, send) {
     // OpenAI-compatible chat calls are stateless unless the client supplies an
     // explicit session key, so each request starts a fresh upstream thread.
     return this.createSession(accessToken, signal, proxyOptions, send);
   }
 
-  async createSession(accessToken, signal, proxyOptions = null, send = proxyAwareFetch) {
+  async createSession(accessToken, signal, proxyOptions = null, send) {
     const headers = {
       "Content-Type": "application/json",
       "User-Agent": COPILOT_USER_AGENT,
@@ -272,8 +253,7 @@ export class CopilotWebExecutor extends BaseExecutor {
     };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-    const scopedSignal = timeoutSignal(signal, FETCH_CONNECT_TIMEOUT_MS);
-    try {
+    {
       const response = await send(COPILOT_START_URL, {
         method: "POST",
         headers,
@@ -282,7 +262,7 @@ export class CopilotWebExecutor extends BaseExecutor {
           startNewConversation: true,
           teenSupportEnabled: false
         }),
-        signal: scopedSignal.signal
+        signal
       }, proxyOptions);
 
       if (!response.ok) {
@@ -306,8 +286,6 @@ export class CopilotWebExecutor extends BaseExecutor {
         isBlocked: data.isBlocked ?? false,
         createdAt: Date.now()
       };
-    } finally {
-      scopedSignal.cleanup();
     }
   }
 
@@ -470,9 +448,8 @@ export class CopilotWebExecutor extends BaseExecutor {
     }, { highWaterMark: 16384 });
   }
 
-  async execute(input) {
-    if (input.signal?.aborted) throw requestAbortError(input.signal.reason);
-    const sender = createExecutorSender(this, input, { observePatchedFetch: false });
+  // The base owns HTTP deadlines, proxy routing and quota dispatch.
+  async runSession(input, transport) {
     const body = input.body || {};
     const model = input.model || body.model || "copilot";
     const mode = getCopilotMode(model);
@@ -495,7 +472,7 @@ export class CopilotWebExecutor extends BaseExecutor {
     try {
       // Starting the conversation is setup; only the chat turn is quota-bearing.
       const session = await this.getSession(accessToken || undefined, input.signal, input.proxyOptions,
-        (url, init, proxyOptions) => sender.sendRequest(url, init, proxyOptions, { quotaBearing: false }));
+        (url, init) => transport.send(url, init));
       conversationId = session.conversationId;
     } catch (err) {
       if (isQuotaDispatchUnavailable(err)) throw err;
@@ -510,7 +487,7 @@ export class CopilotWebExecutor extends BaseExecutor {
     }
 
     // Opening the chat socket is the physical send; its own timers bound the turn.
-    const wsStream = await sender.sendRequest(COPILOT_WS_URL, { signal: input.signal }, input.proxyOptions, {
+    const wsStream = await transport.sendBillable(COPILOT_WS_URL, { signal: input.signal }, {
       transport: () => this.wsChat({
         conversationId,
         prompt,
@@ -522,11 +499,7 @@ export class CopilotWebExecutor extends BaseExecutor {
         proxyOptions: input.proxyOptions
       })
     });
-    // Every result after the chat send carries its quota ticket.
-    const carry = (result) => {
-      transferProviderAttemptDispatch(wsStream, result.response);
-      return { ...result, attemptStartedAt: sender.attemptStartedAt };
-    };
+    const carry = (result) => result;
 
     if (stream) {
       return carry({

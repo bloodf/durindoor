@@ -221,3 +221,12 @@ export default function ComboCard({ combo, v5, getCaps, comboByName = {}, active
     </Card>
   );
 }
+
+const fmtK = (n) => {
+  if (!n) return "?";
+  if (n >= 1000000) {
+    const m = n / 1000000;
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+  }
+  return `${Math.round(n / 1000)}k`;
+};

@@ -12,8 +12,9 @@ The repair changes only `open-sse/executors/zai-web.js`, the helpers
 the new regression file `tests/unit/fix-zai-source-token-proof-2034.test.js`,
 this report and the private handoff
 `internal/docs/port-reports/fix-zai-source-token-proof-2034-handoff.json`.
-With explicit authorization, it also migrates the three existing Zai suites listed
-under "Migrated existing assertions". Public capture, registry, import activation
+With explicit authorization, it also migrates the existing Zai fixtures listed
+under "Migrated existing assertions": first three named suites, then, after a gate
+rejection, three more suites that dispatch zai-web without a proof. Public capture, registry, import activation
 and shared auth are unchanged. No live origin, token location, proof validity or
 completion is claimed.
 
@@ -121,15 +122,31 @@ verified. This unit does not advertise a usable browser branch or full parity.
 
 ### Migrated existing assertions
 
-The retry adjudication authorized migrating exactly
+The retry adjudication authorized migrating
 `tests/unit/cookie-flow-zai-web-2034.test.js`, `tests/unit/zai-web-provider.test.js`
-and `tests/unit/fleet-provider-zai-web-acceptance.test.js`. Every original case
+and `tests/unit/fleet-provider-zai-web-acceptance.test.js`. The checks gate then
+reported 8 further failures, every one a proofless zai-web dispatch. They were in
+`provider-registration-web-batch-a-routes.test.js` (4),
+`review-x-executor-send-2.test.js` (2) and `web-session-redirects.test.js` (2).
+Those fixtures are migrated the same way (table at the end). Every original case
 is kept. A successful request now supplies a distinct synthetic opaque proof.
 The test asserts that proof appears in the completion JSON body only: not in the
 URL, not in the setup body, and (through `expectNoSecretLeak`) not in logs or
 the database. Failure cases still assert the same failure after a proof
 permits dispatch. Nothing is in `known-fails.txt`, skipped or marked as an
 expected failure.
+
+To keep each original line and assertion verbatim, the cookie-flow and provider
+suites send the proof through their `chat()` / `openai()` helpers (a
+`requestProof` variable that is reset before each test). The original call lines
+are not rewritten. The only original assertions removed are those that pinned the
+behavior this issue removes:
+- cookie-flow transport error: "Provider unavailable", plus socket text in
+  `lastError`, logs and the database. That text quotes the token URL.
+- cookie-flow non-SSE 200: a streamed 200 with an error frame, plus an account
+  cooldown after uncertain completion work.
+- the former proof-dropped reproduction: no proof in the body, provider text
+  echoed back.
 
 | File: case | Before | After |
 | --- | --- | --- |
@@ -147,6 +164,9 @@ expected failure.
 | zai-web-provider: Anthropic Messages route | 200 without proof | proof stored on the connection (`providerSpecificData.captchaVerifyParam`, a source location), because Messages translation keeps only Messages fields. Forwarded in body only |
 | zai-web-provider: expiry, quota, two-session isolation | 200 / 401 / 429 without proof | same statuses with per-account proofs. Each account's completion carries its own proof |
 | fleet acceptance: never sent to another vendor | ≥1 outbound call | synthetic proof so dispatch occurs, same origin assertion |
+| batch-a routes: zai-web OpenAI/Messages, JSON/stream (×4) | 200 without proof | stored `providerSpecificData.captchaVerifyParam` added to the fixture through its existing hook. The scripted upstream refuses a completion whose body lacks the proof, and any URL or setup body that contains it. All four assertions are unchanged |
+| review-x shared sender: zai-web charge-once and quota-denial cases (×2) | 200 from a reply with no SSE content type and no terminal | stored synthetic proof, and the reply is now a complete source-shaped event stream (`text/event-stream`, `[DONE]`). An unterminated, untyped reply is exactly the incomplete stream this fix refuses. Quota and attempt assertions are unchanged |
+| web-session redirects: zai-web chat request 1/2 redirect (×2) | 401 session error without proof | stored synthetic proof so dispatch reaches the redirect. Same session-error and request-sequence assertions |
 
 ### Validation status
 
@@ -167,6 +187,11 @@ browser, Docker or `~/.9router` was used.
   4 files, 60 of 60 tests. That is the 19 original own cases plus one new
   setup-versus-completion scope case, 31 cookie-flow cases (30 original plus the
   no-proof refusal), 3 provider cases and 6 fleet cases.
+- PASS: the same command over those 4 files plus every other unit suite that
+  names zai-web: `provider-registration-web-batch-a-routes`,
+  `provider-cookie-import-contracts`, `provider-registration-web-batch-a`,
+  `review-x-executor-send-2`, `review-x-sse-final` and `web-session-redirects`.
+  10 files, 505 of 505 tests.
 - NOT RUN: `test:ci`, full inventory, build, `scripts/checks.sh final`. These
   are outside this unit's scope and belong to later PR qualification.
 

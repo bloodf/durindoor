@@ -1,12 +1,15 @@
 import { corsHeaders } from "@/lib/http/cors.js";
 import { withRequestCorrelation, withHttpRequestCorrelation } from "@/sse/utils/requestCorrelation.js";
 // OpenAI Files collection — local filesystem store under ~/.9router/files/<id>. (DurinDoor data directory)
-import { uploadFile, listFiles } from "open-sse/services/localFilesBatches.js";
+import { uploadFile, listFiles, maxBatchBytes } from "open-sse/services/localFilesBatches.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { resolveResourceOwner } from "@/sse/services/resourceOwnership.js";
 import { annotateClientAdmissionFailure } from "open-sse/services/operationalMetrics.js";
+import { readBoundedRequest } from "@/sse/utils/readBoundedRequest.js";
 import { isString } from "../../../../shared/utils/typeChecks.js";
+
+const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 
 const CORS = {
   ...corsHeaders(["GET", "POST", "HEAD", "OPTIONS"]),
@@ -33,6 +36,7 @@ async function GETHandler(request) {
 /**
  * POST /v1/files — multipart upload (fields: file, purpose).
  * Per O-A convention: non-multipart POST → 415.
+ * Interrupted or malformed multipart bodies return 400; oversized requests return 413.
  */
 async function POSTHandler(request) {
   const ownership = await resolveResourceOwner(request);
@@ -41,9 +45,16 @@ async function POSTHandler(request) {
   if (!ct.includes("multipart/form-data")) {
     return errorResponse(415, "Content-Type must be multipart/form-data");
   }
+  const requestLimit = maxBatchBytes() + MAX_MULTIPART_OVERHEAD_BYTES;
+  const declaredLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > requestLimit) {
+    return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
+  }
   let form;
   try {
-    form = await request.formData();
+    const boundedRequest = await readBoundedRequest(request, requestLimit);
+    if (!boundedRequest) return errorResponse(HTTP_STATUS.PAYLOAD_TOO_LARGE, `Upload request exceeds ${requestLimit} bytes`);
+    form = await boundedRequest.formData();
   } catch {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid multipart body");
   }
@@ -51,6 +62,9 @@ async function POSTHandler(request) {
   const purpose = form.get("purpose") || "batch";
   if (!file || isString(file)) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "file field is required");
+  }
+  if (purpose === "batch" && file.size > maxBatchBytes()) {
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `batch exceeds MAX_BATCH_BYTES limit of ${maxBatchBytes()} bytes`);
   }
   const buf = Buffer.from(await file.arrayBuffer());
   const meta = await uploadFile({ filename: file.name || "upload", bytes: buf, purpose }, ownership);

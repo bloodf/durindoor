@@ -11,7 +11,7 @@ import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useMultiSelect } from "@/shared/hooks/useMultiSelect";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
-import { createBatchResultCollector, loadModelTestResults, modelTestResultKey, persistModelTestResults } from "@/shared/utils/modelTestResults.js";
+import { createBatchResultCollector, formatModelProbeErrors, loadModelTestResults, modelTestResultKey, persistModelTestResults, updateModelProbeErrors } from "@/shared/utils/modelTestResults.js";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, deleteStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, checkbox }) {
@@ -142,7 +142,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [modelTestResults, setModelTestResults] = useState({});
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
   const [testingBulk, setTestingBulk] = useState(false);
-  const [testError, setTestError] = useState("");
+  const [probeErrors, setProbeErrors] = useState({});
+  const testError = formatModelProbeErrors(probeErrors);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [connections, setConnections] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
@@ -237,21 +238,21 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const handleTestModel = async (modelId) => {
     if (testingModelIds.has(modelId)) return;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
+    const connectionId = activeConnectionId;
     try {
-      const connectionId = activeConnectionId;
       const data = await api.post("/api/models/test", { model: `${providerAlias}/${modelId}`, kind: kindFilter, connectionId }).catch((error) => {
         if (error.body) return error.body;
         throw error;
       });
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
-      setTestError(outcome === "error" ? (data.error || "Model not reachable") : "");
+      setProbeErrors((prev) => updateModelProbeErrors(prev, `${providerAlias}/${modelId}`, connectionId, outcome === "error" ? data.error || "Model not reachable" : null));
       persistModelTestResults({
         [modelTestResultKey(`${providerAlias}/${modelId}`, connectionId)]: { state: outcome, error: data.error || null },
       });
     } catch {
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
-      setTestError("Network error");
+      setProbeErrors((prev) => updateModelProbeErrors(prev, `${providerAlias}/${modelId}`, connectionId, "Network error"));
     } finally { setTestingModelIds((prev) => { const next = new Set(prev); next.delete(modelId); return next; }); }
   };
 
@@ -466,7 +467,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
-        {testError && <p className="text-xs text-dd-danger mb-3 break-words">{testError}</p>}
+        <p role="status" aria-live="polite" className="text-xs text-dd-danger mb-3 break-words">{testError}</p>
 
         {myCustomModels.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center gap-2">

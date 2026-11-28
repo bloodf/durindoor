@@ -2,8 +2,10 @@ import { stripRecognizedContextSuffix } from "open-sse/services/contextSuffix.js
 import { capabilitiesFromServiceKind, enforceCursorCapabilities, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
 import { extractApiCapabilities } from "open-sse/services/modelMetadata.js";
 import { getOpenRouterModelCapabilities } from "open-sse/services/catalogs/openrouterCatalog.js";
-import { effectiveSyncedModels, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
+import { effectiveSyncedModels, isModelAutoSyncEnabled, materializeSyncedModel } from "@/lib/modelAutoSync/catalog.js";
+import { getThinkingLevelsFromCapabilities } from "open-sse/providers/thinkingLevels.js";
 import { getSharedModelMetadata } from "@/lib/modelAutoSync/sharedMetadata.js";
+import { isDevinBinAvailable } from "open-sse/executors/devin-acp-stdio.js";
 
 import { parseSuffix } from "open-sse/translator/concerns/thinkingSuffix.js";
 import { PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
@@ -233,6 +235,57 @@ function registryHasModel(modelStr) {
     model.aliases?.includes(parsed.model)) === true;
 }
 
+// Effort words a generated Claude variant ID may end in. `none`/`minimal` are
+// excluded on purpose: `-none` reads as "no thinking" and is never an advertised
+// Claude effort spelling, so it stays part of the opaque model ID.
+const CLAUDE_EFFORT_ID_SUFFIX = /^(claude-.+)-(low|medium|high|xhigh|max)$/;
+// Providers whose executors already read `-<effort>` model suffixes themselves.
+const EXECUTOR_EFFORT_SUFFIX_PROVIDERS = new Set(["codex", "cursor"]);
+
+/**
+ * Port of OmniRoute #21347 (DurinDoor #2640): resolve `<claude-base>-<effort>`
+ * against a provider's synced live catalog.
+ *
+ * `/v1/models` lists a synced Claude row with the `thinking_levels` it supports,
+ * and clients spell a chosen level as a `-<effort>` model suffix. Without this
+ * step the suffixed ID is sent upstream verbatim and the provider rejects an
+ * unknown model. Every guard below must hold, otherwise the ID stays literal:
+ * - auto-sync is on for the provider and its synced catalog lists the base row;
+ * - nothing already owns the suffixed ID literally (synced row, registry row or
+ *   alias, operator custom model), so real models such as `claude-opus-5-5-high`
+ *   keep their own identity;
+ * - the effort is one of the levels the catalog advertises for that base
+ *   (provider capability restrictions apply through the same derivation);
+ * - the provider does not already interpret effort suffixes in its executor.
+ * The returned effort is a default only: chatCore applies it when the request
+ * itself carries no thinking or reasoning setting (see `catalogEffortIntent`).
+ *
+ * @returns {Promise<{ model: string, resolvedThinkingEffort: string } | null>}
+ */
+export async function resolveSyncedClaudeEffortVariant(provider, model) {
+  if (!isString(provider) || !isString(model) || EXECUTOR_EFFORT_SUFFIX_PROVIDERS.has(provider)) return null;
+  const match = model.match(CLAUDE_EFFORT_ID_SUFFIX);
+  if (!match) return null;
+  const [, baseId, effort] = match;
+  const registered = REGISTRY.find((entry) => entry.id === provider);
+  if (!registered) return null;
+  if (registered.models?.some((row) => row.id === model || row.aliases?.includes(model))) return null;
+
+  const settings = await getSettings().catch(() => null);
+  if (!isModelAutoSyncEnabled(provider, settings)) return null;
+  const snapshot = await loadModelMetadataSnapshot(provider);
+  const synced = effectiveSyncedModels(snapshot.syncedCatalogs[provider], registered.models || []);
+  if (!synced || synced.some((row) => row.id === model)) return null;
+  const providerAliases = new Set([provider, registered.alias, registered.uiAlias, ...(registered.aliases || [])].filter(Boolean));
+  if (snapshot.customModels.some((row) => row?.id === model && providerAliases.has(row.providerAlias))) return null;
+
+  const base = synced.find((row) => row.id === baseId && (row.kind || row.type || "llm") === "llm");
+  if (!base) return null;
+  const caps = materializeRequestModel(provider, base, null, snapshot).capabilities;
+  const levels = getThinkingLevelsFromCapabilities(caps, provider, baseId);
+  return levels?.includes(effort) ? { model: baseId, resolvedThinkingEffort: effort } : null;
+}
+
 /** Build one request-scoped routability checker over one snapshot of DB sources. */
 export function createRoutableModelIdChecker() {
   let sourcesPromise;
@@ -332,10 +385,10 @@ export async function getModelInfo(modelStr) {
         return registered ? { provider: matchedSystemone.id, model } : { provider: null, model: null };
       }
     }
-    return {
-      provider: parsed.provider,
-      model: resolveProviderModelAlias(parsed.provider, parsed.model)
-    };
+    const model = resolveProviderModelAlias(parsed.provider, parsed.model);
+    const effortVariant = await resolveSyncedClaudeEffortVariant(parsed.provider, model);
+    if (effortVariant) return { provider: parsed.provider, ...effortVariant };
+    return { provider: parsed.provider, model };
   }
 
 }
@@ -394,6 +447,12 @@ export async function getAutoComboCatalog() {
   // seated in the loop above, so an enabled provider-account still wins.
   for (const key of applyNoAuthAutoComboGate({ idToKey, noAuthEntries, getModels, inactiveKeys })) {
     if (!catalog[key]) catalog[key] = PROVIDER_MODELS[key];
+  }
+  // Host readiness is advisory and must never change connection health. Direct
+  // and saved-combo requests retain the executor's own diagnostic errors.
+  for (const [id, agentic] of [["devin-cli", false], ["devin-cli-agentic", true]]) {
+    const key = idToKey.get(id) || id;
+    if (catalog[key] && !isDevinBinAvailable({ agentic })) delete catalog[key];
   }
   return catalog;
 }

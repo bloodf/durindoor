@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { getModelsByProviderId } from "@/shared/constants/models";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { formatModelProbeErrors, updateModelProbeErrors } from "@/shared/utils/modelTestResults.js";
 import { probeOutcome } from "@/lib/providers/conversationProbe.js";
 import { testAndDisableFailedModels, bulkDisableMessage } from "@/shared/utils/providerModelBulkActions.js";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
@@ -101,7 +102,9 @@ export default function useProviderDetail(providerId) {
   const [modelAliases, setModelAliases] = useState({});
   const [customModels, setCustomModels] = useState([]);
   const [modelTestResults, setModelTestResults] = useState({});
-  const [modelsTestError, setModelsTestError] = useState("");
+  const [bulkModelsTestError, setModelsTestError] = useState("");
+  const [modelProbeErrors, setModelProbeErrors] = useState({});
+  const modelsTestError = [bulkModelsTestError, formatModelProbeErrors(modelProbeErrors)].filter(Boolean).join("; ");
   const [modelsTestMessage, setModelsTestMessage] = useState("");
   const [bulkTestingModels, setBulkTestingModels] = useState(false);
   const [testingModelIds, setTestingModelIds] = useState(() => new Set());
@@ -643,8 +646,8 @@ export default function useProviderDetail(providerId) {
   const runModelTest = async (modelId) => {
     const requestGeneration = providerGenerationRef.current;
     setTestingModelIds((prev) => new Set(prev).add(modelId));
+    const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
     try {
-      const connectionId = connections.find((connection) => connection.isActive !== false)?.id;
       const res = await dashboardRequest("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -657,12 +660,12 @@ export default function useProviderDetail(providerId) {
       if (providerGenerationRef.current !== requestGeneration) return null;
       const outcome = probeOutcome(data);
       setModelTestResults((prev) => ({ ...prev, [modelId]: outcome }));
-      setModelsTestError(outcome === "error" ? data.error || "Model not reachable" : "");
+      setModelProbeErrors((prev) => updateModelProbeErrors(prev, `${providerStorageAlias}/${modelId}`, connectionId, outcome === "error" ? data.error || "Model not reachable" : null));
       return outcome;
     } catch {
       if (providerGenerationRef.current !== requestGeneration) return null;
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
-      setModelsTestError("Network error");
+      setModelProbeErrors((prev) => updateModelProbeErrors(prev, `${providerStorageAlias}/${modelId}`, connectionId, "Network error"));
       return "error";
     } finally {
       if (providerGenerationRef.current === requestGeneration) {

@@ -86,7 +86,7 @@ it("preserves ollamaCatalog exports", async () => {
 
 it("preserves openrouterCatalog exports", async () => {
   const catalog = await import("../../open-sse/services/catalogs/openrouterCatalog.js");
-  expect(Object.keys(catalog).sort()).toEqual(["OPENROUTER_MODELS_URL", "clearOpenRouterCatalogCache", "getOpenRouterModelCapabilities", "isOpenRouterFreeModel", "mapOpenRouterModel", "resolveOpenRouterModels", "warmOpenRouterCatalog"]);
+  expect(Object.keys(catalog).sort()).toEqual(["OPENROUTER_DECISIONS_MODELS_URL", "OPENROUTER_LOOKUP_BUDGET_MS", "OPENROUTER_MODELS_URL", "clearOpenRouterCatalogCache", "getOpenRouterModelCapabilities", "isOpenRouterDecisionModel", "isOpenRouterFreeModel", "mapOpenRouterModel", "mergeOpenRouterCatalogs", "resolveOpenRouterDecisionModels", "resolveOpenRouterModels", "warmOpenRouterCatalog"]);
 });
 
 it("preserves qoderModels exports", async () => {

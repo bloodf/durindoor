@@ -70,6 +70,31 @@ describe("9router #3860: a cut stream never reaches a Claude client as a finishe
     expect(events.at(-1)).toBe("error");
   });
 
+  it("rejects a sentinel after an unfinished tool call and records an error", async () => {
+    const { text, events, row, onRequestSuccess } = await fromOpenAI([
+      chat({ role: "assistant", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "run", arguments: '{"command":' } }] }),
+      "data: [DONE]\n\n",
+    ]);
+
+    expect(text).not.toContain("input_json_delta");
+    expect(text).not.toContain('"stop_reason":"tool_use"');
+    expect(events).not.toContain("message_stop");
+    expect(events.at(-1)).toBe("error");
+    expect(row.status).toBe("error");
+    expect(onRequestSuccess).not.toHaveBeenCalled();
+  });
+
+  it("rejects a sentinel after tool arguments arrive before the ID and name", async () => {
+    const { events, row } = await fromOpenAI([
+      chat({ role: "assistant", tool_calls: [{ index: 0, function: { arguments: '{"command":' } }] }),
+      "data: [DONE]\n\n",
+    ]);
+
+    expect(events).not.toContain("message_stop");
+    expect(events.at(-1)).toBe("error");
+    expect(row.status).toBe("error");
+  });
+
   it.each([
     ["a finish reason without [DONE]", [chat({ role: "assistant", content: "done" }), chat({}, "stop")]],
     ["[DONE] without a finish reason", [chat({ role: "assistant", content: "done" }), "data: [DONE]\n\n"]],

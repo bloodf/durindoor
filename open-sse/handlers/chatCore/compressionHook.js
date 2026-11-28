@@ -105,6 +105,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
 
   let engineIds;
   let stepById = {};
+  let overAdaptiveTarget = false;
   try {
     const basePlan = deriveDefaultPlan(cfg.engines || {}, true);
     const adaptive = cfg.adaptive || {};
@@ -135,6 +136,7 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
     const plan = resolved?.plan ?? resolved ?? basePlan;
     const t = resolved?.telemetry;
     if (t) {
+      overAdaptiveTarget = t.headroomBefore < 0;
       cfg.log?.debug?.("COMPRESS", `adaptive ${t.policy} target=${t.target} headroom=${t.headroomBefore}->${t.headroomAfter} stages=${t.stagesApplied.join(",") || "none"} fit=${t.fit}`);
     }
     engineIds = planToEngineIds(plan);
@@ -168,8 +170,11 @@ export async function runCompressionSeam(body, deps, cfg = {}) {
       const step = { ...engineStepOptions(engine, cfg.engines?.[id], cfg.log), ...(stepById[id] ?? { engine: id }) };
       const format = cfg.applyOpts?.format ?? bodyFormat(working);
       if (id === "headroom") step.format = format;
+      const engineConfig = { format, ...(cfg.applyOpts || {}) };
+      // An adaptive input budget may be tighter than the raw context window.
+      if (id === "lite" && overAdaptiveTarget) engineConfig.cachedPrefix = false;
       const opts = {
-        config: { format, ...(cfg.applyOpts || {}) },
+        config: engineConfig,
         stepConfig: step
       };
       const prefixBefore = cfg.protectCachedPrefix === true ? serializeCachedPrefix(stepInput) : null;

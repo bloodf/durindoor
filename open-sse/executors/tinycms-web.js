@@ -51,9 +51,8 @@ async function getPublicIp(fetcher, proxyOptions, signal) {
   const cached = ipCache.get(key);
   if (cached && Date.now() - cached.at < IP_TTL_MS) return cached.ip;
   try {
-    const timeout = AbortSignal.timeout(5000);
     // No credential travels to the IP service, so its redirects stay allowed.
-    const res = await fetcher(IP_URL, { redirect: "follow", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    const res = await fetcher(IP_URL, { redirect: "follow", signal });
     const ip = (await res.json())?.ip;
     if (isString(ip) && ip) { ipCache.set(key, { ip, at: Date.now() }); return ip; }
   } catch { /* the IP only feeds the signature; fall back like the upstream client */ }

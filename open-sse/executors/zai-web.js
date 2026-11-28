@@ -1,8 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { BaseExecutor } from "./base.js";
+import { WebSessionExecutor } from "./webSessionBase.js";
 import { errorResponse } from "../utils/error.js";
-import { createExecutorSender, requestAbortError } from "./sendRequest.js";
-import { settleProviderAttemptDispatch, transferProviderAttemptDispatch } from "../services/providerAttemptContext.js";
+import { requestAbortError } from "./sendRequest.js";
 import { isQuotaDispatchUnavailable } from "../services/quota/dispatch.js";
 import { isString } from "../../src/shared/utils/typeChecks.js";
 
@@ -75,7 +74,7 @@ async function readCompletion(response, signal) {
   return { content, reasoning };
 }
 
-export class ZaiWebExecutor extends BaseExecutor {
+export class ZaiWebExecutor extends WebSessionExecutor {
   constructor() { super("zai-web", { id: "zai-web", baseUrl: ORIGIN }); }
 
   /**
@@ -86,8 +85,7 @@ export class ZaiWebExecutor extends BaseExecutor {
    * and for setup failures, so ordinary fallback applies. It is true for any failure from the completion send
    * on, because that work may have reached Z.ai: no account, combo or outer retry may send it again.
    */
-  async execute(input) {
-    input.signal?.throwIfAborted();
+  async runSession(input, transport) {
     const token = resolveZaiWebSession(input.credentials, extractZaiWebToken);
     const userId = token && userIdFromToken(token);
     if (!token || !userId) return { response: errorResponse(401, "Invalid or expired Z.ai session. Re-import the chat.z.ai token cookie or the stored Local Storage token.", { type: "authentication_error", code: "invalid_session" }), url: COMPLETIONS, headers: {}, transformedBody: redactZaiProof(input.body) };
@@ -104,20 +102,18 @@ export class ZaiWebExecutor extends BaseExecutor {
     const model = String(input.body.model ?? input.model ?? "glm-5.3").split("/").at(-1);
     const chatMessageId = randomUUID();
     const chatBody = { chat: { id: "", title: "New Chat", models: [model], params: {}, history: { messages: { [chatMessageId]: { id: chatMessageId, parentId: null, childrenIds: [], role: "user", content: prompt, timestamp: Math.floor(Date.now() / 1000), models: [model] } }, currentId: chatMessageId }, tags: [], flags: [], features: [], mcp_servers: [], enable_thinking: true, reasoning_effort: input.body.reasoning_effort ?? "max", auto_web_search: false, message_version: 1, extra: {}, timestamp: Date.now(), type: "default" } };
-    const sender = createExecutorSender(this, input);
     let upstream = null;
     // Set just before the billable completion send, so a throw from that send still counts as uncertain work.
     let completionStarted = false;
-    // Every response returned after the completion send carries its quota ticket.
+    // The session base transfers the completion quota ticket to the returned response.
     const carry = (result) => {
-      transferProviderAttemptDispatch(upstream, result.response);
       // The existing request-scoped terminal flag stops account/model replay after uncertain work. A setup
       // failure comes before any completion was sent, so ordinary account fallback stays allowed.
-      return { ...result, claudeRequestScoped: completionStarted && !result.response.ok, attemptStartedAt: sender.attemptStartedAt };
+      return { ...result, claudeRequestScoped: completionStarted && !result.response.ok };
     };
     try {
       // Creating the empty chat is setup; only the completion is quota-bearing.
-      const chatResponse = await sender.sendRequest(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), redirect: "manual", signal: input.signal }, input.proxyOptions, { quotaBearing: false });
+      const chatResponse = await transport.send(NEW_CHAT, { method: "POST", headers: headers(token), body: JSON.stringify(chatBody), redirect: "manual", signal: input.signal });
       if (!chatResponse.ok) return carry(await this.upstreamError(chatResponse, input.body, NEW_CHAT));
       const chatId = JSON.parse(await readZaiBody(chatResponse, input.signal)).id;
       input.signal?.throwIfAborted();
@@ -126,7 +122,7 @@ export class ZaiWebExecutor extends BaseExecutor {
       const url = completionUrl(token, userId, requestId, timestamp);
       const payload = { captcha_verify_param: proof, stream: true, model, messages, signature_prompt: prompt, params: {}, extra: {}, features: { preview_mode: true, enable_thinking: true }, variables: {}, chat_id: chatId, id: randomUUID(), current_user_message_id: chatMessageId, current_user_message_parent_id: null, background_tasks: { title_generation: true, tags_generation: true } };
       completionStarted = true;
-      upstream = await sender.sendRequest(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal }, input.proxyOptions);
+      upstream = await transport.sendBillable(url, { method: "POST", headers: { ...headers(token, "text/event-stream"), "X-FE-Version": FE_VERSION, "X-Signature": signature(prompt, requestId, timestamp, userId) }, body: JSON.stringify(payload), redirect: "manual", signal: input.signal });
       if (!upstream.ok) return carry(await this.upstreamError(upstream, input.body, COMPLETIONS));
       const answer = await readCompletion(upstream, input.signal);
       const id = `chatcmpl-zai-${timestamp}`; const created = Math.floor(timestamp / 1000);
@@ -138,7 +134,6 @@ export class ZaiWebExecutor extends BaseExecutor {
     } catch (error) {
       if (isQuotaDispatchUnavailable(error)) throw error;
       if (input.signal?.aborted) {
-        await settleProviderAttemptDispatch(upstream, { reason: "abort" });
         throw requestAbortError(input.signal.reason);
       }
       const status = [401, 403, 429].includes(error?.status) ? error.status : 502;
